@@ -1,0 +1,21 @@
+import { Module } from '@nestjs/common';
+import { MongooseModule } from '@nestjs/mongoose';
+import { InventoryItem, InventoryItemSchema } from './schemas/inventory-item.schema.js';
+import { InventoryService } from './inventory.service.js';
+import { InventoryController } from './inventory.controller.js';
+import { ProductsModule } from '../products/products.module.js';
+import { UploadsModule } from '../uploads/uploads.module.js';
+
+@Module({
+  imports: [
+    MongooseModule.forFeature([
+      { name: InventoryItem.name, schema: InventoryItemSchema },
+    ]),
+    ProductsModule,
+    UploadsModule,
+  ],
+  controllers: [InventoryController],
+  providers: [InventoryService],
+  exports: [InventoryService],
+})
+export class InventoryModule {}
