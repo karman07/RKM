@@ -1,0 +1,97 @@
+{
+	"info": {
+		"_postman_id": "jewelry-ai-assistant-collection",
+		"name": "Jewelry AI Assistant",
+		"description": "Collection for testing the RAG-based Jewelry AI Assistant",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Health Check",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8000/",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						""
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Chat Assistant",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"query\": \"gold ruby ring under 50000\"\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8000/api/chat",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"api",
+						"chat"
+					]
+				},
+				"description": "Send a natural language query to the AI assistant. It will extract filters, perform vector search, and return a recommendation."
+			},
+			"response": []
+		},
+		{
+			"name": "Chat Assistant (Simple)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"query\": \"Show me some diamond necklaces\"\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8000/api/chat",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"api",
+						"chat"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		}
+	]
+}
