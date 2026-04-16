@@ -120,6 +120,15 @@ export class Product {
   @Prop({ type: Number, min: 0, default: null })
   price_override: number | null;
 
+  // Cost & Discount Control
+  /** Fixed purchase/cost price — set by admin at product level; locked on inventory items */
+  @Prop({ type: Number, min: 0, default: 0 })
+  purchase_price: number;
+
+  /** Maximum discount % a Manager is allowed to apply on inventory items of this product */
+  @Prop({ type: Number, min: 0, max: 100, default: 0 })
+  max_manager_discount: number;
+
   // Media
   @Prop({ type: [String], default: [] })
   images: string[];

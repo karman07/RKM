@@ -11,6 +11,7 @@ export interface PricingInput {
   making_charge_rate: number;
   fixed_making_charge: number;
   tax_percentage: number;
+  discount_percentage?: number;
   price_override?: number | null;
 }
 
@@ -18,6 +19,7 @@ export interface PricingResult {
   metal_price: number;
   making_charges: number;
   stone_price: number;
+  discount_amount: number;
   tax_amount: number;
   final_price: number;
   is_override: boolean;
@@ -35,6 +37,7 @@ export class PricingService {
         metal_price: 0,
         making_charges: 0,
         stone_price,
+        discount_amount: 0,
         tax_amount: 0,
         final_price: input.price_override,
         is_override: true,
@@ -53,15 +56,21 @@ export class PricingService {
     );
 
     const subtotal = metal_price + making_charges + stone_price;
-    const tax_amount = parseFloat(
-      ((subtotal * input.tax_percentage) / 100).toFixed(2),
+    const discount_amount = parseFloat(
+      ((subtotal * (input.discount_percentage || 0)) / 100).toFixed(2),
     );
-    const final_price = parseFloat((subtotal + tax_amount).toFixed(2));
+    const taxable_amount = subtotal - discount_amount;
+
+    const tax_amount = parseFloat(
+      ((taxable_amount * input.tax_percentage) / 100).toFixed(2),
+    );
+    const final_price = parseFloat((taxable_amount + tax_amount).toFixed(2));
 
     return {
       metal_price,
       making_charges,
       stone_price,
+      discount_amount,
       tax_amount,
       final_price,
       is_override: false,

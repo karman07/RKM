@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -17,6 +18,7 @@ import { BarcodeService } from '../uploads/barcode.service.js';
 import { CreateInventoryItemDto } from './dto/create-inventory-item.dto.js';
 import { UpdateInventoryStatusDto } from './dto/update-inventory-status.dto.js';
 import { QueryInventoryDto } from './dto/query-inventory.dto.js';
+import { UpdateInventoryDiscountDto } from './dto/update-inventory-discount.dto.js';
 
 // Allowed status transitions
 const STATUS_TRANSITIONS: Record<InventoryStatus, InventoryStatus[]> = {
@@ -39,7 +41,18 @@ export class InventoryService {
   // ─── Add Single Item ───────────────────────────────────────────────────────
 
   private async addSingleItem(dto: CreateInventoryItemDto): Promise<InventoryItemDocument> {
-    await this.productsService.findOne(dto.product_id); // throws if not found
+    // Fetch product — throws NotFoundException if not found
+    const product = await this.productsService.findOne(dto.product_id) as any;
+
+    // Purchase price is LOCKED from the product (cannot be overridden by caller)
+    const purchase_price: number = Number(product.purchase_price) || 0;
+
+    // Snapshot product dimensions at ingress time
+    const dimensions_snapshot: string = product.dimensions || '';
+
+    // Copy max_manager_discount and admin discount from product
+    const max_manager_discount: number = Number(product.max_manager_discount) || 0;
+    const admin_discount: number = Number(product.discount_percentage) || 0;
 
     const barcode = dto.barcode ?? this.generateBarcode();
     const unique_item_code = dto.unique_item_code ?? this.generateItemCode(dto.product_id);
@@ -57,6 +70,12 @@ export class InventoryService {
       unique_item_code,
       barcode_url,
       status: InventoryStatus.AVAILABLE,
+      selling_price: dto.selling_price ?? (Number(product.pricing_breakdown?.final_price) || 0),
+      purchase_price,           // auto-locked from product
+      dimensions_snapshot,      // snapshot from product
+      max_manager_discount,     // copied from product
+      admin_discount,           // snapshotted from product
+      manager_discount: 0,
     });
 
     return item.save();
@@ -90,13 +109,40 @@ export class InventoryService {
       throw new NotFoundException(`Inventory item ${id} not found`);
     }
 
-    // Delete the item
-    await this.inventoryModel.deleteOne({ _id: id });
+    // Soft delete the item
+    item.is_deleted = true;
+    item.deleted_at = new Date();
+    item.deletion_reason = reason;
+    item.deletion_notes = notes || '';
+    await item.save();
 
     return {
       deleted: true,
       item_id: id,
       reason: reason,
+    };
+  }
+
+  // ─── Bulk Delete Items ─────────────────────────────────────────────────────
+
+  async bulkDelete(ids: string[], reason: string, notes?: string): Promise<{ deletedCount: number; ids: string[] }> {
+    ids.forEach(id => this.validateObjectId(id));
+
+    const result = await this.inventoryModel.updateMany(
+      { _id: { $in: ids } },
+      {
+        $set: {
+          is_deleted: true,
+          deleted_at: new Date(),
+          deletion_reason: reason,
+          deletion_notes: notes || '',
+        },
+      },
+    );
+
+    return {
+      deletedCount: result.modifiedCount,
+      ids: ids,
     };
   }
 
@@ -110,6 +156,7 @@ export class InventoryService {
     const count = await this.inventoryModel.countDocuments({
       product_id: new Types.ObjectId(productId),
       status: InventoryStatus.AVAILABLE,
+      is_deleted: { $ne: true },
     });
 
     return count;
@@ -121,7 +168,9 @@ export class InventoryService {
     const { product_id, status, location, page = 1, limit = 20, search } = query;
     const skip = (page - 1) * limit;
 
-    const filter: Record<string, unknown> = {};
+    const filter: Record<string, unknown> = {
+      is_deleted: { $ne: true },
+    };
 
     if (product_id) {
       if (!Types.ObjectId.isValid(product_id)) {
@@ -145,7 +194,7 @@ export class InventoryService {
         .find(filter as any)
         .populate({
           path: 'product_id',
-          select: 'name sku metal_type purity barcode images',
+          select: 'name sku metal_type purity barcode images dimensions purchase_price max_manager_discount pricing_breakdown discount_percentage',
           populate: { path: 'category_id', select: 'name slug' },
         })
         .skip(skip)
@@ -157,7 +206,43 @@ export class InventoryService {
 
     return {
       data: items,
-      meta: { total, page, limit, total_pages: Math.ceil(total / limit) },
+      meta: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        total_pages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  // ─── Get Deleted Items ─────────────────────────────────────────────────────
+
+  async findDeleted(page = 1, limit = 20) {
+    const skip = (page - 1) * limit;
+    const filter = { is_deleted: true };
+
+    const [items, total] = await Promise.all([
+      this.inventoryModel
+        .find(filter)
+        .populate({
+          path: 'product_id',
+          select: 'name sku metal_type images pricing_breakdown discount_percentage',
+        })
+        .sort({ deleted_at: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      this.inventoryModel.countDocuments(filter),
+    ]);
+
+    return {
+      data: items,
+      meta: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        total_pages: Math.ceil(total / limit),
+      },
     };
   }
 
@@ -168,18 +253,31 @@ export class InventoryService {
     const [generalStats, profitStats, trendStats, categoryStats] = await Promise.all([
       // General status and value distribution
       this.inventoryModel.aggregate([
+        { $match: { is_deleted: { $ne: true } } },
+        {
+          $addFields: {
+            // Apply both discounts to get the true current market value of the item
+            netValue: {
+              $multiply: [
+                '$selling_price',
+                { $subtract: [1, { $divide: ['$admin_discount', 100] }] },
+                { $subtract: [1, { $divide: ['$manager_discount', 100] }] }
+              ]
+            }
+          }
+        },
         {
           $group: {
             _id: '$status',
             count: { $sum: 1 },
-            value: { $sum: '$selling_price' },
+            value: { $sum: '$netValue' },
             purchaseValue: { $sum: '$purchase_price' },
           },
         },
       ]),
       // Specific profit aggregation for sold items
       this.inventoryModel.aggregate([
-        { $match: { status: InventoryStatus.SOLD } },
+        { $match: { status: InventoryStatus.SOLD, is_deleted: { $ne: true } } },
         {
           $group: {
             _id: null,
@@ -192,6 +290,7 @@ export class InventoryService {
         { 
           $match: { 
             status: InventoryStatus.SOLD, 
+            is_deleted: { $ne: true },
             sold_at: { $gte: fourteenDaysAgo } 
           } 
         },
@@ -205,6 +304,7 @@ export class InventoryService {
       ]),
       // Category distribution
       this.inventoryModel.aggregate([
+        { $match: { is_deleted: { $ne: true } } },
         { $lookup: { from: 'products', localField: 'product_id', foreignField: '_id', as: 'product' } },
         { $unwind: '$product' },
         { 
@@ -240,7 +340,11 @@ export class InventoryService {
     generalStats.forEach((s) => {
       byStatus[s._id] = { count: s.count, value: s.value };
       totalCount += s.count;
-      totalValue += s.value;
+      
+      // Total Asset Valuation should typically only include un-sold items
+      if (s._id !== InventoryStatus.SOLD) {
+        totalValue += s.value;
+      }
       totalPurchaseValue += s.purchaseValue;
     });
 
@@ -344,7 +448,46 @@ export class InventoryService {
     return item.save();
   }
 
+  // ─── Update Discount ───────────────────────────────────────────────────────
 
+  /**
+   * Updates the active discount on an inventory item.
+   * - Admins:   can update admin_discount and/or manager_discount (no caps).
+   * - Managers: can only update manager_discount, capped at item.max_manager_discount.
+   */
+  async updateDiscount(
+    id: string,
+    dto: UpdateInventoryDiscountDto,
+    userRole: string,
+  ): Promise<InventoryItemDocument> {
+    this.validateObjectId(id);
+
+    const item = await this.inventoryModel.findById(id);
+    if (!item) throw new NotFoundException(`Inventory item ${id} not found`);
+
+    if (userRole === 'manager') {
+      // Managers cannot change admin discounts
+      if (dto.admin_discount !== undefined) {
+        throw new ForbiddenException('Managers cannot modify admin-provisioned discounts.');
+      }
+      
+      // Managers must respect their max discount limit
+      if (dto.manager_discount !== undefined) {
+        if (dto.manager_discount > item.max_manager_discount) {
+          throw new ForbiddenException(
+            `Manager cannot set discount above ${item.max_manager_discount}%. Contact an admin.`,
+          );
+        }
+        item.manager_discount = dto.manager_discount;
+      }
+    } else {
+      // Admin: can do whatever they want
+      if (dto.admin_discount !== undefined) item.admin_discount = dto.admin_discount;
+      if (dto.manager_discount !== undefined) item.manager_discount = dto.manager_discount;
+    }
+
+    return item.save();
+  }
 
   private generateBarcode(): string {
     const timestamp = Date.now();

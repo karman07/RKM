@@ -13,7 +13,8 @@ import { UploadsModule } from './modules/uploads/uploads.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { BlogsModule } from './modules/blogs/blogs.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
-
+import { SuppliersModule } from './modules/suppliers/suppliers.module';
+import { PurchaseOrdersModule } from './modules/purchase-orders/purchase-orders.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -34,6 +35,8 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
     SettingsModule,
     BlogsModule,
     AnalyticsModule,
+    PurchaseOrdersModule,
+    SuppliersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

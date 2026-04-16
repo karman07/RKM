@@ -5,6 +5,7 @@ import {
   IsBoolean,
   IsMongoId,
   Min,
+  Max,
   IsNotEmpty,
   MaxLength,
 } from 'class-validator';
@@ -176,4 +177,17 @@ export class CreateProductDto {
   @IsNumber()
   @Min(0)
   price_override?: number;
+
+  /** Fixed cost/purchase price — set by admin; auto-locked when adding inventory */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  purchase_price?: number;
+
+  /** Maximum % discount a Manager can apply on inventory items of this product */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  max_manager_discount?: number;
 }

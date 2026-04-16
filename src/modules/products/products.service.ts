@@ -186,6 +186,7 @@ export class ProductsService {
         making_charge_rate: product.making_charge_rate,
         fixed_making_charge: product.fixed_making_charge,
         tax_percentage: product.tax_percentage,
+        discount_percentage: product.discount_percentage,
         price_override: product.price_override,
       }),
     };

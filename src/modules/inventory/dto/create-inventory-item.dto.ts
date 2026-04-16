@@ -5,6 +5,7 @@ import {
   IsNumber,
   IsMongoId,
   Min,
+  Max,
   IsNotEmpty,
   IsDateString,
   IsUrl,
@@ -56,13 +57,11 @@ export class CreateInventoryItemDto {
   @Min(0)
   stone_weight?: number;
 
-  @IsNumber()
-  @Min(0)
-  purchase_price: number;
+  /**
+   * purchase_price is NO LONGER accepted from the client.
+   * It is automatically pulled from Product.purchase_price in the service layer.
+   */
 
-  @IsNumber()
-  @Min(0)
-  selling_price: number;
 
   @IsOptional()
   @IsNumber()
@@ -84,4 +83,11 @@ export class CreateInventoryItemDto {
   @IsOptional()
   @IsUrl()
   image_url?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  selling_price?: number;
+
+
 }

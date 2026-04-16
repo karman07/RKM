@@ -51,7 +51,7 @@ export class InventoryItem {
   @Prop({ type: Number, min: 0, default: 0 })
   stone_weight: number;
 
-  // Pricing Snapshot
+  // Pricing Snapshot (purchase_price is auto-locked from Product.purchase_price at ingress)
   @Prop({ type: Number, min: 0, required: true })
   purchase_price: number;
 
@@ -60,6 +60,23 @@ export class InventoryItem {
 
   @Prop({ type: Number, min: 0, default: 0 })
   gold_rate_at_purchase: number;
+
+  // Dimensions snapshot (copied from Product.dimensions at ingress time)
+  @Prop({ trim: true, default: '' })
+  dimensions_snapshot: string;
+
+  // Discount Control
+  /** Admin provisioned discount % */
+  @Prop({ type: Number, min: 0, max: 100, default: 0 })
+  admin_discount: number;
+
+  /** Manager applied discount % */
+  @Prop({ type: Number, min: 0, max: 100, default: 0 })
+  manager_discount: number;
+
+  /** Max discount % a Manager is allowed to apply (copied from Product.max_manager_discount) */
+  @Prop({ type: Number, min: 0, max: 100, default: 0 })
+  max_manager_discount: number;
 
   // Supplier Info
   @Prop({ type: Types.ObjectId, ref: 'Supplier', default: null })
@@ -130,6 +147,19 @@ export class InventoryItem {
 
   @Prop({ type: Date, default: null })
   returned_at: Date | null;
+
+  // Soft Delete
+  @Prop({ type: Boolean, default: false })
+  is_deleted: boolean;
+
+  @Prop({ type: Date, default: null })
+  deleted_at: Date | null;
+
+  @Prop({ trim: true, default: '' })
+  deletion_reason: string;
+
+  @Prop({ trim: true, default: '' })
+  deletion_notes: string;
 }
 
 export const InventoryItemSchema = SchemaFactory.createForClass(InventoryItem);
