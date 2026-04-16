@@ -5,7 +5,7 @@ import { XIcon, SparklesIcon, ArrowRightIcon } from './Icons';
 import styles from './ChatAssistant.module.css';
 import Link from 'next/link';
 import { trackEvent } from '@/app/analytics';
-import { AI_BASE_URL } from '@/app/constants';
+import { AI_BASE_URL, STATIC_BASE_URL } from '@/app/constants';
 
 interface Message {
   role: 'user' | 'assistant';
