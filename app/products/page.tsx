@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { API_BASE_URL, THEME } from "../constants";
@@ -82,6 +82,18 @@ function titleFromFilters(params: URLSearchParams) {
 }
 
 export default function ProductsPage() {
+  return (
+    <Suspense fallback={
+       <div className="min-h-screen bg-white flex items-center justify-center">
+         <div className="text-[10px] uppercase tracking-[0.4em] animate-pulse opacity-50">Curating Collection...</div>
+       </div>
+    }>
+      <ProductsContent />
+    </Suspense>
+  );
+}
+
+function ProductsContent() {
   const params = useSearchParams();
   const categoryValue = params.get("category") || params.get("jewellery_type") || "";
   const [products, setProducts] = useState<Product[]>([]);
