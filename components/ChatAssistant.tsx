@@ -116,10 +116,17 @@ export default function ChatAssistant() {
       });
       if (!response.ok) throw new Error('API Error');
       const data = await response.json();
+      const sanitizedProducts = (data.products || []).map((p: any) => ({
+        ...p,
+        image: p.image 
+          ? p.image.replace(/http:\/\/localhost:\d+/, STATIC_BASE_URL) 
+          : p.image
+      }));
+
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: data.answer,
-        products: data.products,
+        products: sanitizedProducts,
         suggestions: data.suggestions,
         timestamp: Date.now(),
       }]);
