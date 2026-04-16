@@ -31,6 +31,7 @@ interface Product {
   };
   pricing_breakdown?: {
     final_price: number;
+    tax_amount?: number;
   };
 }
 
@@ -188,7 +189,7 @@ export default function ProductsPage() {
           if (key === "category") {
             return p.category_id?.slug?.toLowerCase() === value.toLowerCase();
           }
-          const fieldValue = (p as Record<string, unknown>)[key];
+          const fieldValue = (p as any)[key];
           return String(fieldValue || "").toLowerCase() === value.toLowerCase();
         });
       });

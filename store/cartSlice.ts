@@ -11,6 +11,7 @@ interface Product {
   description?: string;
   pricing_breakdown?: {
     final_price: number;
+    tax_amount?: number;
   };
 }
 
