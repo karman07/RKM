@@ -1,10 +1,11 @@
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api';
+const STATIC_URL = process.env.NEXT_PUBLIC_STATIC_URL ?? 'http://localhost:3000';
 
 /** Resolve a static asset path (e.g. /static/barcodes/foo.png) to a full URL */
 export function staticUrl(path: string): string {
   if (!path) return '';
   if (path.startsWith('http')) return path;
-  return `${BASE}${path}`;
+  return `${STATIC_URL}${path}`;
 }
 
 function getToken(): string {
