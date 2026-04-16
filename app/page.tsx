@@ -34,10 +34,13 @@ export default function LandingPage() {
     async function fetchData() {
       try {
         const catRes = await fetch(`${API_BASE_URL}/categories`);
-        const cats: Category[] = await catRes.json();
-        setCategories(cats.filter(c => (c as any).is_active !== false));
+        const catData = await catRes.json();
+        const cats: Category[] = Array.isArray(catData) ? catData : (catData.data || []);
+        
+        const filteredCats = cats.filter(c => (c as any).is_active !== false);
+        setCategories(filteredCats);
 
-        const productPromises = cats.map(async (cat) => {
+        const productPromises = filteredCats.map(async (cat) => {
           const prodRes = await fetch(`${API_BASE_URL}/products?category_id=${cat._id}&limit=3`);
           const prodData = await prodRes.json();
           return { categoryId: cat._id, products: prodData.data || [] };
