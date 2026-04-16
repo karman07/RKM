@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { THEME, API_BASE_URL } from "../../constants";
+import { THEME, API_BASE_URL, STATIC_BASE_URL } from "../../constants";
 import { FadeIn } from "../../../components/FadeIn";
 import { BagIcon, SparklesIcon } from "../../../components/Icons";
 import Link from "next/link";
@@ -86,7 +86,7 @@ export default function ProductDetailPage() {
   const imageUrls = product.images.map(img => 
     img.startsWith('http') 
       ? img 
-      : `${API_BASE_URL.replace('/api', '')}${img.startsWith('/static') ? img : '/static' + img}`
+      : `${STATIC_BASE_URL}${img.startsWith('/static') ? img : '/static' + img}`
   );
 
   if (imageUrls.length === 0) {

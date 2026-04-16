@@ -1,5 +1,6 @@
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
 export const AI_BASE_URL = process.env.NEXT_PUBLIC_AI_URL || "http://localhost:8000";
+export const STATIC_BASE_URL = process.env.NEXT_PUBLIC_STATIC_URL || "http://localhost:3000";
 
 export const THEME = {
   colors: {

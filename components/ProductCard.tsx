@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { THEME, API_BASE_URL } from "../app/constants";
+import { STATIC_BASE_URL, THEME, API_BASE_URL } from "../app/constants";
 import { FadeIn } from "./FadeIn";
 import { useAppDispatch, useAppSelector } from "../store/store";
 import { toggleWishlist } from "../store/wishlistSlice";
@@ -41,7 +41,7 @@ export default function ProductCard({ product, index, badge }: ProductCardProps)
   const imageUrl = product.images && product.images.length > 0 
     ? (product.images[0].startsWith('http') 
         ? product.images[0] 
-        : `${API_BASE_URL.replace('/api', '')}${product.images[0].startsWith('/static') ? product.images[0] : '/static' + product.images[0]}`)
+        : `${STATIC_BASE_URL}${product.images[0].startsWith('/static') ? product.images[0] : '/static' + product.images[0]}`)
     : "https://images.unsplash.com/photo-1611591437281-460bfbe1220a?q=80&w=1500&auto=format&fit=crop";
 
   const handleCardClick = () => {

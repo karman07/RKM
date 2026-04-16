@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../../store/store";
 import { removeFromCart, updateQuantity } from "../../store/cartSlice";
-import { API_BASE_URL, THEME } from "../../app/constants";
+import { API_BASE_URL, THEME, STATIC_BASE_URL } from "../../app/constants";
 import { trackEvent } from "../../app/analytics";
 import Link from "next/link";
 import { FadeIn } from "../../components/FadeIn";
@@ -55,7 +55,7 @@ export default function CartPage() {
                 const imageUrl = item.images && item.images.length > 0
                   ? (item.images[0].startsWith('http')
                     ? item.images[0]
-                    : `${API_BASE_URL.replace('/api', '')}${item.images[0].startsWith('/static') ? item.images[0] : '/static' + item.images[0]}`)
+                    : `${STATIC_BASE_URL}${item.images[0].startsWith('/static') ? item.images[0] : '/static' + item.images[0]}`)
                   : "https://images.unsplash.com/photo-1611591437281-460bfbe1220a?q=80&w=1500&auto=format&fit=crop";
 
                 return (
