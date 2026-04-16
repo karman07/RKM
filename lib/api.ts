@@ -581,7 +581,7 @@ export const updateBlog = (id: string, data: FormData) =>
 export const deleteBlog = (id: string) =>
   request<void>(`/blogs/${id}`, { method: 'DELETE' });
 
-export const uploadStockImage = async (file: File): Promise<{ url: string }> => {
+export const uploadBlogImage = async (file: File): Promise<{ url: string }> => {
   const form = new FormData();
   form.append('file', file);
   const res = await fetch(`${BASE}/uploads/blogs`, {
