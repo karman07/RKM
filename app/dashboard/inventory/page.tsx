@@ -4,33 +4,60 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   addInventoryItem,
   deleteInventoryItem,
+  bulkDeleteInventory,
   getInventory,
   getInventoryByBarcode,
   getLookups,
   getProducts,
   staticUrl,
   updateInventoryStatus,
+  updateInventoryDiscount,
+  getInventoryStats,
   type InventoryItem,
   type Lookup,
   type Product,
 } from '@/lib/api';
+import Link from 'next/link';
 import Modal from '@/components/Modal';
+import dynamic from 'next/dynamic';
+
+const Doughnut = dynamic(() => import('react-chartjs-2').then(mod => mod.Doughnut), { ssr: false });
+const Bar = dynamic(() => import('react-chartjs-2').then(mod => mod.Bar), { ssr: false });
+
+import {
+  Chart as ChartJS,
+  ArcElement,
+  Tooltip,
+  Legend,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title
+} from 'chart.js';
+
+ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title);
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const fmt = (n: number) => n.toLocaleString('en-IN');
 
 const STATUS_BADGE: Record<string, { wrap: string; dot: string }> = {
-  available: { wrap: 'inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700', dot: 'bg-emerald-500' },
-  sold: { wrap: 'inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700', dot: 'bg-blue-500' },
-  reserved: { wrap: 'inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700', dot: 'bg-amber-500' },
-  damaged: { wrap: 'inline-flex items-center gap-2 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700', dot: 'bg-red-500' },
-  returned: { wrap: 'inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700', dot: 'bg-slate-500' },
+  available: { wrap: 'inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-600 border border-emerald-100', dot: 'bg-emerald-500' },
+  sold:      { wrap: 'inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-blue-600 border border-blue-100', dot: 'bg-blue-500' },
+  reserved:  { wrap: 'inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-amber-600 border border-amber-100', dot: 'bg-amber-500' },
+  damaged:   { wrap: 'inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-red-600 border border-red-100', dot: 'bg-red-500' },
+  returned:  { wrap: 'inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-600 border border-slate-100', dot: 'bg-slate-500' },
 };
 
 const STATUS_TRANSITIONS: Record<string, string[]> = {
   available: ['reserved', 'sold', 'damaged'],
-  reserved: ['available', 'sold'],
-  sold: ['returned'],
-  damaged: ['available'],
-  returned: ['available'],
+  reserved:  ['available', 'sold'],
+  sold:      ['returned'],
+  damaged:   ['available'],
+  returned:  ['available'],
 };
+
+// ─── Form Types ───────────────────────────────────────────────────────────────
 
 interface AddForm {
   product_id: string;
@@ -38,26 +65,6 @@ interface AddForm {
   source: string;
   reason: string;
   count: string;
-  purchase_price: string;
-  selling_price: string;
-}
-
-interface DeleteForm {
-  reason: string;
-  notes: string;
-}
-
-interface SoldForm {
-  sold_customer_name: string;
-  sold_customer_phone: string;
-  sold_customer_email: string;
-  shipping_address: string;
-  shipping_city: string;
-  shipping_state: string;
-  shipping_pincode: string;
-  shipping_country: string;
-  sale_channel: string;
-  payment_mode: string;
 }
 
 const emptyAddForm: AddForm = {
@@ -66,49 +73,9 @@ const emptyAddForm: AddForm = {
   source: '',
   reason: '',
   count: '1',
-  purchase_price: '',
-  selling_price: '',
 };
 
-const emptyDeleteForm: DeleteForm = { reason: '', notes: '' };
-const emptySoldForm: SoldForm = {
-  sold_customer_name: '',
-  sold_customer_phone: '',
-  sold_customer_email: '',
-  shipping_address: '',
-  shipping_city: '',
-  shipping_state: '',
-  shipping_pincode: '',
-  shipping_country: 'India',
-  sale_channel: 'store',
-  payment_mode: 'cash',
-};
-
-function sortLookupOptions(items: Lookup[] = []) {
-  return [...items]
-    .filter((item) => item.is_active)
-    .sort((left, right) => left.sort_order - right.sort_order || left.label.localeCompare(right.label));
-}
-
-function resolveProductPrice(product?: Product): number {
-  if (!product) return 0;
-  if (typeof product.price_override === 'number' && product.price_override > 0) {
-    return product.price_override;
-  }
-  if (typeof product.pricing_breakdown?.final_price === 'number' && product.pricing_breakdown.final_price > 0) {
-    return product.pricing_breakdown.final_price;
-  }
-  return 0;
-}
-
-function Card({ label, value, tone }: { label: string; value: number; tone: string }) {
-  return (
-    <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
-      <div className={`mb-2 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${tone}`}>{label}</div>
-      <div className="text-2xl font-semibold tracking-tight text-slate-900">{value}</div>
-    </div>
-  );
-}
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function InventoryPage() {
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -116,272 +83,510 @@ export default function InventoryPage() {
   const [lookups, setLookups] = useState<Record<string, Lookup[]>>({});
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
   const [loading, setLoading] = useState(true);
-  const [toast, setToast] = useState('');
+  const [dbStats, setDbStats] = useState({ totalCount: 0, totalValue: 0, byStatus: {} as any });
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'danger' | 'info' } | null>(null);
 
   const [statusFilter, setStatusFilter] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
   const [barcodeInput, setBarcodeInput] = useState('');
 
+  // ── Add item modal ──────────────────────────────────────────────────────────
   const [addModal, setAddModal] = useState(false);
   const [addForm, setAddForm] = useState<AddForm>(emptyAddForm);
   const [addError, setAddError] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Selected product snapshot (for preview panel in modal)
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+
+  // ── Delete modal ───────────────────────────────────────────────────────────
   const [deleteModal, setDeleteModal] = useState<InventoryItem | null>(null);
-  const [deleteForm, setDeleteForm] = useState<DeleteForm>(emptyDeleteForm);
+  const [deleteForm, setDeleteForm] = useState({ reason: '', notes: '' });
   const [deleting, setDeleting] = useState(false);
 
+  // ── Status modal ──────────────────────────────────────────────────────────
   const [statusModal, setStatusModal] = useState<InventoryItem | null>(null);
   const [newStatus, setNewStatus] = useState('');
   const [newSellingPrice, setNewSellingPrice] = useState('');
-  const [soldForm, setSoldForm] = useState<SoldForm>(emptySoldForm);
+  const [soldForm, setSoldForm] = useState({
+    sold_customer_name: '',
+    sold_customer_phone: '',
+    sold_customer_email: '',
+    shipping_address: '',
+    shipping_city: '',
+    shipping_state: '',
+    shipping_pincode: '',
+    shipping_country: 'India',
+    sale_channel: 'store',
+    payment_mode: 'cash',
+  });
 
-  const [barcodeModal, setBarcodeModal] = useState<InventoryItem | null>(null);
+  // ── Selection & Bulk Delete ───────────────────────────────────────────────
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkDeleteModal, setBulkDeleteModal] = useState(false);
+  const [bulkDeleteForm, setBulkDeleteForm] = useState({ reason: '', notes: '' });
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
-  const statusOptions = useMemo(() => sortLookupOptions(lookups.inventory_status), [lookups]);
-  const locationOptions = useMemo(() => sortLookupOptions(lookups.item_location), [lookups]);
-  const totalPages = Math.max(1, Math.ceil(total / 10));
+  // ── Barcode Wide Modal ───────────────────────────────────────────────────
+  const [barcodeModal, setBarcodeModal] = useState<string | null>(null);
 
-  const summary = useMemo(() => {
-    return items.reduce(
-      (acc, item) => {
-        acc.total += 1;
-        if (item.status === 'available') acc.available += 1;
-        if (item.status === 'reserved') acc.reserved += 1;
-        if (item.status === 'sold') acc.sold += 1;
-        return acc;
+
+  // ─── Derived ───────────────────────────────────────────────────────────────
+  const statusOptions  = useMemo(() => (lookups.inventory_status || []).filter(l => l.is_active), [lookups]);
+  const locationOptions = useMemo(() => (lookups.item_location || []).filter(l => l.is_active), [lookups]);
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+
+  const stats = useMemo(() => ({
+    totalAsset: dbStats.totalValue,
+    available:  dbStats.byStatus.available?.count || 0,
+    sold:       dbStats.byStatus.sold?.count || 0,
+    valueByStatus: Object.fromEntries(
+      Object.entries(dbStats.byStatus).map(([k, v]: [any, any]) => [k, v.value])
+    ),
+  }), [dbStats]);
+
+  const chartData = useMemo(() => {
+    const statusLabels = Object.keys(dbStats.byStatus);
+    if (!statusLabels.length) return null;
+    const colorMap: Record<string, string> = {
+      available: '#10b981', sold: '#3b82f6', reserved: '#f59e0b',
+      damaged: '#ef4444', returned: '#64748b',
+    };
+    return {
+      distribution: {
+        labels: statusLabels.map(l => l.toUpperCase()),
+        datasets: [{ data: statusLabels.map(l => dbStats.byStatus[l].count), backgroundColor: statusLabels.map(l => colorMap[l] || '#64748b'), borderWidth: 0, hoverOffset: 12 }],
       },
-      { total: 0, available: 0, reserved: 0, sold: 0 }
-    );
-  }, [items]);
+      assetValue: {
+        labels: statusLabels.map(l => l.toUpperCase()),
+        datasets: [{ label: 'Asset Valuation (₹)', data: statusLabels.map(l => stats.valueByStatus[l] || 0), backgroundColor: statusLabels.map(l => colorMap[l] || '#64748b'), borderRadius: 12, barThickness: 40 }],
+      },
+    };
+  }, [dbStats, stats]);
 
-  function showToast(message: string) {
-    setToast(message);
-    setTimeout(() => setToast(''), 3000);
+  // ─── Toast ─────────────────────────────────────────────────────────────────
+  function showToast(message: string, type: 'success' | 'danger' | 'info' = 'info') {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
   }
 
-  function lookupLabel(type: string, value: string) {
-    const found = (lookups[type] ?? []).find((entry) => entry.value === value);
-    return found?.label ?? value;
-  }
-
-  function applyProductPricing(productId: string) {
-    const selected = products.find((product) => product._id === productId);
-    const price = resolveProductPrice(selected);
-    setAddForm((current) => ({
-      ...current,
-      product_id: productId,
-      purchase_price: price > 0 ? String(price) : '',
-    }));
-  }
-
+  // ─── Data Load ────────────────────────────────────────────────────────────
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params: Record<string, string> = { page: String(page), limit: '10' };
-      if (statusFilter) params.status = statusFilter;
+      const params: Record<string, string> = { page: String(page), limit: String(limit) };
+      if (statusFilter)   params.status   = statusFilter;
       if (locationFilter) params.location = locationFilter;
-      const response = await getInventory(params);
+      if (barcodeInput)   params.search   = barcodeInput;
+
+      const [response, sResponse] = await Promise.all([
+        getInventory(params),
+        getInventoryStats(),
+      ]);
       setItems(response.data);
-      setTotal(response.total);
+      setTotal(response.meta.total);
+      setDbStats(sResponse);
     } catch (error: unknown) {
-      showToast(error instanceof Error ? error.message : 'Failed to load inventory');
+      showToast(error instanceof Error ? error.message : 'Failed to load inventory', 'danger');
     } finally {
       setLoading(false);
     }
-  }, [locationFilter, page, statusFilter]);
+  }, [locationFilter, page, limit, statusFilter, barcodeInput]);
+
+  useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    load();
-  }, [load]);
-
-  useEffect(() => {
-    Promise.all([getProducts({ limit: '100' }), getLookups()])
+    Promise.all([getProducts({ limit: '1000' }), getLookups()])
       .then(([productResponse, lookupData]) => {
         setProducts(productResponse.data);
         setLookups(lookupData);
-        const defaultLocation = lookupData.item_location?.[0]?.value;
-        if (defaultLocation) {
-          setAddForm((current) => ({ ...current, location: defaultLocation }));
-        }
-      })
-      .catch(() => {});
+      });
   }, []);
 
+  // ─── Product Select ──────────────────────────────────────────────────────
+  function handleProductSelect(productId: string) {
+    const p = products.find(x => x._id === productId) ?? null;
+    setSelectedProduct(p);
+    setAddForm(prev => ({
+      ...prev,
+      product_id: productId,
+    }));
+  }
+
+  // ─── Add Item ─────────────────────────────────────────────────────────────
   async function handleAdd() {
     setSaving(true);
     setAddError('');
     try {
-      const count = Number(addForm.count) || 1;
-      if (!addForm.product_id) throw new Error('Product is required');
-      if (!addForm.source.trim()) throw new Error('Source is required');
-      if (!addForm.reason.trim()) throw new Error('Reason is required');
-      if (count < 1 || count > 100) throw new Error('Count must be between 1 and 100');
+      if (!addForm.product_id) throw new Error('Please select a product.');
+      if (!addForm.source.trim()) throw new Error('Source / vendor name is required.');
+      if (!addForm.reason.trim()) throw new Error('Reason for ingress is required.');
 
-      const result = await addInventoryItem({
-        product_id: addForm.product_id,
-        location: addForm.location,
-        source: addForm.source.trim(),
-        reason: addForm.reason.trim(),
-        count,
-        purchase_price: Number(addForm.purchase_price) || 0,
-        selling_price: Number(addForm.selling_price) || 0,
+      await addInventoryItem({
+        product_id:          addForm.product_id,
+        location:            addForm.location,
+        source:              addForm.source,
+        reason:              addForm.reason,
+        count:               Number(addForm.count),
       });
 
       setAddModal(false);
-      setAddForm((current) => ({ ...emptyAddForm, location: current.location }));
-      showToast(`${result.inserted} item(s) added to inventory`);
+      setAddForm(emptyAddForm);
+      setSelectedProduct(null);
+      showToast('Items added to inventory', 'success');
       load();
     } catch (error: unknown) {
-      setAddError(error instanceof Error ? error.message : 'Failed to add inventory');
+      setAddError(error instanceof Error ? error.message : 'Failed to add items');
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleDeleteItem() {
-    if (!deleteModal) return;
-    setDeleting(true);
+  // ─── Bulk Delete ──────────────────────────────────────────────────────────
+  async function handleBulkDelete() {
+    if (selectedIds.length === 0) return;
+    setBulkDeleting(true);
     try {
-      if (!deleteForm.reason.trim()) throw new Error('Reason is required for deletion');
-      await deleteInventoryItem(deleteModal._id, deleteForm.reason, deleteForm.notes || undefined);
-      setDeleteModal(null);
-      setDeleteForm(emptyDeleteForm);
-      showToast('Item deleted from inventory');
+      if (!bulkDeleteForm.reason.trim()) throw new Error('Reason is required for bulk delete.');
+      await bulkDeleteInventory(selectedIds, bulkDeleteForm.reason, bulkDeleteForm.notes);
+      setBulkDeleteModal(false);
+      setSelectedIds([]);
+      setBulkDeleteForm({ reason: '', notes: '' });
+      showToast(`${selectedIds.length} items removed from inventory`, 'success');
       load();
     } catch (error: unknown) {
-      showToast(error instanceof Error ? error.message : 'Failed to delete item');
+      showToast(error instanceof Error ? error.message : 'Bulk delete failed', 'danger');
     } finally {
-      setDeleting(false);
+      setBulkDeleting(false);
     }
   }
 
-  async function handleStatusChange() {
-    if (!statusModal || !newStatus) return;
-    if (newStatus === 'sold') {
-      if (!soldForm.sold_customer_name.trim()) return showToast('Customer name is required');
-      if (!soldForm.sold_customer_phone.trim()) return showToast('Customer phone is required');
-      if (!soldForm.shipping_address.trim()) return showToast('Shipping address is required');
-    }
-
-    try {
-      await updateInventoryStatus(statusModal._id, {
-        status: newStatus,
-        ...(newSellingPrice ? { selling_price: Number(newSellingPrice) } : {}),
-        ...(newStatus === 'sold'
-          ? {
-              sold_customer_name: soldForm.sold_customer_name,
-              sold_customer_phone: soldForm.sold_customer_phone,
-              sold_customer_email: soldForm.sold_customer_email || undefined,
-              shipping_address: soldForm.shipping_address,
-              shipping_city: soldForm.shipping_city || undefined,
-              shipping_state: soldForm.shipping_state || undefined,
-              shipping_pincode: soldForm.shipping_pincode || undefined,
-              shipping_country: soldForm.shipping_country || undefined,
-              sale_channel: soldForm.sale_channel,
-              payment_mode: soldForm.payment_mode,
-            }
-          : {}),
-      });
-      setStatusModal(null);
-      setNewStatus('');
-      setNewSellingPrice('');
-      setSoldForm(emptySoldForm);
-      showToast('Status updated');
-      load();
-    } catch (error: unknown) {
-      showToast(error instanceof Error ? error.message : 'Failed to update status');
+  function toggleSelectAll() {
+    if (selectedIds.length === items.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(items.map(i => i._id));
     }
   }
 
-  async function handleBarcodeSearch() {
-    if (!barcodeInput.trim()) return;
-    try {
-      const item = await getInventoryByBarcode(barcodeInput.trim());
-      setBarcodeModal(item);
-    } catch (error: unknown) {
-      showToast(error instanceof Error ? error.message : 'Barcode not found');
-    }
+  function toggleSelect(id: string) {
+    setSelectedIds(prev =>
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  }
+
+  const showCharts = !statusFilter && !locationFilter && !barcodeInput;
+
+  // ─── Computed discounted price helper ────────────────────────────────────
+  function getLivePricing(item: InventoryItem) {
+    const product = typeof item.product_id === 'object' ? item.product_id : null;
+    
+    // Live Selling Price (Base + Tax)
+    const selling_price = product?.pricing_breakdown?.final_price || item.selling_price || 0;
+    
+    // Live Discounts
+    const admin = product?.discount_percentage ?? item.admin_discount ?? 0;
+    const mgr = item.manager_discount || 0;
+    
+    const mid_price = selling_price * (1 - admin / 100);
+    const final_price = mid_price * (1 - mgr / 100);
+    
+    // Policy Floor (Maximum possible discount)
+    const max_mgr = product?.max_manager_discount ?? item.max_manager_discount ?? 0;
+    const floor_price = mid_price * (1 - max_mgr / 100);
+    
+    return {
+      selling_price,
+      admin_discount: admin,
+      manager_discount: mgr,
+      max_manager_discount: max_mgr,
+      mid_price,
+      final_price,
+      floor_price,
+      is_discounted: admin > 0 || mgr > 0,
+      has_manager_discount: mgr > 0,
+      has_manager_limit: max_mgr > 0
+    };
   }
 
   return (
-    <div className="space-y-6">
-      {toast && <div className="app-toast">{toast}</div>}
+    <div className="animate-[fadeRise_400ms_ease-out] space-y-8 pb-20">
+      <style jsx global>{`
+        @media print {
+          @page { margin: 10mm; }
+          body * { visibility: hidden !important; height: 0 !important; overflow: hidden !important; }
+          .print-labels-sheet, .print-labels-sheet * { visibility: visible !important; height: auto !important; overflow: visible !important; }
+          .print-labels-sheet {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            display: block !important;
+            background: white !important;
+          }
+          .label-card {
+            break-inside: avoid;
+            page-break-inside: avoid;
+            border: 1px solid #e2e8f0 !important;
+            padding: 10mm !important;
+            margin-bottom: 5mm !important;
+            text-align: center;
+          }
+        }
+      `}</style>
 
-      <section className="rounded-3xl border border-slate-200/80 bg-white p-6 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="mb-2 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-slate-500"><span className="h-2 w-2 rounded-full bg-emerald-500" />Inventory Control</p>
-            <h1 className="text-3xl font-semibold tracking-tight text-slate-900">Item-based inventory management</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Each row is a unique inventory item with its own code, barcode, source, location, and status history.</p>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <button onClick={() => { setAddModal(true); setAddError(''); }} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"><svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>Add Items</button>
-            <button onClick={() => { setStatusFilter(''); setLocationFilter(''); setPage(1); }} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:border-blue-300 hover:text-blue-700"><svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M3 6h18M6 12h12M10 18h4" /></svg>Clear Filters</button>
-          </div>
+      {/* Toast */}
+      {toast && (
+        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] px-8 py-4 rounded-2xl shadow-2xl backdrop-blur-md border animate-[fadeRise_300ms_ease-out] flex items-center gap-3 ${toast.type === 'success' ? 'bg-emerald-500/90 text-white border-emerald-400' : toast.type === 'danger' ? 'bg-red-500/90 text-white border-red-400' : 'bg-slate-800/90 text-white border-slate-600'}`}>
+          <p className="text-xs font-bold uppercase tracking-widest">{toast.message}</p>
+        </div>
+      )}
+
+      {/* Header */}
+      <section className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div>
+          <h1 className="text-4xl font-bold tracking-tight text-slate-900">Inventory Vault</h1>
+          <p className="text-sm font-medium text-slate-500 mt-2">Precision management of artisan masterpieces — purchase prices are locked; set selling prices &amp; discounts per item.</p>
+        </div>
+        <div className="flex items-center gap-4 self-start md:self-auto">
+          <Link
+            href="/dashboard/inventory/deleted"
+            className="px-6 py-3.5 rounded-2xl bg-slate-100 text-slate-600 text-xs font-bold uppercase tracking-widest shadow-sm hover:bg-slate-200 transition-all active:scale-95 flex items-center gap-2"
+          >
+            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+            Removal Logs
+          </Link>
+          <button
+            onClick={() => { setAddModal(true); setAddForm(emptyAddForm); setSelectedProduct(null); setAddError(''); }}
+            className="px-6 py-3.5 rounded-2xl bg-slate-900 text-white text-xs font-bold uppercase tracking-widest shadow-lg hover:bg-blue-600 transition-all active:scale-95 flex items-center gap-2"
+          >
+            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M12 5v14M5 12h14" /></svg>
+            Add to Inventory
+          </button>
         </div>
       </section>
 
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card label="Visible Items" value={summary.total} tone="bg-slate-100 text-slate-700" />
-        <Card label="Available" value={summary.available} tone="bg-emerald-100 text-emerald-700" />
-        <Card label="Reserved" value={summary.reserved} tone="bg-amber-100 text-amber-700" />
-        <Card label="Sold" value={summary.sold} tone="bg-blue-100 text-blue-700" />
-      </div>
-
-      <section className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[170px_170px_minmax(0,1fr)]">
-          <select className="rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-700" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>
-            <option value="">All statuses</option>
-            {statusOptions.map((option) => <option key={option._id} value={option.value}>{option.label}</option>)}
-          </select>
-          <select className="rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-700" value={locationFilter} onChange={(e) => { setLocationFilter(e.target.value); setPage(1); }}>
-            <option value="">All locations</option>
-            {locationOptions.map((option) => <option key={option._id} value={option.value}>{option.label}</option>)}
-          </select>
-          <div className="flex gap-2">
-            <input className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-700" placeholder="Search by barcode" value={barcodeInput} onChange={(e) => setBarcodeInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleBarcodeSearch()} />
-            <button onClick={handleBarcodeSearch} className="inline-flex items-center gap-1.5 rounded-xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-medium text-blue-700 transition-colors hover:border-blue-300 hover:text-blue-800"><svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>Lookup</button>
+      {/* Charts */}
+      {!loading && chartData && showCharts && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-1 bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-sm">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-10 text-center">Stock Composition</h3>
+            <div className="h-[280px] w-full relative flex items-center justify-center">
+              <div className="w-full h-full max-w-[240px] max-h-[240px]">
+                <Doughnut data={chartData.distribution} options={{ maintainAspectRatio: true, responsive: true, cutout: '75%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 8, font: { size: 9, weight: 'bold' }, padding: 15 } } } }} />
+              </div>
+              <div className="absolute top-[38%] left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center pointer-events-none text-center">
+                <span className="text-3xl font-black text-slate-900 leading-none">{total}</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1.5">Total Items</span>
+              </div>
+            </div>
+          </div>
+          <div className="lg:col-span-2 bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-sm">
+            <div className="flex items-center justify-between mb-10">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Asset Valuation</h3>
+              <div className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">Market Value: <span className="text-slate-900">₹{fmt(stats.totalAsset)}</span></div>
+            </div>
+            <div className="h-[240px]">
+              <Bar data={chartData.assetValue} options={{ maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `₹${Number(ctx.parsed.y).toLocaleString('en-IN')}` } } }, scales: { y: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#94a3b8', callback: (v) => `₹${Number(v).toLocaleString('en-IN')}` } }, x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#94a3b8' } } } }} />
+            </div>
           </div>
         </div>
+      )}
+
+      {/* Filters */}
+      <section className="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm flex flex-wrap items-center gap-4">
+        <select className="px-5 py-3 rounded-xl border border-slate-100 bg-slate-50/50 text-xs font-bold uppercase tracking-widest text-slate-600 outline-none focus:ring-2 focus:ring-blue-600 appearance-none" value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}>
+          <option value="">All Statuses</option>
+          {statusOptions.map(o => <option key={o._id} value={o.value}>{o.label}</option>)}
+        </select>
+        <select className="px-5 py-3 rounded-xl border border-slate-100 bg-slate-50/50 text-xs font-bold uppercase tracking-widest text-slate-600 outline-none focus:ring-2 focus:ring-blue-600 appearance-none" value={locationFilter} onChange={e => { setLocationFilter(e.target.value); setPage(1); }}>
+          <option value="">All Locations</option>
+          {locationOptions.map(o => <option key={o._id} value={o.value}>{o.label}</option>)}
+        </select>
+        <div className="flex-1 relative">
+          <input className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-100 bg-slate-50/50 text-sm font-medium outline-none focus:ring-2 focus:ring-blue-600 transition-all" value={barcodeInput} onChange={e => { setBarcodeInput(e.target.value); setPage(1); }} placeholder="Search by barcode or item code..." />
+          <svg className="absolute left-3.5 top-3 text-slate-400" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+        </div>
+
+        {selectedIds.length > 0 && (
+          <div className="flex items-center gap-3 animate-[fadeInRight_300ms_ease-out]">
+            <button
+              onClick={() => window.print()}
+              className="px-6 py-3 rounded-xl bg-blue-50 text-blue-600 text-xs font-black uppercase tracking-[0.1em] border border-blue-100 hover:bg-blue-600 hover:text-white transition-all shadow-sm flex items-center gap-2"
+            >
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z" /></svg>
+              Print Labels ({selectedIds.length})
+            </button>
+            <button
+              onClick={() => { setBulkDeleteForm({ reason: '', notes: '' }); setBulkDeleteModal(true); }}
+              className="px-6 py-3 rounded-xl bg-red-50 text-red-600 text-xs font-black uppercase tracking-[0.1em] border border-red-100 hover:bg-red-600 hover:text-white transition-all shadow-sm flex items-center gap-2"
+            >
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+              Remove Selected
+            </button>
+          </div>
+        )}
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+      {/* Table */}
+      <section className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
         {loading ? (
-          <div className="flex justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" /></div>
+          <div className="flex flex-col items-center justify-center py-40 gap-4">
+            <div className="w-12 h-12 border-[3.5px] border-blue-600 border-t-transparent rounded-full animate-spin" />
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] animate-pulse">Loading Vault...</p>
+          </div>
         ) : items.length === 0 ? (
-          <div className="py-20 text-center text-sm text-slate-400">No inventory items found</div>
+          <div className="py-40 text-center">
+            <p className="text-sm font-bold text-slate-400 uppercase tracking-widest italic">No items found in this vault.</p>
+          </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[960px] text-sm">
-              <thead className="bg-slate-50/80">
-                <tr className="border-b border-slate-200 text-left text-slate-600">
-                  <th className="px-5 py-3.5 font-medium"><span className="inline-flex items-center gap-1.5"><svg className="h-4 w-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M8 2v4M16 2v4M3 10h18" /></svg>Product / Code</span></th>
-                  <th className="px-5 py-3.5 font-medium"><span className="inline-flex items-center gap-1.5"><svg className="h-4 w-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 7v10M8 7v10M12 7v10M16 7v10M20 7v10" /></svg>Barcode</span></th>
-                    <th className="px-5 py-3.5 font-medium">Source / Reason</th>
-                    <th className="px-5 py-3.5 font-medium">Location</th>
-                    <th className="px-5 py-3.5 font-medium">Purchase</th>
-                    <th className="px-5 py-3.5 font-medium">Selling</th>
-                  <th className="px-5 py-3.5 font-medium"><span className="inline-flex items-center gap-1.5"><svg className="h-4 w-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>Status</span></th>
-                  <th className="px-5 py-3.5 text-right font-medium"><span className="inline-flex items-center justify-end gap-1.5"><svg className="h-4 w-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5h0a1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.4 1z" /></svg>Actions</span></th>
+            <table className="w-full min-w-[1300px]">
+              <thead>
+                <tr className="bg-slate-50/50 border-b border-slate-100">
+                  <th className="px-6 py-5 text-center w-12">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      checked={items.length > 0 && selectedIds.length === items.length}
+                      onChange={toggleSelectAll}
+                    />
+                  </th>
+                  <th className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Product / Code</th>
+                  <th className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Dimensions</th>
+                  <th className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Source</th>
+                  <th className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Location</th>
+                  <th className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Pricing</th>
+                  <th className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Status</th>
+                  <th className="px-6 py-5 text-right text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Actions</th>
                 </tr>
               </thead>
-              <tbody>
-                {items.map((item) => {
+              <tbody className="divide-y divide-slate-50">
+                {items.map(item => {
                   const product = typeof item.product_id === 'object' ? item.product_id : null;
-                  const transitions = STATUS_TRANSITIONS[item.status] ?? [];
-                  const badge = STATUS_BADGE[item.status] ?? STATUS_BADGE.available;
+                  const badge = STATUS_BADGE[item.status] || STATUS_BADGE.available;
+                  const transitions = STATUS_TRANSITIONS[item.status] || [];
+                  const pricing = getLivePricing(item);
+                  const dims = item.dimensions_snapshot || (product as any)?.dimensions || '';
                   return (
-                    <tr key={item._id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/80">
-                      <td className="px-5 py-4 align-top"><div className="inline-flex max-w-[220px] items-center gap-1.5 truncate font-medium text-slate-900"><svg className="h-4 w-4 shrink-0 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M8 2v4M16 2v4M3 10h18" /></svg><span className="truncate">{product?.name ?? 'Unknown product'}</span></div><div className="mt-1 font-mono text-xs text-slate-500">{item.unique_item_code}</div></td>
-                      <td className="px-5 py-4 align-top"><div className="inline-flex items-center gap-1.5 font-mono text-xs text-slate-700"><svg className="h-4 w-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 7v10M8 7v10M12 7v10M16 7v10M20 7v10" /></svg>{item.barcode}</div>{item.barcode_url && <a href={staticUrl(item.barcode_url)} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline">View barcode</a>}</td>
-                      <td className="px-5 py-4 align-top"><div className="text-slate-800">{item.source || '—'}</div><div className="mt-1 text-xs uppercase tracking-wide text-slate-500">{item.reason || 'No reason recorded'}</div></td>
-                      <td className="px-5 py-4 align-top text-slate-700">{lookupLabel('item_location', item.location)}</td>
-                      <td className="px-5 py-4 align-top text-slate-700 whitespace-nowrap">Rs {item.purchase_price.toLocaleString()}</td>
-                      <td className="px-5 py-4 align-top font-semibold text-slate-900 whitespace-nowrap">Rs {item.selling_price.toLocaleString()}</td>
-                      <td className="px-5 py-4 align-top"><span className={`${badge.wrap} shadow-sm`}><span className={`h-2 w-2 rounded-full ${badge.dot}`} aria-hidden="true" />{lookupLabel('inventory_status', item.status)}</span></td>
-                      <td className="px-5 py-4 align-top"><div className="flex justify-end gap-2">{transitions.length > 0 && <button onClick={() => { setStatusModal(item); setNewStatus(transitions[0]); setNewSellingPrice(String(item.selling_price || '')); setSoldForm({ sold_customer_name: item.sold_customer_name ?? '', sold_customer_phone: item.sold_customer_phone ?? '', sold_customer_email: item.sold_customer_email ?? '', shipping_address: item.shipping_address ?? '', shipping_city: item.shipping_city ?? '', shipping_state: item.shipping_state ?? '', shipping_pincode: item.shipping_pincode ?? '', shipping_country: item.shipping_country?.trim() || 'India', sale_channel: item.sale_channel?.trim() || 'store', payment_mode: item.payment_mode?.trim() || 'cash' }); }} className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-transparent px-3 py-1.5 text-xs font-semibold text-blue-700 transition-colors hover:border-blue-300 hover:text-blue-800"><svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" /></svg>Update</button>}<button onClick={() => { setDeleteModal(item); setDeleteForm(emptyDeleteForm); }} className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-transparent px-3 py-1.5 text-xs font-semibold text-red-700 transition-colors hover:border-red-300 hover:text-red-800"><svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /></svg>Delete</button></div></td>
+                    <tr key={item._id} className={`group hover:bg-slate-50/30 transition-colors duration-200 ${selectedIds.includes(item._id) ? 'bg-blue-50/30' : ''}`}>
+                      <td className="px-6 py-5 text-center">
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                          checked={selectedIds.includes(item._id)}
+                          onChange={() => toggleSelect(item._id)}
+                        />
+                      </td>
+                      {/* Product */}
+                      <td className="px-6 py-5">
+                        <div className="flex items-center gap-4">
+                          <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 overflow-hidden shadow-sm flex-shrink-0 group-hover:scale-105 transition-transform duration-500">
+                            {product?.images?.[0]
+                              ? <img src={staticUrl(product.images[0])} alt="" className="w-full h-full object-cover" />
+                              : <div className="h-full flex items-center justify-center text-[10px] font-bold text-slate-300 uppercase">No Img</div>
+                            }
+                          </div>
+                          <div>
+                            <p className="text-sm font-black text-slate-900 leading-tight mb-0.5">{product?.name || '—'}</p>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight block mb-2">#{item.unique_item_code}</span>
+                            <div 
+                              onClick={() => setBarcodeModal(item.barcode)}
+                              className="p-1 px-1.5 bg-white border border-slate-200 inline-block rounded shadow-sm hover:scale-[1.1] origin-left transition-transform duration-300 cursor-pointer hover:shadow-md"
+                              title="Click to Open Wide Visor Mode"
+                            >
+                               <img suppressHydrationWarning src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${item.barcode}&scale=3&height=8&includetext`} className="h-6 object-contain pointer-events-none" alt={item.barcode} />
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Dimensions — highlighted */}
+                      <td className="px-6 py-5">
+                        {dims ? (
+                          <div className="flex flex-col gap-1">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Dimensions</span>
+                            <span className="px-3 py-1.5 rounded-xl bg-violet-50 border border-violet-100 text-violet-700 text-xs font-bold inline-flex items-center gap-1.5">
+                              <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5-5-5m5 5v-4m0 4h-4" /></svg>
+                              {dims}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-slate-300 italic">Not set</span>
+                        )}
+                      </td>
+
+                      {/* Source */}
+                      <td className="px-6 py-5">
+                        <p className="text-sm font-bold text-slate-800">{item.source || '—'}</p>
+                        <p className="text-[10px] font-medium text-slate-400 uppercase mt-0.5 italic line-clamp-1">{item.reason || ''}</p>
+                      </td>
+
+                      {/* Location */}
+                      <td className="px-6 py-5">
+                        <span className="px-2.5 py-1 rounded-lg bg-slate-900/5 text-slate-600 text-[10px] font-bold uppercase tracking-widest inline-flex self-start border border-slate-100">
+                          {lookups.item_location?.find(l => l.value === item.location)?.label || item.location}
+                        </span>
+                      </td>
+
+                      {/* Pricing — Deep Visibility Live Pricing */}
+                      <td className="px-6 py-5">
+                        <div className="flex flex-col">
+                          <span className={`${pricing.is_discounted ? 'text-[10px] font-bold text-slate-400 line-through opacity-70' : 'text-sm font-black text-slate-900'}`}>
+                            ₹{fmt(pricing.selling_price)}
+                          </span>
+                          {pricing.is_discounted && (
+                            <div className="flex flex-col gap-0.5 mt-0.5">
+                              {/* Price after Admin Discount (The "Sale Price") */}
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-sm font-black ${pricing.has_manager_discount ? 'text-blue-500/70 text-xs line-through' : 'text-blue-700'}`}>
+                                  ₹{fmt(pricing.mid_price)}
+                                </span>
+                                {pricing.admin_discount > 0 && (
+                                   <span className="px-1.5 py-0.5 rounded bg-blue-50 border border-blue-100 text-[7px] font-black text-blue-600 uppercase tracking-tighter">
+                                     ADMIN -{pricing.admin_discount}%
+                                   </span>
+                                )}
+                              </div>
+
+                              {/* Price after Manager Discount (The applied Floor or Policy Floor) */}
+                              {(pricing.has_manager_discount || pricing.has_manager_limit) && (
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  <span className={`text-sm font-black ${pricing.has_manager_discount ? 'text-emerald-600' : 'text-slate-400 opacity-60'}`}>
+                                    ₹{fmt(pricing.has_manager_discount ? pricing.final_price : pricing.floor_price)}
+                                  </span>
+                                  <span className={`px-1.5 py-0.5 rounded border text-[7px] font-black uppercase tracking-tighter ${pricing.has_manager_discount ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : 'bg-slate-50 border-slate-100 text-slate-400'}`}>
+                                    {pricing.has_manager_discount ? `MGR -${pricing.manager_discount}%` : `LIMIT -${pricing.max_manager_discount}%`}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Status */}
+                      <td className="px-6 py-5">
+                        <span className={badge.wrap}><span className={`h-1.5 w-1.5 rounded-full ${badge.dot}`} />{lookups.inventory_status?.find(l => l.value === item.status)?.label || item.status}</span>
+                      </td>
+
+                      {/* Actions */}
+                      <td className="px-6 py-5 text-right">
+                        <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                          {/* Status change button */}
+                          {transitions.length > 0 && (
+                            <button onClick={() => { setStatusModal(item); setNewStatus(transitions[0]); setNewSellingPrice(String(item.selling_price)); }} title="Change Status" className="p-2.5 rounded-xl bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition-all active:scale-90 shadow-sm">
+                              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M12 20h9M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" /></svg>
+                            </button>
+                          )}
+                          {/* Delete button */}
+                          <button onClick={() => setDeleteModal(item)} title="Remove Item" className="p-2.5 rounded-xl bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition-all active:scale-90 shadow-sm">
+                            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
@@ -391,89 +596,329 @@ export default function InventoryPage() {
         )}
       </section>
 
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-slate-500">Page {page} of {totalPages}</p>
-          <div className="flex gap-2">
-            <button disabled={page === 1} onClick={() => setPage((current) => current - 1)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">Previous</button>
-            <button disabled={page === totalPages} onClick={() => setPage((current) => current + 1)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">Next</button>
+      {/* Pagination */}
+      <div className="flex flex-col sm:flex-row items-center justify-between px-8 py-6 bg-white border-t border-slate-50 rounded-b-[2.5rem] gap-4">
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Page <span className="text-slate-900">{page}</span> of <span className="text-slate-900">{totalPages}</span> &mdash; {total} total items</p>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 pr-4 border-r border-slate-100">
+            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Per page:</span>
+            <select value={limit} onChange={e => { setLimit(Number(e.target.value)); setPage(1); }} className="px-3 py-1.5 rounded-lg border border-slate-100 bg-slate-50/50 text-[10px] font-black text-slate-600 outline-none focus:ring-2 focus:ring-blue-600 appearance-none cursor-pointer">
+              {[10, 20, 50, 100].map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </div>
+          <div className="flex gap-3">
+            <button disabled={page === 1} onClick={() => setPage(p => p - 1)} className="px-5 py-2.5 rounded-2xl bg-slate-50 border border-slate-100 text-[10px] font-black text-slate-600 uppercase tracking-widest hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95">← Prev</button>
+            <button disabled={page === totalPages} onClick={() => setPage(p => p + 1)} className="px-5 py-2.5 rounded-2xl bg-slate-50 border border-slate-100 text-[10px] font-black text-slate-600 uppercase tracking-widest hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95">Next →</button>
           </div>
         </div>
-      )}
+      </div>
 
-      <Modal open={addModal} onClose={() => setAddModal(false)} title="Add Inventory Items" width="max-w-3xl">
-        <div className="space-y-5">
-          {addError && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{addError}</div>}
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="md:col-span-2"><label className="mb-1 block text-sm font-medium text-slate-700">Product <span className="text-red-500">*</span></label><select className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm" value={addForm.product_id} onChange={(e) => applyProductPricing(e.target.value)}><option value="">Select product</option>{products.map((product) => <option key={product._id} value={product._id}>{product.name} ({product.sku})</option>)}</select></div>
-            <div><label className="mb-1 block text-sm font-medium text-slate-700">Source <span className="text-red-500">*</span></label><input className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm" value={addForm.source} onChange={(e) => setAddForm((current) => ({ ...current, source: e.target.value }))} placeholder="Vendor, return, transfer" /></div>
-            <div><label className="mb-1 block text-sm font-medium text-slate-700">Location</label><select className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm" value={addForm.location} onChange={(e) => setAddForm((current) => ({ ...current, location: e.target.value }))}>{locationOptions.map((option) => <option key={option._id} value={option.value}>{option.label}</option>)}</select></div>
-            <div><label className="mb-1 block text-sm font-medium text-slate-700">Count <span className="text-red-500">*</span></label><input type="number" min="1" max="100" className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm" value={addForm.count} onChange={(e) => setAddForm((current) => ({ ...current, count: e.target.value }))} /></div>
-            <div><label className="mb-1 block text-sm font-medium text-slate-700">Purchase Price (Rs)</label><input type="number" className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-700" value={addForm.purchase_price} readOnly /><p className="mt-1 text-xs text-slate-500">Auto-filled from selected product price.</p></div>
-            <div><label className="mb-1 block text-sm font-medium text-slate-700">Selling Price (Rs)</label><input type="number" className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm" value={addForm.selling_price} onChange={(e) => setAddForm((current) => ({ ...current, selling_price: e.target.value }))} /></div>
-            <div className="md:col-span-2"><label className="mb-1 block text-sm font-medium text-slate-700">Reason <span className="text-red-500">*</span></label><textarea className="min-h-[90px] w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm" value={addForm.reason} onChange={(e) => setAddForm((current) => ({ ...current, reason: e.target.value }))} placeholder="Why are these items being added?" /></div>
+      {/* ──────────────────── ADD ITEM MODAL ──────────────────────────────── */}
+      <Modal open={addModal} onClose={() => { setAddModal(false); setSelectedProduct(null); }} title="Add Items to Inventory" width="max-w-3xl">
+        <div className="p-2 space-y-5">
+          {addError && <div className="p-4 rounded-xl bg-red-50 text-red-600 text-[11px] font-bold uppercase tracking-widest text-center border border-red-100">{addError}</div>}
+
+          {/* Product Select */}
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Product <span className="text-red-500">*</span></label>
+            <select
+              className="w-full px-5 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-bold focus:ring-2 focus:ring-blue-500"
+              value={addForm.product_id}
+              onChange={e => handleProductSelect(e.target.value)}
+            >
+              <option value="">Select a product...</option>
+              {products.map(p => <option key={p._id} value={p._id}>{p.name} ({p.sku}) — {p.metal_type} {p.purity}</option>)}
+            </select>
           </div>
-          <div className="flex gap-3 pt-2"><button onClick={() => setAddModal(false)} className="flex-1 rounded-xl border border-blue-200 px-4 py-2.5 text-sm font-medium text-blue-700 transition-colors hover:border-blue-300 hover:bg-blue-50">Cancel</button><button onClick={handleAdd} disabled={saving} className="flex-1 rounded-xl bg-blue-600 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-60">{saving ? 'Adding...' : 'Add Items'}</button></div>
-        </div>
-      </Modal>
 
-      {deleteModal && (
-        <Modal open onClose={() => setDeleteModal(null)} title="Delete Inventory Item" width="max-w-lg">
-          <div className="space-y-4">
-            <div className="rounded-xl border border-red-200 bg-red-50 p-4">
-              <div className="flex justify-between border-b border-red-100 py-2 text-sm"><span className="text-slate-600">Item Code</span><span className="font-medium text-slate-900">{deleteModal.unique_item_code}</span></div>
-              <div className="flex justify-between border-b border-red-100 py-2 text-sm"><span className="text-slate-600">Product</span><span className="font-medium text-slate-900">{typeof deleteModal.product_id === 'object' ? deleteModal.product_id.name : '—'}</span></div>
-              <div className="flex justify-between py-2 text-sm"><span className="text-slate-600">Barcode</span><span className="font-medium text-slate-900">{deleteModal.barcode}</span></div>
-            </div>
-            <div><label className="mb-1 block text-sm font-medium text-slate-700">Reason for deletion <span className="text-red-500">*</span></label><select className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm" value={deleteForm.reason} onChange={(e) => setDeleteForm((current) => ({ ...current, reason: e.target.value }))}><option value="">Select reason</option><option value="Damaged">Damaged</option><option value="Lost/Stolen">Lost or stolen</option><option value="Vendor Return">Vendor return</option><option value="Duplicate Entry">Duplicate entry</option><option value="Defective After Purchase">Defective after purchase</option><option value="Other">Other</option></select></div>
-            <div><label className="mb-1 block text-sm font-medium text-slate-700">Approval Notes</label><textarea className="min-h-[80px] w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm" value={deleteForm.notes} onChange={(e) => setDeleteForm((current) => ({ ...current, notes: e.target.value }))} /></div>
-            <div className="flex gap-3 pt-2"><button onClick={() => setDeleteModal(null)} className="flex-1 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50">Cancel</button><button onClick={handleDeleteItem} disabled={deleting || !deleteForm.reason} className="flex-1 rounded-xl bg-red-600 py-2.5 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-60">{deleting ? 'Deleting...' : 'Delete Item'}</button></div>
-          </div>
-        </Modal>
-      )}
-
-      <Modal open={!!statusModal} onClose={() => setStatusModal(null)} title="Update Inventory Status" width="max-w-3xl">
-        <div className="space-y-4">
-          <div><label className="mb-1 block text-sm font-medium text-slate-700">New Status</label><select className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm" value={newStatus} onChange={(e) => setNewStatus(e.target.value)}>{(STATUS_TRANSITIONS[statusModal?.status ?? ''] ?? []).map((status) => <option key={status} value={status}>{lookupLabel('inventory_status', status)}</option>)}</select></div>
-          {newStatus === 'sold' && (
-            <div className="grid gap-4 md:grid-cols-2">
-              <div><label className="mb-1 block text-sm font-medium text-slate-700">Final Selling Price</label><input type="number" className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm" value={newSellingPrice} onChange={(e) => setNewSellingPrice(e.target.value)} /></div>
-              <div><label className="mb-1 block text-sm font-medium text-slate-700">Customer Name <span className="text-red-500">*</span></label><input className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm" value={soldForm.sold_customer_name} onChange={(e) => setSoldForm((current) => ({ ...current, sold_customer_name: e.target.value }))} /></div>
-              <div><label className="mb-1 block text-sm font-medium text-slate-700">Customer Phone <span className="text-red-500">*</span></label><input className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm" value={soldForm.sold_customer_phone} onChange={(e) => setSoldForm((current) => ({ ...current, sold_customer_phone: e.target.value }))} /></div>
-              <div><label className="mb-1 block text-sm font-medium text-slate-700">Customer Email</label><input className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm" value={soldForm.sold_customer_email} onChange={(e) => setSoldForm((current) => ({ ...current, sold_customer_email: e.target.value }))} /></div>
-              <div className="md:col-span-2"><label className="mb-1 block text-sm font-medium text-slate-700">Shipping Address <span className="text-red-500">*</span></label><textarea className="min-h-[90px] w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm" value={soldForm.shipping_address} onChange={(e) => setSoldForm((current) => ({ ...current, shipping_address: e.target.value }))} /></div>
-              <div><label className="mb-1 block text-sm font-medium text-slate-700">City</label><input className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm" value={soldForm.shipping_city} onChange={(e) => setSoldForm((current) => ({ ...current, shipping_city: e.target.value }))} /></div>
-              <div><label className="mb-1 block text-sm font-medium text-slate-700">State</label><input className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm" value={soldForm.shipping_state} onChange={(e) => setSoldForm((current) => ({ ...current, shipping_state: e.target.value }))} /></div>
-              <div><label className="mb-1 block text-sm font-medium text-slate-700">Pincode</label><input className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm" value={soldForm.shipping_pincode} onChange={(e) => setSoldForm((current) => ({ ...current, shipping_pincode: e.target.value }))} /></div>
-              <div><label className="mb-1 block text-sm font-medium text-slate-700">Country</label><input className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm" value={soldForm.shipping_country} onChange={(e) => setSoldForm((current) => ({ ...current, shipping_country: e.target.value }))} /></div>
-              <div><label className="mb-1 block text-sm font-medium text-slate-700">Sale Channel</label><select className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm" value={soldForm.sale_channel} onChange={(e) => setSoldForm((current) => ({ ...current, sale_channel: e.target.value }))}><option value="store">Store</option><option value="online">Online</option><option value="whatsapp">WhatsApp</option><option value="phone">Phone</option><option value="other">Other</option></select></div>
-              <div><label className="mb-1 block text-sm font-medium text-slate-700">Payment Mode</label><select className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm" value={soldForm.payment_mode} onChange={(e) => setSoldForm((current) => ({ ...current, payment_mode: e.target.value }))}><option value="cash">Cash</option><option value="upi">UPI</option><option value="card">Card</option><option value="bank_transfer">Bank Transfer</option><option value="emi">EMI</option></select></div>
+          {/* Product Snapshot Panel */}
+          {selectedProduct && (
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-50 to-blue-50 border border-slate-100 grid grid-cols-2 md:grid-cols-4 gap-4 animate-[fadeRise_300ms_ease-out]">
+              <div>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Cost Price</p>
+                <p className="text-base font-black text-amber-600 flex items-center gap-1">
+                  ₹{fmt(selectedProduct.purchase_price || 0)}
+                  <span className="text-[8px] font-black bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-md uppercase border border-amber-200">LOCKED</span>
+                </p>
+              </div>
+              <div>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Formula Price</p>
+                <p className="text-base font-black text-slate-700">₹{fmt(selectedProduct.pricing_breakdown?.final_price ?? 0)}</p>
+              </div>
+              <div>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Dimensions</p>
+                <p className="text-sm font-bold text-violet-700">{selectedProduct.dimensions || 'Not set'}</p>
+              </div>
+              <div>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Max Mgr Discount</p>
+                <p className="text-sm font-bold text-rose-600">{selectedProduct.max_manager_discount ?? 0}%</p>
+              </div>
             </div>
           )}
-          <div className="flex gap-3 pt-2"><button onClick={() => setStatusModal(null)} className="flex-1 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50">Cancel</button><button onClick={handleStatusChange} className="flex-1 rounded-xl bg-blue-600 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-700">Update Status</button></div>
+
+          {/* Form Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+            {/* Purchase Price — READ ONLY */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                Purchase / Cost Price
+                <span className="text-[8px] font-black bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-md uppercase border border-amber-200">Auto-locked from product</span>
+              </label>
+              <div className="w-full px-5 py-3 rounded-xl border border-amber-100 bg-amber-50 text-sm font-black text-amber-700 select-none cursor-not-allowed">
+                {selectedProduct ? `₹${fmt(selectedProduct.purchase_price || 0)}` : 'Select a product first'}
+              </div>
+            </div>
+
+
+            {/* Source */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Source / Vendor <span className="text-red-500">*</span></label>
+              <input
+                className="w-full px-5 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-medium focus:ring-2 focus:ring-blue-500"
+                value={addForm.source}
+                onChange={e => setAddForm({ ...addForm, source: e.target.value })}
+                placeholder="e.g. Rahul Jewellers, Mumbai"
+              />
+            </div>
+
+            {/* Count */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Quantity</label>
+              <input
+                type="number"
+                min="1"
+                className="w-full px-5 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-medium focus:ring-2 focus:ring-blue-500"
+                value={addForm.count}
+                onChange={e => setAddForm({ ...addForm, count: e.target.value })}
+              />
+            </div>
+
+            {/* Location */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Location</label>
+              <select
+                className="w-full px-5 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-bold focus:ring-2 focus:ring-blue-500 appearance-none"
+                value={addForm.location}
+                onChange={e => setAddForm({ ...addForm, location: e.target.value })}
+              >
+                {locationOptions.map(o => <option key={o._id} value={o.value}>{o.label}</option>)}
+                {!locationOptions.length && <><option value="store">Store</option><option value="warehouse">Warehouse</option></>}
+              </select>
+            </div>
+
+            <div className="md:col-span-2 space-y-1.5">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ingress Reason <span className="text-red-500">*</span></label>
+              <textarea
+                rows={2}
+                className="w-full px-5 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-medium resize-none focus:ring-2 focus:ring-blue-500"
+                value={addForm.reason}
+                onChange={e => setAddForm({ ...addForm, reason: e.target.value })}
+                placeholder="e.g. New stock received from vendor for Diwali collection..."
+              />
+            </div>
+          </div>
+
+          <div className="pt-2 flex gap-4">
+            <button onClick={() => { setAddModal(false); setSelectedProduct(null); }} className="flex-1 py-4 rounded-2xl border border-slate-200 text-[11px] font-bold uppercase tracking-widest text-slate-400 hover:bg-slate-50 transition-all">Cancel</button>
+            <button onClick={handleAdd} disabled={saving} className="flex-[2] py-4 rounded-2xl bg-slate-900 text-white text-[11px] font-bold uppercase tracking-widest hover:bg-blue-600 transition-all shadow-xl disabled:opacity-60">
+              {saving ? 'Adding...' : 'Add to Inventory'}
+            </button>
+          </div>
         </div>
       </Modal>
 
-      {barcodeModal && (
-        <Modal open onClose={() => { setBarcodeModal(null); setBarcodeInput(''); }} title="Barcode Lookup Result">
-          <div className="space-y-3 text-sm">
-            {[
-              ['Item Code', barcodeModal.unique_item_code],
-              ['Product', typeof barcodeModal.product_id === 'object' ? barcodeModal.product_id.name : '—'],
-              ['Barcode', barcodeModal.barcode],
-              ['Source', barcodeModal.source || '—'],
-              ['Reason', barcodeModal.reason || '—'],
-              ['Location', lookupLabel('item_location', barcodeModal.location)],
-              ['Status', lookupLabel('inventory_status', barcodeModal.status)],
-              ['Purchase Price', `Rs ${barcodeModal.purchase_price.toLocaleString()}`],
-              ['Selling Price', `Rs ${barcodeModal.selling_price.toLocaleString()}`],
-            ].map(([label, value]) => (
-              <div key={label} className="flex justify-between border-b border-slate-100 py-2"><span className="text-slate-500">{label}</span><span className="font-medium text-slate-900">{value}</span></div>
-            ))}
-            {barcodeModal.barcode_url && <div className="pt-2"><img src={staticUrl(barcodeModal.barcode_url)} alt="barcode" className="h-16 object-contain" /></div>}
+      {/* ──────────────────── BULK DELETE MODAL ─────────────────────────────── */}
+      {bulkDeleteModal && (
+        <Modal open onClose={() => setBulkDeleteModal(null)} title="Bulk Remove Items" width="max-w-lg">
+          <div className="p-2 space-y-5">
+            <div className="p-5 rounded-2xl bg-red-50 border border-red-100 space-y-3 font-black text-red-800">
+               <div className="flex justify-between items-center text-[11px] uppercase tracking-widest border-b border-red-200/50 pb-2">
+                 <span>Items Selected</span>
+                 <span className="bg-red-600 text-white px-3 py-1 rounded-lg">{selectedIds.length}</span>
+               </div>
+               <p className="text-xs uppercase tracking-tight opacity-70">Warning: This action will permanently remove all selected items from the inventory vault.</p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Reason for Bulk Removal <span className="text-red-500">*</span></label>
+              <textarea 
+                rows={3} 
+                className="w-full px-5 py-3 rounded-xl border border-red-100 bg-red-50/30 outline-none text-sm font-black resize-none focus:ring-2 focus:ring-red-400 transition-all" 
+                value={bulkDeleteForm.reason} 
+                onChange={e => setBulkDeleteForm({ ...bulkDeleteForm, reason: e.target.value })} 
+                placeholder="Why are these items being removed? (e.g. Bulk stock audit, Damaged lot, etc.)" 
+              />
+            </div>
+
+            <div className="pt-2 flex gap-4">
+              <button onClick={() => setBulkDeleteModal(null)} className="flex-1 py-4 rounded-2xl border border-slate-200 text-[11px] font-bold uppercase tracking-widest text-slate-400 hover:bg-slate-50">Cancel</button>
+              <button 
+                onClick={handleBulkDelete} 
+                disabled={bulkDeleting || !bulkDeleteForm.reason.trim()} 
+                className="flex-[2] py-4 rounded-2xl bg-red-600 text-white text-[11px] font-black uppercase tracking-widest shadow-xl hover:bg-red-700 transition-all disabled:opacity-40"
+              >
+                {bulkDeleting ? 'Removing...' : `Confirm Bulk Remove (${selectedIds.length})`}
+              </button>
+            </div>
           </div>
         </Modal>
       )}
+
+      {/* ──────────────────── DELETE MODAL ───────────────────────────────── */}
+      {deleteModal && (
+        <Modal open onClose={() => setDeleteModal(null)} title="Remove Item" width="max-w-lg">
+          <div className="p-2 space-y-5">
+            <div className="p-5 rounded-2xl bg-red-50 border border-red-100 space-y-2">
+              <div className="flex justify-between text-[11px] font-bold uppercase tracking-widest text-red-600"><span>Item Code</span><span>{deleteModal.unique_item_code}</span></div>
+              <div className="flex justify-between text-[11px] font-black text-red-800 tracking-tight"><span>Product</span><span>{typeof deleteModal.product_id === 'object' ? deleteModal.product_id.name : 'Unknown'}</span></div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Reason for Removal <span className="text-red-500">*</span></label>
+              <textarea rows={3} className="w-full px-5 py-3 rounded-xl border border-red-100 bg-red-50/30 outline-none text-sm font-medium resize-none" value={deleteForm.reason} onChange={e => setDeleteForm({ ...deleteForm, reason: e.target.value })} placeholder="Why is this item being removed?" />
+            </div>
+            <div className="pt-2 flex gap-4">
+              <button onClick={() => setDeleteModal(null)} className="flex-1 py-4 rounded-2xl border border-slate-200 text-[11px] font-bold uppercase tracking-widest text-slate-400">Cancel</button>
+              <button onClick={async () => {
+                setDeleting(true);
+                try { await deleteInventoryItem(deleteModal._id, deleteForm.reason); setDeleteModal(null); showToast('Item removed', 'success'); load(); }
+                catch (e: any) { showToast(e.message, 'danger'); } finally { setDeleting(false); }
+              }} disabled={deleting || !deleteForm.reason} className="flex-[2] py-4 rounded-2xl bg-red-600 text-white text-[11px] font-bold uppercase tracking-widest shadow-xl disabled:opacity-60">
+                {deleting ? 'Removing...' : 'Confirm Remove'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ──────────────────── STATUS MODAL ───────────────────────────────── */}
+      <Modal open={!!statusModal} onClose={() => setStatusModal(null)} title="Change Item Status" width="max-w-3xl">
+        <div className="p-2 space-y-5">
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">New Status</label>
+            <select className="w-full px-5 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-bold appearance-none focus:ring-2 focus:ring-blue-500" value={newStatus} onChange={e => setNewStatus(e.target.value)}>
+              {(STATUS_TRANSITIONS[statusModal?.status ?? ''] || []).map(s => (
+                <option key={s} value={s}>{lookups.inventory_status?.find(l => l.value === s)?.label || s}</option>
+              ))}
+            </select>
+          </div>
+
+          {newStatus === 'sold' && (
+            <div className="grid grid-cols-2 gap-5 p-4 bg-slate-50 rounded-2xl border border-slate-100 animate-[fadeRise_300ms_ease-out]">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Customer Name <span className="text-red-500">*</span></label>
+                <input className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-semibold focus:ring-2 focus:ring-blue-500" value={soldForm.sold_customer_name} onChange={e => setSoldForm({ ...soldForm, sold_customer_name: e.target.value })} placeholder="Full Name" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Final Sale Price (₹) <span className="text-red-500">*</span></label>
+                <input type="number" className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-black text-blue-700 focus:ring-2 focus:ring-blue-500" value={newSellingPrice} onChange={e => setNewSellingPrice(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Phone <span className="text-red-500">*</span></label>
+                <input className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm focus:ring-2 focus:ring-blue-500" value={soldForm.sold_customer_phone} onChange={e => setSoldForm({ ...soldForm, sold_customer_phone: e.target.value })} placeholder="+91..." />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Email</label>
+                <input className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm focus:ring-2 focus:ring-blue-500" value={soldForm.sold_customer_email} onChange={e => setSoldForm({ ...soldForm, sold_customer_email: e.target.value })} placeholder="email@..." />
+              </div>
+              <div className="col-span-2 space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Shipping Address <span className="text-red-500">*</span></label>
+                <textarea className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm resize-none focus:ring-2 focus:ring-blue-500" rows={2} value={soldForm.shipping_address} onChange={e => setSoldForm({ ...soldForm, shipping_address: e.target.value })} placeholder="Full address..." />
+              </div>
+              <div className="grid grid-cols-3 gap-3 col-span-2">
+                <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">City</label><input className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white outline-none text-sm focus:ring-2 focus:ring-blue-500" value={soldForm.shipping_city} onChange={e => setSoldForm({ ...soldForm, shipping_city: e.target.value })} /></div>
+                <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">State</label><input className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white outline-none text-sm focus:ring-2 focus:ring-blue-500" value={soldForm.shipping_state} onChange={e => setSoldForm({ ...soldForm, shipping_state: e.target.value })} /></div>
+                <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">PIN</label><input className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white outline-none text-sm focus:ring-2 focus:ring-blue-500" value={soldForm.shipping_pincode} onChange={e => setSoldForm({ ...soldForm, shipping_pincode: e.target.value })} /></div>
+              </div>
+              <div className="col-span-2 space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Payment Mode</label>
+                <select className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-bold appearance-none focus:ring-2 focus:ring-blue-500" value={soldForm.payment_mode} onChange={e => setSoldForm({ ...soldForm, payment_mode: e.target.value })}>
+                  <option value="cash">Cash</option><option value="card">Card</option><option value="upi">UPI</option><option value="bank_transfer">Bank Transfer</option><option value="cheque">Cheque</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          <div className="pt-2 flex gap-4">
+            <button onClick={() => setStatusModal(null)} className="flex-1 py-4 rounded-2xl border border-slate-200 text-[11px] font-bold uppercase tracking-widest text-slate-400">Cancel</button>
+            <button onClick={async () => {
+              try {
+                await updateInventoryStatus(statusModal!._id, { status: newStatus, ...soldForm, selling_price: Number(newSellingPrice) || statusModal!.selling_price });
+                setStatusModal(null); showToast('Status updated', 'success'); load();
+              } catch (e: any) { showToast(e.message, 'danger'); }
+            }} className="flex-[2] py-4 rounded-2xl bg-slate-900 text-white text-[11px] font-bold uppercase tracking-widest shadow-xl hover:bg-blue-600 transition-all">
+              Confirm Status Change
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Barcode Wide Visor Modal */}
+      <Modal open={!!barcodeModal} onClose={() => setBarcodeModal(null)} title="Asset Barcode View">
+        {barcodeModal && (
+          <div className="flex flex-col items-center justify-center p-8 md:p-12 bg-slate-50/50 rounded-[2rem] border border-slate-100">
+            <div className="bg-white p-6 md:p-10 rounded-[2rem] shadow-xl border border-slate-200 w-full flex items-center justify-center overflow-x-auto">
+               <img 
+                 suppressHydrationWarning 
+                 src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${barcodeModal}&scale=5&height=15&includetext`} 
+                 className="w-full max-w-[500px] object-contain" 
+                 alt={barcodeModal} 
+               />
+            </div>
+            <p className="mt-8 text-2xl font-black text-slate-900 tracking-widest uppercase">{barcodeModal}</p>
+            <p className="mt-2 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Scan using hardware scanner</p>
+            <div className="w-full mt-10 flex gap-3">
+              <button 
+                onClick={() => window.print()} 
+                className="flex-1 py-4 rounded-2xl bg-blue-600 text-white text-[11px] font-bold uppercase tracking-widest shadow-xl hover:bg-blue-700 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+              >
+                <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z" /></svg>
+                Print Piece Label
+              </button>
+              <button 
+                onClick={() => setBarcodeModal(null)} 
+                className="flex-1 py-4 rounded-2xl bg-slate-100 text-slate-500 text-[11px] font-bold uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-[0.98]"
+              >
+                Close Visor
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Invisible Print Wrapper for Scannable Labels */}
+      <div className="hidden print:block print-labels-sheet">
+         <div className="grid grid-cols-2 gap-4">
+            {items.filter(i => selectedIds.includes(i._id)).map(item => (
+              <div key={item._id} className="label-card border border-slate-200 p-8 rounded-xl flex flex-col items-center">
+                 <p className="text-[10px] font-black text-slate-900 uppercase tracking-widest mb-4">
+                   {typeof item.product_id === 'object' ? item.product_id.name : 'RKM Masterpiece'}
+                 </p>
+                 <img 
+                   suppressHydrationWarning
+                   src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${item.barcode}&scale=4&height=12&includetext`} 
+                   className="h-16 object-contain"
+                   alt={item.barcode} 
+                 />
+                 <p className="mt-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest italic">
+                   #{item.unique_item_code}
+                 </p>
+              </div>
+            ))}
+            {/* If single visor is open and nothing selected, print just that one */}
+            {selectedIds.length === 0 && barcodeModal && (
+               <div className="label-card border border-slate-200 p-12 rounded-xl flex flex-col items-center col-span-2">
+                 <img 
+                   suppressHydrationWarning
+                   src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${barcodeModal}&scale=5&height=15&includetext`} 
+                   className="h-24 object-contain"
+                   alt={barcodeModal} 
+                 />
+                 <p className="mt-6 text-xl font-black text-slate-900 tracking-widest uppercase">{barcodeModal}</p>
+              </div>
+            )}
+         </div>
+      </div>
     </div>
   );
 }

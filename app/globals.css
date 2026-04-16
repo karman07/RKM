@@ -13,23 +13,16 @@
   --color-brand-100: #d6e6ff;
   --color-brand-300: #8eb6ff;
   --color-brand-500: #2f79f7;
-  --color-brand-600: #1f63d8;
-  --color-brand-700: #174fae;
+  --color-brand-600: #1d4fae;
+  --color-brand-700: #1e3a8a;
 
-  --color-highlight-50: #eefbf4;
-  --color-highlight-100: #d8f5e5;
-  --color-highlight-500: #2da36a;
-  --color-highlight-700: #1d6f48;
+  --selection-bg: #cfe0ff;
+  --selection-text: #174fae;
+}
 
-  --color-warm-50: #fff7ec;
-  --color-warm-300: #f6ce88;
-  --color-warm-500: #d99a33;
-
-  --color-ink-900: #0f172a;
-  --color-ink-700: #334155;
-  --color-surface-0: #ffffff;
-  --color-surface-50: #f8fafc;
-  --color-surface-100: #f1f5f9;
+::selection {
+  background-color: var(--selection-bg);
+  color: var(--selection-text);
 }
 
 * {
@@ -39,7 +32,7 @@
 body {
   background: var(--bg-app);
   color: var(--text-main);
-  font-family: var(--font-app), 'Segoe UI', sans-serif;
+  font-family: var(--font-jakarta), var(--font-inter), 'Segoe UI', sans-serif;
   text-rendering: geometricPrecision;
   -webkit-font-smoothing: antialiased;
 }
@@ -124,11 +117,12 @@ input, select, textarea {
 .pro-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: #8fa4c9 #f0f4fb;
+  overflow-x: hidden !important; /* Force hide horizontal scrollbar */
 }
 
 .pro-scrollbar::-webkit-scrollbar {
   width: 8px;
-  height: 8px;
+  height: 0px; /* Hide horizontal scrollbar for Webkit */
 }
 
 .pro-scrollbar::-webkit-scrollbar-track {
@@ -137,13 +131,28 @@ input, select, textarea {
 }
 
 .pro-scrollbar::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #9bb0d3 0%, #7f97c2 100%);
+  background: rgba(148, 163, 184, 0.12);
   border-radius: 9999px;
-  border: 2px solid #f0f4fb;
+  border: 4px solid transparent;
+  background-clip: content-box;
 }
 
 .pro-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, #819bc5 0%, #6885b5 100%);
+  background: rgba(148, 163, 184, 0.35);
+  background-clip: content-box;
+}
+
+/* Global scrollbar suppression for horizontal overflow */
+* {
+  scrollbar-width: thin;
+}
+::-webkit-scrollbar {
+  width: 8px;
+  height: 0px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.2);
+  border-radius: 10px;
 }
 
 .admin-shell input[type='checkbox'] {
@@ -189,6 +198,17 @@ input, select, textarea {
   }
 }
 
+@keyframes fadeInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 .admin-shell main > div {
   animation: fadeRise 220ms ease-out;
 }
@@ -212,32 +232,58 @@ input, select, textarea {
 
 .app-toast {
   position: fixed;
-  top: 1rem;
-  right: 1rem;
-  z-index: 1000;
-  display: inline-flex;
+  top: 2rem;
+  right: 2rem;
+  z-index: 9999;
+  display: flex;
   align-items: center;
-  gap: 0.6rem;
-  max-width: min(92vw, 44rem);
-  border-radius: 14px;
-  border: 1px solid color-mix(in srgb, var(--color-brand-300) 45%, #ffffff);
-  background: linear-gradient(180deg, #f8fbff 0%, #eef5ff 100%);
-  color: var(--color-brand-700);
-  padding: 0.8rem 1rem;
+  gap: 1.25rem;
+  min-width: 350px;
+  max-width: min(92vw, 40rem);
+  border-radius: 1.5rem;
+  padding: 1.5rem 2rem;
   font-size: 0.95rem;
-  font-weight: 600;
-  box-shadow: 0 18px 36px -28px rgba(31, 99, 216, 0.55);
-  animation: fadeRise 220ms ease-out;
+  font-weight: 800;
+  box-shadow: 0 25px 50px -12px rgba(30, 58, 138, 0.15); /* Soft Blue Shadow */
+  animation: toastPop 450ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  background: #ffffff; /* Studio White */
+  color: #1e3a8a; /* Deep Blue Text */
+  border: 1px solid #e0e7ff;
+  border-left: 8px solid #3b82f6; /* Azure Accent */
 }
 
-.app-toast::before {
-  content: '';
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 9999px;
-  background: var(--color-brand-600);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-brand-600) 14%, transparent);
-  flex-shrink: 0;
+@keyframes toastPop {
+  from { opacity: 0; transform: translateY(-30px) scale(0.9); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.app-toast-success {
+  border-left-color: #10b981;
+  color: #064e3b;
+}
+
+.app-toast-danger {
+  border-left-color: #ef4444;
+  color: #7f1d1d;
+}
+
+.app-toast-info {
+  border-left-color: #3b82f6;
+  color: #1e3a8a;
+}
+
+.app-toast-close {
+  margin-left: auto;
+  padding: 4px;
+  border-radius: 6px;
+  opacity: 0.5;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.app-toast-close:hover {
+  opacity: 1;
+  background: rgba(0,0,0,0.05);
 }
 
 @keyframes modalPop {
@@ -256,6 +302,8 @@ input, select, textarea {
   --bg-surface: #111a2e;
   --text-main: #e5edf9;
   --text-muted: #9eb0cb;
+  --selection-bg: #1f63d8;
+  --selection-text: #ffffff;
 }
 
 [data-theme='dark'] body,
@@ -274,11 +322,9 @@ body[data-theme='dark'] .admin-shell header {
 }
 
 [data-theme='dark'] .admin-shell .bg-white,
-[data-theme='dark'] .admin-shell aside,
 [data-theme='dark'] .admin-shell .bg-white\/80,
 [data-theme='dark'] .admin-shell .bg-white\/90,
 body[data-theme='dark'] .admin-shell .bg-white,
-body[data-theme='dark'] .admin-shell aside,
 body[data-theme='dark'] .admin-shell .bg-white\/80,
 body[data-theme='dark'] .admin-shell .bg-white\/90 {
   background: var(--bg-surface) !important;
@@ -298,10 +344,25 @@ body[data-theme='dark'] .admin-shell .text-slate-500 {
 
 [data-theme='dark'] .app-toast,
 body[data-theme='dark'] .app-toast {
-  border-color: #2f466f;
-  background: linear-gradient(180deg, #182742 0%, #132039 100%);
-  color: #d6e6ff;
-  box-shadow: 0 18px 40px -28px rgba(0, 0, 0, 0.8);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme='dark'] .app-toast-success {
+  background: #064e3b;
+  color: #ecfdf5;
+  border-color: #059669;
+}
+
+[data-theme='dark'] .app-toast-danger {
+  background: #7f1d1d;
+  color: #fef2f2;
+  border-color: #dc2626;
+}
+
+[data-theme='dark'] .app-toast-info {
+  background: #1e3a8a;
+  color: #eff6ff;
+  border-color: #2563eb;
 }
 
 [data-theme='dark'] .admin-shell .text-slate-400,
@@ -466,4 +527,49 @@ body[data-theme='dark'] .sidebar-subitem-active {
   background: #14233f !important;
   color: #dbeafe !important;
   box-shadow: inset 3px 0 0 0 #60a5fa;
+}
+
+/* ── Print Optimization Engine ───────────────── */
+@media print {
+  @page {
+    margin: 0;
+    size: auto;
+  }
+  body {
+    background: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  /* Hide standard shell and interactive UI */
+  .admin-shell header, 
+  .admin-shell aside,
+  .admin-shell button,
+  .admin-shell .no-print,
+  .app-toast,
+  [role="dialog"] {
+    display: none !important;
+  }
+  /* Reset shell for full-page layout */
+  .admin-shell {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  .admin-shell main {
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+  }
+  /* Force our specialized invoice to fill the page correctly */
+  .print\:block {
+    display: block !important;
+    position: relative !important;
+    z-index: auto !important;
+    padding: 2cm !important;
+    width: 100% !important;
+    min-height: 100vh !important;
+    background: white !important;
+  }
 }

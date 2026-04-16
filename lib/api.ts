@@ -1,4 +1,4 @@
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
 
 /** Resolve a static asset path (e.g. /static/barcodes/foo.png) to a full URL */
 export function staticUrl(path: string): string {
@@ -93,6 +93,7 @@ export interface PricingBreakdown {
   metal_price: number;
   making_charges: number;
   stone_price: number;
+  discount_amount?: number;
   tax_amount: number;
   final_price: number;
   is_override: boolean;
@@ -122,7 +123,12 @@ export interface Product {
   making_charge_rate?: number;
   fixed_making_charge?: number;
   tax_percentage: number;
+  discount_percentage?: number;
   price_override?: number;
+  /** Fixed cost price set by admin — auto-locked on inventory items */
+  purchase_price: number;
+  /** Max % discount a Manager is allowed to apply on this product’s inventory items */
+  max_manager_discount: number;
   images: string[];
   status: string;
   deleted_at?: string;
@@ -140,8 +146,17 @@ export interface InventoryItem {
   reason?: string;
   location: string;
   status: 'available' | 'sold' | 'reserved' | 'damaged' | 'returned';
+  /** Auto-locked from Product.purchase_price at ingress — cannot be changed */
   purchase_price: number;
   selling_price: number;
+  /** Admin provisioned discount on this item (0–100 %) */
+  admin_discount: number;
+  /** Manager applied discount on this item (0–100 %) */
+  manager_discount: number;
+  /** Max discount % a Manager can apply (copied from product) */
+  max_manager_discount: number;
+  /** Product dimensions snapshot at time of addition */
+  dimensions_snapshot?: string;
   sold_customer_name?: string;
   sold_customer_phone?: string;
   sold_customer_email?: string;
@@ -166,9 +181,12 @@ export interface InventoryItem {
 
 export interface PaginatedResponse<T> {
   data: T[];
-  total: number;
-  page: number;
-  limit: number;
+  meta: {
+    total: number;
+    page: number;
+    limit: number;
+    total_pages: number;
+  };
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -315,18 +333,36 @@ export const getInventory = (params?: Record<string, string>) => {
 export const getInventoryByBarcode = (barcode: string) =>
   request<InventoryItem>(`/inventory/barcode/${barcode}`);
 
+export const getInventoryStats = () =>
+  request<{
+    totalCount: number;
+    totalValue: number;
+    totalPurchaseValue: number;
+    totalProfit: number;
+    byStatus: Record<string, { count: number; value: number }>;
+    byCategory: { name: string; count: number }[];
+    salesTrend: { date: string; count: number }[];
+  }>('/inventory/stats');
+
 export const addInventoryItem = (data: {
   product_id: string;
   location: string;
   source: string;
   reason: string;
   count: number;
-  purchase_price: number;
   selling_price: number;
+  admin_discount?: number;
 }) =>
   request<{ inserted: number; items: InventoryItem[] }>('/inventory', {
     method: 'POST',
     body: JSON.stringify(data),
+  });
+
+/** Update the active discount(s) on an inventory item */
+export const updateInventoryDiscount = (id: string, discounts: { admin_discount?: number; manager_discount?: number; }) =>
+  request<InventoryItem>(`/inventory/${id}/discount`, {
+    method: 'PATCH',
+    body: JSON.stringify(discounts),
   });
 
 export const deleteInventoryItem = (id: string, reason: string, notes?: string) =>
@@ -334,6 +370,15 @@ export const deleteInventoryItem = (id: string, reason: string, notes?: string) 
     method: 'DELETE',
     body: JSON.stringify({ reason, notes }),
   });
+
+export const bulkDeleteInventory = (ids: string[], reason: string, notes?: string) =>
+  request<{ deletedCount: number; ids: string[] }>(`/inventory/bulk-delete`, {
+    method: 'DELETE',
+    body: JSON.stringify({ ids, reason, notes }),
+  });
+
+export const getDeletedInventory = (params?: Record<string, string>) =>
+  request<{ data: InventoryItem[]; meta: { total: number; page: number; limit: number; total_pages: number } }>('/inventory/deleted' + (params ? '?' + new URLSearchParams(params).toString() : ''));
 
 export const updateInventoryStatus = (
   id: string,
@@ -374,6 +419,87 @@ export const adjustStock = (payload: {
     body: JSON.stringify(payload),
   });
 
+// ─── Purchase Orders & Suppliers ────────────────────────────────────────────
+
+export interface Supplier {
+  _id?: string;
+  name: string;
+  contact_person?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  place?: string;
+  gst_number?: string;
+  is_active?: boolean;
+  createdAt?: string;
+}
+
+export const getSuppliers = () => request<Supplier[]>('/suppliers');
+export const getSupplier = (id: string) => request<Supplier>(`/suppliers/${id}`);
+export const createSupplier = (payload: any) => request<Supplier>('/suppliers', { method: 'POST', body: JSON.stringify(payload) });
+export const updateSupplier = (id: string, payload: any) => request<Supplier>(`/suppliers/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+export const deleteSupplier = (id: string) => request<void>(`/suppliers/${id}/delete`, { method: 'POST' });
+
+export interface PoItem {
+  images?: string[];
+  product_id?: string | Product;
+  name?: string;
+  sku?: string;
+  category_id?: string | Category;
+  metal_type?: string;
+  purity?: string;
+  metal_color?: string;
+  gender?: string;
+  occasion?: string;
+  dimensions?: string;
+  gross_weight?: number;
+  net_weight?: number;
+  stone_weight?: number;
+  has_stones?: boolean;
+  stone_type?: string;
+  stone_price?: number;
+  making_charge_type?: string;
+  making_charge_rate?: number;
+  fixed_making_charge?: number;
+  tax_percentage?: number;
+  purchase_price?: number;
+  selling_price?: number;
+  discount_percentage?: number;
+  max_manager_discount?: number;
+  count: number;
+}
+
+export interface PurchaseOrder {
+  _id?: string;
+  po_number: string;
+  supplier_id?: string | Supplier;
+  vendor_name?: string;
+  invoice_number?: string;
+  purchase_date: string;
+  total_amount: number;
+  status: 'draft' | 'published' | 'void';
+  items: PoItem[];
+  created_at?: string;
+}
+
+export const getPurchaseOrders = (page = 1, limit = 20) =>
+  request<{ data: PurchaseOrder[]; meta: any }>(`/purchase-orders?page=${page}&limit=${limit}`);
+
+export const getPurchaseOrder = (id: string) =>
+  request<PurchaseOrder>(`/purchase-orders/${id}`);
+
+export const createPurchaseOrder = (payload: any) =>
+  request<PurchaseOrder>('/purchase-orders', { method: 'POST', body: JSON.stringify(payload) });
+
+export const updatePurchaseOrder = (id: string, payload: any) =>
+  request<PurchaseOrder>(`/purchase-orders/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+
+export const publishPurchaseOrder = (id: string) =>
+  request<PurchaseOrder>(`/purchase-orders/${id}/publish`, { method: 'POST' });
+
+export const generatePoInvoiceNumber = () =>
+  request<{ invoice_number: string }>('/purchase-orders/generate-invoice-number');
+
 // ─── Settings ──────────────────────────────────────────────────────────────────
 
 export interface AppSettings {
@@ -409,3 +535,60 @@ export const updateSettings = (data: Partial<AppSettings>) =>
     method: 'PUT',
     body: JSON.stringify(data),
   });
+
+// ─── Blogs ───────────────────────────────────────────────────────────────────
+
+export interface Blog {
+  _id: string;
+  title: string;
+  slug: string;
+  content: string;
+  excerpt: string;
+  cover_image: string;
+  author: string;
+  tags: string[];
+  categories: string[];
+  is_published: boolean;
+  published_at?: string;
+  meta_title?: string;
+  meta_description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const getBlogs = (params?: Record<string, string>) => {
+  const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+  return request<PaginatedResponse<Blog>>(`/blogs${qs}`);
+};
+
+export const getBlogBySlug = (slug: string) =>
+  request<Blog>(`/blogs/slug/${slug}`);
+
+export const createBlog = (data: FormData) =>
+  request<Blog>('/blogs', { 
+    method: 'POST', 
+    headers: authHeadersMultipart(), 
+    body: data 
+  });
+
+export const updateBlog = (id: string, data: FormData) =>
+  request<Blog>(`/blogs/${id}`, { 
+    method: 'PATCH', 
+    headers: authHeadersMultipart(), 
+    body: data 
+  });
+
+export const deleteBlog = (id: string) =>
+  request<void>(`/blogs/${id}`, { method: 'DELETE' });
+
+export const uploadStockImage = async (file: File): Promise<{ url: string }> => {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${BASE}/uploads/blogs`, {
+    method: 'POST',
+    headers: authHeadersMultipart(),
+    body: form,
+  });
+  if (!res.ok) throw new Error('Blog image upload failed');
+  return res.json() as Promise<{ url: string }>;
+};

@@ -11,6 +11,38 @@ import Modal from '@/components/Modal';
 import { useSettings } from '@/components/SettingsContext';
 
 // ─── Default metal-purity mappings (fallback if lookups don't have description) ──
+import dynamic from 'next/dynamic';
+const Doughnut = dynamic(() => import('react-chartjs-2').then(m => m.Doughnut), { ssr: false });
+const Bar = dynamic(() => import('react-chartjs-2').then(m => m.Bar), { ssr: false });
+
+import {
+  Chart as ChartJS,
+  ArcElement,
+  Tooltip,
+  Legend,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  PointElement,
+  LineElement,
+  Filler,
+} from 'chart.js';
+
+ChartJS.register(
+  ArcElement,
+  Tooltip,
+  Legend,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  PointElement,
+  LineElement,
+  Filler
+);
+
+const dyn = { Doughnut, Bar };
+
+// ─── Default metal-purity mappings (fallback if lookups don't have description) ──
 const DEFAULT_METAL_PURITY_GROUPS: Record<string, string[]> = {
   gold: ['18K', '22K', '24K'],
   silver: ['925', '950', '999'],
@@ -57,7 +89,11 @@ interface ProductForm {
   gross_weight: string; net_weight: string; stone_weight: string;
   has_stones: boolean; stone_type: string;
   making_charge_type: string; making_charge_rate: string; fixed_making_charge: string;
-  tax_percentage: string; price_override: string;
+  tax_percentage: string; discount_percentage: string; price_override: string;
+  /** Fixed cost price — admin sets this; it gets locked on inventory items */
+  purchase_price: string;
+  /** Max % discount a Manager can apply on inventory items of this product */
+  max_manager_discount: string;
 }
 
 const emptyForm: ProductForm = {
@@ -67,13 +103,15 @@ const emptyForm: ProductForm = {
   gross_weight: '', net_weight: '', stone_weight: '',
   has_stones: false, stone_type: '',
   making_charge_type: '', making_charge_rate: '', fixed_making_charge: '',
-  tax_percentage: '3', price_override: '',
+  tax_percentage: '3', discount_percentage: '0', price_override: '',
+  purchase_price: '',
+  max_manager_discount: '0',
 };
 
 const statusBadge: Record<string, { wrap: string; dot: string }> = {
-  active:       { wrap: 'badge-base bg-emerald-100 text-emerald-700 border border-emerald-300', dot: 'bg-emerald-500' },
-  inactive:     { wrap: 'badge-base bg-slate-100 text-slate-500 border border-slate-300',       dot: 'bg-slate-400' },
-  discontinued: { wrap: 'badge-base bg-red-100 text-red-600 border border-red-300',             dot: 'bg-red-400' },
+  active:       { wrap: 'badge-status-active', dot: 'bg-emerald-500' },
+  inactive:     { wrap: 'badge-status-inactive', dot: 'bg-slate-400' },
+  discontinued: { wrap: 'badge-status-discontinued', dot: 'bg-red-400' },
 };
 
 function sortLookupOptions(items: Lookup[] = []) {
@@ -92,7 +130,8 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [metalFilter, setMetalFilter] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState(searchParams.get('category') ?? '');
+  const [categoryFilter, setCategoryFilter] = useState(searchParams.get('category') ?? searchParams.get('jewellery_type') ?? '');
+  const [filtersOpen, setFiltersOpen] = useState(true);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Product | null>(null);
@@ -107,11 +146,15 @@ export default function ProductsPage() {
   const [barcodePreview, setBarcodePreview] = useState<Product | null>(null);
 
   const [pricingModal, setPricingModal] = useState<(PricingBreakdown & { name: string }) | null>(null);
+  const dyn = { Doughnut, Bar };
+
   const { settings } = useSettings();
 
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
-  const [toast, setToast] = useState('');
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [activeTab, setActiveTab] = useState(0);
+
+  const [chartData, setChartData] = useState<{ categories: any; metals: any } | null>(null);
 
   const effectiveCategoryFilter = useMemo(
     () => resolveCategoryId(categoryFilter, categories),
@@ -150,13 +193,16 @@ export default function ProductsPage() {
       making_charge_rate: settings.making_charge_rate ? String(settings.making_charge_rate) : '',
       fixed_making_charge: settings.fixed_making_charge ? String(settings.fixed_making_charge) : '',
       tax_percentage: '3',
+      discount_percentage: '0',
       price_override: '',
+      purchase_price: '',
+      max_manager_discount: '0',
     };
   }
 
-  function showToast(msg: string) {
-    setToast(msg);
-    setTimeout(() => setToast(''), 3500);
+  function showToast(message: string, type: 'success' | 'error' = 'success') {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3500);
   }
 
   const load = useCallback(async () => {
@@ -169,8 +215,42 @@ export default function ProductsPage() {
       const res = await getProducts(params);
       setProducts(res.data);
       setTotal(res.total);
+
+      // Generate Chart Data
+      if (res.data.length > 0) {
+        const catCounts: Record<string, number> = {};
+        const metalCounts: Record<string, number> = {};
+        
+        // This is a rough estimation based on current page, ideally backend should provide aggregate analytics
+        res.data.forEach((p: Product) => {
+          const catName = (p.category_id && typeof p.category_id === 'object') ? p.category_id.name : 'Uncategorized';
+          catCounts[catName] = (catCounts[catName] || 0) + 1;
+          const m = p.metal_type || 'Unknown';
+          metalCounts[m] = (metalCounts[m] || 0) + 1;
+        });
+
+        setChartData({
+          categories: {
+            labels: Object.keys(catCounts),
+            datasets: [{
+              data: Object.values(catCounts),
+              backgroundColor: ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#64748b'],
+              borderWidth: 0,
+            }]
+          },
+          metals: {
+            labels: Object.keys(metalCounts).map(m => m.toUpperCase()),
+            datasets: [{
+              label: 'Composition',
+              data: Object.values(metalCounts),
+              backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444'],
+              borderRadius: 8,
+            }]
+          }
+        });
+      }
     } catch (e: unknown) {
-      showToast(e instanceof Error ? e.message : 'Failed to load');
+      showToast(e instanceof Error ? e.message : 'Failed to load', 'error');
     } finally {
       setLoading(false);
     }
@@ -187,7 +267,7 @@ export default function ProductsPage() {
   }, []);
 
   useEffect(() => {
-    const fromQuery = searchParams.get('category') ?? '';
+    const fromQuery = searchParams.get('category') ?? searchParams.get('jewellery_type') ?? '';
     const normalized = resolveCategoryId(fromQuery, categories);
     setCategoryFilter(normalized || fromQuery);
     setPage(1);
@@ -207,7 +287,7 @@ export default function ProductsPage() {
     setProductImages(p.images ?? []);
     setForm({
       name: p.name, sku: p.sku,
-      category_id: typeof p.category_id === 'string' ? p.category_id : p.category_id._id,
+      category_id: typeof p.category_id === 'string' ? p.category_id : (p.category_id?._id || ''),
       description: p.description ?? '',
       gender: p.gender ?? '', occasion: p.occasion ?? '',
       metal_type: p.metal_type, purity: p.purity, metal_color: p.metal_color ?? '',
@@ -219,7 +299,10 @@ export default function ProductsPage() {
       making_charge_rate: String(p.making_charge_rate ?? ''),
       fixed_making_charge: String(p.fixed_making_charge ?? ''),
       tax_percentage: String(p.tax_percentage),
+      discount_percentage: String(p.discount_percentage ?? '0'),
       price_override: String(p.price_override ?? ''),
+      purchase_price: String(p.purchase_price ?? ''),
+      max_manager_discount: String(p.max_manager_discount ?? '0'),
     });
     setFormError('');
     setActiveTab(0);
@@ -249,6 +332,8 @@ export default function ProductsPage() {
       return 'Fixed making charge is required for fixed mode.';
     }
     if (!form.tax_percentage || Number(form.tax_percentage) < 0) return 'Tax percentage is required.';
+    if (!form.purchase_price || Number(form.purchase_price) < 0) return 'Purchase/Cost price is required and must be valid.';
+    if (Number(form.max_manager_discount) < 0 || Number(form.max_manager_discount) > 100) return 'Max manager discount must be between 0 and 100';
     return null;
   }
 
@@ -278,7 +363,10 @@ export default function ProductsPage() {
         making_charge_rate: form.making_charge_rate ? Number(form.making_charge_rate) : undefined,
         fixed_making_charge: form.fixed_making_charge ? Number(form.fixed_making_charge) : undefined,
         tax_percentage: Number(form.tax_percentage),
+        discount_percentage: form.discount_percentage ? Number(form.discount_percentage) : undefined,
         price_override: form.price_override ? Number(form.price_override) : undefined,
+        purchase_price: form.purchase_price ? Number(form.purchase_price) : undefined,
+        max_manager_discount: form.max_manager_discount ? Number(form.max_manager_discount) : 0,
       };
       if (editTarget) {
         await updateProduct(editTarget._id, payload);
@@ -418,183 +506,239 @@ export default function ProductsPage() {
   }
 
   const totalPages = Math.ceil(total / 10);
+  const showCharts = !search && !metalFilter && !categoryFilter;
 
   return (
-    <div>
+    <div className="animate-[fadeRise_400ms_ease-out] space-y-8 pb-20">
+      {/* Artisan Notification */}
       {toast && (
-        <div className="app-toast">{toast}</div>
+        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] px-8 py-4 rounded-[2rem] shadow-2xl backdrop-blur-xl border-2 animate-[fadeRise_300ms_ease-out] flex items-center gap-4 min-w-[320px] transition-all duration-500 ${
+          toast.type === 'success' 
+            ? 'bg-emerald-500/90 text-white border-emerald-400/50 shadow-emerald-500/20' 
+            : 'bg-red-500/90 text-white border-red-400/50 shadow-red-500/20'
+        }`}>
+          <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+            {toast.type === 'success' ? (
+              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><polyline points="20 6 9 17 4 12" /></svg>
+            ) : (
+              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+            )}
+          </div>
+          <p className="text-xs font-black uppercase tracking-[0.15em]">{toast.message}</p>
+        </div>
       )}
 
-      <div className="flex items-center justify-between mb-6">
+      {/* Header Section */}
+      <section className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Products</h1>
-          <p className="text-sm text-slate-500 mt-0.5">{total} products total</p>
+          <h1 className="text-4xl font-black tracking-tight text-slate-900 uppercase">Master Product Catalog</h1>
+          <p className="text-sm font-medium text-slate-500 mt-2">Executive curation of {total} artisan masterpieces across global collections.</p>
         </div>
-        <button onClick={openCreate} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
-          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          Add Product
-        </button>
-      </div>
+        <div className="flex gap-3">
+          <button onClick={openCreate} className="px-6 py-4 rounded-[1.5rem] bg-blue-600 text-white text-[11px] font-black uppercase tracking-[0.2em] shadow-2xl shadow-blue-600/20 hover:bg-blue-700 transition-all active:scale-95 flex items-center gap-3">
+            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M12 5v14M5 12h14" /></svg>
+            Add Masterpiece
+          </button>
+        </div>
+      </section>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-5">
-        <input
-          className="px-3.5 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-60"
-          placeholder="Search by name or SKU..."
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-        />
+      {/* Intelligence Section */}
+      {!loading && chartData && showCharts && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-1 bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col items-center">
+            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-10">Collection Distribution</h3>
+            <div className="w-full aspect-square relative flex items-center justify-center">
+               <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="text-center">
+                    <p className="text-3xl font-black text-slate-900">{total}</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Masterpieces</p>
+                  </div>
+               </div>
+               <Doughnut 
+                 data={chartData.categories} 
+                 options={{ 
+                   cutout: '80%', 
+                   plugins: { legend: { display: false } },
+                   maintainAspectRatio: false 
+                 }} 
+               />
+            </div>
+          </div>
+          <div className="lg:col-span-2 bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-sm">
+            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-10 text-center uppercase">Metal Composition Indices</h3>
+            <div className="h-[240px]">
+              <Bar 
+                data={chartData.metals} 
+                options={{ 
+                  maintainAspectRatio: false, 
+                  plugins: { legend: { display: false } },
+                  scales: { 
+                    y: { grid: { display: false }, ticks: { font: { size: 9, weight: '900' }, color: '#94a3b8' } },
+                    x: { grid: { display: false }, ticks: { font: { size: 9, weight: '900' }, color: '#94a3b8' } }
+                  }
+                }} 
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Filter Vault */}
+      <section className="bg-white/50 backdrop-blur-md border border-slate-100 rounded-[2rem] p-4 flex flex-wrap items-center gap-4 group">
+        <div className="flex-1 relative">
+          <input
+            className="w-full pl-12 pr-6 py-4 border border-slate-200 rounded-2xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all shadow-sm group-hover:shadow-md font-medium"
+            placeholder="Search by name or SKU..."
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+          />
+          <svg className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+        </div>
+        
         <select
-          className="px-3.5 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+          className="px-6 py-4 border border-slate-200 rounded-2xl text-xs font-black uppercase tracking-widest bg-white focus:outline-none focus:ring-2 focus:ring-blue-600 shadow-sm transition-all"
           value={categoryFilter}
           onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}
         >
-          <option value="">All Categories</option>
+          <option value="">ALL COLLECTIONS</option>
           {categories.filter((category) => category.is_active).map((category) => (
-            <option key={category._id} value={category._id}>{category.name}</option>
+            <option key={category._id} value={category._id}>{category.name.toUpperCase()}</option>
           ))}
         </select>
+
         <select
-          className="px-3.5 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+          className="px-6 py-4 border border-slate-200 rounded-2xl text-xs font-black uppercase tracking-widest bg-white focus:outline-none focus:ring-2 focus:ring-blue-600 shadow-sm transition-all"
           value={metalFilter}
           onChange={(e) => { setMetalFilter(e.target.value); setPage(1); }}
         >
-          <option value="">All Metals</option>
-          {metalTypeOptions.map((option) => <option key={option._id} value={option.value}>{option.label}</option>)}
+          <option value="">ALL METALS</option>
+          {metalTypeOptions.map((option) => <option key={option._id} value={option.value}>{option.label.toUpperCase()}</option>)}
         </select>
-      </div>
+      </section>
 
-      {/* Table */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden mb-5">
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="w-7 h-7 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-          </div>
-        ) : products.length === 0 ? (
-          <div className="text-center py-20 text-slate-400 text-sm">No products found</div>
-        ) : (
-          <table className="w-full text-sm">
+      {/* Table Vault */}
+      <div className="bg-white border border-slate-100 rounded-[2.5rem] shadow-xl shadow-slate-200/20 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="px-4 py-3.5" />
-                <th className="text-left px-5 py-3.5 font-medium text-slate-600">Name / SKU</th>
-                <th className="text-left px-5 py-3.5 font-medium text-slate-600">Category</th>
-                <th className="text-left px-5 py-3.5 font-medium text-slate-600">Metal</th>
-                <th className="text-left px-5 py-3.5 font-medium text-slate-600">Weight (g)</th>
-                <th className="text-left px-5 py-3.5 font-medium text-slate-600">Status</th>
-                <th className="text-left px-5 py-3.5 font-medium text-slate-600">Images</th>
-                <th className="px-5 py-3.5" />
+              <tr className="bg-slate-50/50 border-b border-slate-100">
+                <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Masterpiece</th>
+                <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Curation</th>
+                <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Composition</th>
+                <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Net Weight</th>
+                <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Liquidation</th>
+                <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">Actions</th>
               </tr>
             </thead>
-            <tbody>
-              {products.map((p) => {
-                const cat = typeof p.category_id === 'object' ? p.category_id : null;
-                return (
-                  <tr key={p._id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors">
-                    {/* Thumbnail */}
-                    <td className="pl-4 pr-2 py-3">
-                      {p.images?.[0] ? (
-                        <img
-                          src={staticUrl(p.images[0])}
-                          alt={p.name}
-                          className="w-10 h-10 rounded-lg object-cover border border-slate-200 shrink-0"
-                        />
-                      ) : (
-                        <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
-                          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} className="text-slate-300">
-                            <rect x="3" y="3" width="18" height="18" rx="2" />
-                            <circle cx="8.5" cy="8.5" r="1.5" />
-                            <polyline points="21 15 16 10 5 21" />
-                          </svg>
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <p className="font-medium text-slate-900">{p.name}</p>
-                      <p className="text-xs text-slate-400 font-mono mt-0.5">{p.sku}</p>
-                    </td>
-                    <td className="px-5 py-3.5 text-slate-600">{cat?.name ?? '—'}</td>
-                    <td className="px-5 py-3.5">
-                      <p className="text-slate-700 capitalize">{p.metal_type}</p>
-                      <p className="text-xs text-slate-400">{p.purity}</p>
-                    </td>
-                    <td className="px-5 py-3.5 text-slate-600">{p.net_weight}g net</td>
-                    <td className="px-5 py-3.5">
-                      {(() => {
-                        const b = statusBadge[p.status] ?? statusBadge.inactive;
-                        return (
-                          <span className={b.wrap}>
-                            <span className={`badge-dot ${b.dot}`} aria-hidden="true" />
-                            {p.status}
-                          </span>
-                        );
-                      })()}
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <button onClick={() => openImages(p)} className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 font-medium">
-                        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <rect x="3" y="3" width="18" height="18" rx="2" />
-                          <circle cx="8.5" cy="8.5" r="1.5" />
-                          <polyline points="21 15 16 10 5 21" />
-                        </svg>
-                        {p.images?.length ?? 0}
-                      </button>
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => openPricing(p)} title="View pricing" className="text-slate-400 hover:text-amber-600 transition-colors p-1.5 rounded-lg hover:bg-amber-50">
-                          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <line x1="12" y1="1" x2="12" y2="23" />
-                            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-                          </svg>
-                        </button>
-                        <button onClick={() => openBarcodePreview(p)} title="View barcode" className="text-slate-400 hover:text-emerald-600 transition-colors p-1.5 rounded-lg hover:bg-emerald-50">
-                          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <rect x="3" y="5" width="2" height="14" />
-                            <rect x="7" y="5" width="1" height="14" />
-                            <rect x="10" y="5" width="2" height="14" />
-                            <rect x="14" y="5" width="1" height="14" />
-                            <rect x="17" y="5" width="2" height="14" />
-                            <rect x="21" y="5" width="1" height="14" />
-                          </svg>
-                        </button>
-                        <button onClick={() => openEdit(p)} className="text-slate-400 hover:text-blue-600 transition-colors p-1.5 rounded-lg hover:bg-blue-50">
-                          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                          </svg>
-                        </button>
-                        <button onClick={() => setDeleteTarget(p)} className="text-slate-400 hover:text-red-600 transition-colors p-1.5 rounded-lg hover:bg-red-50">
-                          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <polyline points="3 6 5 6 21 6" />
-                            <path d="M19 6l-1 14H6L5 6" />
-                            <path d="M10 11v6M14 11v6" />
-                            <path d="M9 6V4h6v2" />
-                          </svg>
-                        </button>
+            <tbody className="divide-y divide-slate-100">
+              {loading ? (
+                <tr>
+                   <td colSpan={6} className="px-8 py-32">
+                      <div className="flex flex-col items-center justify-center gap-4">
+                        <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                        <p className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">Decrypting Ledger...</p>
                       </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                   </td>
+                </tr>
+              ) : products.length === 0 ? (
+                <tr>
+                   <td colSpan={6} className="px-8 py-32 text-center">
+                      <p className="text-xs font-black text-slate-300 uppercase tracking-[0.2em]">No masterpieces found in this collection vault.</p>
+                   </td>
+                </tr>
+              ) : (
+                products.map((p) => {
+                  const cat = typeof p.category_id === 'object' ? p.category_id : null;
+                  return (
+                    <tr key={p._id} className="hover:bg-slate-50/50 transition-colors group">
+                      <td className="px-8 py-5">
+                        <div className="flex items-center gap-5">
+                          <div className="relative shrink-0">
+                            {p.images?.[0] ? (
+                              <img src={staticUrl(p.images[0])} alt="" className="w-14 h-14 rounded-2xl object-cover shadow-md border border-slate-100" />
+                            ) : (
+                              <div className="w-14 h-14 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center">
+                                <svg width="20" height="20" className="text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>
+                              </div>
+                            )}
+                            <button onClick={() => openImages(p)} className="absolute -bottom-1 -right-1 w-7 h-7 bg-white rounded-full shadow-lg border border-slate-100 flex items-center justify-center text-[10px] font-black text-blue-600 hover:scale-110 active:scale-95 transition-all">
+                              {p.images?.length ?? 0}
+                            </button>
+                          </div>
+                          <div>
+                            <p className="text-sm font-black text-slate-900 leading-tight">{p.name}</p>
+                            <p className="text-[10px] font-mono text-slate-400 uppercase mt-1 tracking-wider">{p.sku}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-8 py-5">
+                         <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-[10px] font-black uppercase tracking-widest">{cat?.name ?? 'General'}</span>
+                      </td>
+                      <td className="px-8 py-5">
+                        <p className="text-[11px] font-black text-slate-700 uppercase tracking-widest">{p.metal_type}</p>
+                        <p className="text-[10px] font-bold text-slate-400 tracking-wider mt-0.5">{p.purity}</p>
+                      </td>
+                      <td className="px-8 py-5">
+                        <p className="text-sm font-black text-slate-900">{p.net_weight}<span className="text-[10px] text-slate-400 font-bold ml-1 uppercase">g</span></p>
+                      </td>
+                      <td className="px-8 py-5">
+                        {(() => {
+                           const b = statusBadge[p.status] ?? statusBadge.inactive;
+                           return (
+                             <div className="flex items-center gap-2">
+                               <div className={`w-2 h-2 rounded-full ${b.dot} shadow-lg shadow-current/20`} />
+                               <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest italic">{p.status}</span>
+                             </div>
+                           )
+                        })()}
+                      </td>
+                      <td className="px-8 py-5">
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => openPricing(p)} title="Fiscal Breakdown" className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-400 hover:bg-amber-50 hover:text-amber-600 transition-all active:scale-90">
+                            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
+                          </button>
+                          <button onClick={() => openBarcodePreview(p)} title="Identify Asset" className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 transition-all active:scale-90">
+                            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M3 5h2v14H3zM7 5h1v14H7zM10 5h2v14h-2zM14 5h1v14h-1zM17 5h2v14h-2zM21 5h1v14h-1z" /></svg>
+                          </button>
+                          <button onClick={() => openEdit(p)} title="Modify Provenance" className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-all active:scale-90">
+                            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+                          </button>
+                          <button onClick={() => setDeleteTarget(p)} title="Expunge Asset" className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-400 hover:bg-red-50 hover:text-red-50 transition-all active:scale-90">
+                            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2" /></svg>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
+        </div>
+
+        {/* Executive Pagination */}
+        {totalPages > 1 && (
+          <div className="px-8 py-8 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Displaying Page <span className="text-slate-900">{page}</span> of <span className="text-slate-900">{totalPages}</span></p>
+            <div className="flex gap-3">
+              <button 
+                disabled={page === 1} 
+                onClick={() => setPage((p) => p - 1)} 
+                className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-[10px] font-black text-slate-600 uppercase tracking-widest hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95 shadow-sm"
+              >
+                Previous Shard
+              </button>
+              <button 
+                disabled={page === totalPages} 
+                onClick={() => setPage((p) => p + 1)} 
+                className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-[10px] font-black text-slate-600 uppercase tracking-widest hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95 shadow-sm"
+              >
+                Next Shard
+              </button>
+            </div>
+          </div>
         )}
       </div>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-slate-500">Page {page} of {totalPages}</p>
-          <div className="flex gap-2">
-            <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">Previous</button>
-            <button disabled={page === totalPages} onClick={() => setPage((p) => p + 1)} className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">Next</button>
-          </div>
-        </div>
-      )}
 
       {/* Create/Edit Modal */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editTarget ? 'Edit Product' : 'Add Product'} width="max-w-2xl">
@@ -640,7 +784,7 @@ export default function ProductsPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Category</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Category / Jewellery Type</label>
                 <select className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.category_id} onChange={(e) => set('category_id', e.target.value)}>
                   <option value="">Select category</option>
                   {categories.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
@@ -763,34 +907,90 @@ export default function ProductsPage() {
           {/* Tab 4: Pricing */}
           {activeTab === 3 && (
             <div className="space-y-4">
-              <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg text-xs text-blue-700">
-                Making charge defaults are pre-filled from global Settings. Adjust here to override for this product.
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Making Charge Type</label>
-                <select className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.making_charge_type} onChange={(e) => set('making_charge_type', e.target.value)}>
-                  <option value="">Select type</option>
-                  {makingChargeTypeOptions.map((o) => <option key={o._id} value={o.value}>{o.label}</option>)}
-                </select>
-              </div>
-              {form.making_charge_type === 'per_gram' ? (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Rate per gram (₹)</label>
-                  <input type="number" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.making_charge_rate} onChange={(e) => set('making_charge_rate', e.target.value)} />
+              <div className="p-3 bg-blue-50/50 border border-blue-100/50 rounded-lg flex justify-between items-center mb-4 transition-all animate-in fade-in slide-in-from-top-2">
+                <div className="space-y-0.5">
+                   <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest opacity-70 italic">Prices after Discount (Sale / Min Floor)</p>
+                   <p className="text-3xl font-black text-blue-700">
+                     ₹{(() => {
+                        const override = Number(form.price_override) || 0;
+                        const net = Number(form.net_weight) || 0;
+                        const stoneW = Number(form.stone_weight) || 0;
+                        const metalR = settings.purity_rates?.[form.metal_type]?.[form.purity] || settings.metal_rates?.[form.metal_type] || 0;
+                        const stoneR = settings.stone_rates?.[form.stone_type] || 0;
+                        
+                        let baseIncludingTax = 0;
+
+                        if (override > 0) {
+                          baseIncludingTax = override;
+                        } else {
+                          const metalP = net * metalR;
+                          const stoneP = stoneW * stoneR;
+                          const makingP = form.making_charge_type === 'per_gram' ? net * (Number(form.making_charge_rate) || 0) : (Number(form.fixed_making_charge) || 0);
+                          const subtotal = metalP + stoneP + makingP;
+                          const tax = (subtotal * (Number(form.tax_percentage) || 0)) / 100;
+                          baseIncludingTax = subtotal + tax;
+                        }
+
+                        // 1. Sale Price after Admin Discount
+                        const salePrice = baseIncludingTax * (1 - (Number(form.discount_percentage) || 0) / 100);
+                        // 2. Floor Price after Manager Discount
+                        const floorPrice = salePrice * (1 - (Number(form.max_manager_discount) || 0) / 100);
+
+                        return `${Math.round(salePrice).toLocaleString('en-IN')} / ${Math.round(floorPrice).toLocaleString('en-IN')}`;
+                     })()}
+                   </p>
                 </div>
-              ) : (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Fixed Amount (₹)</label>
-                  <input type="number" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.fixed_making_charge} onChange={(e) => set('fixed_making_charge', e.target.value)} />
-                </div>
-              )}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Tax %</label>
-                <input type="number" step="0.1" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.tax_percentage} onChange={(e) => set('tax_percentage', e.target.value)} />
+                {/* Production cost removed from header as requested */}
               </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Purchase / Cost Price (₹) <span className="text-red-500">*</span></label>
+                  <input type="number" min="0" step="1" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.purchase_price} onChange={(e) => set('purchase_price', e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Price Override (₹)</label>
+                  <input type="number" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.price_override} onChange={(e) => set('price_override', e.target.value)} placeholder="Skip formula, set fixed price" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Admin Discount (%)</label>
+                  <input type="number" min="0" max="100" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.discount_percentage} onChange={(e) => set('discount_percentage', e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Max Manager Discount (%)</label>
+                  <input type="number" min="0" max="100" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.max_manager_discount} onChange={(e) => set('max_manager_discount', e.target.value)} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Tax (%)</label>
+                  <input type="number" step="0.1" min="0" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.tax_percentage} onChange={(e) => set('tax_percentage', e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Making Charge Type</label>
+                  <select className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.making_charge_type} onChange={(e) => set('making_charge_type', e.target.value)}>
+                    <option value="">Select type</option>
+                    {makingChargeTypeOptions.map((o) => <option key={o._id} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+              </div>
+
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Price Override (₹) <span className="text-slate-400 font-normal">— skip formula, set fixed price</span></label>
-                <input type="number" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.price_override} onChange={(e) => set('price_override', e.target.value)} placeholder="Optional" />
+                {form.making_charge_type === 'per_gram' ? (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Rate per gram (₹)</label>
+                    <input type="number" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.making_charge_rate} onChange={(e) => set('making_charge_rate', e.target.value)} />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Fixed Amount (₹)</label>
+                    <input type="number" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.fixed_making_charge} onChange={(e) => set('fixed_making_charge', e.target.value)} />
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -955,16 +1155,19 @@ export default function ProductsPage() {
               { label: 'Metal Price', value: pricingModal.metal_price },
               { label: 'Making Charges', value: pricingModal.making_charges },
               { label: 'Stone Price', value: pricingModal.stone_price },
+              ...(pricingModal.discount_amount ? [{ label: 'Admin Discount', value: -pricingModal.discount_amount, isDiscount: true }] : []),
               { label: 'Tax Amount', value: pricingModal.tax_amount },
-            ].map(({ label, value }) => (
+            ].map(({ label, value, isDiscount }) => (
               <div key={label} className="flex items-center justify-between py-2 border-b border-slate-100">
-                <span className="text-sm text-slate-600">{label}</span>
-                <span className="text-sm font-medium text-slate-900">₹{value.toFixed(2)}</span>
+                <span className="text-sm text-slate-600 font-medium">{label}</span>
+                <span className={`text-sm font-black ${isDiscount ? 'text-rose-600' : 'text-slate-900'}`}>
+                  {isDiscount ? '' : '₹'}{value.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                </span>
               </div>
             ))}
-            <div className="flex items-center justify-between py-2">
-              <span className="text-base font-semibold text-slate-900">Final Price</span>
-              <span className="text-base font-bold text-blue-600">₹{pricingModal.final_price.toFixed(2)}</span>
+            <div className="flex items-center justify-between py-4">
+              <span className="text-base font-bold text-slate-900 uppercase tracking-widest">Final Price</span>
+              <span className="text-xl font-black text-blue-600">₹{pricingModal.final_price.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
             </div>
             {pricingModal.is_override && (
               <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg">Using price override — formula ignored</p>

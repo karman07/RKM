@@ -1,18 +1,23 @@
 import type { Metadata } from "next";
-import { Manrope } from 'next/font/google';
+import { Plus_Jakarta_Sans, Inter } from 'next/font/google';
 import { AppThemeProvider } from '@/components/AppThemeContext';
 import "./globals.css";
 
-const manrope = Manrope({
+const jakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
-  variable: '--font-app',
-  weight: ['400', '500', '600', '700'],
+  variable: '--font-jakarta',
+  weight: ['400', '500', '600', '700', '800'],
+});
+
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-inter',
+  weight: ['400', '500', '600'],
 });
 
 export const metadata: Metadata = {
-  title: " — Admin",
-    title: "RKM Admin",
-    description: "Admin panel for RKM",
+  title: "RKM Admin Control",
+  description: "Secure Admin Management for RKM Jewellers",
 };
 
 export default function RootLayout({
@@ -22,7 +27,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-full" suppressHydrationWarning>
-      <body className={`${manrope.variable} h-full app-theme`}>
+      <body className={`${jakarta.variable} ${inter.variable} h-full app-theme`} suppressHydrationWarning>
         <AppThemeProvider>{children}</AppThemeProvider>
       </body>
     </html>

@@ -18,26 +18,18 @@ function applyTheme(theme: AppTheme) {
 }
 
 export function AppThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<AppTheme>('light');
+  // Forced to light mode permanently per user request
+  const [theme] = useState<AppTheme>('light');
 
   useEffect(() => {
-    const stored = localStorage.getItem('admin_theme_v2') as AppTheme | null;
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const initial = stored ?? (prefersDark ? 'dark' : 'light');
-    setThemeState(initial);
-    applyTheme(initial);
+    applyTheme('light');
   }, []);
-
-  useEffect(() => {
-    applyTheme(theme);
-    localStorage.setItem('admin_theme_v2', theme);
-  }, [theme]);
 
   const value = useMemo<AppThemeContextValue>(() => {
     return {
       theme,
-      setTheme: (nextTheme: AppTheme) => setThemeState(nextTheme),
-      toggleTheme: () => setThemeState((current) => (current === 'light' ? 'dark' : 'light')),
+      setTheme: () => {}, // No-op
+      toggleTheme: () => {}, // No-op
     };
   }, [theme]);
 

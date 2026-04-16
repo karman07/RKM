@@ -11,8 +11,8 @@ const roleBadge: Record<string, { wrap: string; dot: string }> = {
   cashier: { wrap: 'badge-base bg-slate-100 text-slate-600 border border-slate-300',   dot: 'bg-slate-400' },
 };
 const statusBadge = {
-  active:   { wrap: 'badge-base bg-emerald-100 text-emerald-700 border border-emerald-300', dot: 'bg-emerald-500' },
-  inactive: { wrap: 'badge-base bg-red-100 text-red-600 border border-red-300',            dot: 'bg-red-400' },
+  active:   { wrap: 'badge-status-active', dot: 'bg-emerald-500' },
+  inactive: { wrap: 'badge-status-inactive', dot: 'bg-red-400' },
 };
 
 interface UserForm {
@@ -33,7 +33,7 @@ export default function UsersPage() {
   const [form, setForm] = useState<UserForm>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [toast, setToast] = useState('');
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'danger' | 'info' } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
 
   async function load(role?: string) {
@@ -42,7 +42,7 @@ export default function UsersPage() {
       const data = await getUsers(role || undefined);
       setUsers(data);
     } catch (e: unknown) {
-      showToast(e instanceof Error ? e.message : 'Failed to load');
+      showToast(e instanceof Error ? e.message : 'Failed to load', 'danger');
     } finally {
       setLoading(false);
     }
@@ -50,9 +50,11 @@ export default function UsersPage() {
 
   useEffect(() => { load(roleFilter); }, [roleFilter]);
 
-  function showToast(msg: string) {
-    setToast(msg);
-    setTimeout(() => setToast(''), 3500);
+  function showToast(message: string, type: 'success' | 'danger' | 'info' = 'info') {
+    setToast({ message, type });
+    setTimeout(() => {
+      setToast((prev) => (prev?.message === message ? null : prev));
+    }, 4000);
   }
 
   function openCreate() {
@@ -77,10 +79,10 @@ export default function UsersPage() {
       if (!editTarget || form.password) payload.password = form.password;
       if (editTarget) {
         await updateUser(editTarget._id, payload);
-        showToast('User updated');
+        showToast('User updated', 'success');
       } else {
         await createUser(payload);
-        showToast('User created');
+        showToast('User created', 'success');
       }
       setModalOpen(false);
       load(roleFilter);
@@ -96,10 +98,10 @@ export default function UsersPage() {
     try {
       await deleteUser(deleteTarget._id);
       setDeleteTarget(null);
-      showToast('User deleted');
+      showToast('User deleted', 'success');
       load(roleFilter);
     } catch (e: unknown) {
-      showToast(e instanceof Error ? e.message : 'Delete failed');
+      showToast(e instanceof Error ? e.message : 'Delete failed', 'danger');
     }
   }
 
@@ -111,7 +113,14 @@ export default function UsersPage() {
     <div>
       {/* Toast */}
       {toast && (
-        <div className="app-toast">{toast}</div>
+        <div className={`app-toast app-toast-${toast.type}`}>
+          <span>{toast.message}</span>
+          <button onClick={() => setToast(null)} className="app-toast-close">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
       )}
 
       {/* Page header */}
