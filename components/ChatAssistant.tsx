@@ -5,6 +5,7 @@ import { XIcon, SparklesIcon, ArrowRightIcon } from './Icons';
 import styles from './ChatAssistant.module.css';
 import Link from 'next/link';
 import { trackEvent } from '@/app/analytics';
+import { AI_BASE_URL } from '@/app/constants';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -108,7 +109,7 @@ export default function ChatAssistant() {
     trackEvent('chatbot_interaction', { query: text });
 
     try {
-      const response = await fetch('http://localhost:8000/api/chat', {
+      const response = await fetch(`${AI_BASE_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: text }),
