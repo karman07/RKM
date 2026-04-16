@@ -63,8 +63,19 @@ export default function PurchaseOrderDetailPage() {
     }
     try {
       const data = await getPurchaseOrder(id as string);
+      
+      // Normalize IDs so they are strings for the form (not populated objects)
+      const normalizedData = {
+        ...data,
+        supplier_id: (data.supplier_id && typeof data.supplier_id === 'object') ? (data.supplier_id as any)._id : data.supplier_id,
+        items: (data.items || []).map((item: any) => ({
+          ...item,
+          category_id: (item.category_id && typeof item.category_id === 'object') ? item.category_id._id : item.category_id
+        }))
+      };
+
       setPo(data);
-      setPoForm(data);
+      setPoForm(normalizedData);
     } catch (e) {
       showToast('Failed to load purchase order', 'danger');
     } finally {
@@ -269,7 +280,7 @@ export default function PurchaseOrderDetailPage() {
            <div className="space-y-1.5">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Origin Vendor <span className="text-red-500">*</span></label>
               <select 
-                value={poForm.supplier_id} 
+                value={(poForm.supplier_id as string) || ''} 
                 disabled={isPublished}
                 onChange={e => {
                   const s = suppliers.find(x => x._id === e.target.value);
@@ -385,7 +396,7 @@ export default function PurchaseOrderDetailPage() {
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Catalogue</label>
                         <select 
                           disabled={isPublished}
-                          value={item.category_id} 
+                          value={(item.category_id as string) || ''} 
                           onChange={e => handleUpdateItem(idx, 'category_id', e.target.value)}
                           className="w-full px-4 py-3 bg-slate-50/50 rounded-2xl border border-slate-200 text-sm font-semibold outline-none appearance-none"
                         >

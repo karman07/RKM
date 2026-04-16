@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import Sidebar from '@/components/Sidebar';
 import { SettingsProvider } from '@/components/SettingsContext';
 import { useAppTheme } from '@/components/AppThemeContext';
@@ -27,13 +27,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         />
       )}
 
-      <Sidebar
-        isOpen={mobileSidebarOpen}
-        isCollapsed={desktopSidebarCollapsed}
-        onClose={() => setMobileSidebarOpen(false)}
-        onToggleDesktop={() => setDesktopSidebarCollapsed(prev => !prev)}
-        onNavigate={handleNavigate}
-      />
+      <Suspense fallback={null}>
+        <Sidebar
+          isOpen={mobileSidebarOpen}
+          isCollapsed={desktopSidebarCollapsed}
+          onClose={() => setMobileSidebarOpen(false)}
+          onToggleDesktop={() => setDesktopSidebarCollapsed(prev => !prev)}
+          onNavigate={handleNavigate}
+        />
+      </Suspense>
 
       <div className={`flex-1 min-w-0 flex flex-col overflow-hidden bg-[var(--bg-app)] transition-all duration-300 ${desktopSidebarCollapsed ? 'md:ml-0' : ''}`}>
         <header className="bg-[var(--bg-surface)] backdrop-blur-md border-b border-slate-200/60 px-4 md:px-8 py-4 shrink-0 z-20">
@@ -84,7 +86,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </header>
         <main className="flex-1 overflow-y-auto p-4 md:p-8">
-          {children}
+          <Suspense fallback={<div className="flex h-[60vh] items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>}>
+            {children}
+          </Suspense>
         </main>
       </div>
     </div>

@@ -322,8 +322,8 @@ export default function SoldInventoryPage() {
                   maintainAspectRatio: false, 
                   plugins: { legend: { display: false }, tooltip: { padding: 12, backgroundColor: '#1e293b', titleFont: { size: 12 }, bodyFont: { size: 14, weight: 'bold' } } },
                   scales: { 
-                    y: { grid: { display: false }, ticks: { font: { size: 10, weight: '600' }, color: '#94a3b8' } },
-                    x: { grid: { display: false }, ticks: { font: { size: 10, weight: '600' }, color: '#94a3b8' } }
+                    y: { grid: { display: false }, ticks: { font: { size: 10, weight: 600 }, color: '#94a3b8' } },
+                    x: { grid: { display: false }, ticks: { font: { size: 10, weight: 600 }, color: '#94a3b8' } }
                   }
                 }} 
               />
@@ -347,8 +347,8 @@ export default function SoldInventoryPage() {
                   maintainAspectRatio: false, 
                   plugins: { legend: { display: false }, tooltip: { padding: 12, backgroundColor: '#1e293b', titleFont: { size: 12 }, bodyFont: { size: 14, weight: 'bold' } } },
                   scales: { 
-                    y: { grid: { display: false }, ticks: { font: { size: 10, weight: '600' }, color: '#94a3b8' } },
-                    x: { grid: { display: false }, ticks: { font: { size: 10, weight: '600' }, color: '#94a3b8' } }
+                    y: { grid: { display: false }, ticks: { font: { size: 10, weight: 600 }, color: '#94a3b8' } },
+                    x: { grid: { display: false }, ticks: { font: { size: 10, weight: 600 }, color: '#94a3b8' } }
                   }
                 }} 
               />

@@ -65,6 +65,8 @@ interface AddForm {
   source: string;
   reason: string;
   count: string;
+  selling_price: string;
+  admin_discount: string;
 }
 
 const emptyAddForm: AddForm = {
@@ -73,6 +75,8 @@ const emptyAddForm: AddForm = {
   source: '',
   reason: '',
   count: '1',
+  selling_price: '',
+  admin_discount: '0',
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -212,6 +216,8 @@ export default function InventoryPage() {
     setAddForm(prev => ({
       ...prev,
       product_id: productId,
+      selling_price: String(p?.pricing_breakdown?.final_price || 0),
+      admin_discount: String(p?.discount_percentage || 0),
     }));
   }
 
@@ -230,6 +236,8 @@ export default function InventoryPage() {
         source:              addForm.source,
         reason:              addForm.reason,
         count:               Number(addForm.count),
+        selling_price:       Number(addForm.selling_price),
+        admin_discount:      Number(addForm.admin_discount),
       });
 
       setAddModal(false);
@@ -707,6 +715,36 @@ export default function InventoryPage() {
               </select>
             </div>
 
+            {/* Selling Price Override */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Selling Price (Per Piece) <span className="text-red-500">*</span></label>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">₹</span>
+                <input
+                  type="number"
+                  className="w-full pl-8 pr-5 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-black text-slate-900 focus:ring-2 focus:ring-blue-500"
+                  value={addForm.selling_price}
+                  onChange={e => setAddForm({ ...addForm, selling_price: e.target.value })}
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+
+            {/* Admin Discount Override */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Initial Admin Discount</label>
+              <div className="relative">
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">%</span>
+                <input
+                  type="number"
+                  className="w-full px-5 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-black text-blue-600 focus:ring-2 focus:ring-blue-500"
+                  value={addForm.admin_discount}
+                  onChange={e => setAddForm({ ...addForm, admin_discount: e.target.value })}
+                  placeholder="0"
+                />
+              </div>
+            </div>
+
             <div className="md:col-span-2 space-y-1.5">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ingress Reason <span className="text-red-500">*</span></label>
               <textarea
@@ -730,7 +768,7 @@ export default function InventoryPage() {
 
       {/* ──────────────────── BULK DELETE MODAL ─────────────────────────────── */}
       {bulkDeleteModal && (
-        <Modal open onClose={() => setBulkDeleteModal(null)} title="Bulk Remove Items" width="max-w-lg">
+        <Modal open onClose={() => setBulkDeleteModal(false)} title="Bulk Remove Items" width="max-w-lg">
           <div className="p-2 space-y-5">
             <div className="p-5 rounded-2xl bg-red-50 border border-red-100 space-y-3 font-black text-red-800">
                <div className="flex justify-between items-center text-[11px] uppercase tracking-widest border-b border-red-200/50 pb-2">
@@ -752,7 +790,7 @@ export default function InventoryPage() {
             </div>
 
             <div className="pt-2 flex gap-4">
-              <button onClick={() => setBulkDeleteModal(null)} className="flex-1 py-4 rounded-2xl border border-slate-200 text-[11px] font-bold uppercase tracking-widest text-slate-400 hover:bg-slate-50">Cancel</button>
+              <button onClick={() => setBulkDeleteModal(false)} className="flex-1 py-4 rounded-2xl border border-slate-200 text-[11px] font-bold uppercase tracking-widest text-slate-400 hover:bg-slate-50">Cancel</button>
               <button 
                 onClick={handleBulkDelete} 
                 disabled={bulkDeleting || !bulkDeleteForm.reason.trim()} 

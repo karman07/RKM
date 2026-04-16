@@ -214,7 +214,7 @@ export default function ProductsPage() {
       if (effectiveCategoryFilter) params.category_id = effectiveCategoryFilter;
       const res = await getProducts(params);
       setProducts(res.data);
-      setTotal(res.total);
+      setTotal(res.meta.total);
 
       // Generate Chart Data
       if (res.data.length > 0) {
@@ -573,8 +573,8 @@ export default function ProductsPage() {
                   maintainAspectRatio: false, 
                   plugins: { legend: { display: false } },
                   scales: { 
-                    y: { grid: { display: false }, ticks: { font: { size: 9, weight: '900' }, color: '#94a3b8' } },
-                    x: { grid: { display: false }, ticks: { font: { size: 9, weight: '900' }, color: '#94a3b8' } }
+                    y: { grid: { display: false }, ticks: { font: { size: 9, weight: 900 }, color: '#94a3b8' } },
+                    x: { grid: { display: false }, ticks: { font: { size: 9, weight: 900 }, color: '#94a3b8' } }
                   }
                 }} 
               />

@@ -175,6 +175,9 @@ export interface InventoryItem {
   supplier_id?: string;
   purchase_date?: string;
   invoice_number?: string;
+  sold_at?: string;
+  reserved_at?: string;
+  returned_at?: string;
   created_at: string;
   createdAt?: string;
 }
@@ -463,6 +466,7 @@ export interface PoItem {
   fixed_making_charge?: number;
   tax_percentage?: number;
   purchase_price?: number;
+  buy_price?: number;
   selling_price?: number;
   discount_percentage?: number;
   max_manager_discount?: number;

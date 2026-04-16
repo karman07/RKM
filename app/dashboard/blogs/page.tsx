@@ -72,7 +72,7 @@ export default function BlogsPage() {
         search: search.trim() 
       });
       setBlogs(res.data);
-      setTotal(res.total);
+      setTotal(res.meta.total);
     } catch (e: any) {
       showToast(e.message || 'Failed to load blogs');
     } finally {

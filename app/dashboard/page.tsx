@@ -414,7 +414,7 @@ export default function DashboardPage() {
           getProducts({ limit: '1' }).catch(() => ({ meta: { total: 0 } })),
           getInventory({ limit: '1' }).catch(() => ({ meta: { total: 0 } })),
           getInventory({ status: 'sold', limit: '5' }).catch(() => ({ data: [] })),
-          getInventoryStats().catch(() => ({ totalCount: 0, totalValue: 0, totalProfit: 0, byStatus: {}, byCategory: [], salesTrend: [] })),
+          getInventoryStats().catch(() => ({ totalCount: 0, totalValue: 0, totalPurchaseValue: 0, totalProfit: 0, byStatus: {} as Record<string, any>, byCategory: [], salesTrend: [] })),
           getInventory({ status: 'sold', limit: '100', sold_after: fourteenDaysAgo.toISOString() }).catch(() => ({ data: [] }))
         ]);
 
