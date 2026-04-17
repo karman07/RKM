@@ -65,17 +65,16 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
       {/* Branding */}
       <div className={`py-10 flex items-center transition-all duration-500 relative ${isCollapsed ? 'justify-center px-0' : 'px-8 gap-4'}`}>
         {!isCollapsed && (
-           <button onClick={onClose} className="md:hidden absolute right-6 top-10 p-2 rounded-xl bg-slate-50 text-slate-400 hover:text-blue-600 transition-colors">
-              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M6 18L18 6M6 6l12 12" /></svg>
-           </button>
+          <button onClick={onClose} className="md:hidden absolute right-6 top-10 p-2 rounded-xl bg-slate-50 text-slate-400 hover:text-blue-600 transition-colors">
+            <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
         )}
-        <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-xl shadow-blue-500/10 shrink-0 transform group-hover:rotate-6 transition-transform overflow-hidden border border-slate-100">
-          <img src="/RKM LOGO SVG.svg" alt="RKM Logo" className="w-10 h-10 object-contain" />
+        <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shrink-0 transform group-hover:rotate-3 transition-transform overflow-hidden">
+          <img src="/RKM LOGO PNG.png" alt="RKM Logo" className="w-full h-full object-contain" />
         </div>
         {!isCollapsed && (
           <div className="animate-[fadeRise_400ms_ease-out]">
-            <h2 className="text-[18px] font-black uppercase tracking-tight text-slate-900 leading-none">RKM Jewellers</h2>
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600 mt-1">Liquidity Vault</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">Enterprise Suite</p>
           </div>
         )}
       </div>
@@ -112,7 +111,7 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
               <NavIcon active={pathname === '/dashboard/analytics'} color={pathname === '/dashboard/analytics' ? colors.activeText : colors.textMuted}>
                 <path d="M12 20v-6M6 20V10M18 20V4" />
               </NavIcon>
-              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Market Intelligence</span>}
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Business Intelligence</span>}
             </Link>
           </div>
         </section>
@@ -133,7 +132,7 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
                 <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
                 <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
               </NavIcon>
-              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] whitespace-nowrap font-bold">Vault Inventory</span>}
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] whitespace-nowrap font-bold">Inventory Ledger</span>}
             </Link>
             <Link
               href="/dashboard/inventory/sold"
@@ -150,6 +149,20 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
               </NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] whitespace-nowrap font-bold">Sales Records</span>}
             </Link>
+            <Link
+              href="/dashboard/inventory/allocate"
+              onClick={onNavigate}
+              title={isCollapsed ? "Allocate to Branch" : ""}
+              className={navClass(pathname === '/dashboard/inventory/allocate')}
+              style={getNavStyle(pathname === '/dashboard/inventory/allocate')}
+            >
+              {isCollapsed && pathname === '/dashboard/inventory/allocate' && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname === '/dashboard/inventory/allocate'} color={pathname === '/dashboard/inventory/allocate' ? colors.activeText : colors.textMuted}>
+                <path d="M19 11H7m12 0-4 4m4-4-4-4M3 5v14" />
+              </NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] whitespace-nowrap font-bold">Allocate to Branch</span>}
+            </Link>
+
             <Link
               href="/dashboard/purchase-orders"
               onClick={onNavigate}
@@ -187,15 +200,44 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
               href="/dashboard/branches"
               onClick={onNavigate}
               title={isCollapsed ? "Branches" : ""}
-              className={navClass(pathname.startsWith('/dashboard/branches'))}
-              style={getNavStyle(pathname.startsWith('/dashboard/branches'))}
+              className={navClass(pathname === '/dashboard/branches')}
+              style={getNavStyle(pathname === '/dashboard/branches')}
             >
-              {isCollapsed && pathname.startsWith('/dashboard/branches') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
-              <NavIcon active={pathname.startsWith('/dashboard/branches')} color={pathname.startsWith('/dashboard/branches') ? colors.activeText : colors.textMuted}>
+              {isCollapsed && pathname === '/dashboard/branches' && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname === '/dashboard/branches'} color={pathname === '/dashboard/branches' ? colors.activeText : colors.textMuted}>
                 <rect x="3" y="3" width="18" height="18" rx="2" />
                 <path d="M9 3v18M15 3v18M3 9h18M3 15h18" />
               </NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Branch Network</span>}
+            </Link>
+            <Link
+              href="/dashboard/analytics/branches"
+              onClick={onNavigate}
+              title={isCollapsed ? "Branch Analytics" : ""}
+              className={navClass(pathname.startsWith('/dashboard/analytics/branches'))}
+              style={getNavStyle(pathname.startsWith('/dashboard/analytics/branches'))}
+            >
+              {isCollapsed && pathname.startsWith('/dashboard/analytics/branches') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname.startsWith('/dashboard/analytics/branches')} color={pathname.startsWith('/dashboard/analytics/branches') ? colors.activeText : colors.textMuted}>
+                <path d="M3 3v18h18" />
+                <path d="m19 9-5 5-4-4-3 3" />
+              </NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Branch Analytics</span>}
+            </Link>
+            <Link
+              href="/dashboard/inventory/damaged"
+              onClick={onNavigate}
+              title={isCollapsed ? "Damaged Items" : ""}
+              className={navClass(pathname.startsWith('/dashboard/inventory/damaged'))}
+              style={getNavStyle(pathname.startsWith('/dashboard/inventory/damaged'))}
+            >
+              {isCollapsed && pathname.startsWith('/dashboard/inventory/damaged') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname.startsWith('/dashboard/inventory/damaged')} color={pathname.startsWith('/dashboard/inventory/damaged') ? colors.activeText : colors.textMuted}>
+                <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+                <path d="M12 9v4" />
+                <path d="M12 17h.01" />
+              </NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Damaged Items</span>}
             </Link>
             <Link
               href="/dashboard/attendance"
@@ -218,7 +260,7 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
 
         {/* Curation Section */}
         <section>
-          {!isCollapsed && <p className="px-8 mb-4 text-[10px] font-black uppercase tracking-[0.25em] text-slate-400 animate-[fadeRise_400ms_ease-out]">Artisan Catalog</p>}
+          {!isCollapsed && <p className="px-8 mb-4 text-[10px] font-black uppercase tracking-[0.25em] text-slate-400 animate-[fadeRise_400ms_ease-out]">Product Management</p>}
           <div className="space-y-2">
             <Link
               href="/dashboard/products"
@@ -232,7 +274,7 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
                 <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
                 <line x1="7" y1="7" x2="7.01" y2="7" />
               </NavIcon>
-              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Catalog Designs</span>}
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Product Catalog</span>}
             </Link>
             <Link
               href="/dashboard/categories"

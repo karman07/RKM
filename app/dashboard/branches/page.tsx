@@ -372,7 +372,7 @@ export default function BranchesPage() {
               <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 group-focus-within:text-blue-600" />
               <select
                 className="w-full pl-11 pr-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer appearance-none font-bold"
-                value={form.manager || ''}
+                value={ (typeof form.manager === 'object' && form.manager) ? form.manager._id : (form.manager || '') }
                 onChange={(e) => setForm({...form, manager: e.target.value})}
               >
                 <option value="">Unassigned</option>

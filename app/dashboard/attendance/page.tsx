@@ -28,10 +28,10 @@ import { getBranches, getAttendanceStats, type Branch, type AttendanceStats } fr
 import Modal from '@/components/Modal';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
-  present: { label: 'Present', color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-100' },
-  absent: { label: 'Absent', color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-100' },
-  'half-day': { label: 'Half Day', color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-100' },
-  'on-leave': { label: 'On Leave', color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-100' },
+  present: { label: 'Present', color: 'text-emerald-600', bg: 'bg-white', border: 'border-emerald-200' },
+  absent: { label: 'Absent', color: 'text-red-600', bg: 'bg-white', border: 'border-red-200' },
+  'half-day': { label: 'Half Day', color: 'text-amber-600', bg: 'bg-white', border: 'border-amber-200' },
+  'on-leave': { label: 'On Leave', color: 'text-blue-600', bg: 'bg-white', border: 'border-blue-200' },
 };
 
 export default function AttendancePage() {
@@ -186,7 +186,6 @@ export default function AttendancePage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
         <div className="bg-white border border-slate-200 rounded-[2rem] p-8 relative overflow-hidden group shadow-sm hover:shadow-md transition-all">
           <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
-             <Shield className="w-24 h-24" />
           </div>
           <div className="relative z-10 flex items-center justify-between">
             <div>
@@ -204,7 +203,7 @@ export default function AttendancePage() {
                  </div>
               </div>
             </div>
-            <div className="w-16 h-16 bg-blue-50/50 rounded-2xl flex items-center justify-center text-blue-600 border border-blue-100">
+            <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center text-blue-600 border border-blue-100 shadow-sm transition-all hover:shadow-md">
                <Shield className="w-8 h-8" />
             </div>
           </div>
@@ -212,7 +211,6 @@ export default function AttendancePage() {
 
         <div className="bg-white border border-slate-200 rounded-[2rem] p-8 relative overflow-hidden group shadow-sm hover:shadow-md transition-all">
           <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
-             <UsersIcon className="w-24 h-24" />
           </div>
           <div className="relative z-10 flex items-center justify-between">
             <div>
@@ -230,7 +228,7 @@ export default function AttendancePage() {
                  </div>
               </div>
             </div>
-            <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 border border-slate-100">
+            <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center text-slate-400 border border-slate-100 shadow-sm transition-all hover:shadow-md">
                <UsersIcon className="w-8 h-8" />
             </div>
           </div>

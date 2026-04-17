@@ -65,9 +65,11 @@ function BillModal({ items, date, onClose }: { items: InventoryItem[], date: str
         </div>
         <div className="p-8 md:p-14 lg:p-16 print:p-0 relative bg-white">
           <div className="flex justify-between items-start mb-10">
-            <div>
-              <h1 className="text-4xl md:text-5xl font-serif font-bold tracking-tight mb-2 text-[#1A6B3A]">RKM JEWELLERS</h1>
-              <p className="text-[10px] md:text-[12px] font-bold text-slate-400 uppercase tracking-[0.6em] mb-4">ARTISAN EXECUTIVE</p>
+            <div className="flex flex-col gap-4">
+              <div className="w-24 h-24 mb-2">
+                <img src="/RKM LOGO PNG.png" alt="RKM Logo" className="w-full h-full object-contain" />
+              </div>
+              <p className="text-[10px] md:text-[12px] font-bold text-slate-400 uppercase tracking-[0.6em] mb-4">OFFICIAL SETTLEMENT</p>
               <div className="space-y-1 text-[11px] text-slate-500 font-bold uppercase tracking-widest">
                 <p><span className="text-[#1A6B3A]">MOB:</span> +91 88139 47793</p>
                 <p><span className="text-[#1A6B3A]">WEB:</span> WWW.RKMJEWELLERS.COM</p>
@@ -94,7 +96,7 @@ function BillModal({ items, date, onClose }: { items: InventoryItem[], date: str
             <div className="md:text-right space-y-4">
               <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#1A6B3A]">DETAILS</p>
               <div className="space-y-1 text-sm">
-                <p><span className="text-slate-400">Vault: </span> <span className="font-bold text-slate-900">{items[0]?.unique_item_code}</span></p>
+                <p><span className="text-slate-400">ASSET CODE: </span> <span className="font-bold text-slate-900">{items[0]?.unique_item_code}</span></p>
                 <p><span className="text-slate-400">Settlement: </span> <span className="font-bold text-slate-900 uppercase">{items[0]?.payment_mode}</span></p>
               </div>
             </div>
@@ -131,7 +133,7 @@ function BillModal({ items, date, onClose }: { items: InventoryItem[], date: str
             </div>
           </div>
           <div className="pt-10 border-t border-slate-200 text-center">
-            <p className="text-[12px] font-bold text-slate-400 uppercase tracking-widest mb-3 italic">© RKM Suite — Artisan Compliance</p>
+            <p className="text-[12px] font-bold text-slate-400 uppercase tracking-widest mb-3 italic">© RKM Enterprise Suite — Inventory Compliance</p>
           </div>
         </div>
       </div>
@@ -171,7 +173,7 @@ function EditRecordModal({ item, onClose, onSave }: { item: InventoryItem; onClo
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4 animate-[fadeIn_300ms_ease-out]">
       <div className="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden">
-        <div className="px-10 py-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+        <div className="px-10 py-8 border-b border-slate-100 flex items-center justify-between bg-white">
           <div><h2 className="text-xl font-bold text-slate-900">Edit Artisan Record</h2><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Masterpiece ID: {item.unique_item_code}</p></div>
           <button onClick={onClose} className="p-3 rounded-2xl hover:bg-white hover:shadow-md transition-all text-slate-400"><svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M18 6L6 18M6 6l12 12" /></svg></button>
         </div>
@@ -376,6 +378,7 @@ export default function SoldInventoryPage() {
                   <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Masterpiece</th>
                   <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Customer</th>
                   <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Shipping</th>
+                  <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Store & Authority</th>
                   <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Settlement</th>
                   <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Valuation</th>
                   <th className="px-8 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Actions</th>
@@ -405,6 +408,24 @@ export default function SoldInventoryPage() {
                         <p className="text-[11px] font-medium text-slate-600 max-w-[200px] line-clamp-2 italic leading-relaxed">
                           {item.shipping_address ? `${item.shipping_address}, ${item.shipping_city}` : 'Store Collection Managed'}
                         </p>
+                      </td>
+                      <td className="px-8 py-6">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <span className="w-2 h-2 rounded-full bg-indigo-500" />
+                          <p className="text-[11px] font-black text-slate-900 uppercase tracking-widest leading-none">
+                            {(item.sold_at_branch_id as any)?.name || 'Direct Sale'}
+                          </p>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase w-10">MGR:</span>
+                            <span className="text-[10px] font-bold text-slate-700">{(item.sold_by_manager_id as any)?.name || '—'}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase w-10">CSH:</span>
+                            <span className="text-[10px] font-bold text-slate-600">{(item.sold_by_cashier_id as any)?.name || 'System'}</span>
+                          </div>
+                        </div>
                       </td>
                       <td className="px-8 py-6">
                         <p className="text-[11px] font-black text-slate-900 uppercase tracking-widest">{item.sale_channel || 'DIRECT'}</p>

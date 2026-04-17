@@ -203,6 +203,7 @@ export interface InventoryItem {
   /** Auto-locked from Product.purchase_price at ingress — cannot be changed */
   purchase_price: number;
   selling_price: number;
+  live_selling_price?: number;
   /** Admin provisioned discount on this item (0–100 %) */
   admin_discount: number;
   /** Manager applied discount on this item (0–100 %) */
@@ -211,6 +212,18 @@ export interface InventoryItem {
   max_manager_discount: number;
   /** Product dimensions snapshot at time of addition */
   dimensions_snapshot?: string;
+  // ─── Branch Binding ────────────────────────────────────────────
+  branch_id?: Branch | string | null;
+  sold_at_branch_id?: Branch | string | null;
+  sold_by_user_id?: User | string | null;
+  sold_by_manager_id?: User | string | null;
+  sold_by_cashier_id?: User | string | null;
+  sale_reference?: string;
+  // ─── Damage Tracking ───────────────────────────────────────────
+  damaged_by_user_id?: User | string | null;
+  damaged_at?: string;
+  damage_reason?: string;
+  // ─── Customer Details ──────────────────────────────────────────
   sold_customer_name?: string;
   sold_customer_phone?: string;
   sold_customer_email?: string;
@@ -396,16 +409,49 @@ export const getInventory = (params?: Record<string, string>) => {
 export const getInventoryByBarcode = (barcode: string) =>
   request<InventoryItem>(`/inventory/barcode/${barcode}`);
 
-export const getInventoryStats = () =>
+export interface InventoryStats {
+  totalCount: number;
+  totalValue: number;
+  totalPurchaseValue: number;
+  totalProfit: number;
+  byStatus: Record<string, { count: number; value: number }>;
+  byCategory: { name: string; count: number }[];
+  salesTrend: { date: string; count: number; revenue?: number }[];
+  damagedCount: number;
+  damagedValue: number;
+}
+
+export const getInventoryStats = (branchId?: string) =>
+  request<InventoryStats>(
+    branchId ? `/inventory/stats?branch_id=${branchId}` : '/inventory/stats'
+  );
+
+export const getBranchAnalytics = (branchId: string) =>
   request<{
-    totalCount: number;
-    totalValue: number;
-    totalPurchaseValue: number;
-    totalProfit: number;
-    byStatus: Record<string, { count: number; value: number }>;
-    byCategory: { name: string; count: number }[];
-    salesTrend: { date: string; count: number }[];
-  }>('/inventory/stats');
+    branchId: string;
+    stock: { byStatus: Record<string, { count: number; value: number }>; total: number; totalValue: number };
+    salesToday: { count: number; revenue: number; profit: number };
+    salesTrend7d: { _id: string; count: number; revenue: number }[];
+    salesTrend30d: { _id: string; count: number; revenue: number }[];
+    topProducts: { product_name: string; product_sku: string; count: number; revenue: number }[];
+    cashierPerformance: { user_id: string; user_name: string; user_role: string; sales_count: number; total_revenue: number }[];
+    damagedItems: InventoryItem[];
+    lowStockWarnings: { product_id: string; product_name: string; count: number }[];
+  }>(`/inventory/stats/branch/${branchId}`);
+
+export const getAllBranchAnalytics = () =>
+  request<{
+    stockPerBranch: { branch_id: string; branch_name: string; branch_code?: string; count: number; value: number }[];
+    salesTodayPerBranch: { branch_id: string; branch_name: string; count: number; revenue: number }[];
+    salesTrendPerBranch: { date: string; branch_id: string; branch_name: string; count: number; revenue: number }[];
+    topCashiers: { user_id: string; user_name: string; user_role: string; branch_name: string; sales_count: number; total_revenue: number }[];
+    damagedPerBranch: { branch_id: string; branch_name: string; count: number; value: number }[];
+  }>('/inventory/stats/all-branches');
+
+export const getDamagedInventory = (params?: Record<string, string>) =>
+  request<{ data: InventoryItem[]; meta: { total: number; page: number; limit: number; total_pages: number } }>(
+    '/inventory/damaged' + (params ? '?' + new URLSearchParams(params).toString() : '')
+  );
 
 export const addInventoryItem = (data: {
   product_id: string;
@@ -413,13 +459,22 @@ export const addInventoryItem = (data: {
   source: string;
   reason: string;
   count: number;
-  selling_price: number;
+  selling_price?: number;
   admin_discount?: number;
+  branch_id?: string;
 }) =>
   request<{ inserted: number; items: InventoryItem[] }>('/inventory', {
     method: 'POST',
     body: JSON.stringify(data),
   });
+
+/** Assign or remove a branch from one or more inventory items (admin only) */
+export const assignInventoryBranch = (ids: string[], branch_id: string | null) =>
+  request<{ updated: number; skipped: number }>('/inventory/assign-branch', {
+    method: 'POST',
+    body: JSON.stringify({ ids, branch_id }),
+  });
+
 
 /** Update the active discount(s) on an inventory item */
 export const updateInventoryDiscount = (id: string, discounts: { admin_discount?: number; manager_discount?: number; }) =>

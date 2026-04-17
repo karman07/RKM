@@ -9,6 +9,8 @@ import {
   getInventoryByBarcode,
   getLookups,
   getProducts,
+  getBranches,
+  getMe,
   staticUrl,
   updateInventoryStatus,
   updateInventoryDiscount,
@@ -16,6 +18,8 @@ import {
   type InventoryItem,
   type Lookup,
   type Product,
+  type Branch,
+  type User,
 } from '@/lib/api';
 import Link from 'next/link';
 import Modal from '@/components/Modal';
@@ -65,6 +69,7 @@ interface AddForm {
   source: string;
   reason: string;
   count: string;
+  branch_id: string;
 }
 
 const emptyAddForm: AddForm = {
@@ -73,6 +78,7 @@ const emptyAddForm: AddForm = {
   source: '',
   reason: '',
   count: '1',
+  branch_id: '',
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -80,6 +86,7 @@ const emptyAddForm: AddForm = {
 export default function InventoryPage() {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [lookups, setLookups] = useState<Record<string, Lookup[]>>({});
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -87,6 +94,7 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true);
   const [dbStats, setDbStats] = useState({ totalCount: 0, totalValue: 0, byStatus: {} as any });
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'danger' | 'info' } | null>(null);
+  const [user, setUser] = useState<User | null>(null);
 
   const [statusFilter, setStatusFilter] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
@@ -121,6 +129,7 @@ export default function InventoryPage() {
     shipping_country: 'India',
     sale_channel: 'store',
     payment_mode: 'cash',
+    sold_at_branch_id: '',
   });
 
   // ── Selection & Bulk Delete ───────────────────────────────────────────────
@@ -198,10 +207,12 @@ export default function InventoryPage() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    Promise.all([getProducts({ limit: '1000' }), getLookups()])
-      .then(([productResponse, lookupData]) => {
+    Promise.all([getProducts({ limit: '1000' }), getLookups(), getBranches().catch(() => []), getMe().catch(() => null)])
+      .then(([productResponse, lookupData, branchData, meData]) => {
         setProducts(productResponse.data);
         setLookups(lookupData);
+        setBranches(branchData);
+        setUser(meData);
       });
   }, []);
 
@@ -230,6 +241,7 @@ export default function InventoryPage() {
         source:              addForm.source,
         reason:              addForm.reason,
         count:               Number(addForm.count),
+        branch_id:           addForm.branch_id || undefined,
       });
 
       setAddModal(false);
@@ -313,6 +325,8 @@ export default function InventoryPage() {
       selling_price,           // Formula result (Standard Sale Price)
       extra_admin_discount: extra_admin,
       extra_manager_discount: extra_mgr,
+      admin_discount: extra_admin,
+      manager_discount: extra_mgr,
       max_manager_discount: max_mgr,
       after_admin: after_extra_admin,
       final_price: after_extra_mgr,
@@ -320,6 +334,7 @@ export default function InventoryPage() {
       is_discounted: product_disc > 0 || extra_admin > 0 || extra_mgr > 0,
       has_extra_admin: extra_admin > 0,
       has_extra_mgr: extra_mgr > 0,
+      has_manager_discount: extra_mgr > 0,
       has_manager_limit: max_mgr > 0,
       mid_price: after_extra_admin, // alias for template
     };
@@ -365,6 +380,13 @@ export default function InventoryPage() {
           <p className="text-sm font-medium text-slate-500 mt-2">Precision management of artisan masterpieces — purchase prices are locked; set selling prices &amp; discounts per item.</p>
         </div>
         <div className="flex items-center gap-4 self-start md:self-auto">
+          <Link
+            href="/dashboard/inventory/allocate"
+            className="px-6 py-3.5 rounded-2xl bg-blue-50 text-blue-600 text-xs font-bold uppercase tracking-widest shadow-sm hover:bg-blue-100 transition-all active:scale-95 flex items-center gap-2 border border-blue-100"
+          >
+            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M19 11H7m12 0-4 4m4-4-4-4M3 5v14" /></svg>
+            Allocate to Branch
+          </Link>
           <Link
             href="/dashboard/inventory/deleted"
             className="px-6 py-3.5 rounded-2xl bg-slate-100 text-slate-600 text-xs font-bold uppercase tracking-widest shadow-sm hover:bg-slate-200 transition-all active:scale-95 flex items-center gap-2"
@@ -457,7 +479,7 @@ export default function InventoryPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1300px]">
+            <table className="w-full min-w-[1450px]">
               <thead>
                 <tr className="bg-slate-50/50 border-b border-slate-100">
                   <th className="px-4 py-3 text-center w-10">
@@ -472,6 +494,7 @@ export default function InventoryPage() {
                   <th className="px-4 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.15em]">Dimensions</th>
                   <th className="px-4 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.15em]">Source</th>
                   <th className="px-4 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.15em]">Location</th>
+                  <th className="px-4 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.15em]">Branch</th>
                   <th className="px-4 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.15em]">Pricing</th>
                   <th className="px-4 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.15em]">Status</th>
                   <th className="px-4 py-3 text-right text-[9px] font-black text-slate-400 uppercase tracking-[0.15em]">Actions</th>
@@ -484,6 +507,7 @@ export default function InventoryPage() {
                   const transitions = STATUS_TRANSITIONS[item.status] || [];
                   const pricing = getLivePricing(item);
                   const dims = item.dimensions_snapshot || (product as any)?.dimensions || '';
+                  const branchObj = item.branch_id && typeof item.branch_id === 'object' ? (item.branch_id as any) : null;
                   return (
                     <tr key={item._id} className={`group hover:bg-slate-50/30 transition-colors duration-200 ${selectedIds.includes(item._id) ? 'bg-blue-50/30' : ''}`}>
                       <td className="px-4 py-3 text-center">
@@ -545,7 +569,21 @@ export default function InventoryPage() {
                         </span>
                       </td>
 
-                      {/* Pricing — Deep Visibility Live Pricing */}
+                      {/* Branch Allocation */}
+                      <td className="px-4 py-3">
+                        {branchObj ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                            <div>
+                              <p className="text-[11px] font-bold text-slate-800 leading-tight">{branchObj.name}</p>
+                              <p className="text-[9px] text-slate-400 font-medium">{branchObj.code}</p>
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest">Unallocated</span>
+                        )}
+                      </td>
+
                       <td className="px-6 py-5">
                         <div className="flex flex-col">
                           <span className={`${pricing.is_discounted ? 'text-[10px] font-bold text-slate-400 line-through opacity-70' : 'text-sm font-black text-slate-900'}`}>
@@ -590,7 +628,20 @@ export default function InventoryPage() {
                       <td className="px-4 py-3 text-right">
                         <div className="flex justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                           {transitions.length > 0 && (
-                            <button onClick={() => { setStatusModal(item); setNewStatus(transitions[0]); setNewSellingPrice(String(item.selling_price)); }} title="Change Status" className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition-all active:scale-90 shadow-sm">
+                            <button 
+                              onClick={() => { 
+                                setStatusModal(item); 
+                                setNewStatus(transitions[0]); 
+                                setNewSellingPrice(String(item.selling_price)); 
+                                // Preset branch from item or current user
+                                setSoldForm(prev => ({
+                                  ...prev,
+                                  sold_at_branch_id: (item.branch_id && typeof item.branch_id === 'object' ? (item.branch_id as any)._id : item.branch_id) || (user as any)?.branch_id || ''
+                                }));
+                              }} 
+                              title="Change Status" 
+                              className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition-all active:scale-90 shadow-sm"
+                            >
                               <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M12 20h9M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" /></svg>
                             </button>
                           )}
@@ -645,12 +696,12 @@ export default function InventoryPage() {
 
           {/* Product Snapshot Panel */}
           {selectedProduct && (
-            <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-50 to-blue-50 border border-slate-100 grid grid-cols-2 md:grid-cols-4 gap-4 animate-[fadeRise_300ms_ease-out]">
+            <div className="p-4 rounded-2xl bg-white border border-slate-100 grid grid-cols-2 md:grid-cols-4 gap-4 animate-[fadeRise_300ms_ease-out] shadow-sm">
               <div>
                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Cost Price</p>
                 <p className="text-base font-black text-amber-600 flex items-center gap-1">
                   ₹{fmt(selectedProduct.purchase_price || 0)}
-                  <span className="text-[8px] font-black bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-md uppercase border border-amber-200">LOCKED</span>
+                  <span className="text-[8px] font-black bg-white text-amber-600 px-1.5 py-0.5 rounded-md uppercase border border-amber-200 shadow-sm">LOCKED</span>
                 </p>
               </div>
               <div>
@@ -719,6 +770,21 @@ export default function InventoryPage() {
               </select>
             </div>
 
+            {/* Branch */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                Branch <span className="text-slate-300 font-medium normal-case">(Optional — assign now or allocate later)</span>
+              </label>
+              <select
+                className="w-full px-5 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-bold focus:ring-2 focus:ring-blue-500 appearance-none"
+                value={addForm.branch_id}
+                onChange={e => setAddForm({ ...addForm, branch_id: e.target.value })}
+              >
+                <option value="">No Branch (Central Stock)</option>
+                {branches.map(b => <option key={b._id} value={b._id}>{b.name} ({b.code})</option>)}
+              </select>
+            </div>
+
 
             <div className="md:col-span-2 space-y-1.5">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ingress Reason <span className="text-red-500">*</span></label>
@@ -782,7 +848,7 @@ export default function InventoryPage() {
       {deleteModal && (
         <Modal open onClose={() => setDeleteModal(null)} title="Remove Item" width="max-w-lg">
           <div className="p-2 space-y-5">
-            <div className="p-5 rounded-2xl bg-red-50 border border-red-100 space-y-2">
+            <div className="p-5 rounded-2xl bg-white border border-red-50 space-y-2 shadow-sm">
               <div className="flex justify-between text-[11px] font-bold uppercase tracking-widest text-red-600"><span>Item Code</span><span>{deleteModal.unique_item_code}</span></div>
               <div className="flex justify-between text-[11px] font-black text-red-800 tracking-tight"><span>Product</span><span>{typeof deleteModal.product_id === 'object' ? deleteModal.product_id.name : 'Unknown'}</span></div>
             </div>
@@ -817,7 +883,7 @@ export default function InventoryPage() {
           </div>
 
           {newStatus === 'sold' && (
-            <div className="grid grid-cols-2 gap-5 p-4 bg-slate-50 rounded-2xl border border-slate-100 animate-[fadeRise_300ms_ease-out]">
+            <div className="grid grid-cols-2 gap-5 p-5 bg-white rounded-2xl border border-slate-100 animate-[fadeRise_300ms_ease-out] shadow-sm">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Customer Name <span className="text-red-500">*</span></label>
                 <input className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-semibold focus:ring-2 focus:ring-blue-500" value={soldForm.sold_customer_name} onChange={e => setSoldForm({ ...soldForm, sold_customer_name: e.target.value })} placeholder="Full Name" />
@@ -843,10 +909,21 @@ export default function InventoryPage() {
                 <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">State</label><input className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white outline-none text-sm focus:ring-2 focus:ring-blue-500" value={soldForm.shipping_state} onChange={e => setSoldForm({ ...soldForm, shipping_state: e.target.value })} /></div>
                 <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">PIN</label><input className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white outline-none text-sm focus:ring-2 focus:ring-blue-500" value={soldForm.shipping_pincode} onChange={e => setSoldForm({ ...soldForm, shipping_pincode: e.target.value })} /></div>
               </div>
-              <div className="col-span-2 space-y-1.5">
+              <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Payment Mode</label>
                 <select className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-bold appearance-none focus:ring-2 focus:ring-blue-500" value={soldForm.payment_mode} onChange={e => setSoldForm({ ...soldForm, payment_mode: e.target.value })}>
                   <option value="cash">Cash</option><option value="card">Card</option><option value="upi">UPI</option><option value="bank_transfer">Bank Transfer</option><option value="cheque">Cheque</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sale Branch <span className="text-red-500">*</span></label>
+                <select 
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-bold appearance-none focus:ring-2 focus:ring-blue-500" 
+                  value={soldForm.sold_at_branch_id} 
+                  onChange={e => setSoldForm({ ...soldForm, sold_at_branch_id: e.target.value })}
+                >
+                  <option value="">Select Sale Branch...</option>
+                  {branches.map(b => <option key={b._id} value={b._id}>{b.name} ({b.code})</option>)}
                 </select>
               </div>
             </div>

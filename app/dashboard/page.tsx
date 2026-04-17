@@ -489,7 +489,7 @@ export default function DashboardPage() {
           totalProfit: dbStats.totalProfit,
           salesTrend: { labels, data: trendData, dates: trendDates },
           allSoldItems: (allSoldRes as any).data || [],
-          attendanceSummary: attSummary,
+          attendanceSummary: attSummary as any,
           topOperatives: (attStats || []).sort((a: any, b: any) => b.present - a.present).slice(0, 5)
         });
 
@@ -789,11 +789,11 @@ export default function DashboardPage() {
                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-600">Administrative (Managers)</span>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                   <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100/50">
+                   <div className="bg-white p-4 rounded-2xl border border-emerald-100 shadow-sm transition-all hover:shadow-md">
                       <p className="text-[10px] font-bold text-emerald-600 uppercase mb-1">Present</p>
                       <p className="text-xl font-black text-emerald-700">{stats?.attendanceSummary.roles?.manager?.present ?? 0}</p>
                    </div>
-                   <div className="bg-red-50 p-4 rounded-2xl border border-red-100/50">
+                   <div className="bg-white p-4 rounded-2xl border border-red-100 shadow-sm transition-all hover:shadow-md">
                       <p className="text-[10px] font-bold text-red-600 uppercase mb-1">Absent</p>
                       <p className="text-xl font-black text-red-700">{stats?.attendanceSummary.roles?.manager?.absent ?? 0}</p>
                    </div>
@@ -807,11 +807,11 @@ export default function DashboardPage() {
                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600">Operational Personnel</span>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                   <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100/50">
+                   <div className="bg-white p-4 rounded-2xl border border-emerald-100 shadow-sm">
                       <p className="text-[10px] font-bold text-emerald-600 uppercase mb-1">Present</p>
                       <p className="text-xl font-black text-emerald-700">{stats?.attendanceSummary.roles?.cashier?.present ?? 0}</p>
                    </div>
-                   <div className="bg-red-50 p-4 rounded-2xl border border-red-100/50">
+                   <div className="bg-white p-4 rounded-2xl border border-red-100 shadow-sm">
                       <p className="text-[10px] font-bold text-red-600 uppercase mb-1">Absent</p>
                       <p className="text-xl font-black text-red-700">{stats?.attendanceSummary.roles?.cashier?.absent ?? 0}</p>
                    </div>
