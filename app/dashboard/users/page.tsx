@@ -1,18 +1,35 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { getUsers, createUser, updateUser, deleteUser, type User } from '@/lib/api';
+import { useSearchParams } from 'next/navigation';
+import { getBranches, getUsers, createUser, updateUser, deleteUser, getAttendanceStats, type User, type Branch, type AttendanceStats } from '@/lib/api';
 import Modal from '@/components/Modal';
+import { 
+  Plus, 
+  Search, 
+  Filter, 
+  Edit2, 
+  Trash2, 
+  ChevronLeft, 
+  ChevronRight,
+  Shield,
+  UserCheck,
+  Building2,
+  Mail,
+  Loader2,
+  MoreVertical,
+  Key,
+  User as UserIcon,
+  Calendar,
+  DollarSign,
+  Briefcase,
+  TrendingUp,
+  Award
+} from 'lucide-react';
 
-const ROLES = ['admin', 'manager', 'cashier'] as const;
-
-const roleBadge: Record<string, { wrap: string; dot: string }> = {
-  admin:   { wrap: 'badge-base bg-blue-100 text-blue-700 border border-blue-300',     dot: 'bg-blue-500' },
-  manager: { wrap: 'badge-base bg-violet-100 text-violet-700 border border-violet-300', dot: 'bg-violet-500' },
-  cashier: { wrap: 'badge-base bg-slate-100 text-slate-600 border border-slate-300',   dot: 'bg-slate-400' },
-};
-const statusBadge = {
-  active:   { wrap: 'badge-status-active', dot: 'bg-emerald-500' },
-  inactive: { wrap: 'badge-status-inactive', dot: 'bg-red-400' },
+const roleBadge: Record<string, { wrap: string; dot: string; icon: any }> = {
+  admin:   { wrap: 'bg-blue-50 text-blue-700 border-blue-100',     dot: 'bg-blue-600', icon: Shield },
+  manager: { wrap: 'bg-violet-50 text-violet-700 border-violet-100', dot: 'bg-violet-600', icon: UserCheck },
+  cashier: { wrap: 'bg-slate-50 text-slate-600 border-slate-100',   dot: 'bg-slate-400', icon: Key },
 };
 
 interface UserForm {
@@ -20,41 +37,76 @@ interface UserForm {
   email: string;
   password: string;
   role: string;
+  branch?: string;
   is_active: boolean;
+  base_salary: number;
+  salary_type: string;
+  joining_date: string;
 }
-const emptyForm: UserForm = { name: '', email: '', password: '', role: 'cashier', is_active: true };
+
+const emptyForm: UserForm = { 
+  name: '', 
+  email: '', 
+  password: '', 
+  role: 'cashier', 
+  is_active: true,
+  base_salary: 0,
+  salary_type: 'monthly',
+  joining_date: ''
+};
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
   const [roleFilter, setRoleFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const limit = 10;
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<User | null>(null);
   const [form, setForm] = useState<UserForm>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'danger' | 'info' } | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'danger' } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
+  const [profileTarget, setProfileTarget] = useState<User | null>(null);
+  const [profileStats, setProfileStats] = useState<AttendanceStats | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(false);
 
-  async function load(role?: string) {
+  async function load() {
     setLoading(true);
     try {
-      const data = await getUsers(role || undefined);
-      setUsers(data);
-    } catch (e: unknown) {
-      showToast(e instanceof Error ? e.message : 'Failed to load', 'danger');
+      const [userData, branchData] = await Promise.all([
+        getUsers(roleFilter || undefined, page, limit),
+        getBranches()
+      ]);
+      setUsers(userData.data);
+      setTotal(userData.meta.total);
+      setBranches(branchData);
+    } catch (e: any) {
+      showToast(e.message || 'Failed to load data', 'danger');
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => { load(roleFilter); }, [roleFilter]);
+  const searchParams = useSearchParams();
 
-  function showToast(message: string, type: 'success' | 'danger' | 'info' = 'info') {
+  useEffect(() => { load(); }, [roleFilter, page]);
+
+  useEffect(() => {
+    const profileId = searchParams.get('profile');
+    if (profileId && users.length > 0) {
+      const u = users.find(u => u._id === profileId);
+      if (u) openProfile(u);
+    }
+  }, [searchParams, users]);
+
+  function showToast(message: string, type: 'success' | 'danger') {
     setToast({ message, type });
-    setTimeout(() => {
-      setToast((prev) => (prev?.message === message ? null : prev));
-    }, 4000);
+    setTimeout(() => setToast(null), 3000);
   }
 
   function openCreate() {
@@ -66,28 +118,62 @@ export default function UsersPage() {
 
   function openEdit(u: User) {
     setEditTarget(u);
-    setForm({ name: u.name, email: u.email, password: '', role: u.role, is_active: u.is_active });
+    setForm({ 
+      name: u.name, 
+      email: u.email, 
+      password: '', 
+      role: u.role, 
+      branch: (u.branch as any)?._id || (u.branch as string),
+      is_active: u.is_active,
+      base_salary: u.base_salary || 0,
+      salary_type: u.salary_type || 'monthly',
+      joining_date: u.joining_date || ''
+    });
     setError('');
     setModalOpen(true);
+  }
+
+  async function openProfile(u: User) {
+    setProfileTarget(u);
+    setLoadingProfile(true);
+    try {
+      const now = new Date();
+      const stats = await getAttendanceStats(u._id, now.getMonth(), now.getFullYear());
+      setProfileStats(stats);
+    } catch (e) {
+      setProfileStats(null);
+    } finally {
+      setLoadingProfile(false);
+    }
   }
 
   async function handleSave() {
     setSaving(true);
     setError('');
     try {
-      const payload: Record<string, unknown> = { name: form.name, email: form.email, role: form.role, isActive: form.is_active };
+      const payload: any = { 
+        name: form.name, 
+        email: form.email, 
+        role: form.role, 
+        isActive: form.is_active,
+        branch: form.branch || null,
+        base_salary: form.base_salary,
+        salary_type: form.salary_type,
+        joining_date: form.joining_date
+      };
       if (!editTarget || form.password) payload.password = form.password;
+      
       if (editTarget) {
         await updateUser(editTarget._id, payload);
-        showToast('User updated', 'success');
+        showToast('User registry updated', 'success');
       } else {
         await createUser(payload);
-        showToast('User created', 'success');
+        showToast('New operative created', 'success');
       }
       setModalOpen(false);
-      load(roleFilter);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to save');
+      load();
+    } catch (e: any) {
+      setError(e.message || 'Transmission failed');
     } finally {
       setSaving(false);
     }
@@ -98,240 +184,450 @@ export default function UsersPage() {
     try {
       await deleteUser(deleteTarget._id);
       setDeleteTarget(null);
-      showToast('User deleted', 'success');
-      load(roleFilter);
-    } catch (e: unknown) {
-      showToast(e instanceof Error ? e.message : 'Delete failed', 'danger');
+      showToast('Operative removed from registry', 'success');
+      load();
+    } catch (e: any) {
+      showToast(e.message || 'Delete failed', 'danger');
     }
   }
 
-  function set(field: keyof UserForm, value: unknown) {
-    setForm((f) => ({ ...f, [field]: value }));
-  }
+  const totalPages = Math.ceil(total / limit);
 
   return (
-    <div>
-      {/* Toast */}
+    <div className="max-w-[1600px] mx-auto">
+      {/* Toast Notification */}
       {toast && (
-        <div className={`app-toast app-toast-${toast.type}`}>
-          <span>{toast.message}</span>
-          <button onClick={() => setToast(null)} className="app-toast-close">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
+        <div className={`fixed top-6 right-6 z-[100] px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300 ${
+          toast.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
+        }`}>
+          <span className="text-sm font-bold tracking-wide">{toast.message}</span>
         </div>
       )}
 
-      {/* Page header */}
-      <div className="flex items-center justify-between mb-6">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Users</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Manage admin, manager and cashier accounts</p>
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-1.5 h-8 bg-blue-600 rounded-full" />
+            <h1 className="text-4xl font-bold text-slate-900 tracking-tight">Access Registry</h1>
+          </div>
+          <p className="text-slate-500 font-medium ml-4 uppercase tracking-[0.2em] text-[10px]">
+            Manage Principal, Manager, and Operational Personnels
+          </p>
         </div>
+        
         <button
           onClick={openCreate}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
+          className="flex items-center gap-3 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white px-6 py-3.5 rounded-2xl transition-all shadow-lg shadow-blue-600/20 group"
         >
-          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          Add User
+          <Plus className="w-5 h-5 group-hover:rotate-90 transition-transform duration-300" />
+          <span className="font-bold text-sm tracking-wide">Recruit New Operative</span>
         </button>
       </div>
 
-      {/* Filter */}
-      <div className="flex gap-2 mb-5">
+      {/* Role Multi-Select / Filter */}
+      <div className="flex flex-wrap gap-2 mb-8">
         {(['', 'admin', 'manager', 'cashier'] as const).map((r) => (
           <button
             key={r}
-            onClick={() => setRoleFilter(r)}
-            className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            onClick={() => { setRoleFilter(r); setPage(1); }}
+            className={`px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
               roleFilter === r
-                ? 'bg-blue-600 text-white'
-                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20 px-8'
+                : 'bg-white border border-slate-200 text-slate-400 hover:text-blue-600 hover:border-blue-200'
             }`}
           >
-            {r === '' ? 'All Roles' : r.charAt(0).toUpperCase() + r.slice(1)}
+            {r === '' ? 'All Personnels' : r + 's'}
           </button>
         ))}
       </div>
 
-      {/* Table */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="w-7 h-7 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-          </div>
-        ) : users.length === 0 ? (
-          <div className="text-center py-20 text-slate-400 text-sm">No users found</div>
-        ) : (
-          <table className="w-full text-sm">
+      {/* Table Interface */}
+      <div className="bg-white border border-slate-200 rounded-[2.5rem] shadow-[0_8px_40px_rgba(0,0,0,0.03)] overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="text-left px-5 py-3.5 font-medium text-slate-600">Name</th>
-                <th className="text-left px-5 py-3.5 font-medium text-slate-600">Email</th>
-                <th className="text-left px-5 py-3.5 font-medium text-slate-600">Role</th>
-                <th className="text-left px-5 py-3.5 font-medium text-slate-600">Status</th>
-                <th className="px-5 py-3.5" />
+              <tr className="bg-slate-50/50 border-b border-slate-100">
+                <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Personnel Status</th>
+                <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Secure Identity</th>
+                <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Strategic Branch</th>
+                <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 text-right">Registry Operations</th>
               </tr>
             </thead>
-            <tbody>
-              {users.map((u) => (
-                <tr key={u._id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors">
-                  <td className="px-5 py-3.5 font-medium text-slate-900">{u.name}</td>
-                  <td className="px-5 py-3.5 text-slate-600">{u.email}</td>
-                  <td className="px-5 py-3.5">
-                    {(() => {
-                      const b = roleBadge[u.role] ?? roleBadge.cashier;
-                      return (
-                        <span className={b.wrap}>
-                          <span className={`badge-dot ${b.dot}`} aria-hidden="true" />
-                          {u.role}
-                        </span>
-                      );
-                    })()}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    {(() => {
-                      const b = u.is_active ? statusBadge.active : statusBadge.inactive;
-                      return (
-                        <span className={b.wrap}>
-                          <span className={`badge-dot ${b.dot}`} aria-hidden="true" />
-                          {u.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                      );
-                    })()}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => openEdit(u)}
-                        className="text-slate-400 hover:text-blue-600 transition-colors p-1.5 rounded-lg hover:bg-blue-50"
-                      >
-                        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                        </svg>
-                      </button>
-                      <button
-                        onClick={() => setDeleteTarget(u)}
-                        className="text-slate-400 hover:text-red-600 transition-colors p-1.5 rounded-lg hover:bg-red-50"
-                      >
-                        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <polyline points="3 6 5 6 21 6" />
-                          <path d="M19 6l-1 14H6L5 6" />
-                          <path d="M10 11v6M14 11v6" />
-                          <path d="M9 6V4h6v2" />
-                        </svg>
-                      </button>
-                    </div>
-                  </td>
+            <tbody className="divide-y divide-slate-50">
+              {loading ? (
+                [1, 2, 3].map(i => (
+                  <tr key={i} className="animate-pulse">
+                    <td colSpan={4} className="px-8 py-6 h-20 bg-white" />
+                  </tr>
+                ))
+              ) : users.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-8 py-32 text-center text-slate-400 italic text-sm font-medium">No personnel found in current sector</td>
                 </tr>
-              ))}
+              ) : (
+                users.map((u) => {
+                  const badge = roleBadge[u.role] || roleBadge.cashier;
+                  const Icon = badge.icon;
+                  return (
+                    <tr key={u._id} className="group hover:bg-slate-50/50 transition-colors">
+                      <td className="px-8 py-6">
+                        <div className="flex items-center gap-4">
+                          <div className={`p-2.5 rounded-xl border ${badge.wrap}`}>
+                            <Icon className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-black text-slate-900 leading-tight">{u.name}</p>
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{u.role}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-8 py-6">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Mail className="w-3 h-3 text-slate-300" />
+                          <span className="text-sm font-semibold text-slate-600 tracking-tight">{u.email}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className={`w-1.5 h-1.5 rounded-full ${u.is_active ? 'bg-emerald-500' : 'bg-red-400'}`} />
+                          <span className={`text-[10px] font-black uppercase tracking-widest ${u.is_active ? 'text-emerald-600' : 'text-red-400'}`}>
+                            {u.is_active ? 'Authorized' : 'Suspended'}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-8 py-6">
+                        {u.branch ? (
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
+                              <Building2 className="w-3.5 h-3.5" />
+                            </div>
+                            <div>
+                               <p className="text-xs font-black text-slate-800 tracking-tight">{(u.branch as any).name}</p>
+                               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{(u.branch as any).code}</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">Unassigned Hub</span>
+                        )}
+                      </td>
+                      <td className="px-8 py-6">
+                        <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button 
+                            onClick={() => openProfile(u)}
+                            className="p-2.5 rounded-xl bg-slate-50 text-slate-400 hover:bg-blue-600 hover:text-white transition-all transform active:scale-95"
+                            title="Audit Operative Performance"
+                          ><UserIcon className="w-4 h-4" /></button>
+                          <button onClick={() => openEdit(u)} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm">
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => setDeleteTarget(u)} className="p-2.5 bg-red-50 text-red-600 rounded-xl hover:bg-red-600 hover:text-white transition-all shadow-sm">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
-        )}
+        </div>
+
+        {/* Profile Modal */}
+        <Modal open={!!profileTarget} onClose={() => { setProfileTarget(null); setProfileStats(null); }} title="Operative Intelligence Audit">
+          {profileTarget && (
+            <div className="space-y-8">
+              {/* Profile Bar */}
+              <div className="flex items-center gap-6 p-6 bg-slate-50 rounded-[2.5rem] border border-slate-100">
+                <div className="w-20 h-20 bg-blue-600 rounded-3xl flex items-center justify-center text-white shadow-lg shadow-blue-600/20">
+                  <UserIcon className="w-10 h-10" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-black text-slate-900 leading-tight">{profileTarget.name}</h3>
+                  <div className="flex items-center gap-3 mt-1">
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">{profileTarget.role}</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic">{profileTarget.email}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Stats Grid */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-6 bg-white border border-slate-100 rounded-[2rem] shadow-sm hover:shadow-md transition-all">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Maison Salary</p>
+                  <div className="flex items-end gap-2">
+                    <span className="text-3xl font-black text-slate-900 leading-none">₹{profileTarget.base_salary?.toLocaleString()}</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase pb-1">/ {profileTarget.salary_type}</span>
+                  </div>
+                </div>
+                <div className="p-6 bg-white border border-slate-100 rounded-[2rem] shadow-sm hover:shadow-md transition-all">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Strategic Hub</p>
+                  <div className="flex items-center gap-3 text-slate-900">
+                    <Building2 className="w-5 h-5 text-blue-600" />
+                    <span className="text-sm font-black uppercase tracking-tight">{typeof profileTarget.branch === 'object' ? (profileTarget.branch as any).name : 'Central Command'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Attendance Performance */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between px-2">
+                  <h4 className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400 italic">Temporal Performance (Current Month)</h4>
+                  <Calendar className="w-4 h-4 text-slate-300" />
+                </div>
+                {loadingProfile ? (
+                   <div className="h-40 bg-slate-50 rounded-[2rem] animate-pulse flex items-center justify-center">
+                     <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                   </div>
+                ) : profileStats ? (
+                  <div className="grid grid-cols-4 gap-3">
+                    <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 text-center">
+                      <p className="text-[10px] font-bold text-emerald-600 uppercase mb-1">Present</p>
+                      <p className="text-xl font-black text-emerald-700">{profileStats.present}</p>
+                    </div>
+                    <div className="bg-red-50 p-4 rounded-2xl border border-red-100 text-center">
+                      <p className="text-[10px] font-bold text-red-600 uppercase mb-1">Absent</p>
+                      <p className="text-xl font-black text-red-700">{profileStats.absent}</p>
+                    </div>
+                    <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 text-center">
+                      <p className="text-[10px] font-bold text-amber-600 uppercase mb-1">Half Day</p>
+                      <p className="text-xl font-black text-amber-700">{profileStats.halfDay}</p>
+                    </div>
+                    <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 text-center">
+                      <p className="text-[10px] font-bold text-blue-600 uppercase mb-1">Leave</p>
+                      <p className="text-xl font-black text-blue-700">{profileStats.onLeave}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-10 bg-slate-50 rounded-[2rem] text-center border border-dashed border-slate-200">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No temporal data available for period.</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Fiscal Projection */}
+              <div className="p-8 bg-slate-900 rounded-[2.5rem] text-white relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
+                   <TrendingUp className="w-20 h-20" />
+                </div>
+                <div className="relative z-10">
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-400 mb-2">Projected Monthly Settlement</p>
+                  <div className="flex items-baseline gap-3">
+                    <h5 className="text-4xl font-black tracking-tighter">₹{profileStats ? (profileTarget.base_salary * (profileStats.present / (profileStats.totalWorkingDays || 30))).toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—'}</h5>
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Calculated ROI</span>
+                  </div>
+                  <p className="text-[9px] text-slate-500 mt-4 leading-relaxed font-medium italic">
+                    Fiscal indexing based on current temporal deployment velocity. Final payout subject to artisan compliance and discretionary performance bonuses.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-4 pt-2">
+                 <button onClick={() => { setProfileTarget(null); setProfileStats(null); }} className="flex-1 py-4 border border-slate-200 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 hover:bg-slate-50 transition-all">
+                   Deactivate Audit
+                 </button>
+                 <button className="flex-1 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] shadow-lg shadow-blue-600/20 active:scale-95 transition-all">
+                   Enlist Report
+                 </button>
+              </div>
+            </div>
+          )}
+        </Modal>
+
+        {/* Improved Pagination */}
+        <div className="px-8 py-6 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between">
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+            Sector {page} of {totalPages || 1} • {total} Access Points
+          </p>
+          <div className="flex gap-2">
+            <button 
+              disabled={page === 1 || loading}
+              onClick={() => setPage(p => p - 1)}
+              className="p-3 bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-blue-600 hover:border-blue-200 disabled:opacity-30 disabled:pointer-events-none transition-all"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <button 
+              disabled={page === totalPages || totalPages === 0 || loading}
+              onClick={() => setPage(p => p + 1)}
+              className="p-3 bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-blue-600 hover:border-blue-200 disabled:opacity-30 disabled:pointer-events-none transition-all"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Create/Edit Modal */}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editTarget ? 'Edit User' : 'Add User'}>
-        <div className="space-y-4">
-          {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">{error}</div>}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editTarget ? 'Edit Operative Registry' : 'Recruit New Personnel'}>
+        <div className="space-y-6">
+           {error && (
+            <div className="bg-red-50 border border-red-200 text-red-600 text-[10px] font-black uppercase tracking-widest rounded-2xl px-5 py-4 flex items-center gap-3 animate-pulse">
+              <XCircle className="w-4 h-4" />
+              {error}
+            </div>
+          )}
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Identity Name</label>
             <input
-              className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
               value={form.name}
-              onChange={(e) => set('name', e.target.value)}
+              onChange={(e) => setForm({...form, name: e.target.value})}
               placeholder="Jane Smith"
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Communication Channel (Email)</label>
             <input
               type="email"
-              className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
               value={form.email}
-              onChange={(e) => set('email', e.target.value)}
-              placeholder="jane@example.com"
+              onChange={(e) => setForm({...form, email: e.target.value})}
+              placeholder="operatvie@rk-vault.com"
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Password {editTarget && <span className="text-slate-400 font-normal">(leave blank to keep)</span>}
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">
+              Secure Passcode {editTarget && <span className="text-slate-300 font-medium tracking-tight normal-case">— Optional Sync</span>}
             </label>
             <input
               type="password"
-              className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
               value={form.password}
-              onChange={(e) => set('password', e.target.value)}
+              onChange={(e) => setForm({...form, password: e.target.value})}
               placeholder="••••••••"
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Role</label>
-            <select
-              className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-              value={form.role}
-              onChange={(e) => set('role', e.target.value)}
-            >
-              {ROLES.map((r) => (
-                <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
-              ))}
-            </select>
+          <div className="grid grid-cols-2 gap-5">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Registry Role</label>
+              <select
+                className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-black uppercase tracking-widest focus:outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer"
+                value={form.role}
+                onChange={(e) => setForm({...form, role: e.target.value})}
+              >
+                <option value="cashier">Cashier</option>
+                <option value="manager">Manager</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Strategic Hub (Branch)</label>
+              <select
+                className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-black uppercase tracking-widest focus:outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer"
+                value={form.branch || ''}
+                onChange={(e) => setForm({...form, branch: e.target.value || undefined})}
+              >
+                <option value="">Standard Access</option>
+                {branches.map(b => (
+                  <option key={b._id} value={b._id}>{b.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="grid grid-cols-2 gap-5">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Maison Salary (Payout)</label>
+              <input
+                type="number"
+                className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
+                value={form.base_salary}
+                onChange={(e) => setForm({...form, base_salary: Number(e.target.value)})}
+                placeholder="0.00"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Salary Trajectory</label>
+              <select
+                className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-black uppercase tracking-widest focus:outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer"
+                value={form.salary_type}
+                onChange={(e) => setForm({...form, salary_type: e.target.value})}
+              >
+                <option value="monthly">Monthly Payout</option>
+                <option value="daily">Daily Wage</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Enlistment Date (Joining Date)</label>
+            <input
+              type="date"
+              className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
+              value={form.joining_date}
+              onChange={(e) => setForm({...form, joining_date: e.target.value})}
+            />
+          </div>
+
+          <div className="flex items-center justify-between p-5 bg-slate-50 rounded-[2rem] border border-slate-100">
+            <div>
+              <p className="text-xs font-black uppercase tracking-widest text-slate-900 mb-0.5">Clearance Status</p>
+              <p className="text-[10px] text-slate-500 font-medium tracking-tight">Set if this identity has active vault clearance</p>
+            </div>
             <button
               type="button"
-              onClick={() => set('is_active', !form.is_active)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${form.is_active ? 'bg-blue-600' : 'bg-slate-300'}`}
+              onClick={() => setForm({...form, is_active: !form.is_active})}
+              className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all ${form.is_active ? 'bg-blue-600' : 'bg-slate-300'}`}
             >
-              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${form.is_active ? 'translate-x-6' : 'translate-x-1'}`} />
+              <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-all shadow-sm ${form.is_active ? 'translate-x-[22px]' : 'translate-x-1'}`} />
             </button>
-            <span className="text-sm text-slate-700">Active</span>
           </div>
 
-          <div className="flex gap-3 pt-2">
-            <button
+          <div className="flex gap-4 pt-4">
+             <button
               onClick={() => setModalOpen(false)}
-              className="flex-1 px-4 py-2.5 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+              className="flex-1 py-4 border border-slate-200 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 hover:bg-slate-50 transition-all active:scale-95"
             >
-              Cancel
+              Abort
             </button>
             <button
               onClick={handleSave}
               disabled={saving}
-              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-medium py-2.5 rounded-lg transition-colors"
+              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-2xl transition-all shadow-lg shadow-blue-600/20 active:scale-95 flex items-center justify-center gap-2"
             >
-              {saving ? 'Saving...' : editTarget ? 'Update' : 'Create'}
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : editTarget ? 'Sync Metadata' : 'Initiate Registry'}
             </button>
           </div>
         </div>
       </Modal>
 
-      {/* Delete Confirm */}
-      <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Delete User">
-        <div className="space-y-4">
-          <p className="text-sm text-slate-600">
-            Are you sure you want to delete <strong>{deleteTarget?.name}</strong>? This action cannot be undone.
-          </p>
-          <div className="flex gap-3">
-            <button onClick={() => setDeleteTarget(null)} className="flex-1 px-4 py-2.5 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors">
-              Cancel
+      {/* Delete Confirmation */}
+      <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Revoke Clearace">
+        <div className="space-y-6 text-center">
+          <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto">
+            <Trash2 className="w-10 h-10 text-red-600" />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-slate-900 mb-2 italic">Confirm Revocation</h3>
+            <p className="text-sm text-slate-500 leading-relaxed px-4">
+              Are you prepared to remove <strong>{deleteTarget?.name}</strong> from the Maison registry? All access tokens will be invalidated immediately.
+            </p>
+          </div>
+          <div className="flex gap-4">
+            <button onClick={() => setDeleteTarget(null)} className="flex-1 py-4 border border-slate-200 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 hover:bg-slate-50 transition-all">
+              Abort
             </button>
-            <button onClick={handleDelete} className="flex-1 bg-red-600 hover:bg-red-700 text-white text-sm font-medium py-2.5 rounded-lg transition-colors">
-              Delete
+            <button onClick={handleDelete} className="flex-1 bg-red-600 hover:bg-red-700 text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-2xl transition-all shadow-lg shadow-red-600/20 active:scale-95">
+              Confirm Deletion
             </button>
           </div>
         </div>
       </Modal>
     </div>
+  );
+}
+
+function XCircle(props: any) {
+  return (
+    <svg {...props} width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+      <circle cx="12" cy="12" r="10" />
+      <line x1="15" y1="9" x2="9" y2="15" />
+      <line x1="9" y1="9" x2="15" y2="15" />
+    </svg>
   );
 }

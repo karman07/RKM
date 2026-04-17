@@ -40,9 +40,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className={`flex-1 min-w-0 flex flex-col overflow-hidden bg-[var(--bg-app)] transition-all duration-300 ${desktopSidebarCollapsed ? 'md:ml-0' : ''}`}>
         <header className="bg-[var(--bg-surface)] backdrop-blur-md border-b border-slate-200/60 px-4 md:px-8 py-4 shrink-0 z-20">
           <div className="flex items-center justify-between">
-            <div>
-              <p className="text-[10px] uppercase tracking-[0.2em] text-[var(--text-muted)] font-bold mb-0.5">RKM Management</p>
-              <h1 className="text-sm font-bold text-[var(--text-main)] uppercase tracking-tight">Admin Control Center</h1>
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center p-1.5 shadow-sm border border-slate-100">
+                <img src="/RKM LOGO SVG.svg" alt="RKM Logo" className="w-full h-full object-contain" />
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-[var(--text-muted)] font-bold mb-0.5">RKM Management</p>
+                <h1 className="text-sm font-bold text-[var(--text-main)] uppercase tracking-tight">Admin Control Center</h1>
+              </div>
             </div>
 
             <div className="flex items-center gap-3">

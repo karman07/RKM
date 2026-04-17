@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { updateSettings, getLookups, type Lookup } from '@/lib/api';
+import { updateSettings, syncAllInventoryPrices, getLookups, type Lookup } from '@/lib/api';
 import { useSettings } from '@/components/SettingsContext';
 import { useAppTheme } from '@/components/AppThemeContext';
 import { APP_THEME } from '@/lib/theme-constants';
@@ -150,7 +150,19 @@ export default function SettingsPage() {
         note: note.trim(),
       });
       await reload();
-      showToast('Settings saved successfully.', 'success');
+      showToast('Rates saved. Syncing inventory prices…', 'info');
+
+      // Sync inventory prices in the background — show result
+      try {
+        const syncResult = await syncAllInventoryPrices();
+        showToast(
+          `✓ Rates applied. ${syncResult.updated} inventory item${syncResult.updated === 1 ? '' : 's'} repriced.`,
+          'success',
+        );
+      } catch {
+        // Backend sync already runs server-side; this is just a UI notification
+        showToast('Settings saved. Inventory will reprice on next load.', 'success');
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to save');
     } finally {

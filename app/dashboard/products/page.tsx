@@ -4,6 +4,7 @@ import { useSearchParams } from 'next/navigation';
 import {
   getProducts, createProduct, updateProduct, deleteProduct,
   getProductById, getCategories, getLookups, uploadProductImages, removeProductImage, regenerateProductBarcode,
+  syncProductInventoryPrices,
   staticUrl,
   type Product, type Category, type Lookup, type PricingBreakdown,
 } from '@/lib/api';
@@ -82,12 +83,21 @@ function resolveCategoryId(value: string, categories: Category[]): string {
   return '';
 }
 
+interface StoneRow {
+  stone_type: string;
+  weight: string;
+  price_override: string;
+}
+
 interface ProductForm {
   name: string; sku: string; category_id: string; description: string;
   gender: string; occasion: string; metal_type: string; purity: string; metal_color: string;
   dimensions: string;
   gross_weight: string; net_weight: string; stone_weight: string;
+  wastage_percentage: string;
   has_stones: boolean; stone_type: string;
+  /** Multi-stone breakdown rows */
+  stones: StoneRow[];
   making_charge_type: string; making_charge_rate: string; fixed_making_charge: string;
   tax_percentage: string; discount_percentage: string; price_override: string;
   /** Fixed cost price — admin sets this; it gets locked on inventory items */
@@ -101,7 +111,9 @@ const emptyForm: ProductForm = {
   metal_type: '', purity: '', metal_color: '',
   dimensions: '',
   gross_weight: '', net_weight: '', stone_weight: '',
+  wastage_percentage: '0',
   has_stones: false, stone_type: '',
+  stones: [],
   making_charge_type: '', making_charge_rate: '', fixed_making_charge: '',
   tax_percentage: '3', discount_percentage: '0', price_override: '',
   purchase_price: '',
@@ -187,8 +199,10 @@ export default function ProductsPage() {
       gross_weight: '',
       net_weight: '',
       stone_weight: '',
+      wastage_percentage: '0',
       has_stones: false,
       stone_type: stoneTypeOptions[0]?.value ?? '',
+      stones: [],
       making_charge_type: makingChargeTypeOptions[0]?.value ?? '',
       making_charge_rate: settings.making_charge_rate ? String(settings.making_charge_rate) : '',
       fixed_making_charge: settings.fixed_making_charge ? String(settings.fixed_making_charge) : '',
@@ -294,7 +308,14 @@ export default function ProductsPage() {
       dimensions: p.dimensions ?? '',
       gross_weight: String(p.gross_weight), net_weight: String(p.net_weight),
       stone_weight: String(p.stone_weight ?? ''),
-      has_stones: p.has_stones, stone_type: p.stone_type ?? '',
+      wastage_percentage: String((p as any).wastage_percentage ?? '0'),
+      has_stones: p.has_stones,
+      stone_type: p.stone_type ?? '',
+      stones: ((p as any).stones ?? []).map((s: any) => ({
+        stone_type: s.stone_type,
+        weight: String(s.weight ?? ''),
+        price_override: s.price_override ? String(s.price_override) : '',
+      })),
       making_charge_type: p.making_charge_type,
       making_charge_rate: String(p.making_charge_rate ?? ''),
       fixed_making_charge: String(p.fixed_making_charge ?? ''),
@@ -323,7 +344,11 @@ export default function ProductsPage() {
     if (!form.gross_weight || Number(form.gross_weight) <= 0) return 'Gross weight is required.';
     if (!form.net_weight || Number(form.net_weight) <= 0) return 'Net weight is required.';
     if (!form.stone_weight || Number(form.stone_weight) < 0) return 'Stone weight is required.';
-    if (form.has_stones && !form.stone_type) return 'Stone type is required when stones are enabled.';
+    if (form.has_stones) {
+      if (!form.stone_type && (!form.stones || form.stones.filter(s => s.stone_type && Number(s.weight) > 0).length === 0)) {
+        return 'Please provide at least one stone entry or stone type when stones are enabled.';
+      }
+    }
     if (!form.making_charge_type) return 'Making charge type is required.';
     if (form.making_charge_type === 'per_gram' && (!form.making_charge_rate || Number(form.making_charge_rate) <= 0)) {
       return 'Making charge rate is required for per gram mode.';
@@ -354,11 +379,20 @@ export default function ProductsPage() {
         metal_type: form.metal_type, purity: form.purity,
         metal_color: form.metal_color || undefined,
         dimensions: form.dimensions.trim(),
-        gross_weight: Number(form.gross_weight),
+      gross_weight: Number(form.gross_weight),
         net_weight: Number(form.net_weight),
         stone_weight: form.stone_weight ? Number(form.stone_weight) : undefined,
+        wastage_percentage: Number(form.wastage_percentage) || 0,
         has_stones: form.has_stones,
         stone_type: form.has_stones && form.stone_type ? form.stone_type : undefined,
+        // Multi-stone array — send if any rows with valid type
+        stones: (form.stones || [])
+          .filter((s) => s.stone_type && Number(s.weight) > 0)
+          .map((s) => ({
+            stone_type: s.stone_type,
+            weight: Number(s.weight),
+            price_override: s.price_override ? Number(s.price_override) : undefined,
+          })),
         making_charge_type: form.making_charge_type,
         making_charge_rate: form.making_charge_rate ? Number(form.making_charge_rate) : undefined,
         fixed_making_charge: form.fixed_making_charge ? Number(form.fixed_making_charge) : undefined,
@@ -371,6 +405,12 @@ export default function ProductsPage() {
       if (editTarget) {
         await updateProduct(editTarget._id, payload);
         showToast('Product updated');
+        // Sync inventory prices for this product in the background
+        syncProductInventoryPrices(editTarget._id)
+          .then((res) => {
+            if (res.updated > 0) showToast(`↺ ${res.updated} inventory item${res.updated === 1 ? '' : 's'} repriced`);
+          })
+          .catch(() => {});
       } else {
         await createProduct(payload);
         showToast('Product created');
@@ -884,116 +924,285 @@ export default function ProductsPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
                 <div>
-                  <p className="text-sm font-medium text-slate-900">Has Stones</p>
-                  <p className="text-xs text-slate-500 mt-0.5">{form.has_stones ? 'Stone fields are enabled.' : 'Toggle on to capture stone details.'}</p>
+                  <p className="text-sm font-medium text-slate-900">Has Stones / Diamonds</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{form.has_stones ? 'Stone rows are active below.' : 'Toggle on to add stone components.'}</p>
                 </div>
                 <button type="button" onClick={() => set('has_stones', !form.has_stones)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${form.has_stones ? 'bg-blue-600' : 'bg-slate-300'}`}>
                   <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${form.has_stones ? 'translate-x-6' : 'translate-x-1'}`} />
                 </button>
               </div>
+
               {form.has_stones && (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Stone Type</label>
-                  <select className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.stone_type} onChange={(e) => set('stone_type', e.target.value)}>
-                    <option value="">Select stone type</option>
-                    {stoneTypeOptions.map((o) => <option key={o._id} value={o.value}>{o.label}</option>)}
-                  </select>
-                  <p className="text-xs text-slate-400 mt-1.5">Stone pricing is configured globally in Settings.</p>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-12 gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400 px-1">
+                    <div className="col-span-4">Stone Type</div>
+                    <div className="col-span-3">Weight (g/ct)</div>
+                    <div className="col-span-4">Price Override (₹)</div>
+                    <div className="col-span-1"></div>
+                  </div>
+
+                  { (form.stones || []).map((row, idx) => (
+                    <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                      <div className="col-span-4">
+                        <select
+                          className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          value={row.stone_type}
+                          onChange={(e) => {
+                            const updated = [...form.stones];
+                            updated[idx] = { ...updated[idx], stone_type: e.target.value };
+                            set('stones', updated);
+                          }}
+                        >
+                          <option value="">Select stone</option>
+                          {stoneTypeOptions.map((o) => <option key={o._id} value={o.value}>{o.label}</option>)}
+                        </select>
+                      </div>
+                      <div className="col-span-3">
+                        <input
+                          type="number" step="0.001" min="0"
+                          className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="0.00"
+                          value={row.weight}
+                          onChange={(e) => {
+                            const updated = [...form.stones];
+                            updated[idx] = { ...updated[idx], weight: e.target.value };
+                            set('stones', updated);
+                          }}
+                        />
+                      </div>
+                      <div className="col-span-4">
+                        <input
+                          type="number" step="1" min="0"
+                          className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Leave blank for market rate"
+                          value={row.price_override}
+                          onChange={(e) => {
+                            const updated = [...form.stones];
+                            updated[idx] = { ...updated[idx], price_override: e.target.value };
+                            set('stones', updated);
+                          }}
+                        />
+                      </div>
+                      <div className="col-span-1 flex justify-center">
+                        <button
+                          type="button"
+                          onClick={() => set('stones', form.stones.filter((_, i) => i !== idx))}
+                          className="w-8 h-8 flex items-center justify-center rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors"
+                        >
+                          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M18 6L6 18M6 6l12 12"/></svg>
+                        </button>
+                      </div>
+                      {/* Live price for this row */}
+                      {row.stone_type && Number(row.weight) > 0 && (
+                        <div className="col-span-12 -mt-1 pl-1 text-[10px] text-blue-600 font-bold">
+                          {row.price_override && Number(row.price_override) > 0
+                            ? `Fixed: ₹${Number(row.price_override).toLocaleString('en-IN')}`
+                            : `Market rate: ₹${((settings.stone_rates?.[row.stone_type] ?? 0) * Number(row.weight)).toLocaleString('en-IN')} (${(settings.stone_rates?.[row.stone_type] ?? 0).toLocaleString('en-IN')}/unit × ${Number(row.weight).toFixed(3)})`
+                          }
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={() => set('stones', [...form.stones, { stone_type: '', weight: '', price_override: '' }])}
+                    className="w-full py-3 border-2 border-dashed border-blue-200 rounded-xl text-[11px] font-black text-blue-500 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M12 5v14M5 12h14"/></svg>
+                    Add Stone Component
+                  </button>
+
+                  <p className="text-[10px] text-slate-400 italic px-1">
+                    Stone rates are managed in Settings → Gemstone Valuation. A price override bypasses the market rate for that specific stone.
+                  </p>
                 </div>
               )}
             </div>
           )}
 
           {/* Tab 4: Pricing */}
-          {activeTab === 3 && (
-            <div className="space-y-4">
-              <div className="p-3 bg-blue-50/50 border border-blue-100/50 rounded-lg flex justify-between items-center mb-4 transition-all animate-in fade-in slide-in-from-top-2">
-                <div className="space-y-0.5">
-                   <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest opacity-70 italic">Prices after Discount (Sale / Min Floor)</p>
-                   <p className="text-3xl font-black text-blue-700">
-                     ₹{(() => {
-                        const override = Number(form.price_override) || 0;
-                        const net = Number(form.net_weight) || 0;
-                        const stoneW = Number(form.stone_weight) || 0;
-                        const metalR = settings.purity_rates?.[form.metal_type]?.[form.purity] || settings.metal_rates?.[form.metal_type] || 0;
-                        const stoneR = settings.stone_rates?.[form.stone_type] || 0;
-                        
-                        let baseIncludingTax = 0;
+          {activeTab === 3 && (() => {
+            // ── Live price calculation ─────────────────────────────────────────────
+            const net = Number(form.net_weight) || 0;
+            const wastage = Number(form.wastage_percentage) || 0;
+            const wastageGrams = (net * wastage) / 100;
+            const billableWeight = net + wastageGrams;
+            const metalR = settings.purity_rates?.[form.metal_type]?.[form.purity]
+              || settings.metal_rates?.[form.metal_type]
+              || 0;
+            const metalCost = billableWeight * metalR;
 
-                        if (override > 0) {
-                          baseIncludingTax = override;
-                        } else {
-                          const metalP = net * metalR;
-                          const stoneP = stoneW * stoneR;
-                          const makingP = form.making_charge_type === 'per_gram' ? net * (Number(form.making_charge_rate) || 0) : (Number(form.fixed_making_charge) || 0);
-                          const subtotal = metalP + stoneP + makingP;
-                          const tax = (subtotal * (Number(form.tax_percentage) || 0)) / 100;
-                          baseIncludingTax = subtotal + tax;
-                        }
+            // Sum all stones
+            const stoneDetails = (form.stones || [])
+              .filter((s) => s.stone_type && Number(s.weight) > 0)
+              .map((s) => {
+                const hasOverride = s.price_override && Number(s.price_override) > 0;
+                const price = hasOverride
+                  ? Number(s.price_override)
+                  : Number(s.weight) * (settings.stone_rates?.[s.stone_type] ?? 0);
+                return { label: s.stone_type, weight: Number(s.weight), price, is_override: hasOverride };
+              });
+            const stoneCost = stoneDetails.reduce((a, s) => a + s.price, 0);
 
-                        // 1. Sale Price after Admin Discount
-                        const salePrice = baseIncludingTax * (1 - (Number(form.discount_percentage) || 0) / 100);
-                        // 2. Floor Price after Manager Discount
-                        const floorPrice = salePrice * (1 - (Number(form.max_manager_discount) || 0) / 100);
+            const makingCost = form.making_charge_type === 'per_gram'
+              ? net * (Number(form.making_charge_rate) || 0)
+              : (Number(form.fixed_making_charge) || 0);
 
-                        return `${Math.round(salePrice).toLocaleString('en-IN')} / ${Math.round(floorPrice).toLocaleString('en-IN')}`;
-                     })()}
-                   </p>
-                </div>
-                {/* Production cost removed from header as requested */}
-              </div>
+            const override = Number(form.price_override) || 0;
+            const isOverride = override > 0;
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Purchase / Cost Price (₹) <span className="text-red-500">*</span></label>
-                  <input type="number" min="0" step="1" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.purchase_price} onChange={(e) => set('purchase_price', e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Price Override (₹)</label>
-                  <input type="number" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.price_override} onChange={(e) => set('price_override', e.target.value)} placeholder="Skip formula, set fixed price" />
-                </div>
-              </div>
+            const subtotal = metalCost + stoneCost + makingCost;
+            const discountAmt = (subtotal * (Number(form.discount_percentage) || 0)) / 100;
+            const taxable = subtotal - discountAmt;
+            const taxAmt = (taxable * (Number(form.tax_percentage) || 0)) / 100;
+            const formulaResult = taxable + taxAmt;
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Admin Discount (%)</label>
-                  <input type="number" min="0" max="100" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.discount_percentage} onChange={(e) => set('discount_percentage', e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Max Manager Discount (%)</label>
-                  <input type="number" min="0" max="100" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.max_manager_discount} onChange={(e) => set('max_manager_discount', e.target.value)} />
-                </div>
-              </div>
+            const finalPrice = (isOverride && formulaResult < override) ? override : formulaResult;
+            const isFloorActive = isOverride && formulaResult < override;
+            const floorPrice = finalPrice * (1 - (Number(form.max_manager_discount) || 0) / 100);
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Tax (%)</label>
-                  <input type="number" step="0.1" min="0" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.tax_percentage} onChange={(e) => set('tax_percentage', e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Making Charge Type</label>
-                  <select className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.making_charge_type} onChange={(e) => set('making_charge_type', e.target.value)}>
-                    <option value="">Select type</option>
-                    {makingChargeTypeOptions.map((o) => <option key={o._id} value={o.value}>{o.label}</option>)}
-                  </select>
-                </div>
-              </div>
+            const fmt = (n: number) => Math.round(n).toLocaleString('en-IN');
+            const fmtDec = (n: number) => n.toLocaleString('en-IN', { maximumFractionDigits: 4 });
 
-              <div>
-                {form.making_charge_type === 'per_gram' ? (
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Rate per gram (₹)</label>
-                    <input type="number" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.making_charge_rate} onChange={(e) => set('making_charge_rate', e.target.value)} />
+            return (
+              <div className="space-y-4">
+                {/* Live Price Card */}
+                <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 rounded-2xl space-y-3">
+                  <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">Live Price Breakdown (from Settings rates)</p>
+
+                  {!metalR && !isOverride && (
+                    <p className="text-[11px] text-amber-600 font-bold bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                      ⚠️ Metal rate not set for {form.metal_type} {form.purity} — go to Settings to configure rates.
+                    </p>
+                  )}
+
+                  <div className="space-y-1.5 text-sm">
+                    {/* Metal */}
+                    <div className="flex justify-between">
+                      <span className="text-slate-500 text-[12px]">Metal ({form.metal_type} {form.purity})</span>
+                      <span className="font-bold text-slate-800">{fmtDec(billableWeight)}g × ₹{fmt(metalR)} = <span className="text-blue-700">₹{fmt(metalCost)}</span></span>
+                    </div>
+                    {wastage > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-400 text-[11px] pl-3">↳ Wastage ({wastage}%)</span>
+                        <span className="text-slate-500 text-[11px]">+{fmtDec(wastageGrams)}g included above</span>
+                      </div>
+                    )}
+
+                    {/* Stones */}
+                    {stoneDetails.length > 0 && stoneDetails.map((s, i) => (
+                      <div key={i} className="flex justify-between">
+                        <span className="text-slate-500 text-[12px] capitalize">{s.label} stone</span>
+                        <span className="font-bold text-slate-800">
+                          {s.is_override
+                            ? <><span className="text-violet-600">Fixed</span> = ₹{fmt(s.price)}</>
+                            : <>{fmtDec(s.weight)} × ₹{fmt(s.price / s.weight)} = <span className="text-blue-700">₹{fmt(s.price)}</span></>
+                          }
+                        </span>
+                      </div>
+                    ))}
+
+                    {/* Making */}
+                    <div className="flex justify-between">
+                      <span className="text-slate-500 text-[12px]">Making ({form.making_charge_type === 'per_gram' ? `₹${form.making_charge_rate}/g` : 'fixed'})</span>
+                      <span className="font-bold text-slate-800">₹{fmt(makingCost)}</span>
+                    </div>
+
+                    <div className="border-t border-blue-200 pt-1.5 flex justify-between">
+                      <span className="text-slate-600 text-[12px] font-semibold">Subtotal</span>
+                      <span className="font-bold text-slate-800">₹{fmt(subtotal)}</span>
+                    </div>
+
+                    {discountAmt > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-500 text-[12px]">Discount ({form.discount_percentage}%)</span>
+                        <span className="font-bold text-red-500">- ₹{fmt(discountAmt)}</span>
+                      </div>
+                    )}
+
+                    <div className="flex justify-between">
+                      <span className="text-slate-500 text-[12px]">Tax ({form.tax_percentage}%)</span>
+                      <span className="font-bold text-slate-800">+ ₹{fmt(taxAmt)}</span>
+                    </div>
+
+                    <div className="border-t border-blue-200 pt-1.5 flex justify-between items-center">
+                      <div className="flex flex-col">
+                        <span className="text-slate-700 font-black text-[13px]">Final Price</span>
+                        {isFloorActive && <span className="text-[9px] font-black text-violet-600 uppercase tracking-tighter">↑ Override Floor Applied</span>}
+                      </div>
+                      <span className={`font-black text-lg ${isFloorActive ? 'text-violet-700' : 'text-blue-700'}`}>₹{fmt(finalPrice)}</span>
+                    </div>
+
+                    {Number(form.max_manager_discount) > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-400 text-[11px]">Floor (after max manager {form.max_manager_discount}% off)</span>
+                        <span className="font-bold text-emerald-600">₹{fmt(floorPrice)}</span>
+                      </div>
+                    )}
                   </div>
-                ) : (
+                </div>
+
+                {/* Fields */}
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Fixed Amount (₹)</label>
-                    <input type="number" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.fixed_making_charge} onChange={(e) => set('fixed_making_charge', e.target.value)} />
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Purchase / Cost Price (₹) <span className="text-red-500">*</span></label>
+                    <input type="number" min="0" step="1" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.purchase_price} onChange={(e) => set('purchase_price', e.target.value)} />
                   </div>
-                )}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Price Override (₹)</label>
+                    <input type="number" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.price_override} onChange={(e) => set('price_override', e.target.value)} placeholder="Minimum base price (floor)" />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Admin Discount (%)</label>
+                    <input type="number" min="0" max="100" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.discount_percentage} onChange={(e) => set('discount_percentage', e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Max Manager Discount (%)</label>
+                    <input type="number" min="0" max="100" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.max_manager_discount} onChange={(e) => set('max_manager_discount', e.target.value)} />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Wastage (%)</label>
+                    <input type="number" step="0.1" min="0" max="20" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.wastage_percentage} onChange={(e) => set('wastage_percentage', e.target.value)} placeholder="e.g. 3" />
+                    <p className="text-[10px] text-slate-400 mt-1">Wastage increases billable gold weight: {fmtDec(net)}g + {wastage}% = {fmtDec(billableWeight)}g</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Tax (%)</label>
+                    <input type="number" step="0.1" min="0" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.tax_percentage} onChange={(e) => set('tax_percentage', e.target.value)} />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Making Charge Type</label>
+                    <select className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.making_charge_type} onChange={(e) => set('making_charge_type', e.target.value)}>
+                      <option value="">Select type</option>
+                      {makingChargeTypeOptions.map((o) => <option key={o._id} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    {form.making_charge_type === 'per_gram' ? (
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Rate per gram (₹)</label>
+                        <input type="number" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.making_charge_rate} onChange={(e) => set('making_charge_rate', e.target.value)} />
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Fixed Amount (₹)</label>
+                        <input type="number" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.fixed_making_charge} onChange={(e) => set('fixed_making_charge', e.target.value)} />
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Tab 5: Images (edit mode only) */}
           {activeTab === 4 && editTarget && (

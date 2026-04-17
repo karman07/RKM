@@ -14,8 +14,7 @@ import {
 
 import { useAppTheme } from '@/components/AppThemeContext';
 import { APP_THEME } from '@/lib/theme-constants';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+import { API_BASE } from '@/lib/api';
 const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f97316', '#10b981', '#06b6d4'];
 
 export default function AnalyticsPage() {
@@ -27,7 +26,7 @@ export default function AnalyticsPage() {
 
   useEffect(() => {
     setLoading(true);
-    fetch(`${API_URL}/analytics/dashboard?days=${days}`)
+    fetch(`${API_BASE}/analytics/dashboard?days=${days}`)
       .then(res => res.json())
       .then(setData)
       .finally(() => setLoading(false));

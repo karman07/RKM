@@ -69,10 +69,8 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
               <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M6 18L18 6M6 6l12 12" /></svg>
            </button>
         )}
-        <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-2xl shadow-blue-500/30 shrink-0 transform group-hover:rotate-6 transition-transform">
-          <svg width="24" height="24" fill="white" viewBox="0 0 24 24">
-            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-          </svg>
+        <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-xl shadow-blue-500/10 shrink-0 transform group-hover:rotate-6 transition-transform overflow-hidden border border-slate-100">
+          <img src="/RKM LOGO SVG.svg" alt="RKM Logo" className="w-10 h-10 object-contain" />
         </div>
         {!isCollapsed && (
           <div className="animate-[fadeRise_400ms_ease-out]">
@@ -184,6 +182,36 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
                 <path d="M16 3.13a4 4 0 0 1 0 7.75" />
               </NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] whitespace-nowrap font-bold">Supplier Network</span>}
+            </Link>
+            <Link
+              href="/dashboard/branches"
+              onClick={onNavigate}
+              title={isCollapsed ? "Branches" : ""}
+              className={navClass(pathname.startsWith('/dashboard/branches'))}
+              style={getNavStyle(pathname.startsWith('/dashboard/branches'))}
+            >
+              {isCollapsed && pathname.startsWith('/dashboard/branches') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname.startsWith('/dashboard/branches')} color={pathname.startsWith('/dashboard/branches') ? colors.activeText : colors.textMuted}>
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <path d="M9 3v18M15 3v18M3 9h18M3 15h18" />
+              </NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Branch Network</span>}
+            </Link>
+            <Link
+              href="/dashboard/attendance"
+              onClick={onNavigate}
+              title={isCollapsed ? "Attendance" : ""}
+              className={navClass(pathname.startsWith('/dashboard/attendance'))}
+              style={getNavStyle(pathname.startsWith('/dashboard/attendance'))}
+            >
+              {isCollapsed && pathname.startsWith('/dashboard/attendance') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname.startsWith('/dashboard/attendance')} color={pathname.startsWith('/dashboard/attendance') ? colors.activeText : colors.textMuted}>
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                <line x1="16" y1="2" x2="16" y2="6" />
+                <line x1="8" y1="2" x2="8" y2="6" />
+                <line x1="3" y1="10" x2="21" y2="10" />
+              </NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Personnel Attendance</span>}
             </Link>
           </div>
         </section>

@@ -65,8 +65,6 @@ interface AddForm {
   source: string;
   reason: string;
   count: string;
-  selling_price: string;
-  admin_discount: string;
 }
 
 const emptyAddForm: AddForm = {
@@ -75,8 +73,6 @@ const emptyAddForm: AddForm = {
   source: '',
   reason: '',
   count: '1',
-  selling_price: '',
-  admin_discount: '0',
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -216,8 +212,6 @@ export default function InventoryPage() {
     setAddForm(prev => ({
       ...prev,
       product_id: productId,
-      selling_price: String(p?.pricing_breakdown?.final_price || 0),
-      admin_discount: String(p?.discount_percentage || 0),
     }));
   }
 
@@ -236,8 +230,6 @@ export default function InventoryPage() {
         source:              addForm.source,
         reason:              addForm.reason,
         count:               Number(addForm.count),
-        selling_price:       Number(addForm.selling_price),
-        admin_discount:      Number(addForm.admin_discount),
       });
 
       setAddModal(false);
@@ -289,33 +281,47 @@ export default function InventoryPage() {
 
   // ─── Computed discounted price helper ────────────────────────────────────
   function getLivePricing(item: InventoryItem) {
-    const product = typeof item.product_id === 'object' ? item.product_id : null;
-    
-    // Live Selling Price (Base + Tax)
-    const selling_price = product?.pricing_breakdown?.final_price || item.selling_price || 0;
-    
-    // Live Discounts
-    const admin = product?.discount_percentage ?? item.admin_discount ?? 0;
-    const mgr = item.manager_discount || 0;
-    
-    const mid_price = selling_price * (1 - admin / 100);
-    const final_price = mid_price * (1 - mgr / 100);
-    
-    // Policy Floor (Maximum possible discount)
-    const max_mgr = product?.max_manager_discount ?? item.max_manager_discount ?? 0;
-    const floor_price = mid_price * (1 - max_mgr / 100);
-    
+    const product = typeof item.product_id === 'object' ? item.product_id as any : null;
+
+    // Product-level discount (the default one set on the product template)
+    const product_disc = Number(product?.discount_percentage) || 0;
+
+    // selling_price from API = Final formula price (includes product-level discount).
+    const selling_price = Number(item.selling_price) || 0;
+
+    // Compare-at price (Gross price BEFORE product-level discount)
+    // Since selling_price = Gross * (1 - Disc/100), then Gross = selling_price / (1 - Disc/100)
+    const gross_price = product_disc > 0
+      ? parseFloat((selling_price / (1 - product_disc / 100)).toFixed(2))
+      : selling_price;
+
+    // Item-level extra discount tiers (optional, set by admin/manager per specific piece)
+    const extra_admin = Number(item.admin_discount) || 0;
+    const extra_mgr   = Number(item.manager_discount) || 0;
+
+    // Tiers for display
+    const after_extra_admin = extra_admin > 0 ? parseFloat((selling_price * (1 - extra_admin / 100)).toFixed(2)) : selling_price;
+    const after_extra_mgr   = extra_mgr   > 0 ? parseFloat((after_extra_admin * (1 - extra_mgr / 100)).toFixed(2)) : after_extra_admin;
+
+    // Manager policy floor
+    const max_mgr = Number(item.max_manager_discount ?? product?.max_manager_discount) || 0;
+    const floor_price = max_mgr > 0 ? parseFloat((after_extra_admin * (1 - max_mgr / 100)).toFixed(2)) : after_extra_admin;
+
     return {
-      selling_price,
-      admin_discount: admin,
-      manager_discount: mgr,
+      gross_price,             // Before ANY discounts
+      product_discount: product_disc,
+      selling_price,           // Formula result (Standard Sale Price)
+      extra_admin_discount: extra_admin,
+      extra_manager_discount: extra_mgr,
       max_manager_discount: max_mgr,
-      mid_price,
-      final_price,
+      after_admin: after_extra_admin,
+      final_price: after_extra_mgr,
       floor_price,
-      is_discounted: admin > 0 || mgr > 0,
-      has_manager_discount: mgr > 0,
-      has_manager_limit: max_mgr > 0
+      is_discounted: product_disc > 0 || extra_admin > 0 || extra_mgr > 0,
+      has_extra_admin: extra_admin > 0,
+      has_extra_mgr: extra_mgr > 0,
+      has_manager_limit: max_mgr > 0,
+      mid_price: after_extra_admin, // alias for template
     };
   }
 
@@ -454,7 +460,7 @@ export default function InventoryPage() {
             <table className="w-full min-w-[1300px]">
               <thead>
                 <tr className="bg-slate-50/50 border-b border-slate-100">
-                  <th className="px-6 py-5 text-center w-12">
+                  <th className="px-4 py-3 text-center w-10">
                     <input
                       type="checkbox"
                       className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
@@ -462,13 +468,13 @@ export default function InventoryPage() {
                       onChange={toggleSelectAll}
                     />
                   </th>
-                  <th className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Product / Code</th>
-                  <th className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Dimensions</th>
-                  <th className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Source</th>
-                  <th className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Location</th>
-                  <th className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Pricing</th>
-                  <th className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Status</th>
-                  <th className="px-6 py-5 text-right text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Actions</th>
+                  <th className="px-4 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.15em]">Product / Code</th>
+                  <th className="px-4 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.15em]">Dimensions</th>
+                  <th className="px-4 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.15em]">Source</th>
+                  <th className="px-4 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.15em]">Location</th>
+                  <th className="px-4 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.15em]">Pricing</th>
+                  <th className="px-4 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.15em]">Status</th>
+                  <th className="px-4 py-3 text-right text-[9px] font-black text-slate-400 uppercase tracking-[0.15em]">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
@@ -480,7 +486,7 @@ export default function InventoryPage() {
                   const dims = item.dimensions_snapshot || (product as any)?.dimensions || '';
                   return (
                     <tr key={item._id} className={`group hover:bg-slate-50/30 transition-colors duration-200 ${selectedIds.includes(item._id) ? 'bg-blue-50/30' : ''}`}>
-                      <td className="px-6 py-5 text-center">
+                      <td className="px-4 py-3 text-center">
                         <input
                           type="checkbox"
                           className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
@@ -489,52 +495,52 @@ export default function InventoryPage() {
                         />
                       </td>
                       {/* Product */}
-                      <td className="px-6 py-5">
-                        <div className="flex items-center gap-4">
-                          <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 overflow-hidden shadow-sm flex-shrink-0 group-hover:scale-105 transition-transform duration-500">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-11 h-11 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden shadow-sm flex-shrink-0 group-hover:scale-105 transition-transform duration-500">
                             {product?.images?.[0]
                               ? <img src={staticUrl(product.images[0])} alt="" className="w-full h-full object-cover" />
-                              : <div className="h-full flex items-center justify-center text-[10px] font-bold text-slate-300 uppercase">No Img</div>
+                              : <div className="h-full flex items-center justify-center text-[9px] font-bold text-slate-300 uppercase">No Img</div>
                             }
                           </div>
                           <div>
-                            <p className="text-sm font-black text-slate-900 leading-tight mb-0.5">{product?.name || '—'}</p>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight block mb-2">#{item.unique_item_code}</span>
-                            <div 
-                              onClick={() => setBarcodeModal(item.barcode)}
-                              className="p-1 px-1.5 bg-white border border-slate-200 inline-block rounded shadow-sm hover:scale-[1.1] origin-left transition-transform duration-300 cursor-pointer hover:shadow-md"
-                              title="Click to Open Wide Visor Mode"
-                            >
-                               <img suppressHydrationWarning src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${item.barcode}&scale=3&height=8&includetext`} className="h-6 object-contain pointer-events-none" alt={item.barcode} />
+                            <p className="text-[13px] font-black text-slate-900 leading-tight mb-0.5">{product?.name || '—'}</p>
+                            <div className="flex items-center gap-2">
+                               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">#{item.unique_item_code}</span>
+                               <div 
+                                onClick={() => setBarcodeModal(item.barcode)}
+                                className="p-0.5 px-1 bg-white border border-slate-200 inline-block rounded shadow-sm hover:scale-[1.1] transition-transform duration-300 cursor-pointer"
+                              >
+                                 <img suppressHydrationWarning src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${item.barcode}&scale=3&height=6&includetext`} className="h-4 object-contain" alt={item.barcode} />
+                              </div>
                             </div>
                           </div>
                         </div>
                       </td>
 
                       {/* Dimensions — highlighted */}
-                      <td className="px-6 py-5">
+                      <td className="px-4 py-3">
                         {dims ? (
-                          <div className="flex flex-col gap-1">
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Dimensions</span>
-                            <span className="px-3 py-1.5 rounded-xl bg-violet-50 border border-violet-100 text-violet-700 text-xs font-bold inline-flex items-center gap-1.5">
-                              <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5-5-5m5 5v-4m0 4h-4" /></svg>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="px-2 py-1 rounded-lg bg-violet-50 border border-violet-100 text-violet-700 text-[10px] font-bold inline-flex items-center gap-1">
+                              <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5-5-5m5 5v-4m0 4h-4" /></svg>
                               {dims}
                             </span>
                           </div>
                         ) : (
-                          <span className="text-[10px] text-slate-300 italic">Not set</span>
+                          <span className="text-[9px] text-slate-300 italic uppercase">Not set</span>
                         )}
                       </td>
 
                       {/* Source */}
-                      <td className="px-6 py-5">
-                        <p className="text-sm font-bold text-slate-800">{item.source || '—'}</p>
-                        <p className="text-[10px] font-medium text-slate-400 uppercase mt-0.5 italic line-clamp-1">{item.reason || ''}</p>
+                      <td className="px-4 py-3 text-left">
+                        <p className="text-[12px] font-bold text-slate-800 leading-none">{item.source || '—'}</p>
+                        <p className="text-[8px] font-black text-slate-400 uppercase mt-1 tracking-tighter line-clamp-1 opacity-70 italic">{item.reason || ''}</p>
                       </td>
 
                       {/* Location */}
-                      <td className="px-6 py-5">
-                        <span className="px-2.5 py-1 rounded-lg bg-slate-900/5 text-slate-600 text-[10px] font-bold uppercase tracking-widest inline-flex self-start border border-slate-100">
+                      <td className="px-4 py-3">
+                        <span className="px-2 py-0.5 rounded-md bg-slate-900/5 text-slate-600 text-[9px] font-bold uppercase tracking-wider border border-slate-100">
                           {lookups.item_location?.find(l => l.value === item.location)?.label || item.location}
                         </span>
                       </td>
@@ -576,22 +582,20 @@ export default function InventoryPage() {
                       </td>
 
                       {/* Status */}
-                      <td className="px-6 py-5">
-                        <span className={badge.wrap}><span className={`h-1.5 w-1.5 rounded-full ${badge.dot}`} />{lookups.inventory_status?.find(l => l.value === item.status)?.label || item.status}</span>
+                      <td className="px-4 py-3">
+                        <span className={`${badge.wrap} scale-90 origin-left`}><span className={`h-1 w-1 rounded-full ${badge.dot}`} />{lookups.inventory_status?.find(l => l.value === item.status)?.label || item.status}</span>
                       </td>
 
                       {/* Actions */}
-                      <td className="px-6 py-5 text-right">
-                        <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                          {/* Status change button */}
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                           {transitions.length > 0 && (
-                            <button onClick={() => { setStatusModal(item); setNewStatus(transitions[0]); setNewSellingPrice(String(item.selling_price)); }} title="Change Status" className="p-2.5 rounded-xl bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition-all active:scale-90 shadow-sm">
-                              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M12 20h9M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" /></svg>
+                            <button onClick={() => { setStatusModal(item); setNewStatus(transitions[0]); setNewSellingPrice(String(item.selling_price)); }} title="Change Status" className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition-all active:scale-90 shadow-sm">
+                              <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M12 20h9M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" /></svg>
                             </button>
                           )}
-                          {/* Delete button */}
-                          <button onClick={() => setDeleteModal(item)} title="Remove Item" className="p-2.5 rounded-xl bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition-all active:scale-90 shadow-sm">
-                            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                          <button onClick={() => setDeleteModal(item)} title="Remove Item" className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition-all active:scale-90 shadow-sm">
+                            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                           </button>
                         </div>
                       </td>
@@ -715,35 +719,6 @@ export default function InventoryPage() {
               </select>
             </div>
 
-            {/* Selling Price Override */}
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Selling Price (Per Piece) <span className="text-red-500">*</span></label>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">₹</span>
-                <input
-                  type="number"
-                  className="w-full pl-8 pr-5 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-black text-slate-900 focus:ring-2 focus:ring-blue-500"
-                  value={addForm.selling_price}
-                  onChange={e => setAddForm({ ...addForm, selling_price: e.target.value })}
-                  placeholder="0.00"
-                />
-              </div>
-            </div>
-
-            {/* Admin Discount Override */}
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Initial Admin Discount</label>
-              <div className="relative">
-                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">%</span>
-                <input
-                  type="number"
-                  className="w-full px-5 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-black text-blue-600 focus:ring-2 focus:ring-blue-500"
-                  value={addForm.admin_discount}
-                  onChange={e => setAddForm({ ...addForm, admin_discount: e.target.value })}
-                  placeholder="0"
-                />
-              </div>
-            </div>
 
             <div className="md:col-span-2 space-y-1.5">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ingress Reason <span className="text-red-500">*</span></label>

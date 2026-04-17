@@ -1,4 +1,4 @@
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api';
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api';
 const STATIC_URL = process.env.NEXT_PUBLIC_STATIC_URL ?? 'http://localhost:3000';
 
 /** Resolve a static asset path (e.g. /static/barcodes/foo.png) to a full URL */
@@ -25,7 +25,7 @@ function authHeadersMultipart(): HeadersInit {
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetch(`${API_BASE}${path}`, {
     headers: authHeaders(),
     ...options,
   });
@@ -46,13 +46,52 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export interface Branch {
+  _id: string;
+  name: string;
+  code: string;
+  address: string;
+  phone: string;
+  email?: string;
+  manager?: User | string;
+  is_active: boolean;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface User {
   _id: string;
   name: string;
   email: string;
   role: 'admin' | 'manager' | 'cashier';
+  branch?: Branch | string;
   is_active: boolean;
+  base_salary: number;
+  salary_type: 'monthly' | 'daily';
+  joining_date?: string;
   created_at: string;
+}
+
+export interface Attendance {
+  _id: string;
+  user_id: string | User;
+  date: string;
+  status: 'present' | 'absent' | 'half-day' | 'on-leave';
+  check_in?: string;
+  check_out?: string;
+  notes?: string;
+  marked_by?: string | User;
+}
+
+export interface AttendanceStats {
+  present: number;
+  absent: number;
+  halfDay: number;
+  onLeave: number;
+  totalWorkingDays: number;
 }
 
 type UserApiResponse = Omit<User, 'is_active'> & {
@@ -94,10 +133,21 @@ export interface PricingBreakdown {
   metal_price: number;
   making_charges: number;
   stone_price: number;
+  stones_breakdown?: Array<{ stone_type: string; weight: number; rate: number; price: number; is_override: boolean }>;
+  billable_metal_weight?: number;
+  wastage_grams?: number;
+  subtotal?: number;
   discount_amount?: number;
+  taxable_amount?: number;
   tax_amount: number;
   final_price: number;
   is_override: boolean;
+}
+
+export interface StoneComponent {
+  stone_type: string;
+  weight: number;
+  price_override?: number;
 }
 
 export interface Product {
@@ -116,9 +166,12 @@ export interface Product {
   gross_weight: number;
   net_weight: number;
   stone_weight?: number;
+  wastage_percentage?: number;
   has_stones: boolean;
   stone_type?: string;
   stone_price?: number;
+  /** Multi-stone breakdown — takes priority over single stone_type for pricing */
+  stones?: StoneComponent[];
   dimensions?: string;
   making_charge_type: string;
   making_charge_rate?: number;
@@ -205,8 +258,14 @@ export const getMe = async () => normalizeUser(await request<UserApiResponse>('/
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 
-export const getUsers = (role?: string) =>
-  request<UserApiResponse[]>(role ? `/users/role/${role}` : '/users').then((users) => users.map(normalizeUser));
+export const getUsers = (role?: string, page: number = 1, limit: number = 20) => {
+  const path = role ? `/users/role/${role}` : '/users';
+  const qs = `?page=${page}&limit=${limit}`;
+  return request<PaginatedResponse<UserApiResponse>>(`${path}${qs}`).then((res) => ({
+    data: res.data.map(normalizeUser),
+    meta: res.meta,
+  }));
+};
 
 export const createUser = (data: object) =>
   request<UserApiResponse>('/users', { method: 'POST', body: JSON.stringify(data) }).then(normalizeUser);
@@ -245,7 +304,7 @@ export const uploadCategoryImage = async (
 ): Promise<{ image_url: string }> => {
   const form = new FormData();
   form.append('file', file);
-  const res = await fetch(`${BASE}/uploads/categories/${categoryId}/image`, {
+  const res = await fetch(`${API_BASE}/uploads/categories/${categoryId}/image`, {
     method: 'POST',
     headers: authHeadersMultipart(),
     body: form,
@@ -312,7 +371,7 @@ export const uploadProductImages = async (
 ): Promise<{ images: string[] }> => {
   const form = new FormData();
   files.forEach((f) => form.append('files', f));
-  const res = await fetch(`${BASE}/uploads/products/${productId}/images`, {
+  const res = await fetch(`${API_BASE}/uploads/products/${productId}/images`, {
     method: 'POST',
     headers: authHeadersMultipart(),
     body: form,
@@ -505,6 +564,14 @@ export const publishPurchaseOrder = (id: string) =>
 export const generatePoInvoiceNumber = () =>
   request<{ invoice_number: string }>('/purchase-orders/generate-invoice-number');
 
+// ─── Branches ─────────────────────────────────────────────────────────────────
+
+export const getBranches = () => request<Branch[]>('/branches');
+export const getBranch = (id: string) => request<Branch>(`/branches/${id}`);
+export const createBranch = (data: object) => request<Branch>('/branches', { method: 'POST', body: JSON.stringify(data) });
+export const updateBranch = (id: string, data: object) => request<Branch>(`/branches/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+export const deleteBranch = (id: string) => request<void>(`/branches/${id}`, { method: 'DELETE' });
+
 // ─── Settings ──────────────────────────────────────────────────────────────────
 
 export interface AppSettings {
@@ -540,6 +607,20 @@ export const updateSettings = (data: Partial<AppSettings>) =>
     method: 'PUT',
     body: JSON.stringify(data),
   });
+
+/**
+ * Triggers a server-side resync of selling_price for ALL available inventory items
+ * based on the current Settings rates. Call this after updating settings.
+ */
+export const syncAllInventoryPrices = () =>
+  request<{ updated: number; skipped: number }>('/inventory/sync-prices', { method: 'POST' });
+
+/**
+ * Triggers a server-side resync of selling_price for all available inventory items
+ * of a specific product. Call this after updating a product's pricing params.
+ */
+export const syncProductInventoryPrices = (productId: string) =>
+  request<{ updated: number }>(`/inventory/sync-prices/product/${productId}`, { method: 'POST' });
 
 // ─── Blogs ───────────────────────────────────────────────────────────────────
 
@@ -589,7 +670,7 @@ export const deleteBlog = (id: string) =>
 export const uploadBlogImage = async (file: File): Promise<{ url: string }> => {
   const form = new FormData();
   form.append('file', file);
-  const res = await fetch(`${BASE}/uploads/blogs`, {
+  const res = await fetch(`${API_BASE}/uploads/blogs`, {
     method: 'POST',
     headers: authHeadersMultipart(),
     body: form,
@@ -597,3 +678,37 @@ export const uploadBlogImage = async (file: File): Promise<{ url: string }> => {
   if (!res.ok) throw new Error('Blog image upload failed');
   return res.json() as Promise<{ url: string }>;
 };
+// ─── Attendance ────────────────────────────────────────────────────────────────
+
+export const markAttendance = (data: {
+  user_id: string;
+  date: string;
+  status: string;
+  notes?: string;
+  check_in?: string;
+  check_out?: string;
+}) => request<Attendance>('/attendance/mark', { method: 'POST', body: JSON.stringify(data) });
+
+export const getUserAttendance = (userId: string, start?: string, end?: string) => {
+  const qs = new URLSearchParams();
+  if (start) qs.append('start', start);
+  if (end) qs.append('end', end);
+  return request<Attendance[]>(`/attendance/user/${userId}?${qs.toString()}`);
+};
+
+export const getDailyAttendance = (date?: string) => {
+  const qs = date ? `?date=${date}` : '';
+  return request<Attendance[]>(`/attendance/daily${qs}`);
+};
+
+export const getAttendanceStats = (userId: string, month: number, year: number) =>
+  request<AttendanceStats>(`/attendance/stats/${userId}?month=${month}&year=${year}`);
+
+export const getAllAttendanceStats = (month: number, year: number) =>
+  request<any[]>(`/attendance/all-stats?month=${month}&year=${year}`);
+
+export const getAttendanceSummary = (days: number = 30) =>
+  request<any[]>(`/attendance/summary?days=${days}`);
+
+export const checkIn = () => request<Attendance>('/attendance/check-in', { method: 'POST' });
+export const checkOut = () => request<Attendance>('/attendance/check-out', { method: 'POST' });

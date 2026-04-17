@@ -2,10 +2,39 @@
 import { useEffect, useState, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { getUsers, getCategories, getProducts, getInventory, getInventoryStats, getMe, updateInventoryStatus, staticUrl, type InventoryItem, type User } from '@/lib/api';
+import { 
+  Plus, 
+  ArrowUpRight, 
+  Edit3, 
+  Trash2, 
+  FileText, 
+  Users as UsersIcon, 
+  User as UserIcon,
+  Shield,
+  Award,
+  Activity, 
+  Clock, 
+  Calendar,
+  AlertCircle,
+  TrendingUp,
+  LayoutDashboard
+} from 'lucide-react';
 import { useAppTheme } from '@/components/AppThemeContext';
 import { APP_THEME } from '@/lib/theme-constants';
-import { Plus, ArrowUpRight, Edit3, Trash2, FileText } from 'lucide-react';
+import { 
+  getUsers, 
+  getCategories, 
+  getProducts, 
+  getInventory, 
+  getInventoryStats, 
+  getMe, 
+  updateInventoryStatus, 
+  staticUrl, 
+  getAttendanceSummary,
+  getAllAttendanceStats,
+  type InventoryItem, 
+  type User 
+} from '@/lib/api';
 
 // Dynamically import Chart.js to avoid SSR issues
 const Doughnut = dynamic(() => import('react-chartjs-2').then(mod => mod.Doughnut), { ssr: false });
@@ -50,6 +79,8 @@ interface Stats {
   totalProfit: number;
   salesTrend: { labels: string[]; data: number[]; dates: Date[] };
   allSoldItems: InventoryItem[];
+  attendanceSummary: { total: Record<string, number>; roles: Record<string, Record<string, number>> };
+  topOperatives: any[];
 }
 
 function StatCard({ label, value, icon, colors, subValue, trend }: { label: string; value: number | string; icon: React.ReactNode; colors: any; subValue?: string; trend?: 'up' | 'down' | 'neutral' }) {
@@ -399,6 +430,8 @@ export default function DashboardPage() {
   const [selectedBillDate, setSelectedBillDate] = useState<string>('');
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   
+  const [reportDays, setReportDays] = useState(7);
+  
   const chartRef = useRef<any>(null);
 
   useEffect(() => {
@@ -407,15 +440,17 @@ export default function DashboardPage() {
         const fourteenDaysAgo = new Date();
         fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
 
-        const [meRes, users, categories, productsRes, inventoryRes, recentSoldRes, dbStats, allSoldRes] = await Promise.all([
+        const [meRes, users, categories, productsRes, inventoryRes, recentSoldRes, dbStats, allSoldRes, attSummary, attStats] = await Promise.all([
           getMe().catch(() => null),
-          getUsers().catch(() => []),
+          getUsers().catch(() => ({ data: [], meta: { total: 0 } })),
           getCategories(true).catch(() => []),
           getProducts({ limit: '1' }).catch(() => ({ meta: { total: 0 } })),
           getInventory({ limit: '1' }).catch(() => ({ meta: { total: 0 } })),
-          getInventory({ status: 'sold', limit: '5' }).catch(() => ({ data: [] })),
+          getInventory({ status: 'sold', limit: '5' }).catch(() => ({ data: [], meta: { total: 0 } })),
           getInventoryStats().catch(() => ({ totalCount: 0, totalValue: 0, totalPurchaseValue: 0, totalProfit: 0, byStatus: {} as Record<string, any>, byCategory: [], salesTrend: [] })),
-          getInventory({ status: 'sold', limit: '100', sold_after: fourteenDaysAgo.toISOString() }).catch(() => ({ data: [] }))
+          getInventory({ status: 'sold', limit: '100', sold_after: fourteenDaysAgo.toISOString() }).catch(() => ({ data: [], meta: { total: 0 } })),
+          getAttendanceSummary(reportDays).catch(() => ({ total: {}, roles: {} })),
+          getAllAttendanceStats(new Date().getMonth(), new Date().getFullYear()).catch(() => [])
         ]);
 
         const availCount = dbStats.byStatus.available?.count || 0;
@@ -440,9 +475,8 @@ export default function DashboardPage() {
           trendData.push(dbEntry ? dbEntry.count : 0);
         }
 
-        setUser(meRes);
         setStats({
-          users: users.length,
+          users: (users as any).meta?.total || (users as any).length || 0,
           categories: categories.length,
           products: (productsRes as any).meta?.total || 0,
           inventory: dbStats.totalCount,
@@ -454,7 +488,9 @@ export default function DashboardPage() {
           totalValue: dbStats.totalPurchaseValue,
           totalProfit: dbStats.totalProfit,
           salesTrend: { labels, data: trendData, dates: trendDates },
-          allSoldItems: (allSoldRes as any).data || []
+          allSoldItems: (allSoldRes as any).data || [],
+          attendanceSummary: attSummary,
+          topOperatives: (attStats || []).sort((a: any, b: any) => b.present - a.present).slice(0, 5)
         });
 
         setUser(meRes);
@@ -465,7 +501,7 @@ export default function DashboardPage() {
       }
     }
     load();
-  }, []);
+  }, [reportDays]);
 
   const handleChartDoubleClick = (event: any) => {
     if (!chartRef.current || !stats) return;
@@ -513,7 +549,7 @@ export default function DashboardPage() {
           value={`₹${(stats?.totalValue || 0).toLocaleString()}`} 
           subValue={`${stats?.inventory || 0} Assets in Vault`} 
           colors={colors} 
-          icon={<svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>} 
+          icon={<LayoutDashboard className="w-5 h-5" />} 
         />
         <StatCard 
           label="Realized Net Profit" 
@@ -521,27 +557,21 @@ export default function DashboardPage() {
           subValue={`From ${stats?.sold || 0} Successful Sales`} 
           colors={colors} 
           trend={(stats?.totalProfit || 0) >= 0 ? 'up' : 'down'}
-          icon={
-            (stats?.totalProfit || 0) >= 0 ? (
-              <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M23 6l-9.5 9.5-5-5L1 18" /><polyline points="17 6 23 6 23 12" /></svg>
-            ) : (
-              <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M23 18l-9.5-9.5-5 5L1 6" /><polyline points="17 18 23 18 23 12" /></svg>
-            )
-          } 
+          icon={(stats?.totalProfit || 0) >= 0 ? <TrendingUp className="w-5 h-5" /> : <TrendingUp className="w-5 h-5 rotate-180" />} 
         />
         <StatCard 
-          label="Master Catalog" 
-          value={stats?.products ?? 0} 
-          subValue={`Across ${stats?.categories} Categories`} 
+          label="Enlisted Personnels" 
+          value={stats?.users ?? 0} 
+          subValue={`Active Global Operatives`} 
           colors={colors} 
-          icon={<svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>} 
+          icon={<UsersIcon className="w-5 h-5" />} 
         />
         <StatCard 
-          label="Live Units" 
-          value={stats?.inventory ?? 0} 
-          subValue={`${stats?.available} Ready for Dispatch`} 
+          label="Presence Index" 
+          value={`${stats?.attendanceSummary.total?.present ?? 0} Active`} 
+          subValue={`Operatives On-Duty Today`} 
           colors={colors} 
-          icon={<svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /></svg>} 
+          icon={<Activity className="w-5 h-5" />} 
         />
       </div>
 
@@ -733,20 +763,101 @@ export default function DashboardPage() {
         </div>
 
         <div className="space-y-8">
+          {/* Presence Distribution */}
           <div className="p-8 rounded-[2.5rem] border bg-white shadow-sm shadow-slate-200/40 relative overflow-hidden group" style={{ borderColor: colors.border }}>
              <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50/10 rounded-full -mr-16 -mt-16 blur-3xl group-hover:bg-blue-100/20 transition-all duration-700" />
-            <h3 className="text-xl font-black tracking-tight mb-8 relative z-10" style={{ color: colors.textMain }}>Category Velocity</h3>
-            <div className="space-y-5 relative z-10">
-              {stats?.categoryStock?.length ? stats.categoryStock.map((cat: any, i: number) => (
-                <div key={i} className="flex items-center justify-between p-4 rounded-2xl hover:bg-slate-50 transition-all border border-transparent hover:border-slate-100 group/item">
-                  <div>
-                    <p className="text-[13px] font-black uppercase tracking-tight" style={{ color: colors.textMain }}>{cat.name}</p>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{cat.count} Master Pieces</p>
-                  </div>
+            <div className="flex items-center justify-between mb-8 relative z-10">
+              <div className="flex items-center gap-3">
+                <Activity className="w-5 h-5 text-blue-600" />
+                <h3 className="text-xl font-black tracking-tight" style={{ color: colors.textMain }}>Presence Audit</h3>
+              </div>
+              <select 
+                value={reportDays}
+                onChange={(e) => setReportDays(Number(e.target.value))}
+                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-widest focus:outline-none focus:border-blue-500 cursor-pointer"
+              >
+                <option value={7}>Weekly</option>
+                <option value={30}>Monthly</option>
+              </select>
+            </div>
+            
+            <div className="space-y-8 relative z-10">
+              {/* Role Breakdown: Managers */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 px-2">
+                   <Shield className="w-3.5 h-3.5 text-violet-600" />
+                   <span className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-600">Administrative (Managers)</span>
                 </div>
+                <div className="grid grid-cols-2 gap-3">
+                   <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100/50">
+                      <p className="text-[10px] font-bold text-emerald-600 uppercase mb-1">Present</p>
+                      <p className="text-xl font-black text-emerald-700">{stats?.attendanceSummary.roles?.manager?.present ?? 0}</p>
+                   </div>
+                   <div className="bg-red-50 p-4 rounded-2xl border border-red-100/50">
+                      <p className="text-[10px] font-bold text-red-600 uppercase mb-1">Absent</p>
+                      <p className="text-xl font-black text-red-700">{stats?.attendanceSummary.roles?.manager?.absent ?? 0}</p>
+                   </div>
+                </div>
+              </div>
+
+              {/* Role Breakdown: Cashiers / Others */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 px-2 border-t border-slate-50 pt-6">
+                   <UsersIcon className="w-3.5 h-3.5 text-blue-600" />
+                   <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600">Operational Personnel</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                   <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100/50">
+                      <p className="text-[10px] font-bold text-emerald-600 uppercase mb-1">Present</p>
+                      <p className="text-xl font-black text-emerald-700">{stats?.attendanceSummary.roles?.cashier?.present ?? 0}</p>
+                   </div>
+                   <div className="bg-red-50 p-4 rounded-2xl border border-red-100/50">
+                      <p className="text-[10px] font-bold text-red-600 uppercase mb-1">Absent</p>
+                      <p className="text-xl font-black text-red-700">{stats?.attendanceSummary.roles?.cashier?.absent ?? 0}</p>
+                   </div>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-slate-50">
+                 <div className="flex items-center justify-between px-2">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic">Global Operational Velocity</span>
+                    <span className="text-[10px] font-black text-slate-900">{( (stats?.attendanceSummary.total?.present || 0) / ( (stats?.attendanceSummary.total?.present || 0) + (stats?.attendanceSummary.total?.absent || 0) || 1 ) * 100 ).toFixed(0)}% ROI</span>
+                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Top Operatives Leaderboard */}
+          <div className="p-8 rounded-[2.5rem] border bg-white shadow-sm shadow-slate-200/40 relative overflow-hidden group" style={{ borderColor: colors.border }}>
+             <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-50/10 rounded-full -mr-16 -mt-16 blur-3xl group-hover:bg-emerald-100/20 transition-all duration-700" />
+            <div className="flex items-center gap-3 mb-8 relative z-10">
+              <Award className="w-5 h-5 text-emerald-600" />
+              <h3 className="text-xl font-black tracking-tight" style={{ color: colors.textMain }}>Performance Hub</h3>
+            </div>
+            <div className="space-y-4 relative z-10">
+              {stats?.topOperatives?.length ? stats.topOperatives.map((op: any, i: number) => (
+                <Link 
+                  href={`/dashboard/users?profile=${op.user._id}`} 
+                  key={i} 
+                  className="flex items-center justify-between p-3 rounded-2xl hover:bg-slate-50 transition-all group/item cursor-pointer border border-transparent hover:border-slate-100"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 group-hover/item:bg-emerald-600 group-hover/item:text-white transition-all">
+                       <UserIcon className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-[13px] font-black tracking-tight" style={{ color: colors.textMain }}>{op.user.name}</p>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none mt-1">{op.user.role}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[13px] font-black text-emerald-600 tracking-tight">{op.present}D</p>
+                    <p className="text-[9px] font-bold text-slate-300 uppercase tracking-tighter leading-none">Present</p>
+                  </div>
+                </Link>
               )) : (
                  <div className="py-10 text-center">
-                    <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em]">No domain data found</p>
+                    <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em]">No performance metrics resolved</p>
                  </div>
               )}
             </div>
