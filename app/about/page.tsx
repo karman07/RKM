@@ -15,8 +15,8 @@ export default function AboutPage() {
       <section className="relative h-[65vh] flex items-center justify-center overflow-hidden">
         <div className="absolute inset-0 z-0">
           <img 
-            src="/aboutus.png" 
-            alt="RKM Jewellers Boutique in Mohali" 
+            src="/RKM_LOGO.jpg" 
+            alt="RKM Jewellers" 
             className="w-full h-full object-cover brightness-[0.55]"
           />
         </div>

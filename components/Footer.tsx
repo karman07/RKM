@@ -55,9 +55,11 @@ export default function Footer() {
       <div className="max-w-[1440px] mx-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-12 mb-24">
         {/* Brand Column */}
         <div className="col-span-2 md:col-span-3 lg:col-span-2 pr-12">
-          <h2 className="font-serif text-3xl tracking-[0.2em] uppercase mb-8" style={{ color: THEME.colors.secondary }}>
-            RKM Jewellers
-          </h2>
+          <div className="mb-8">
+            <div className="w-28 h-28 flex items-center justify-start origin-left">
+              <img src="/RKM LOGO SVG.svg" alt="RKM Jewellers" className="w-full h-full object-contain" />
+            </div>
+          </div>
           <p className="opacity-60 text-[11px] uppercase tracking-[0.3em] leading-[2.2] mb-10 text-balance">
             A trusted legacy in Mohali & Chandigarh, specializing in handcrafted 22K Hallmarked gold and certified diamond jewellery. Combining traditional Punjabi artistry with modern elegance for your most precious moments.
           </p>

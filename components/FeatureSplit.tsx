@@ -42,9 +42,9 @@ export default function FeatureSplit() {
         
         <div className="w-full md:w-1/2 h-[60vh] md:h-auto min-h-[600px] relative bg-[#FAFAF9]">
           <img 
-            src="/aboutus.png"
-            alt="The Artisan Workspace"
-            className="absolute inset-0 w-full h-full object-cover grayscale-[0.2] hover:grayscale-0 transition-all duration-[2s] ease-out"
+            src="/RKM_LOGO.jpg"
+            alt="RKM Jewellers Brandmark"
+            className="absolute inset-0 w-full h-full object-cover hover:scale-105 transition-all duration-[2s] ease-out"
           />
         </div>
       </div>

@@ -34,6 +34,8 @@ interface Product {
     making_charges: number;
     stone_price: number;
     tax_amount: number;
+    subtotal: number;
+    discount_amount: number;
     final_price: number;
   };
 }
@@ -165,11 +167,25 @@ export default function ProductDetailPage() {
                   </div>
                   
                   <div className="flex items-baseline justify-between pt-2 border-t border-[#F0EDEA]">
-                    <div className="space-y-0.5">
-                      <span className="text-[8px] uppercase tracking-[0.2em] font-bold text-[#7A8C85] opacity-50">Investment (Excl. Tax)</span>
-                      <p className="font-serif text-4xl text-[#1A2E26]">
-                        ₹{((product.pricing_breakdown?.final_price || 0) - (product.pricing_breakdown?.tax_amount || 0)).toLocaleString('en-IN')}
-                      </p>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-3">
+                        {(product.pricing_breakdown?.discount_amount ?? 0) > 0 && (
+                           <span className="text-sm line-through opacity-30 font-light translate-y-1">
+                             ₹{product.pricing_breakdown?.subtotal?.toLocaleString('en-IN')}
+                           </span>
+                        )}
+                        <p className="font-serif text-4xl sm:text-5xl text-[#1A2E26] font-bold">
+                          ₹{product.pricing_breakdown?.final_price?.toLocaleString('en-IN')}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                         <span className="text-[8px] uppercase tracking-[0.2em] font-black text-[#B8975A]">Complete Investment (Inc. all taxes)</span>
+                         {(product.pricing_breakdown?.discount_amount ?? 0) > 0 && (
+                            <span className="text-[8px] bg-[#B8975A] text-white px-2 py-0.5 rounded font-black tracking-widest animate-pulse">
+                              SAVE ₹{product.pricing_breakdown?.discount_amount?.toLocaleString('en-IN')}
+                            </span>
+                         )}
+                      </div>
                     </div>
                     <div className="text-right">
                       <span className="text-[8px] uppercase tracking-[0.1em] font-bold text-[#B8975A] block">Authenticity</span>
@@ -272,33 +288,6 @@ export default function ProductDetailPage() {
                     )}
                   </div>
                 </div>
-
-                {/* Cost Breakdown */}
-                {product.pricing_breakdown && (
-                  <div className="space-y-5 bg-[#FAFAF8] p-6 rounded-2xl border border-[#F0EDEA]">
-                    <h6 className="text-[9px] uppercase tracking-[0.2em] font-black text-[#B8975A]">Price Transparency</h6>
-                    <div className="space-y-3">
-                      <div className="flex justify-between text-[11px] text-[#1A2E26]/60 font-medium">
-                        <span>Gold Component</span>
-                        <span>₹{product.pricing_breakdown.metal_price.toLocaleString('en-IN')}</span>
-                      </div>
-                      {product.pricing_breakdown.stone_price > 0 && (
-                        <div className="flex justify-between text-[11px] text-[#1A2E26]/60 font-medium">
-                          <span>Stones / Gemwork</span>
-                          <span>₹{product.pricing_breakdown.stone_price.toLocaleString('en-IN')}</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between text-[11px] text-[#1A2E26]/60 font-medium">
-                        <span>Artisanship</span>
-                        <span>₹{product.pricing_breakdown.making_charges.toLocaleString('en-IN')}</span>
-                      </div>
-                      <div className="flex justify-between text-[11px] text-[#1A2E26]/60 font-medium">
-                        <span>Tax / GST</span>
-                        <span>₹{product.pricing_breakdown.tax_amount.toLocaleString('en-IN')}</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
 
                 {/* Trust Signifiers */}
                 <div className="pt-8 flex flex-wrap justify-between items-center gap-4 opacity-40 grayscale">

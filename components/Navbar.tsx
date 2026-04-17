@@ -441,20 +441,10 @@ export default function Navbar() {
         }`}
       >
         <div className="max-w-[1440px] mx-auto px-6 lg:px-12 h-[70px] flex items-center gap-8">
-          {/* ── Logo ── */}
-          <Link href="/" className="flex-shrink-0 flex flex-col leading-none group">
-            <span
-              style={{ color: textCol }}
-              className="font-serif text-[28px] tracking-[-0.04em] uppercase font-semibold group-hover:opacity-70 transition-opacity duration-500"
-            >
-              RKM
-            </span>
-            <span
-              style={{ color: GOLD, letterSpacing: "0.24em" }}
-              className="text-[7px] font-semibold uppercase -mt-0.5"
-            >
-              Fine Jewellery
-            </span>
+          <Link href="/" className="flex-shrink-0 flex items-center group">
+            <div className="h-11 flex items-center justify-center transition-all duration-300">
+               <img src="/RKM LOGO SVG.svg" alt="RKM Jewellers" className="h-full w-auto object-contain transform group-hover:scale-105 transition-transform duration-700" />
+            </div>
           </Link>
 
           {/* ── Desktop Nav ── */}

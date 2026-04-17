@@ -54,7 +54,7 @@ export default function RootLayout({
               "@context": "https://schema.org",
               "@type": "JewelryStore",
               "name": "RKM Jewellers",
-              "image": "https://rkmjewellers.com/aboutus.png",
+              "image": "https://rkmjewellers.com/RKM_LOGO.jpg",
               "@id": "https://rkmjewellers.com",
               "url": "https://rkmjewellers.com",
               "telephone": "+91- Mohali Office",
