@@ -5,14 +5,16 @@ import { InventoryService } from './inventory.service.js';
 import { InventoryController } from './inventory.controller.js';
 import { ProductsModule } from '../products/products.module.js';
 import { UploadsModule } from '../uploads/uploads.module.js';
+import { SettingsModule } from '../settings/settings.module.js';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: InventoryItem.name, schema: InventoryItemSchema },
     ]),
-    ProductsModule,
+    ProductsModule,  // provides ProductsService + PricingService
     UploadsModule,
+    SettingsModule,  // provides SettingsService
   ],
   controllers: [InventoryController],
   providers: [InventoryService],

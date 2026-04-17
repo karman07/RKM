@@ -6,6 +6,7 @@ import {
   Delete,
   Param,
   Body,
+  Query,
   UseGuards,
   Request,
   ForbiddenException,
@@ -33,22 +34,26 @@ export class UsersController {
   // ─── Admin: Get all users ───────────────────────────────────────────────────
   @Get()
   @Roles(UserRole.ADMIN)
-  findAll() {
-    return this.usersService.findAll();
+  findAll(@Query('page') page?: number, @Query('limit') limit?: number) {
+    return this.usersService.findAll(Number(page) || 1, Number(limit) || 20);
   }
 
   // ─── Admin: Get users by role ───────────────────────────────────────────────
   @Get('role/:role')
   @Roles(UserRole.ADMIN)
-  findByRole(@Param('role') role: UserRole) {
-    return this.usersService.findByRole(role);
+  findByRole(
+    @Param('role') role: UserRole,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.usersService.findByRole(role, Number(page) || 1, Number(limit) || 20);
   }
 
   // ─── Admin & Manager: Get cashiers only ────────────────────────────────────
   @Get('cashiers')
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
-  getCashiers() {
-    return this.usersService.findByRole(UserRole.CASHIER);
+  getCashiers(@Query('page') page?: number, @Query('limit') limit?: number) {
+    return this.usersService.findByRole(UserRole.CASHIER, Number(page) || 1, Number(limit) || 20);
   }
 
   // ─── Admin & Manager: Get specific user ────────────────────────────────────

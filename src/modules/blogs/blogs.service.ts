@@ -50,7 +50,15 @@ export class BlogsService {
       this.blogModel.countDocuments(filter),
     ]);
 
-    return { data, total };
+    return {
+      data,
+      meta: {
+        total,
+        page: Number(offset) / Number(limit) + 1,
+        limit: Number(limit),
+        total_pages: Math.ceil(total / Number(limit)),
+      },
+    };
   }
 
   async findOne(id: string) {

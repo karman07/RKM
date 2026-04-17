@@ -4,11 +4,30 @@ import {
   IsNumber,
   IsBoolean,
   IsMongoId,
+  IsArray,
+  ValidateNested,
   Min,
   Max,
   IsNotEmpty,
   MaxLength,
 } from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class StoneComponentDto {
+  @IsString()
+  @IsNotEmpty()
+  stone_type: string;
+
+  @IsNumber()
+  @Min(0)
+  weight: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  price_override?: number;
+}
+
 
 export class CreateProductDto {
   @IsString()
@@ -113,6 +132,18 @@ export class CreateProductDto {
   @IsNumber()
   @Min(0)
   stone_price?: number;
+
+  /**
+   * Multi-stone breakdown.
+   * Each item specifies the stone type (e.g. 'diamond'), weight in grams/carats,
+   * and an optional fixed price override for that stone.
+   * When provided, this takes priority over the legacy single stone_type/stone_weight fields.
+   */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => StoneComponentDto)
+  stones?: StoneComponentDto[];
 
   @IsOptional()
   @IsNumber()

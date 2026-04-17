@@ -15,6 +15,9 @@ import { BlogsModule } from './modules/blogs/blogs.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { PurchaseOrdersModule } from './modules/purchase-orders/purchase-orders.module';
+import { BranchesModule } from './modules/branches/branches.module';
+import { AttendanceModule } from './modules/attendance/attendance.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -37,6 +40,8 @@ import { PurchaseOrdersModule } from './modules/purchase-orders/purchase-orders.
     AnalyticsModule,
     PurchaseOrdersModule,
     SuppliersModule,
+    BranchesModule,
+    AttendanceModule,
   ],
   controllers: [AppController],
   providers: [AppService],

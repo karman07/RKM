@@ -36,6 +36,31 @@ export class InventoryController {
     return this.inventoryService.addItem(dto);
   }
 
+  /**
+   * POST /inventory/sync-prices
+   * Admin-only: Recomputes selling_price for ALL available inventory items
+   * based on current Settings (gold rates, stone rates).
+   * Called automatically after settings update, or manually by admin.
+   */
+  @Post('sync-prices')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  syncAllPrices() {
+    return this.inventoryService.syncAllAvailablePrices();
+  }
+
+  /**
+   * POST /inventory/sync-prices/product/:productId
+   * Admin-only: Recomputes selling_price for all available inventory items
+   * of a specific product (called after product pricing params are updated).
+   */
+  @Post('sync-prices/product/:productId')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  syncProductPrices(@Param('productId') productId: string) {
+    return this.inventoryService.syncPricesForProduct(productId);
+  }
+
   @Delete('bulk-delete')
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)

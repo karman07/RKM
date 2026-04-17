@@ -28,16 +28,55 @@ export class UsersService {
     return user.save();
   }
 
-  async findAll(): Promise<UserDocument[]> {
-    return this.userModel.find().select('-password').exec();
+  async findAll(page: number = 1, limit: number = 20): Promise<{ data: UserDocument[]; meta: any }> {
+    const skip = (page - 1) * limit;
+    const [data, total] = await Promise.all([
+      this.userModel.find()
+        .select('-password')
+        .populate('branch')
+        .skip(skip)
+        .limit(limit)
+        .sort({ createdAt: -1 })
+        .exec(),
+      this.userModel.countDocuments().exec(),
+    ]);
+    return { 
+      data, 
+      meta: {
+        total,
+        page,
+        limit,
+        total_pages: Math.ceil(total / limit)
+      } 
+    };
   }
 
-  async findByRole(role: UserRole): Promise<UserDocument[]> {
-    return this.userModel.find({ role }).select('-password').exec();
+  async findByRole(role: UserRole, page: number = 1, limit: number = 20): Promise<{ data: UserDocument[]; meta: any }> {
+    const skip = (page - 1) * limit;
+    const query = { role };
+    const [data, total] = await Promise.all([
+      this.userModel.find(query)
+        .select('-password')
+        .populate('branch')
+        .skip(skip)
+        .limit(limit)
+        .sort({ createdAt: -1 })
+        .exec(),
+      this.userModel.countDocuments(query).exec(),
+    ]);
+    return { 
+      data, 
+      meta: {
+        total,
+        page,
+        limit,
+        total_pages: Math.ceil(total / limit)
+      } 
+    };
   }
 
   async findById(id: string): Promise<UserDocument> {
-    const user = await this.userModel.findById(id).select('-password').exec();
+    const user = await this.userModel.findById(id).select('-password').populate('branch').exec();
     if (!user) throw new NotFoundException(`User ${id} not found`);
     return user;
   }

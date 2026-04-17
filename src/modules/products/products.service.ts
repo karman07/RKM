@@ -10,7 +10,7 @@ import { Product, ProductDocument } from './schemas/product.schema';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { QueryProductDto } from './dto/query-product.dto';
-import { PricingService } from './pricing.service';
+import { PricingService, PricingInput, StoneInput } from './pricing.service';
 import { SettingsService } from '../settings/settings.service';
 import { BarcodeService } from '../uploads/barcode.service';
 
@@ -114,7 +114,6 @@ export class ProductsService {
     const stoneRates: Record<string, number> = (settings as any).stone_rates ?? {};
 
     const data = rawItems.map((p: any) => {
-      // Caller may pass the gold rate as a session override; otherwise fall back to settings
       const metalRate = this.resolveMetalRate({
         metalType: p.metal_type,
         purity: p.purity,
@@ -122,20 +121,12 @@ export class ProductsService {
         metalRates,
         purityRates,
       });
-      const stoneRate = stoneRates[p.stone_type] ?? 0;
+      const stoneRateMap = stoneRates;
       return {
         ...p,
-        pricing_breakdown: this.pricingService.calculate({
-          net_weight: p.net_weight,
-          stone_weight: p.stone_weight ?? 0,
-          metal_rate: metalRate,
-          stone_rate: stoneRate,
-          making_charge_type: p.making_charge_type,
-          making_charge_rate: p.making_charge_rate,
-          fixed_making_charge: p.fixed_making_charge,
-          tax_percentage: p.tax_percentage,
-          price_override: p.price_override,
-        }),
+        pricing_breakdown: this.pricingService.calculate(
+          this.buildPricingInput(p, metalRate, stoneRateMap),
+        ),
       };
     });
 
@@ -173,23 +164,25 @@ export class ProductsService {
       metalRates,
       purityRates,
     });
-    const stoneRate = stoneRates[product.stone_type] ?? 0;
 
     return {
       ...product,
-      pricing_breakdown: this.pricingService.calculate({
-        net_weight: product.net_weight,
-        stone_weight: product.stone_weight ?? 0,
-        metal_rate: metalRate,
-        stone_rate: stoneRate,
-        making_charge_type: product.making_charge_type,
-        making_charge_rate: product.making_charge_rate,
-        fixed_making_charge: product.fixed_making_charge,
-        tax_percentage: product.tax_percentage,
-        discount_percentage: product.discount_percentage,
-        price_override: product.price_override,
-      }),
+      pricing_breakdown: this.pricingService.calculate(
+        this.buildPricingInput(product, metalRate, stoneRates),
+      ),
     };
+  }
+
+  /**
+   * Returns the raw lean product document WITHOUT computing pricing_breakdown.
+   * Used by InventoryService to get product fields for independent price computation,
+   * avoiding double work and circular dependency issues.
+   */
+  async findOneRaw(id: string): Promise<any | null> {
+    if (!Types.ObjectId.isValid(id)) return null;
+    return this.productModel
+      .findOne({ _id: id, deleted_at: null })
+      .lean() as any;
   }
 
   async update(id: string, dto: UpdateProductDto, userId: string): Promise<ProductDocument> {
@@ -293,18 +286,50 @@ export class ProductsService {
   }): number {
     const { metalType, purity, sessionOverride, metalRates, purityRates } = params;
     
-    // Priority 1: Session override (temporary price for gold quote only)
-    if (sessionOverride != null && metalType === 'gold') return sessionOverride;
+    // Priority 1: Session override (passed by caller, e.g. from live gold-rate widget)
+    if (sessionOverride != null) return sessionOverride;
     
     // Priority 2: Metal-specific purity rate
-    // e.g., purityRates['gold']['22K'] = 6000
     if (purity && purityRates[metalType] && Object.prototype.hasOwnProperty.call(purityRates[metalType], purity)) {
       const rate = Number(purityRates[metalType][purity]);
       if (rate > 0) return rate;
     }
     
-    // Priority 3: Metal rate (fallback)
+    // Priority 3: Flat metal rate (fallback)
     return Number(metalRates[metalType]) || 0;
+  }
+
+  /**
+   * Builds a PricingInput object from a product document and resolved settings.
+   */
+  private buildPricingInput(
+    p: any,
+    metalRate: number,
+    stoneRates: Record<string, number>,
+  ): PricingInput {
+    // Multi-stone array takes priority over the legacy single stone_weight field
+    const stonesArray: StoneInput[] = (p.stones ?? []).map((s: any) => ({
+      stone_type: s.stone_type,
+      weight: s.weight ?? 0,
+      rate: stoneRates[s.stone_type] ?? 0,
+      price_override: s.price_override ?? null,
+    }));
+
+    return {
+      net_weight: p.net_weight ?? 0,
+      wastage_percentage: p.wastage_percentage ?? 0,
+      stones: stonesArray.length > 0 ? stonesArray : undefined,
+      // Legacy fallback when no stones array
+      stone_weight: stonesArray.length === 0 ? (p.stone_weight ?? 0) : undefined,
+      stone_rate: stonesArray.length === 0 ? (stoneRates[p.stone_type] ?? 0) : undefined,
+      metal_rate: metalRate,
+      making_charge_type: p.making_charge_type ?? 'fixed',
+      making_charge_rate: p.making_charge_rate ?? 0,
+      fixed_making_charge: p.fixed_making_charge ?? 0,
+      tax_percentage: p.tax_percentage ?? 0,
+      discount_percentage: p.discount_percentage ?? 0,
+      price_override: p.price_override ?? null,
+    };
   }
 
   /**

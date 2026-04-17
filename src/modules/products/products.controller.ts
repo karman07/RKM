@@ -12,6 +12,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -25,6 +26,7 @@ import { UserRole } from '../../users/schemas/user.schema';
 export class ProductsController {
   constructor(
     private readonly productsService: ProductsService,
+    private readonly moduleRef: ModuleRef,
   ) {}
 
   @Post()
@@ -52,8 +54,31 @@ export class ProductsController {
   @Put(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
-  update(@Param('id') id: string, @Body() dto: UpdateProductDto, @Request() req: any) {
-    return this.productsService.update(id, dto, req.user._id ?? req.user.sub);
+  async update(@Param('id') id: string, @Body() dto: UpdateProductDto, @Request() req: any) {
+    const updated = await this.productsService.update(id, dto, req.user._id ?? req.user.sub);
+
+    // Fire-and-forget: sync inventory prices for this product in the background
+    this.triggerProductInventorySync(id).catch((err) =>
+      console.error(`[ProductsController] Inventory sync failed for product ${id}:`, err?.message),
+    );
+
+    return updated;
+  }
+
+  /** Lazily resolves InventoryService to avoid circular dependency. */
+  private async triggerProductInventorySync(productId: string): Promise<void> {
+    try {
+      const { InventoryService } = await import('../inventory/inventory.service.js');
+      const inventoryService = this.moduleRef.get(InventoryService, { strict: false });
+      if (inventoryService) {
+        const result = await inventoryService.syncPricesForProduct(productId);
+        console.log(
+          `[ProductsController] Product ${productId} updated → inventory sync complete. Updated: ${result.updated}`,
+        );
+      }
+    } catch (err: any) {
+      console.error('[ProductsController] Could not resolve InventoryService:', err?.message);
+    }
   }
 
   @Delete(':id')

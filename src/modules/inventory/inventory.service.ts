@@ -14,6 +14,8 @@ import {
   ItemLocation,
 } from './schemas/inventory-item.schema.js';
 import { ProductsService } from '../products/products.service.js';
+import { SettingsService } from '../settings/settings.service.js';
+import { PricingService } from '../products/pricing.service.js';
 import { BarcodeService } from '../uploads/barcode.service.js';
 import { CreateInventoryItemDto } from './dto/create-inventory-item.dto.js';
 import { UpdateInventoryStatusDto } from './dto/update-inventory-status.dto.js';
@@ -35,8 +37,107 @@ export class InventoryService {
     @InjectModel(InventoryItem.name)
     private readonly inventoryModel: Model<InventoryItemDocument>,
     private readonly productsService: ProductsService,
+    private readonly settingsService: SettingsService,
+    private readonly pricingService: PricingService,
     private readonly barcodeService: BarcodeService,
   ) {}
+
+
+  /**
+   * Computes the live formula price for an inventory item.
+   * Returns the PURE FORMULA RESULT — no admin_discount or manager_discount applied.
+   *
+   * Contract:
+   *   selling_price (stored/returned) = formula result only
+   *   admin_discount + manager_discount = display-only tiers shown in the UI at sale time
+   *
+   * This ensures:
+   *   - Product page price === Inventory selling_price (same formula, same rates)
+   *   - Gold rate changes propagate immediately via findAll recomputation
+   *   - Item-level discounts don't compound with product-level discount_percentage
+   */
+  private computeLiveSellingPrice(
+    product: any,
+    _item: any,
+    settings: any,
+  ): number {
+    if (!product) return 0;
+
+    const metalRates: Record<string, number> = settings.metal_rates ?? {};
+    const purityRates = this.normalizePurityRates(settings.purity_rates);
+    const stoneRates: Record<string, number> = settings.stone_rates ?? {};
+
+    const metalRate = this.resolveMetalRate(
+      product.metal_type,
+      product.purity,
+      metalRates,
+      purityRates,
+    );
+
+    const stonesArray = (product.stones ?? []).map((s: any) => ({
+      stone_type: s.stone_type,
+      weight: s.weight ?? 0,
+      rate: stoneRates[s.stone_type] ?? 0,
+      price_override: s.price_override ?? null,
+    }));
+
+    const pricingInput = {
+      net_weight: product.net_weight ?? 0,
+      wastage_percentage: product.wastage_percentage ?? 0,
+      stones: stonesArray.length > 0 ? stonesArray : undefined,
+      stone_weight: stonesArray.length === 0 ? (product.stone_weight ?? 0) : undefined,
+      stone_rate: stonesArray.length === 0 ? (stoneRates[product.stone_type] ?? 0) : undefined,
+      metal_rate: metalRate,
+      making_charge_type: product.making_charge_type ?? 'fixed',
+      making_charge_rate: product.making_charge_rate ?? 0,
+      fixed_making_charge: product.fixed_making_charge ?? 0,
+      tax_percentage: product.tax_percentage ?? 0,
+      discount_percentage: product.discount_percentage ?? 0,
+      price_override: product.price_override ?? null,
+    };
+
+    const breakdown = this.pricingService.calculate(pricingInput);
+    // Return ONLY the formula result — item discounts are applied separately in UI
+    return parseFloat(breakdown.final_price.toFixed(2));
+  }
+
+  /** Replicates ProductsService.normalizePurityRates for use without circular dependency. */
+  private normalizePurityRates(raw: unknown): Record<string, Record<string, number>> {
+    if (!raw || typeof raw !== 'object') return {};
+    const obj = raw as Record<string, unknown>;
+    const nested: Record<string, Record<string, number>> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        nested[key] = {};
+        for (const [purity, rate] of Object.entries(value as Record<string, unknown>)) {
+          nested[key][purity] = Number(rate) || 0;
+        }
+      }
+    }
+    if (Object.keys(nested).length === 0) {
+      nested.gold = {};
+      for (const [purity, rate] of Object.entries(obj)) {
+        nested.gold[purity] = Number(rate) || 0;
+      }
+    }
+    return nested;
+  }
+
+  /** Replicates ProductsService.resolveMetalRate for use without circular dependency. */
+  private resolveMetalRate(
+    metalType: string,
+    purity: string,
+    metalRates: Record<string, number>,
+    purityRates: Record<string, Record<string, number>>,
+  ): number {
+    // Priority 1: Metal-specific purity rate
+    if (purity && purityRates[metalType]?.[purity]) {
+      const rate = Number(purityRates[metalType][purity]);
+      if (rate > 0) return rate;
+    }
+    // Priority 2: Flat metal rate
+    return Number(metalRates[metalType]) || 0;
+  }
 
   // ─── Add Single Item ───────────────────────────────────────────────────────
 
@@ -50,9 +151,14 @@ export class InventoryService {
     // Snapshot product dimensions at ingress time
     const dimensions_snapshot: string = product.dimensions || '';
 
-    // Copy max_manager_discount and admin discount from product
+    // Copy max_manager_discount from product; admin_discount starts at 0
+    // (product.discount_percentage is ALREADY baked into the pricing formula —
+    // copying it here would cause double-discounting)
     const max_manager_discount: number = Number(product.max_manager_discount) || 0;
-    const admin_discount: number = Number(product.discount_percentage) || 0;
+
+    // Compute initial selling_price = pure formula result (no extra item discounts)
+    const settings = await this.settingsService.get();
+    const initialSellingPrice = this.computeLiveSellingPrice(product, {}, settings);
 
     const barcode = dto.barcode ?? this.generateBarcode();
     const unique_item_code = dto.unique_item_code ?? this.generateItemCode(dto.product_id);
@@ -70,11 +176,11 @@ export class InventoryService {
       unique_item_code,
       barcode_url,
       status: InventoryStatus.AVAILABLE,
-      selling_price: dto.selling_price ?? (Number(product.pricing_breakdown?.final_price) || 0),
-      purchase_price,           // auto-locked from product
-      dimensions_snapshot,      // snapshot from product
-      max_manager_discount,     // copied from product
-      admin_discount,           // snapshotted from product
+      selling_price: initialSellingPrice,  // = product formula price
+      purchase_price,                       // auto-locked from product
+      dimensions_snapshot,                  // snapshot from product
+      max_manager_discount,                 // copied from product
+      admin_discount: 0,    // always 0 — set via /discount endpoint only
       manager_discount: 0,
     });
 
@@ -194,7 +300,8 @@ export class InventoryService {
         .find(filter as any)
         .populate({
           path: 'product_id',
-          select: 'name sku metal_type purity barcode images dimensions purchase_price max_manager_discount pricing_breakdown discount_percentage',
+          // pricing_breakdown is a virtual field NOT stored in DB — we recompute it below
+          select: 'name sku metal_type purity stones wastage_percentage net_weight stone_weight stone_type making_charge_type making_charge_rate fixed_making_charge tax_percentage discount_percentage price_override purchase_price max_manager_discount barcode images dimensions',
           populate: { path: 'category_id', select: 'name slug' },
         })
         .skip(skip)
@@ -204,8 +311,33 @@ export class InventoryService {
       this.inventoryModel.countDocuments(filter as any),
     ]);
 
+    // Fetch current Settings ONCE. We recompute the price from the product's raw fields
+    // + current rates — NOT from pricing_breakdown (which is virtual, not in DB).
+    const settings = await this.settingsService.get();
+
+    const data = items.map((item: any) => {
+      const product = item.product_id as any;
+      if (!product) return item;
+
+      // Recompute formula price live — this is the single source of truth for
+      // what the product is worth right now at current gold/stone rates.
+      // This number will ALWAYS match the product pricing modal.
+      const formulaPrice = this.computeLiveSellingPrice(product, item, settings);
+
+      return {
+        ...item,
+        // For sold/returned: keep the historical transaction price
+        // For everything else: always show live formula price
+        selling_price: (item.status === InventoryStatus.SOLD || item.status === InventoryStatus.RETURNED)
+          ? item.selling_price
+          : formulaPrice,
+        // Always include live_selling_price for transparency
+        live_selling_price: formulaPrice,
+      };
+    });
+
     return {
-      data: items,
+      data,
       meta: {
         total,
         page: Number(page),
@@ -226,7 +358,7 @@ export class InventoryService {
         .find(filter)
         .populate({
           path: 'product_id',
-          select: 'name sku metal_type images pricing_breakdown discount_percentage',
+          select: 'name sku metal_type images discount_percentage',
         })
         .sort({ deleted_at: -1 })
         .skip(skip)
@@ -252,25 +384,16 @@ export class InventoryService {
 
     const [generalStats, profitStats, trendStats, categoryStats] = await Promise.all([
       // General status and value distribution
+      // NOTE: selling_price for available items is already recomputed to reflect live rates
+      // (done in findAll). The aggregate uses the stored selling_price, so for SOLD items
+      // it's the historical transaction price. For available items it's the last synced price.
       this.inventoryModel.aggregate([
         { $match: { is_deleted: { $ne: true } } },
-        {
-          $addFields: {
-            // Apply both discounts to get the true current market value of the item
-            netValue: {
-              $multiply: [
-                '$selling_price',
-                { $subtract: [1, { $divide: ['$admin_discount', 100] }] },
-                { $subtract: [1, { $divide: ['$manager_discount', 100] }] }
-              ]
-            }
-          }
-        },
         {
           $group: {
             _id: '$status',
             count: { $sum: 1 },
-            value: { $sum: '$netValue' },
+            value: { $sum: '$selling_price' },
             purchaseValue: { $sum: '$purchase_price' },
           },
         },
@@ -369,15 +492,121 @@ export class InventoryService {
       .findOne({ barcode })
       .populate({
         path: 'product_id',
+        select: 'name sku metal_type purity stones wastage_percentage net_weight stone_weight stone_type making_charge_type making_charge_rate fixed_making_charge tax_percentage discount_percentage price_override purchase_price max_manager_discount barcode images dimensions',
         populate: { path: 'category_id', select: 'name slug' },
       })
-      .lean();
+      .lean() as any;
 
     if (!item) {
       throw new NotFoundException(`No inventory item found with barcode '${barcode}'`);
     }
 
+    const product = item.product_id as any;
+    if (product) {
+      const settings = await this.settingsService.get();
+      const liveSellingPrice = this.computeLiveSellingPrice(product, item, settings);
+      return {
+        ...item,
+        live_selling_price: liveSellingPrice,
+        selling_price: item.status === InventoryStatus.SOLD || item.status === InventoryStatus.RETURNED
+          ? item.selling_price
+          : liveSellingPrice,
+      };
+    }
+
     return item;
+  }
+
+  // ─── Sync Prices for a Single Product ─────────────────────────────────────
+
+  /**
+   * Called when a product's pricing params are updated.
+   * Recomputes selling_price for all AVAILABLE inventory items of this product
+   * using the current rates from Settings.
+   */
+  async syncPricesForProduct(productId: string): Promise<{ updated: number }> {
+    if (!Types.ObjectId.isValid(productId)) return { updated: 0 };
+
+    const product = await this.productsService.findOneRaw(productId);
+    if (!product) return { updated: 0 };
+
+    const settings = await this.settingsService.get();
+    const formulaPrice = this.computeLiveSellingPrice(product, {}, settings);
+
+    // Update ALL available+reserved+damaged items for this product
+    const result = await this.inventoryModel.updateMany(
+      {
+        product_id: new Types.ObjectId(productId),
+        status: { $in: [InventoryStatus.AVAILABLE, InventoryStatus.RESERVED, InventoryStatus.DAMAGED] },
+        is_deleted: { $ne: true },
+      },
+      {
+        $set: {
+          selling_price: formulaPrice,
+          // Reset wrongly-initialized admin_discount (was copied from product.discount_percentage)
+          // Admin can re-set per-item discounts via the /discount endpoint
+          admin_discount: 0,
+        },
+      },
+    );
+
+    return { updated: result.modifiedCount };
+  }
+
+  // ─── Sync Prices for ALL Available Inventory ───────────────────────────────
+
+  /**
+   * Called when global Settings (gold rates, stone rates) change.
+   * Iterates over all available inventory items and recomputes their selling_price
+   * from their linked product's current pricing_breakdown.
+   *
+   * This is the key hook that makes daily gold rate changes propagate across
+   * the entire inventory automatically.
+   */
+  async syncAllAvailablePrices(): Promise<{ updated: number; skipped: number }> {
+    const settings = await this.settingsService.get();
+
+    // Get all non-sold, non-returned items that need repricing
+    const items = await this.inventoryModel.find({
+      status: { $in: [InventoryStatus.AVAILABLE, InventoryStatus.RESERVED, InventoryStatus.DAMAGED] },
+      is_deleted: { $ne: true },
+    });
+
+    let updated = 0;
+    let skipped = 0;
+    const productCache = new Map<string, any>();
+
+    for (const item of items) {
+      const pid = item.product_id.toString();
+
+      if (!productCache.has(pid)) {
+        try {
+          const product = await this.productsService.findOneRaw(pid);
+          productCache.set(pid, product ?? null);
+        } catch {
+          productCache.set(pid, null);
+        }
+      }
+
+      const product = productCache.get(pid);
+      if (!product) { skipped++; continue; }
+
+      const newPrice = this.computeLiveSellingPrice(product, {}, settings);
+      const needsPriceUpdate = Math.abs(item.selling_price - newPrice) > 0.01;
+      // Also reset admin_discount if it was wrongly copied from product.discount_percentage
+      const needsDiscountReset = item.admin_discount > 0 && item.admin_discount === (product.discount_percentage ?? 0);
+
+      if (needsPriceUpdate || needsDiscountReset) {
+        item.selling_price = newPrice;
+        if (needsDiscountReset) item.admin_discount = 0;
+        await item.save();
+        updated++;
+      } else {
+        skipped++;
+      }
+    }
+
+    return { updated, skipped };
   }
 
   // ─── Update Status ─────────────────────────────────────────────────────────

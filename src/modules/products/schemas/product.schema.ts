@@ -3,6 +3,22 @@ import { Document, Types } from 'mongoose';
 
 export type ProductDocument = Product & Document;
 
+/**
+ * Represents one stone component inside a product.
+ * A product can have multiple stone types (e.g. diamond + ruby).
+ */
+export class StoneComponent {
+  /** e.g. 'diamond', 'ruby', 'emerald' */
+  stone_type: string;
+  /** Weight in grams (diamonds) or carats depending on stone_type */
+  weight: number;
+  /**
+   * Optional per-item price override for this stone (₹).
+   * When set, overrides the global stone_rate from settings.
+   */
+  price_override?: number;
+}
+
 @Schema({ timestamps: true, collection: 'products' })
 export class Product {
   // Basic Info
@@ -73,11 +89,30 @@ export class Product {
   @Prop({ default: false })
   has_stones: boolean;
 
+  /** Legacy single-stone field — kept for migration compatibility */
   @Prop({ trim: true, default: '' })
   stone_type: string;
 
+  /** Legacy single-stone price — kept for migration compatibility */
   @Prop({ type: Number, min: 0, default: 0 })
   stone_price: number;
+
+  /**
+   * Multi-stone breakdown. Each entry captures a stone type,
+   * its weight, and an optional price override.
+   * This is the authoritative source for pricing when populated.
+   */
+  @Prop({
+    type: [
+      {
+        stone_type: { type: String, required: true, trim: true },
+        weight: { type: Number, required: true, min: 0 },
+        price_override: { type: Number, default: null },
+      },
+    ],
+    default: [],
+  })
+  stones: StoneComponent[];
 
   // Dimensions
   @Prop({ type: Number, min: 0, default: 0 })
