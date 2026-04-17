@@ -50,6 +50,22 @@ export class InventoryController {
   }
 
   /**
+   * POST /inventory/assign-branch
+   * Admin-only: Allocate one or more available items to a branch.
+   * Body: { ids: string[], branch_id: string | null }
+   * Pass branch_id = null to remove branch allocation (central stock).
+   */
+  @Post('assign-branch')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  assignBranch(@Body() body: { ids: string[]; branch_id: string | null }) {
+    if (!body.ids || !Array.isArray(body.ids) || body.ids.length === 0) {
+      throw new Error('ids array is required');
+    }
+    return this.inventoryService.assignBranch(body.ids, body.branch_id ?? null);
+  }
+
+  /**
    * POST /inventory/sync-prices/product/:productId
    * Admin-only: Recomputes selling_price for all available inventory items
    * of a specific product (called after product pricing params are updated).
@@ -81,16 +97,54 @@ export class InventoryController {
     return this.inventoryService.findDeleted(Number(page) || 1, Number(limit) || 20);
   }
 
+  @Get('damaged')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  getDamagedItems(
+    @Query('page') page: string,
+    @Query('limit') limit: string,
+    @Query('branch_id') branchId: string,
+  ) {
+    return this.inventoryService.getDamagedItems(
+      Number(page) || 1,
+      Number(limit) || 20,
+      branchId,
+    );
+  }
+
   @Get('product/:productId/count')
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   getItemCountForProduct(@Param('productId') productId: string) {
     return this.inventoryService.getItemCountForProduct(productId);
   }
 
+  /**
+   * GET /inventory/stats
+   * Returns global stats. Optionally scoped to a branch with ?branch_id=xxx
+   */
   @Get('stats')
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
-  getStats() {
-    return this.inventoryService.getStats();
+  getStats(@Query('branch_id') branchId?: string) {
+    return this.inventoryService.getStats(branchId);
+  }
+
+  /**
+   * GET /inventory/stats/branch/:branchId
+   * Detailed analytics for a single branch.
+   */
+  @Get('stats/branch/:branchId')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  getBranchStats(@Param('branchId') branchId: string) {
+    return this.inventoryService.getBranchStats(branchId);
+  }
+
+  /**
+   * GET /inventory/stats/all-branches
+   * Admin overview comparing all branches.
+   */
+  @Get('stats/all-branches')
+  @Roles(UserRole.ADMIN)
+  getAllBranchStats() {
+    return this.inventoryService.getAllBranchStats();
   }
 
   @Get()
@@ -105,10 +159,20 @@ export class InventoryController {
     return this.inventoryService.findByBarcode(code);
   }
 
+  /**
+   * PATCH /inventory/:id/status
+   * Passes requesting user's ID and branch to service for full sale traceability.
+   */
   @Patch(':id/status')
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
-  updateStatus(@Param('id') id: string, @Body() dto: UpdateInventoryStatusDto) {
-    return this.inventoryService.updateStatus(id, dto);
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER)
+  updateStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdateInventoryStatusDto,
+    @Request() req: any,
+  ) {
+    const userId = req.user?.sub || req.user?._id || req.user?.id;
+    const userBranchId = req.user?.branch?._id || req.user?.branch || undefined;
+    return this.inventoryService.updateStatus(id, dto, userId?.toString(), userBranchId?.toString());
   }
 
   /**

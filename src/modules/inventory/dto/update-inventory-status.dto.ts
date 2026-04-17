@@ -1,4 +1,4 @@
-import { IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength, IsNumber, Min, IsBoolean } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength, IsNumber, Min, IsBoolean, IsMongoId } from 'class-validator';
 import { InventoryStatus } from '../schemas/inventory-item.schema';
 
 export class UpdateInventoryStatusDto {
@@ -11,6 +11,22 @@ export class UpdateInventoryStatusDto {
   @Min(0)
   selling_price?: number;
 
+  // ─── Traceability: who sold it and at which branch ──────────────────────────
+  /** The user (cashier/manager/admin) who is recording this sale */
+  @IsOptional()
+  @IsMongoId()
+  sold_by_user_id?: string;
+
+  @IsOptional()
+  @IsMongoId()
+  sold_by_manager_id?: string;
+
+  /** The branch at which this item is being sold */
+  @IsOptional()
+  @IsMongoId()
+  sold_at_branch_id?: string;
+
+  // ─── Customer details (required on SOLD) ────────────────────────────────────
   @IsOptional()
   @IsString()
   @MaxLength(120)
@@ -79,4 +95,11 @@ export class UpdateInventoryStatusDto {
   @IsNumber()
   @Min(0)
   emi_down_payment?: number;
+
+  // ─── Damage tracking ────────────────────────────────────────────────────────
+  /** Required when status is set to 'damaged' */
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  damage_reason?: string;
 }

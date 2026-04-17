@@ -6,6 +6,7 @@ import { InventoryController } from './inventory.controller.js';
 import { ProductsModule } from '../products/products.module.js';
 import { UploadsModule } from '../uploads/uploads.module.js';
 import { SettingsModule } from '../settings/settings.module.js';
+import { BranchesModule } from '../branches/branches.module.js';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { SettingsModule } from '../settings/settings.module.js';
     ProductsModule,  // provides ProductsService + PricingService
     UploadsModule,
     SettingsModule,  // provides SettingsService
+    BranchesModule,
   ],
   controllers: [InventoryController],
   providers: [InventoryService],

@@ -28,6 +28,11 @@ export class InventoryItem {
   @Prop({ required: true, unique: true, trim: true })
   barcode: string;
 
+  // ─── Branch Binding ──────────────────────────────────────────────────────────
+  /** Branch this item is allocated to. Null = unallocated (warehouse/central stock) */
+  @Prop({ type: Types.ObjectId, ref: 'Branch', default: null })
+  branch_id: Types.ObjectId | null;
+
   // Stock Info
   @Prop({ trim: true, required: true })
   source: string;
@@ -66,15 +71,12 @@ export class InventoryItem {
   dimensions_snapshot: string;
 
   // Discount Control
-  /** Admin provisioned discount % */
   @Prop({ type: Number, min: 0, max: 100, default: 0 })
   admin_discount: number;
 
-  /** Manager applied discount % */
   @Prop({ type: Number, min: 0, max: 100, default: 0 })
   manager_discount: number;
 
-  /** Max discount % a Manager is allowed to apply (copied from Product.max_manager_discount) */
   @Prop({ type: Number, min: 0, max: 100, default: 0 })
   max_manager_discount: number;
 
@@ -98,6 +100,22 @@ export class InventoryItem {
   // Lifecycle
   @Prop({ type: Date, default: null })
   sold_at: Date | null;
+
+  // ─── Sale Traceability ───────────────────────────────────────────────────────
+  @Prop({ type: Types.ObjectId, ref: 'User', default: null })
+  sold_by_user_id: Types.ObjectId | null;
+
+  /** Manager of the branch at the time of sale */
+  @Prop({ type: Types.ObjectId, ref: 'User', default: null })
+  sold_by_manager_id: Types.ObjectId | null;
+
+  /** Branch where the sale was completed */
+  @Prop({ type: Types.ObjectId, ref: 'Branch', default: null })
+  sold_at_branch_id: Types.ObjectId | null;
+
+  /** Auto-generated unique sale reference number (e.g. SALE-20240417-00042) */
+  @Prop({ trim: true, default: '' })
+  sale_reference: string;
 
   // Sold Details
   @Prop({ trim: true, default: '' })
@@ -148,6 +166,16 @@ export class InventoryItem {
   @Prop({ type: Date, default: null })
   returned_at: Date | null;
 
+  // ─── Damage Tracking ─────────────────────────────────────────────────────────
+  @Prop({ trim: true, default: '' })
+  damage_reason: string;
+
+  @Prop({ type: Types.ObjectId, ref: 'User', default: null })
+  damaged_by_user_id: Types.ObjectId | null;
+
+  @Prop({ type: Date, default: null })
+  damaged_at: Date | null;
+
   // Soft Delete
   @Prop({ type: Boolean, default: false })
   is_deleted: boolean;
@@ -170,3 +198,8 @@ InventoryItemSchema.index({ barcode: 1 }, { unique: true });
 InventoryItemSchema.index({ unique_item_code: 1 }, { unique: true });
 InventoryItemSchema.index({ status: 1, location: 1 });
 InventoryItemSchema.index({ status: 1, sold_at: -1 });
+// Branch-wise compound indexes for fast aggregation
+InventoryItemSchema.index({ branch_id: 1, status: 1 });
+InventoryItemSchema.index({ branch_id: 1, sold_at: -1 });
+InventoryItemSchema.index({ sold_at_branch_id: 1, sold_at: -1 });
+InventoryItemSchema.index({ sold_by_user_id: 1, sold_at: -1 });

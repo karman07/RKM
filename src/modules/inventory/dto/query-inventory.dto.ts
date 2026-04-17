@@ -1,5 +1,5 @@
-import { IsOptional, IsEnum, IsMongoId } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsOptional, IsEnum, IsMongoId, IsDateString, IsString, IsBoolean } from 'class-validator';
+import { Type, Transform } from 'class-transformer';
 import { IsNumber, Min } from 'class-validator';
 import { InventoryStatus, ItemLocation } from '../schemas/inventory-item.schema';
 
@@ -15,6 +15,31 @@ export class QueryInventoryDto {
   @IsOptional()
   @IsEnum(ItemLocation)
   location?: ItemLocation;
+
+  /** Filter by branch allocation */
+  @IsOptional()
+  @IsMongoId()
+  branch_id?: string;
+
+  /** When true, return only items with no branch assigned (branch_id = null) */
+  @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  unallocated?: boolean;
+
+  /** Filter by the branch where items were sold */
+  @IsOptional()
+  @IsMongoId()
+  sold_at_branch_id?: string;
+
+  /** Filter sold items after a specific date (ISO string) */
+  @IsOptional()
+  @IsDateString()
+  sold_after?: string;
+
+  @IsOptional()
+  @IsString()
+  sold_by_user_id?: string;
 
   @IsOptional()
   @Type(() => Number)

@@ -21,6 +21,7 @@ import { CreateInventoryItemDto } from './dto/create-inventory-item.dto.js';
 import { UpdateInventoryStatusDto } from './dto/update-inventory-status.dto.js';
 import { QueryInventoryDto } from './dto/query-inventory.dto.js';
 import { UpdateInventoryDiscountDto } from './dto/update-inventory-discount.dto.js';
+import { BranchesService } from '../branches/branches.service.js';
 
 // Allowed status transitions
 const STATUS_TRANSITIONS: Record<InventoryStatus, InventoryStatus[]> = {
@@ -40,6 +41,7 @@ export class InventoryService {
     private readonly settingsService: SettingsService,
     private readonly pricingService: PricingService,
     private readonly barcodeService: BarcodeService,
+    private readonly branchesService: BranchesService,
   ) {}
 
 
@@ -139,6 +141,14 @@ export class InventoryService {
     return Number(metalRates[metalType]) || 0;
   }
 
+  /** Generates a unique sale reference: SALE-YYYYMMDD-NNNNN */
+  private generateSaleReference(): string {
+    const date = new Date();
+    const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
+    const random = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
+    return `SALE-${dateStr}-${random}`;
+  }
+
   // ─── Add Single Item ───────────────────────────────────────────────────────
 
   private async addSingleItem(dto: CreateInventoryItemDto): Promise<InventoryItemDocument> {
@@ -172,6 +182,8 @@ export class InventoryService {
       ...dto,
       product_id: new Types.ObjectId(dto.product_id),
       supplier_id: dto.supplier_id ? new Types.ObjectId(dto.supplier_id) : null,
+      // ─── Branch binding: save branch_id if provided ───────────────────────
+      branch_id: dto.branch_id ? new Types.ObjectId(dto.branch_id) : null,
       barcode,
       unique_item_code,
       barcode_url,
@@ -205,7 +217,40 @@ export class InventoryService {
     return { inserted: results.length, items: results };
   }
 
-  // ─── Delete Item ───────────────────────────────────────────────────────────
+  // ─── Assign / Reallocate Branch ────────────────────────────────────────────
+
+  /**
+   * Assign (or remove) a branch from one or more inventory items.
+   * Only works on items that are NOT sold.
+   * Pass branchId = null to deallocate (move back to central stock).
+   */
+  async assignBranch(
+    ids: string[],
+    branchId: string | null,
+  ): Promise<{ updated: number; skipped: number }> {
+    ids.forEach(id => this.validateObjectId(id));
+    if (branchId) this.validateObjectId(branchId);
+
+    const result = await this.inventoryModel.updateMany(
+      {
+        _id: { $in: ids.map(id => new Types.ObjectId(id)) },
+        is_deleted: { $ne: true },
+        status: { $nin: [InventoryStatus.SOLD] }, // cannot reassign sold items
+      },
+      {
+        $set: {
+          branch_id: branchId ? new Types.ObjectId(branchId) : null,
+        },
+      },
+    );
+
+    return {
+      updated: result.modifiedCount,
+      skipped: ids.length - result.modifiedCount,
+    };
+  }
+
+
 
   async deleteItem(id: string, reason: string, notes?: string): Promise<{ deleted: boolean; item_id: string; reason: string }> {
     this.validateObjectId(id);
@@ -271,7 +316,7 @@ export class InventoryService {
   // ─── Get All ───────────────────────────────────────────────────────────────
 
   async findAll(query: QueryInventoryDto) {
-    const { product_id, status, location, page = 1, limit = 20, search } = query;
+    const { product_id, status, location, branch_id, unallocated, sold_at_branch_id, sold_after, sold_by_user_id, page = 1, limit = 20, search } = query;
     const skip = (page - 1) * limit;
 
     const filter: Record<string, unknown> = {
@@ -287,6 +332,23 @@ export class InventoryService {
 
     if (status) filter.status = status;
     if (location) filter.location = location;
+
+    // ─── Branch filters ──────────────────────────────────────────────────────
+    if (branch_id && Types.ObjectId.isValid(branch_id)) {
+      filter.branch_id = new Types.ObjectId(branch_id);
+    } else if (unallocated === true) {
+      // Show only items NOT assigned to any branch
+      filter.branch_id = null;
+    }
+    if (sold_at_branch_id && Types.ObjectId.isValid(sold_at_branch_id)) {
+      filter.sold_at_branch_id = new Types.ObjectId(sold_at_branch_id);
+    }
+    if (sold_by_user_id && Types.ObjectId.isValid(sold_by_user_id)) {
+      filter.sold_by_user_id = new Types.ObjectId(sold_by_user_id);
+    }
+    if (sold_after) {
+      filter.sold_at = { $gte: new Date(sold_after) };
+    }
 
     if (search) {
       filter.$or = [
@@ -304,6 +366,11 @@ export class InventoryService {
           select: 'name sku metal_type purity stones wastage_percentage net_weight stone_weight stone_type making_charge_type making_charge_rate fixed_making_charge tax_percentage discount_percentage price_override purchase_price max_manager_discount barcode images dimensions',
           populate: { path: 'category_id', select: 'name slug' },
         })
+        .populate({ path: 'branch_id', select: 'name code city' })
+        .populate({ path: 'sold_at_branch_id', select: 'name code city' })
+        .populate({ path: 'sold_by_user_id', select: 'name email role' })
+        .populate({ path: 'sold_by_manager_id', select: 'name email role' })
+        .populate({ path: 'damaged_by_user_id', select: 'name email role' })
         .skip(skip)
         .limit(limit)
         .sort({ createdAt: -1 })
@@ -378,17 +445,25 @@ export class InventoryService {
     };
   }
 
-  async getStats() {
+  async getStats(branchId?: string) {
     const fourteenDaysAgo = new Date();
     fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
 
-    const [generalStats, profitStats, trendStats, categoryStats] = await Promise.all([
+    // Base match condition — supports optional branch scoping
+    const baseMatch: Record<string, unknown> = { is_deleted: { $ne: true } };
+    if (branchId && Types.ObjectId.isValid(branchId)) {
+      baseMatch.branch_id = new Types.ObjectId(branchId);
+    }
+
+    const soldMatch: Record<string, unknown> = {
+      ...baseMatch,
+      status: InventoryStatus.SOLD,
+    };
+
+    const [generalStats, profitStats, trendStats, categoryStats, damagedStats] = await Promise.all([
       // General status and value distribution
-      // NOTE: selling_price for available items is already recomputed to reflect live rates
-      // (done in findAll). The aggregate uses the stored selling_price, so for SOLD items
-      // it's the historical transaction price. For available items it's the last synced price.
       this.inventoryModel.aggregate([
-        { $match: { is_deleted: { $ne: true } } },
+        { $match: baseMatch },
         {
           $group: {
             _id: '$status',
@@ -400,7 +475,7 @@ export class InventoryService {
       ]),
       // Specific profit aggregation for sold items
       this.inventoryModel.aggregate([
-        { $match: { status: InventoryStatus.SOLD, is_deleted: { $ne: true } } },
+        { $match: soldMatch },
         {
           $group: {
             _id: null,
@@ -412,8 +487,7 @@ export class InventoryService {
       this.inventoryModel.aggregate([
         { 
           $match: { 
-            status: InventoryStatus.SOLD, 
-            is_deleted: { $ne: true },
+            ...soldMatch,
             sold_at: { $gte: fourteenDaysAgo } 
           } 
         },
@@ -421,13 +495,14 @@ export class InventoryService {
           $group: {
             _id: { $dateToString: { format: '%Y-%m-%d', date: '$sold_at' } },
             count: { $sum: 1 },
+            revenue: { $sum: '$selling_price' },
           },
         },
         { $sort: { _id: 1 } },
       ]),
       // Category distribution
       this.inventoryModel.aggregate([
-        { $match: { is_deleted: { $ne: true } } },
+        { $match: baseMatch },
         { $lookup: { from: 'products', localField: 'product_id', foreignField: '_id', as: 'product' } },
         { $unwind: '$product' },
         { 
@@ -452,7 +527,18 @@ export class InventoryService {
         },
         { $project: { name: '$_id', count: 1, _id: 0 } },
         { $sort: { count: -1 } }
-      ])
+      ]),
+      // Damaged items stat
+      this.inventoryModel.aggregate([
+        { $match: { ...baseMatch, status: InventoryStatus.DAMAGED } },
+        {
+          $group: {
+            _id: null,
+            count: { $sum: 1 },
+            value: { $sum: '$selling_price' },
+          }
+        }
+      ]),
     ]);
 
     const byStatus: Record<string, { count: number; value: number }> = {};
@@ -471,8 +557,10 @@ export class InventoryService {
       totalPurchaseValue += s.purchaseValue;
     });
 
-    const salesTrend = trendStats.map(t => ({ date: t._id, count: t.count }));
+    const salesTrend = trendStats.map(t => ({ date: t._id, count: t.count, revenue: t.revenue }));
     const totalProfit = profitStats[0]?.totalProfit || 0;
+    const damagedCount = damagedStats[0]?.count || 0;
+    const damagedValue = damagedStats[0]?.value || 0;
 
     return { 
       totalCount, 
@@ -481,7 +569,248 @@ export class InventoryService {
       totalProfit,
       byStatus,
       byCategory: categoryStats,
-      salesTrend
+      salesTrend,
+      damagedCount,
+      damagedValue,
+    };
+  }
+
+  // ─── Branch Analytics ──────────────────────────────────────────────────────
+
+  /** Get stats for all branches in a single aggregation — for admin comparison dashboard */
+  async getAllBranchStats() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const [stockPerBranch, salesTodayPerBranch, salesTrendPerBranch, topCashiers, damagedPerBranch] = await Promise.all([
+      // Stock count per branch
+      this.inventoryModel.aggregate([
+        { $match: { is_deleted: { $ne: true }, status: { $ne: InventoryStatus.SOLD } } },
+        { $group: { _id: '$branch_id', count: { $sum: 1 }, value: { $sum: '$selling_price' } } },
+        { $lookup: { from: 'branches', localField: '_id', foreignField: '_id', as: 'branch' } },
+        { $unwind: { path: '$branch', preserveNullAndEmptyArrays: true } },
+        { $project: { branch_id: '$_id', branch_name: { $ifNull: ['$branch.name', 'Unallocated'] }, branch_code: '$branch.code', count: 1, value: 1, _id: 0 } },
+        { $sort: { count: -1 } },
+      ]),
+      // Sales today per branch
+      this.inventoryModel.aggregate([
+        { $match: { is_deleted: { $ne: true }, status: InventoryStatus.SOLD, sold_at: { $gte: today } } },
+        { $group: { _id: '$sold_at_branch_id', count: { $sum: 1 }, revenue: { $sum: '$selling_price' } } },
+        { $lookup: { from: 'branches', localField: '_id', foreignField: '_id', as: 'branch' } },
+        { $unwind: { path: '$branch', preserveNullAndEmptyArrays: true } },
+        { $project: { branch_id: '$_id', branch_name: { $ifNull: ['$branch.name', 'Unallocated'] }, count: 1, revenue: 1, _id: 0 } },
+        { $sort: { revenue: -1 } },
+      ]),
+      // 14-day sales trend per branch
+      (() => {
+        const since = new Date();
+        since.setDate(since.getDate() - 14);
+        return this.inventoryModel.aggregate([
+          { $match: { is_deleted: { $ne: true }, status: InventoryStatus.SOLD, sold_at: { $gte: since } } },
+          {
+            $group: {
+              _id: {
+                branch_id: '$sold_at_branch_id',
+                date: { $dateToString: { format: '%Y-%m-%d', date: '$sold_at' } },
+              },
+              count: { $sum: 1 },
+              revenue: { $sum: '$selling_price' },
+            }
+          },
+          { $lookup: { from: 'branches', localField: '_id.branch_id', foreignField: '_id', as: 'branch' } },
+          { $unwind: { path: '$branch', preserveNullAndEmptyArrays: true } },
+          {
+            $project: {
+              date: '$_id.date',
+              branch_id: '$_id.branch_id',
+              branch_name: { $ifNull: ['$branch.name', 'Unallocated'] },
+              count: 1,
+              revenue: 1,
+              _id: 0,
+            }
+          },
+          { $sort: { date: 1 } },
+        ]);
+      })(),
+      // Top cashiers by sales count (all time)
+      this.inventoryModel.aggregate([
+        { $match: { is_deleted: { $ne: true }, status: InventoryStatus.SOLD, sold_by_user_id: { $ne: null } } },
+        { $group: { _id: '$sold_by_user_id', sales_count: { $sum: 1 }, total_revenue: { $sum: '$selling_price' } } },
+        { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
+        { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
+        { $lookup: { from: 'branches', localField: 'user.branch', foreignField: '_id', as: 'branch' } },
+        { $unwind: { path: '$branch', preserveNullAndEmptyArrays: true } },
+        {
+          $project: {
+            user_id: '$_id',
+            user_name: { $ifNull: ['$user.name', 'Unknown'] },
+            user_role: '$user.role',
+            branch_name: { $ifNull: ['$branch.name', 'Unallocated'] },
+            sales_count: 1,
+            total_revenue: 1,
+            _id: 0,
+          }
+        },
+        { $sort: { sales_count: -1 } },
+        { $limit: 10 },
+      ]),
+      // Damaged items per branch
+      this.inventoryModel.aggregate([
+        { $match: { is_deleted: { $ne: true }, status: InventoryStatus.DAMAGED } },
+        { $group: { _id: '$branch_id', count: { $sum: 1 }, value: { $sum: '$selling_price' } } },
+        { $lookup: { from: 'branches', localField: '_id', foreignField: '_id', as: 'branch' } },
+        { $unwind: { path: '$branch', preserveNullAndEmptyArrays: true } },
+        { $project: { branch_id: '$_id', branch_name: { $ifNull: ['$branch.name', 'Unallocated'] }, count: 1, value: 1, _id: 0 } },
+        { $sort: { count: -1 } },
+      ]),
+    ]);
+
+    return {
+      stockPerBranch,
+      salesTodayPerBranch,
+      salesTrendPerBranch,
+      topCashiers,
+      damagedPerBranch,
+    };
+  }
+
+  /** Get detailed stats for a single branch */
+  async getBranchStats(branchId: string) {
+    this.validateObjectId(branchId);
+    const bid = new Types.ObjectId(branchId);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const [
+      stockStats,
+      salesToday,
+      salesTrend7d,
+      salesTrend30d,
+      topProducts,
+      cashierPerformance,
+      damagedItems,
+      lowStockWarnings,
+    ] = await Promise.all([
+      // Current stock at branch
+      this.inventoryModel.aggregate([
+        { $match: { is_deleted: { $ne: true }, branch_id: bid, status: { $ne: InventoryStatus.SOLD } } },
+        { $group: { _id: '$status', count: { $sum: 1 }, value: { $sum: '$selling_price' } } },
+      ]),
+      // Sales today at this branch
+      this.inventoryModel.aggregate([
+        { $match: { is_deleted: { $ne: true }, sold_at_branch_id: bid, status: InventoryStatus.SOLD, sold_at: { $gte: today } } },
+        { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$selling_price' }, profit: { $sum: { $subtract: ['$selling_price', '$purchase_price'] } } } },
+      ]),
+      // 7-day sales trend
+      this.inventoryModel.aggregate([
+        { $match: { is_deleted: { $ne: true }, sold_at_branch_id: bid, status: InventoryStatus.SOLD, sold_at: { $gte: sevenDaysAgo } } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$sold_at' } }, count: { $sum: 1 }, revenue: { $sum: '$selling_price' } } },
+        { $sort: { _id: 1 } },
+      ]),
+      // 30-day sales trend
+      this.inventoryModel.aggregate([
+        { $match: { is_deleted: { $ne: true }, sold_at_branch_id: bid, status: InventoryStatus.SOLD, sold_at: { $gte: thirtyDaysAgo } } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$sold_at' } }, count: { $sum: 1 }, revenue: { $sum: '$selling_price' } } },
+        { $sort: { _id: 1 } },
+      ]),
+      // Top 5 selling products at this branch
+      this.inventoryModel.aggregate([
+        { $match: { is_deleted: { $ne: true }, sold_at_branch_id: bid, status: InventoryStatus.SOLD } },
+        { $group: { _id: '$product_id', count: { $sum: 1 }, revenue: { $sum: '$selling_price' } } },
+        { $lookup: { from: 'products', localField: '_id', foreignField: '_id', as: 'product' } },
+        { $unwind: { path: '$product', preserveNullAndEmptyArrays: true } },
+        { $project: { product_name: { $ifNull: ['$product.name', 'Unknown'] }, product_sku: '$product.sku', count: 1, revenue: 1, _id: 0 } },
+        { $sort: { count: -1 } },
+        { $limit: 5 },
+      ]),
+      // Cashier performance at this branch
+      this.inventoryModel.aggregate([
+        { $match: { is_deleted: { $ne: true }, sold_at_branch_id: bid, status: InventoryStatus.SOLD, sold_by_user_id: { $ne: null } } },
+        { $group: { _id: '$sold_by_user_id', sales_count: { $sum: 1 }, total_revenue: { $sum: '$selling_price' } } },
+        { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
+        { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
+        { $project: { user_id: '$_id', user_name: { $ifNull: ['$user.name', 'Unknown'] }, user_role: '$user.role', sales_count: 1, total_revenue: 1, _id: 0 } },
+        { $sort: { sales_count: -1 } },
+      ]),
+      // Damaged items at this branch
+      this.inventoryModel.find({
+        is_deleted: { $ne: true },
+        branch_id: bid,
+        status: InventoryStatus.DAMAGED,
+      })
+        .populate({ path: 'product_id', select: 'name sku images' })
+        .populate({ path: 'damaged_by_user_id', select: 'name email' })
+        .sort({ damaged_at: -1 })
+        .limit(20)
+        .lean(),
+      // Low stock: products with only 1 item left at branch
+      this.inventoryModel.aggregate([
+        { $match: { is_deleted: { $ne: true }, branch_id: bid, status: InventoryStatus.AVAILABLE } },
+        { $group: { _id: '$product_id', count: { $sum: 1 } } },
+        { $match: { count: { $lte: 2 } } },
+        { $lookup: { from: 'products', localField: '_id', foreignField: '_id', as: 'product' } },
+        { $unwind: { path: '$product', preserveNullAndEmptyArrays: true } },
+        { $project: { product_id: '$_id', product_name: { $ifNull: ['$product.name', 'Unknown'] }, count: 1, _id: 0 } },
+        { $sort: { count: 1 } },
+      ]),
+    ]);
+
+    const stockByStatus: Record<string, { count: number; value: number }> = {};
+    let totalStock = 0;
+    let totalStockValue = 0;
+    stockStats.forEach((s: any) => {
+      stockByStatus[s._id] = { count: s.count, value: s.value };
+      totalStock += s.count;
+      totalStockValue += s.value;
+    });
+
+    return {
+      branchId,
+      stock: { byStatus: stockByStatus, total: totalStock, totalValue: totalStockValue },
+      salesToday: {
+        count: salesToday[0]?.count || 0,
+        revenue: salesToday[0]?.revenue || 0,
+        profit: salesToday[0]?.profit || 0,
+      },
+      salesTrend7d,
+      salesTrend30d,
+      topProducts,
+      cashierPerformance,
+      damagedItems,
+      lowStockWarnings,
+    };
+  }
+
+  // ─── Get Damaged Items ─────────────────────────────────────────────────────
+
+  async getDamagedItems(page = 1, limit = 20, branchId?: string) {
+    const skip = (page - 1) * limit;
+    const filter: Record<string, unknown> = { is_deleted: { $ne: true }, status: InventoryStatus.DAMAGED };
+    if (branchId && Types.ObjectId.isValid(branchId)) {
+      filter.branch_id = new Types.ObjectId(branchId);
+    }
+
+    const [items, total] = await Promise.all([
+      this.inventoryModel
+        .find(filter as any)
+        .populate({ path: 'product_id', select: 'name sku metal_type images' })
+        .populate({ path: 'branch_id', select: 'name code' })
+        .populate({ path: 'damaged_by_user_id', select: 'name email role' })
+        .sort({ damaged_at: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      this.inventoryModel.countDocuments(filter as any),
+    ]);
+
+    return {
+      data: items,
+      meta: { total, page: Number(page), limit: Number(limit), total_pages: Math.ceil(total / limit) },
     };
   }
 
@@ -495,6 +824,7 @@ export class InventoryService {
         select: 'name sku metal_type purity stones wastage_percentage net_weight stone_weight stone_type making_charge_type making_charge_rate fixed_making_charge tax_percentage discount_percentage price_override purchase_price max_manager_discount barcode images dimensions',
         populate: { path: 'category_id', select: 'name slug' },
       })
+      .populate({ path: 'branch_id', select: 'name code city' })
       .lean() as any;
 
     if (!item) {
@@ -611,7 +941,18 @@ export class InventoryService {
 
   // ─── Update Status ─────────────────────────────────────────────────────────
 
-  async updateStatus(id: string, dto: UpdateInventoryStatusDto): Promise<InventoryItemDocument> {
+  /**
+   * @param id Inventory item ID
+   * @param dto Status update payload
+   * @param requestingUserId The ID of the user making this request (for traceability)
+   * @param requestingUserBranchId The branch ID of the requesting user (fallback for sold_at_branch_id)
+   */
+  async updateStatus(
+    id: string,
+    dto: UpdateInventoryStatusDto,
+    requestingUserId?: string,
+    requestingUserBranchId?: string,
+  ): Promise<InventoryItemDocument> {
     this.validateObjectId(id);
 
     const item = await this.inventoryModel.findById(id);
@@ -670,9 +1011,59 @@ export class InventoryService {
       if (dto.selling_price != null) {
         item.selling_price = dto.selling_price;
       }
+
+      // ─── Full Sale Traceability ─────────────────────────────────────────────
+      // Record the branch where the sale happened
+      const saleBranchId = dto.sold_at_branch_id || requestingUserBranchId || (item.branch_id?.toString());
+      if (saleBranchId && Types.ObjectId.isValid(saleBranchId)) {
+        item.sold_at_branch_id = new Types.ObjectId(saleBranchId) as any;
+
+        // ─── Record the Manager ───────────────────────────────────────────────
+        // Capture the manager of the branch at the time of sale
+        if (dto.sold_by_manager_id && Types.ObjectId.isValid(dto.sold_by_manager_id)) {
+          item.sold_by_manager_id = new Types.ObjectId(dto.sold_by_manager_id) as any;
+        } else {
+          try {
+            const branch = await this.branchesService.findOne(saleBranchId);
+            if (branch?.manager) {
+              const managerId = branch.manager._id || branch.manager;
+              item.sold_by_manager_id = managerId;
+            }
+          } catch (e) {
+            // No manager found for this branch — keep null, but don't fail the sale
+          }
+        }
+      } else {
+        // Enforce branch association for every sold item
+        throw new BadRequestException('Every sold item must be associated with a branch');
+      }
+
+      // Record the cashier who processed this sale
+      const sellerUserId = dto.sold_by_user_id || requestingUserId;
+      if (sellerUserId && Types.ObjectId.isValid(sellerUserId)) {
+        item.sold_by_user_id = new Types.ObjectId(sellerUserId) as any;
+      }
+
+      // Auto-generate a unique sale reference
+      if (!item.sale_reference) {
+        item.sale_reference = this.generateSaleReference();
+      }
     }
+
     if (dto.status === InventoryStatus.RESERVED) item.reserved_at = now;
     if (dto.status === InventoryStatus.RETURNED) item.returned_at = now;
+
+    // ─── Damage Traceability ──────────────────────────────────────────────────
+    if (dto.status === InventoryStatus.DAMAGED) {
+      item.damaged_at = now;
+      if (dto.damage_reason?.trim()) {
+        item.damage_reason = dto.damage_reason.trim();
+      }
+      // Record who reported the damage
+      if (requestingUserId && Types.ObjectId.isValid(requestingUserId)) {
+        item.damaged_by_user_id = new Types.ObjectId(requestingUserId) as any;
+      }
+    }
 
     return item.save();
   }
