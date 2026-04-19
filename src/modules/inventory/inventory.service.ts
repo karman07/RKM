@@ -22,6 +22,7 @@ import { UpdateInventoryStatusDto } from './dto/update-inventory-status.dto.js';
 import { QueryInventoryDto } from './dto/query-inventory.dto.js';
 import { UpdateInventoryDiscountDto } from './dto/update-inventory-discount.dto.js';
 import { BranchesService } from '../branches/branches.service.js';
+import { CustomersService } from '../customers/customers.service.js';
 
 // Allowed status transitions
 const STATUS_TRANSITIONS: Record<InventoryStatus, InventoryStatus[]> = {
@@ -42,6 +43,7 @@ export class InventoryService {
     private readonly pricingService: PricingService,
     private readonly barcodeService: BarcodeService,
     private readonly branchesService: BranchesService,
+    private readonly customersService: CustomersService,
   ) {}
 
 
@@ -316,7 +318,12 @@ export class InventoryService {
   // ─── Get All ───────────────────────────────────────────────────────────────
 
   async findAll(query: QueryInventoryDto) {
-    const { product_id, status, location, branch_id, unallocated, sold_at_branch_id, sold_after, sold_by_user_id, page = 1, limit = 20, search } = query;
+    const { 
+      product_id, status, location, branch_id, unallocated, 
+      sold_at_branch_id, sold_after, sold_by_user_id, 
+      page = 1, limit = 20, search,
+      sold_customer_phone, sold_customer_email
+    } = query;
     const skip = (page - 1) * limit;
 
     const filter: Record<string, unknown> = {
@@ -349,6 +356,9 @@ export class InventoryService {
     if (sold_after) {
       filter.sold_at = { $gte: new Date(sold_after) };
     }
+
+    if (sold_customer_phone) filter.sold_customer_phone = sold_customer_phone;
+    if (sold_customer_email) filter.sold_customer_email = sold_customer_email;
 
     if (search) {
       filter.$or = [
@@ -952,6 +962,7 @@ export class InventoryService {
     dto: UpdateInventoryStatusDto,
     requestingUserId?: string,
     requestingUserBranchId?: string,
+    requestingUserRole?: string,
   ): Promise<InventoryItemDocument> {
     this.validateObjectId(id);
 
@@ -969,15 +980,28 @@ export class InventoryService {
 
     const now = new Date();
     if (dto.status === InventoryStatus.SOLD) {
+      console.log(`[InventoryService] Item ${id} is being sold to ${dto.sold_customer_name}`);
       if (!dto.sold_customer_name?.trim()) {
         throw new BadRequestException('Customer name is required when item is sold');
       }
       if (!dto.sold_customer_phone?.trim()) {
         throw new BadRequestException('Customer phone is required when item is sold');
       }
-      if (!dto.shipping_address?.trim()) {
-        throw new BadRequestException('Shipping address is required when item is sold');
+
+      // If NOT admin, we might want to enforce stricter checks or different logic.
+      // Based on request: "if admin is inseting or solding it will not verify the phone number"
+      // This is usually handled by ensureCustomerExists which creates a verified customer record
+      // to avoid forcing OTP flow for in-store admin sales.
+      
+      if (requestingUserRole !== 'admin') {
+        // You could add non-admin specific verification logic here if needed.
+        // For now, we ensure the customer details provided are valid.
+        if (!dto.shipping_address?.trim()) {
+          throw new BadRequestException('Shipping address is required when item is sold');
+        }
       }
+
+      const shippingAddress = dto.shipping_address?.trim() || 'Store Collection';
       if (!dto.sale_channel?.trim()) {
         throw new BadRequestException('Sale channel is required when item is sold');
       }
@@ -997,11 +1021,27 @@ export class InventoryService {
       item.sold_customer_name = dto.sold_customer_name?.trim() ?? '';
       item.sold_customer_phone = dto.sold_customer_phone?.trim() ?? '';
       item.sold_customer_email = dto.sold_customer_email?.trim() ?? '';
-      item.shipping_address = dto.shipping_address?.trim() ?? '';
+      item.shipping_address = shippingAddress;
       item.shipping_city = dto.shipping_city?.trim() ?? '';
       item.shipping_state = dto.shipping_state?.trim() ?? '';
       item.shipping_pincode = dto.shipping_pincode?.trim() ?? '';
       item.shipping_country = dto.shipping_country?.trim() ?? '';
+
+      // ─── Automatic Customer Creation ────────────────────────────────────────
+      try {
+        await this.customersService.ensureCustomerExists({
+          name: item.sold_customer_name,
+          phone: item.sold_customer_phone,
+          email: item.sold_customer_email,
+          address: item.shipping_address,
+          city: item.shipping_city,
+          state: item.shipping_state,
+          country: item.shipping_country,
+        }, item._id?.toString());
+      } catch (custError) {
+        console.error(`[InventoryService] Failed to sync customer for item ${id}:`, custError);
+        // We don't throw here so the sale transaction itself can still complete
+      }
       item.sale_channel = dto.sale_channel?.trim() ?? '';
       item.payment_mode = dto.payment_mode?.trim() ?? '';
       item.is_emi = dto.payment_mode === 'emi';

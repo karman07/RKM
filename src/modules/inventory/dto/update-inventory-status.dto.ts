@@ -23,7 +23,7 @@ export class UpdateInventoryStatusDto {
 
   /** The branch at which this item is being sold */
   @IsOptional()
-  @IsMongoId()
+  @IsMongoId({ message: 'A valid Branch must be selected to complete the sale' })
   sold_at_branch_id?: string;
 
   // ─── Customer details (required on SOLD) ────────────────────────────────────

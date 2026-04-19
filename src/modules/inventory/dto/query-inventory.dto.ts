@@ -55,4 +55,12 @@ export class QueryInventoryDto {
 
   @IsOptional()
   search?: string;
+
+  @IsOptional()
+  @IsString()
+  sold_customer_phone?: string;
+
+  @IsOptional()
+  @IsString()
+  sold_customer_email?: string;
 }

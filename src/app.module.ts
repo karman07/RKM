@@ -17,6 +17,7 @@ import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { PurchaseOrdersModule } from './modules/purchase-orders/purchase-orders.module';
 import { BranchesModule } from './modules/branches/branches.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
+import { CustomersModule } from './modules/customers/customers.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { AttendanceModule } from './modules/attendance/attendance.module';
     SuppliersModule,
     BranchesModule,
     AttendanceModule,
+    CustomersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

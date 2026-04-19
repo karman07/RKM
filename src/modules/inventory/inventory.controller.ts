@@ -172,7 +172,8 @@ export class InventoryController {
   ) {
     const userId = req.user?.sub || req.user?._id || req.user?.id;
     const userBranchId = req.user?.branch?._id || req.user?.branch || undefined;
-    return this.inventoryService.updateStatus(id, dto, userId?.toString(), userBranchId?.toString());
+    const userRole = req.user?.role;
+    return this.inventoryService.updateStatus(id, dto, userId?.toString(), userBranchId?.toString(), userRole);
   }
 
   /**

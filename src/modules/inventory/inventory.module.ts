@@ -7,6 +7,7 @@ import { ProductsModule } from '../products/products.module.js';
 import { UploadsModule } from '../uploads/uploads.module.js';
 import { SettingsModule } from '../settings/settings.module.js';
 import { BranchesModule } from '../branches/branches.module.js';
+import { CustomersModule } from '../customers/customers.module.js';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { BranchesModule } from '../branches/branches.module.js';
     UploadsModule,
     SettingsModule,  // provides SettingsService
     BranchesModule,
+    CustomersModule,
   ],
   controllers: [InventoryController],
   providers: [InventoryService],
