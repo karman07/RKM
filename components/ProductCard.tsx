@@ -7,6 +7,7 @@ import { FadeIn } from "./FadeIn";
 import { useAppDispatch, useAppSelector } from "../store/store";
 import { toggleWishlist } from "../store/wishlistSlice";
 import { addToCart, updateQuantity } from "../store/cartSlice";
+import { openAuthDialog } from "../store/authSlice";
 import { trackEvent } from "../app/analytics";
 
 interface Product {
@@ -38,6 +39,7 @@ export default function ProductCard({ product, index, badge }: ProductCardProps)
   const router = useRouter();
   const wishlistItems = useAppSelector(state => state.wishlist.items);
   const cartItems = useAppSelector(state => state.cart.items);
+  const authState = useAppSelector(state => state.auth);
   const isWishlisted = wishlistItems.some(item => item._id === product._id);
   const cartItem = cartItems.find(item => item._id === product._id);
 
@@ -130,6 +132,10 @@ export default function ProductCard({ product, index, badge }: ProductCardProps)
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
+                  if (!authState.token) {
+                    dispatch(openAuthDialog());
+                    return;
+                  }
                   trackEvent('add_to_cart', { productId: product._id, productName: product.name, price: product.pricing_breakdown?.final_price });
                   dispatch(addToCart(product));
                 }}

@@ -8,6 +8,7 @@ import { BagIcon, SparklesIcon } from "../../../components/Icons";
 import Link from "next/link";
 import { useAppDispatch, useAppSelector } from "../../../store/store";
 import { addToCart, updateQuantity } from "../../../store/cartSlice";
+import { openAuthDialog } from "../../../store/authSlice";
 import { trackEvent } from "../../analytics";
 
 interface Product {
@@ -44,6 +45,7 @@ export default function ProductDetailPage() {
   const { id } = useParams();
   const dispatch = useAppDispatch();
   const cartItems = useAppSelector((state) => state.cart.items);
+  const authState = useAppSelector((state) => state.auth);
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(0);
@@ -100,6 +102,10 @@ export default function ProductDetailPage() {
 
   const handleAddToCart = () => {
     if (product) {
+      if (!authState.token) {
+        dispatch(openAuthDialog());
+        return;
+      }
       dispatch(addToCart(product as any));
       trackEvent('add_to_cart', { id: product._id, productName: product.name });
       setAdded(true);

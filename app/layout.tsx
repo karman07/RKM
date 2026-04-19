@@ -29,10 +29,16 @@ export const metadata: Metadata = {
     locale: "en_IN",
     type: "website",
   },
+  icons: {
+    icon: "/RKM LOGO SVG.svg",
+    shortcut: "/RKM LOGO SVG.svg",
+    apple: "/RKM LOGO SVG.svg",
+  },
 };
 
 import ChatAssistant from "../components/ChatAssistant";
 import AnalyticsTracker from "../components/AnalyticsTracker";
+import AuthDialog from "../components/AuthDialog";
 
 export default function RootLayout({
   children,
@@ -100,6 +106,7 @@ export default function RootLayout({
             {children}
           </div>
           <Footer />
+          <AuthDialog />
           <ChatAssistant />
         </StoreProvider>
       </body>

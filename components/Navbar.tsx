@@ -6,7 +6,10 @@ import { API_BASE_URL } from "../app/constants";
 import { SearchIcon, BagIcon, HeartIcon } from "./Icons";
 import Link from "next/link";
 import CartDrawer from "./CartDrawer";
-import { useAppSelector } from "../store/store";
+import { useAppSelector, useAppDispatch } from "../store/store";
+import { openAuthDialog, logout } from "../store/authSlice";
+import { User as UserIcon, LogOut, Heart, ShoppingBag, ExternalLink, ChevronRight, LayoutDashboard, Settings } from "lucide-react";
+import LogoutDialog from "./LogoutDialog";
 
 interface Lookup {
   _id: string;
@@ -58,6 +61,9 @@ export default function Navbar() {
     setCartDrawerOpen(true);
   };
   const cartCount = useAppSelector((state) => state.cart.items.reduce((acc, item) => acc + item.quantity, 0));
+  const authState = useAppSelector(state => state.auth);
+  const dispatch = useAppDispatch();
+
   const isHomePage = pathname === "/";
   const [isScrolled, setIsScrolled] = useState(!isHomePage);
   const [lookups, setLookups] = useState<Record<string, Lookup[]>>({});
@@ -74,6 +80,7 @@ export default function Navbar() {
   const [liveResults, setLiveResults] = useState<SearchProduct[]>([]);
   const [liveLoading, setLiveLoading] = useState(false);
   const [isBagBumping, setIsBagBumping] = useState(false);
+  const [isLogoutOpen, setIsLogoutOpen] = useState(false);
 
   useEffect(() => {
     if (cartCount === 0) return;
@@ -543,6 +550,70 @@ export default function Navbar() {
               <SearchIcon />
             </button>
 
+            {mounted && (
+              authState.token ? (
+                <div className="relative group">
+                  <button
+                    aria-label="Profile"
+                    style={{ color: textCol }}
+                    className="p-2.5 rounded-full hover:bg-black/[0.05] transition-colors duration-300 relative"
+                  >
+                    <div className="w-6 h-6 rounded-full bg-[#1A6B3A] text-white flex items-center justify-center text-[9px] font-black overflow-hidden ring-2 ring-white shadow-sm transition-transform group-hover:scale-110">
+                      {authState.customer?.profileImage ? (
+                        <img 
+                          src={`${process.env.NEXT_PUBLIC_API_URL}${authState.customer.profileImage}`} 
+                          className="w-full h-full object-cover" 
+                          alt="Profile"
+                        />
+                      ) : (
+                        authState.customer?.name?.[0]?.toUpperCase() || 'U'
+                      )}
+                    </div>
+                  </button>
+                  
+                  {/* Profile Dropdown */}
+                  <div className="absolute top-full right-0 mt-2 w-56 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.12)] rounded-3xl border border-slate-50 py-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible translate-y-2 group-hover:translate-y-0 transition-all duration-300 z-[100] overflow-hidden">
+                    <div className="px-5 py-4 border-b border-slate-50 mb-1 bg-slate-50/50">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Member</p>
+                      <p className="text-xs font-black text-slate-800 truncate mt-0.5">{authState.customer?.name}</p>
+                    </div>
+                    
+                    <Link 
+                      href="/profile" 
+                      className="flex items-center gap-3 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 hover:text-[#1A6B3A] hover:bg-emerald-50 transition-all"
+                    >
+                      <UserIcon size={14} className="opacity-50" /> My Profile
+                    </Link>
+                    
+                    <Link 
+                      href="/wishlist" 
+                      className="flex items-center gap-3 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 hover:text-[#1A6B3A] hover:bg-emerald-50 transition-all"
+                    >
+                      <Heart size={14} className="opacity-50" /> Saved Items
+                    </Link>
+
+                    <div className="mx-5 my-1 border-t border-slate-50"></div>
+                    
+                    <button 
+                      onClick={() => setIsLogoutOpen(true)}
+                      className="w-full flex items-center gap-3 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 transition-all"
+                    >
+                      <LogOut size={14} className="opacity-70" /> Sign Out
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  aria-label="Sign In"
+                  style={{ color: textCol }}
+                  onClick={() => dispatch(openAuthDialog())}
+                  className="p-2.5 rounded-full hover:bg-black/[0.05] transition-colors duration-300"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                </button>
+              )
+            )}
+
             <Link
               href="/wishlist"
               aria-label="Wishlist"
@@ -675,6 +746,15 @@ export default function Navbar() {
           </div>
         )}
       </nav>
+
+      <LogoutDialog 
+        isOpen={isLogoutOpen} 
+        onClose={() => setIsLogoutOpen(false)} 
+        onConfirm={() => {
+          dispatch(logout());
+          setIsLogoutOpen(false);
+        }} 
+      />
     </>
   );
 }
