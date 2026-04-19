@@ -933,7 +933,15 @@ export default function InventoryPage() {
             <button onClick={() => setStatusModal(null)} className="flex-1 py-4 rounded-2xl border border-slate-200 text-[11px] font-bold uppercase tracking-widest text-slate-400">Cancel</button>
             <button onClick={async () => {
               try {
-                await updateInventoryStatus(statusModal!._id, { status: newStatus, ...soldForm, selling_price: Number(newSellingPrice) || statusModal!.selling_price });
+                // Filter out empty strings to avoid validation errors for optional fields
+                const filteredSoldForm = Object.fromEntries(
+                  Object.entries(soldForm).map(([k, v]) => [k, v === '' ? undefined : v])
+                );
+                await updateInventoryStatus(statusModal!._id, { 
+                  status: newStatus, 
+                  ...filteredSoldForm, 
+                  selling_price: Number(newSellingPrice) || statusModal!.selling_price 
+                });
                 setStatusModal(null); showToast('Status updated', 'success'); load();
               } catch (e: any) { showToast(e.message, 'danger'); }
             }} className="flex-[2] py-4 rounded-2xl bg-slate-900 text-white text-[11px] font-bold uppercase tracking-widest shadow-xl hover:bg-blue-600 transition-all">

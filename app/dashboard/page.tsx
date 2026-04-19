@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useAppTheme } from '@/components/AppThemeContext';
 import { APP_THEME } from '@/lib/theme-constants';
+import BillModal from '@/components/BillModal';
 import { 
   getUsers, 
   getCategories, 
@@ -126,162 +127,7 @@ function StatCard({ label, value, icon, colors, subValue, trend }: { label: stri
   );
 }
 
-function BillModal({ items, date, onClose, colors }: { items: InventoryItem[], date: string, onClose: () => void, colors: any }) {
-  const total = items.reduce((acc, item) => acc + (item.selling_price || 0), 0);
-  const GREEN_THEME = "#1A6B3A";
-  
-  const handlePrint = () => {
-    window.print();
-  };
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-2 md:p-4 print:p-0 print:bg-white overflow-y-auto">
-      {/* Global Print Overlay Style */}
-      <style dangerouslySetInnerHTML={{ __html: `
-        @page { size: auto;  margin: 0mm; }
-        @media print {
-          body { background: white; margin: 0; padding: 0; }
-          body * { visibility: hidden; }
-          #printable-bill, #printable-bill * { visibility: visible; }
-          #printable-bill { 
-            position: absolute; 
-            left: 0; 
-            top: 0; 
-            width: 780px !important; 
-            margin: 0;
-            padding: 1.2cm;
-            box-shadow: none !important;
-            border: none !important;
-          }
-          .print-hidden { display: none !important; }
-        }
-      `}} />
-
-      <div id="printable-bill" className="bg-white w-full max-w-4xl rounded-[1.5rem] md:rounded-[2.5rem] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.2)] animate-[fadeRise_400ms_ease-out] print:shadow-none print:rounded-none my-auto font-sans">
-        {/* Modal Header Controls (Hidden on Print) */}
-        <div className="px-8 md:px-12 py-6 border-b border-slate-100 flex items-center justify-between print:hidden bg-slate-50/50 rounded-t-[1.5rem] md:rounded-t-[2.5rem]">
-          <h2 className="text-sm font-black text-slate-400 uppercase tracking-[0.2em]">Crafting Document...</h2>
-          <div className="flex items-center gap-3">
-            <button onClick={handlePrint} className="flex items-center gap-2 px-6 py-2.5 rounded-full text-white text-[11px] font-bold uppercase tracking-widest transition-all transform active:scale-95 shadow-lg shadow-emerald-900/20" style={{ backgroundColor: GREEN_THEME }}>
-              <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6v-8z" /></svg>
-              Print Bill
-            </button>
-            <button onClick={onClose} className="p-2.5 rounded-full hover:bg-white hover:shadow-md transition-all text-slate-400 hover:text-red-500">
-              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M18 6L6 18M6 6l12 12" /></svg>
-            </button>
-          </div>
-        </div>
-
-        {/* Bill Content - Matching V2 DOCX Design */}
-        <div className="p-8 md:p-14 lg:p-16 print:p-0 relative bg-white rounded-b-[1.5rem] md:rounded-b-[2.5rem]">
-          {/* Header Table Layout */}
-          <div className="flex justify-between items-start mb-10">
-            <div>
-              <h1 className="text-4xl md:text-5xl font-serif font-bold tracking-tight mb-2" style={{ color: GREEN_THEME }}>RKM JEWELLERS</h1>
-              <p className="text-[10px] md:text-[12px] font-bold text-slate-400 uppercase tracking-[0.6em] mb-4">ARTISAN EXECUTIVE</p>
-              <div className="space-y-1 text-[11px] md:text-[12px] font-bold text-slate-500 uppercase tracking-widest">
-                <p className="flex items-center gap-2"><span style={{ color: GREEN_THEME }}>MOB:</span> +91 88139 47793</p>
-                <p className="flex items-center gap-2"><span style={{ color: GREEN_THEME }}>WEB:</span> WWW.RKMJEWELLERS.COM</p>
-              </div>
-            </div>
-            <div className="text-right">
-              <h2 className="text-5xl md:text-6xl font-serif font-bold text-slate-900 mb-2">INVOICE</h2>
-              <p className="text-sm md:text-base font-medium text-slate-500">{date}</p>
-            </div>
-          </div>
-
-          {/* Green Divider (Matching DOCX Border) */}
-          <div className="h-[4px] w-full mb-10" style={{ backgroundColor: GREEN_THEME }} />
-
-          {/* Billed To + Details Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mb-16">
-            <div className="space-y-4">
-              <p className="text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: GREEN_THEME }}>BILLED TO</p>
-              <h3 className="text-2xl font-serif font-bold text-slate-900">{items[0]?.sold_customer_name || 'Karman Singh'}</h3>
-              <div className="space-y-1 text-slate-600 text-[13px] md:text-sm">
-                <p className="font-bold">{items[0]?.sold_customer_phone || '08813917626'}</p>
-                <p>{items[0]?.sold_customer_email || 'karmansingharora01@gmail.com'}</p>
-                <p className="text-slate-400 max-w-[300px] leading-relaxed">
-                  {items[0]?.shipping_address ? `${items[0].shipping_address}, ${items[0].shipping_city}, ${items[0].shipping_pincode}` : 'A-30, Max Height Society, Kundli, Sonipat'}
-                </p>
-              </div>
-            </div>
-            <div className="md:text-right space-y-4">
-              <p className="text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: GREEN_THEME }}>INVOICE DETAILS</p>
-              <div className="space-y-2 text-[13px] md:text-sm">
-                <p><span className="text-slate-400">Vault Record: </span> <span className="font-bold text-slate-900">{items[0]?.unique_item_code || 'ITEM-B7BC31-11192'}</span></p>
-                <p><span className="text-slate-400">Settlement: </span> <span className="font-bold text-slate-900 uppercase">{items[0]?.payment_mode || 'Cash Settlement'}</span></p>
-                <p><span className="text-slate-400">Category: </span> <span className="font-bold text-slate-900">{items[0]?.sale_channel || 'Artisan Masterpiece'}</span></p>
-              </div>
-            </div>
-          </div>
-
-          {/* Items Table (Matching V2 Stylings) */}
-          <div className="mb-16">
-            <table className="w-full table-fixed">
-              <thead>
-                <tr className="border-b-[3px] text-[10px] md:text-[11px] font-bold uppercase tracking-[0.1em]" style={{ borderColor: GREEN_THEME, color: GREEN_THEME }}>
-                  <th className="py-4 text-left w-[45%]">MASTERPIECE</th>
-                  <th className="py-4 text-center w-[25%]">VAULT ID</th>
-                  <th className="py-4 text-right w-[30%] pr-2">VALUATION</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {items.map((item, i) => (
-                  <tr key={i}>
-                    <td className="py-8 pr-4">
-                      <p className="text-lg md:text-xl font-serif font-bold text-slate-900 mb-1 leading-tight">{typeof item.product_id === 'object' ? (item.product_id?.name || "Handcrafted Masterpiece") : "Handcrafted Masterpiece"}</p>
-                      <p className="text-xs text-slate-400 italic">Precious Artisan Jewellery</p>
-                    </td>
-                    <td className="py-8 text-center text-[12px] font-bold text-slate-500 font-mono overflow-hidden text-ellipsis">
-                      {item.unique_item_code}
-                    </td>
-                    <td className="py-8 text-right text-lg md:text-xl font-serif font-bold text-slate-900 whitespace-nowrap">
-                      ₹{(item.selling_price || 0).toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Totals Section */}
-          <div className="flex flex-col items-end gap-6 mb-20">
-            <div className="w-full md:w-80 space-y-3 border-b border-slate-200 pb-4">
-              <div className="flex justify-between text-sm md:text-base">
-                <span className="text-slate-400">Subtotal</span>
-                <span className="font-bold text-slate-900">₹{total.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between text-sm md:text-base">
-                <span className="text-slate-400">GST (3%)</span>
-                <span className="font-bold text-slate-900">₹{(total * 0.03).toLocaleString()}</span>
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="flex items-end justify-end gap-6 mb-2">
-                <span className="text-sm md:text-lg font-bold text-slate-400 tracking-widest uppercase">TOTAL</span>
-                <span className="text-4xl md:text-5xl font-serif font-bold" style={{ color: GREEN_THEME }}>₹{(total * 1.03).toLocaleString()}</span>
-              </div>
-              <p className="text-[10px] md:text-[12px] font-medium text-slate-400 italic">Inclusive of 3% Artisan GST</p>
-            </div>
-          </div>
-
-          {/* Footer (Matching DOCX) */}
-          <div className="pt-10 border-t border-slate-200 text-center">
-            <p className="text-[12px] md:text-[14px] font-medium text-slate-400 uppercase tracking-widest mb-3">© RKM Suite — Certified Record</p>
-            <div className="flex items-center justify-center gap-4 text-[12px] md:text-[14px] font-bold uppercase tracking-[0.2em]" style={{ color: GREEN_THEME }}>
-              <span>Authentic</span>
-              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: GREEN_THEME }} />
-              <span>Integrity</span>
-              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: GREEN_THEME }} />
-              <span>Secure Vault</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function EditRecordModal({ item, onClose, onSave, colors }: { item: InventoryItem; onClose: () => void; onSave: () => void; colors: any }) {
   const [loading, setLoading] = useState(false);
@@ -867,11 +713,10 @@ export default function DashboardPage() {
 
       {/* Bill Modal Overlay */}
       {selectedBillItems && (
-        <BillModal 
-          items={selectedBillItems} 
-          date={selectedBillDate} 
-          onClose={() => setSelectedBillItems(null)} 
-          colors={colors}
+        <BillModal
+          items={selectedBillItems}
+          date={selectedBillDate}
+          onClose={() => setSelectedBillItems(null)}
         />
       )}
       {/* Edit Record Modal Modal Overlay */}

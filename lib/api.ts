@@ -245,8 +245,24 @@ export interface InventoryItem {
   sold_at?: string;
   reserved_at?: string;
   returned_at?: string;
-  created_at: string;
-  createdAt?: string;
+  createdAt: string;
+}
+
+export interface Customer {
+  _id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  gender?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  profileImage?: string;
+  isEmailVerified: boolean;
+  isPhoneVerified: boolean;
+  isActive: boolean;
+  createdAt: string;
 }
 
 export interface PaginatedResponse<T> {
@@ -767,3 +783,9 @@ export const getAttendanceSummary = (days: number = 30) =>
 
 export const checkIn = () => request<Attendance>('/attendance/check-in', { method: 'POST' });
 export const checkOut = () => request<Attendance>('/attendance/check-out', { method: 'POST' });
+
+// ─── Customers ────────────────────────────────────────────────────────────────
+
+export const getCustomers = (page: number = 1, limit: number = 20) => 
+  request<PaginatedResponse<Customer>>(`/customers?page=${page}&limit=${limit}`);
+export const getCustomerById = (id: string) => request<Customer>(`/customers/${id}`);

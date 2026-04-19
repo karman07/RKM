@@ -42,7 +42,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="w-14 h-14 bg-white rounded-xl flex items-center justify-center p-0.5 overflow-hidden">
-                <img src="/RKM LOGO PNG.png" alt="RKM Logo" className="w-full h-full object-contain" />
+                <img src="/rkm-logo.png" alt="RKM Logo" className="w-full h-full object-contain" />
               </div>
               <div>
                 <h1 className="text-sm font-bold text-[var(--text-main)] uppercase tracking-tight">OPERATIONS CONTROL CENTER</h1>

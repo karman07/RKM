@@ -18,6 +18,11 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "RKM Admin Control",
   description: "Secure Admin Management for RKM Jewellers",
+  icons: {
+    icon: "/rkm-logo-cropped.png",
+    shortcut: "/rkm-logo-cropped.png",
+    apple: "/rkm-logo-cropped.png",
+  },
 };
 
 export default function RootLayout({

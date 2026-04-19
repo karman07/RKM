@@ -70,7 +70,7 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
           </button>
         )}
         <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shrink-0 transform group-hover:rotate-3 transition-transform overflow-hidden">
-          <img src="/RKM LOGO PNG.png" alt="RKM Logo" className="w-full h-full object-contain" />
+          <img src="/rkm-logo.png" alt="RKM Logo" className="w-full h-full object-contain" />
         </div>
         {!isCollapsed && (
           <div className="animate-[fadeRise_400ms_ease-out]">
@@ -348,6 +348,22 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
                 <circle cx="9" cy="7" r="4" />
               </NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Access Control</span>}
+            </Link>
+            <Link
+              href="/dashboard/customers"
+              onClick={onNavigate}
+              title={isCollapsed ? "Client Relations" : ""}
+              className={navClass(pathname.startsWith('/dashboard/customers'))}
+              style={getNavStyle(pathname.startsWith('/dashboard/customers'))}
+            >
+              {isCollapsed && pathname.startsWith('/dashboard/customers') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname.startsWith('/dashboard/customers')} color={pathname.startsWith('/dashboard/customers') ? colors.activeText : colors.textMuted}>
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+              </NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Client Relations</span>}
             </Link>
             <Link
               href="/dashboard/blogs"

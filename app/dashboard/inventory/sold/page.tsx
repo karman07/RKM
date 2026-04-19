@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { getInventory, getMe, updateInventoryStatus, staticUrl, type InventoryItem, type User } from '@/lib/api';
+import BillModal from '@/components/BillModal';
 import dynamic from 'next/dynamic';
+
 
 const Line = dynamic(() => import('react-chartjs-2').then(mod => mod.Line), { ssr: false });
 const Bar = dynamic(() => import('react-chartjs-2').then(mod => mod.Bar), { ssr: false });
@@ -32,114 +34,7 @@ ChartJS.register(
   Filler
 );
 
-function BillModal({ items, date, onClose }: { items: InventoryItem[], date: string, onClose: () => void }) {
-  const total = items.reduce((acc, item) => acc + (item.selling_price || 0), 0);
-  const handlePrint = () => window.print();
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-2 md:p-4 print:p-0 print:bg-white overflow-y-auto">
-      <style dangerouslySetInnerHTML={{ __html: `
-        @page { size: auto;  margin: 0mm; }
-        @media print {
-          body { background: white; margin: 0; padding: 0; }
-          body * { visibility: hidden; }
-          #printable-bill, #printable-bill * { visibility: visible; }
-          #printable-bill { 
-            position: absolute; left: 0; top: 0; 
-            width: 780px !important; margin: 0; padding: 1.2cm;
-            box-shadow: none !important; border: none !important;
-          }
-        }
-      `}} />
-      <div id="printable-bill" className="bg-white w-full max-w-4xl rounded-[2.5rem] shadow-2xl print:shadow-none print:rounded-none my-auto font-sans">
-        <div className="px-8 md:px-12 py-6 border-b border-slate-100 flex items-center justify-between print:hidden bg-slate-50/50 rounded-t-[2.5rem]">
-          <h2 className="text-sm font-black text-slate-400 uppercase tracking-[0.2em]">Compliance Document</h2>
-          <div className="flex items-center gap-3">
-            <button onClick={handlePrint} className="flex items-center gap-2 px-6 py-2.5 rounded-full text-white text-[11px] font-bold uppercase tracking-widest bg-[#1A6B3A] shadow-lg shadow-emerald-900/20 transition-transform active:scale-95">
-              Print Bill
-            </button>
-            <button onClick={onClose} className="p-2.5 rounded-full hover:bg-white hover:shadow-md transition-all text-slate-400 hover:text-red-500">
-              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M18 6L6 18M6 6l12 12" /></svg>
-            </button>
-          </div>
-        </div>
-        <div className="p-8 md:p-14 lg:p-16 print:p-0 relative bg-white">
-          <div className="flex justify-between items-start mb-10">
-            <div className="flex flex-col gap-4">
-              <div className="w-24 h-24 mb-2">
-                <img src="/RKM LOGO PNG.png" alt="RKM Logo" className="w-full h-full object-contain" />
-              </div>
-              <p className="text-[10px] md:text-[12px] font-bold text-slate-400 uppercase tracking-[0.6em] mb-4">OFFICIAL SETTLEMENT</p>
-              <div className="space-y-1 text-[11px] text-slate-500 font-bold uppercase tracking-widest">
-                <p><span className="text-[#1A6B3A]">MOB:</span> +91 88139 47793</p>
-                <p><span className="text-[#1A6B3A]">WEB:</span> WWW.RKMJEWELLERS.COM</p>
-              </div>
-            </div>
-            <div className="text-right">
-              <h2 className="text-5xl md:text-6xl font-serif font-bold text-slate-900 mb-2">INVOICE</h2>
-              <p className="text-sm font-medium text-slate-500">{date}</p>
-            </div>
-          </div>
-          <div className="h-[4px] w-full mb-10 bg-[#1A6B3A]" />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mb-16">
-            <div className="space-y-4">
-              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#1A6B3A]">BILLED TO</p>
-              <h3 className="text-2xl font-serif font-bold text-slate-900">{items[0]?.sold_customer_name || 'Valued Client'}</h3>
-              <div className="space-y-1 text-slate-600 text-sm">
-                <p className="font-bold">{items[0]?.sold_customer_phone || ''}</p>
-                <p>{items[0]?.sold_customer_email || ''}</p>
-                <p className="text-slate-400 max-w-[300px] leading-relaxed">
-                  {items[0]?.shipping_address ? `${items[0].shipping_address}, ${items[0].shipping_city}, ${items[0].shipping_pincode}` : 'Store Collection Asset'}
-                </p>
-              </div>
-            </div>
-            <div className="md:text-right space-y-4">
-              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#1A6B3A]">DETAILS</p>
-              <div className="space-y-1 text-sm">
-                <p><span className="text-slate-400">ASSET CODE: </span> <span className="font-bold text-slate-900">{items[0]?.unique_item_code}</span></p>
-                <p><span className="text-slate-400">Settlement: </span> <span className="font-bold text-slate-900 uppercase">{items[0]?.payment_mode}</span></p>
-              </div>
-            </div>
-          </div>
-          <table className="w-full table-fixed mb-16">
-            <thead>
-              <tr className="border-b-[3px] border-[#1A6B3A] text-[10px] font-bold uppercase tracking-[0.1em] text-[#1A6B3A]">
-                <th className="py-4 text-left w-[45%]">MASTERPIECE</th>
-                <th className="py-4 text-center w-[25%]">VAULT ID</th>
-                <th className="py-4 text-right w-[30%]">VALUATION</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {items.map((item, i) => (
-                <tr key={i}>
-                  <td className="py-6 pr-4">
-                    <p className="text-lg font-serif font-bold text-slate-900 mb-1 leading-tight">{typeof item.product_id === 'object' ? item.product_id.name : "Handcrafted Gem"}</p>
-                    <p className="text-xs text-slate-400 italic">Artisan Signature Series</p>
-                  </td>
-                  <td className="py-6 text-center text-[12px] font-bold text-slate-500 font-mono italic">{item.unique_item_code}</td>
-                  <td className="py-6 text-right text-lg font-serif font-bold text-slate-900">₹{(item.selling_price || 0).toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="flex flex-col items-end gap-6 mb-16">
-            <div className="w-full md:w-80 space-y-3 border-b border-slate-200 pb-4 text-right">
-              <div className="flex justify-between text-sm"><span className="text-slate-400">Subtotal</span><span className="font-bold text-slate-900">₹{total.toLocaleString()}</span></div>
-              <div className="flex justify-between text-sm"><span className="text-slate-400">GST (3%)</span><span className="font-bold text-slate-900">₹{(total * 0.03).toLocaleString()}</span></div>
-            </div>
-            <div className="text-right flex items-end justify-end gap-6">
-              <span className="text-sm font-bold text-slate-400 tracking-widest uppercase">TOTAL</span>
-              <span className="text-4xl font-serif font-bold text-[#1A6B3A]">₹{(total * 1.03).toLocaleString()}</span>
-            </div>
-          </div>
-          <div className="pt-10 border-t border-slate-200 text-center">
-            <p className="text-[12px] font-bold text-slate-400 uppercase tracking-widest mb-3 italic">© RKM Enterprise Suite — Inventory Compliance</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function EditRecordModal({ item, onClose, onSave }: { item: InventoryItem; onClose: () => void; onSave: () => void }) {
   const [loading, setLoading] = useState(false);

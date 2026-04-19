@@ -460,10 +460,15 @@ export default function ProductsPage() {
   }
 
   async function handleRemoveImage(url: string) {
-    if (!imagesModal) return;
+    const target = imagesModal || editTarget;
+    if (!target) return;
     try {
-      await removeProductImage(imagesModal._id, url);
+      await removeProductImage(target._id, url);
       setProductImages((imgs) => imgs.filter((i) => i !== url));
+      // Update the target object's images as well if it's the editTarget
+      if (editTarget && editTarget._id === target._id) {
+        setEditTarget({ ...editTarget, images: (editTarget.images || []).filter(i => i !== url) });
+      }
       showToast('Image removed');
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : 'Remove failed');

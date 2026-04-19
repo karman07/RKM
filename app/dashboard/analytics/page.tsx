@@ -234,43 +234,70 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Performance Layer */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-         {/* Chat Velocity */}
-         <div className="p-8 rounded-[3rem] border shadow-2xl shadow-slate-200/50" style={{ backgroundColor: colors.bg, borderColor: colors.border }}>
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h3 className="text-xl font-black text-slate-900">Chat Velocity</h3>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">AI Concierge Interaction Velocity</p>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+         <div className="space-y-8">
+           {/* Chat Velocity */}
+           <div className="h-fit p-5 rounded-[1.5rem] border shadow-xl shadow-slate-200/40 transition-all hover:shadow-2xl hover:shadow-slate-200/60" style={{ backgroundColor: colors.bg, borderColor: colors.border }}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-base font-black text-slate-900 leading-tight">Chat Velocity</h3>
+                <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">AI Concierge Interaction Velocity</p>
+              </div>
+              <div className="p-2 rounded-lg bg-emerald-50 text-emerald-500">
+                <MessageSquare className="w-4 h-4" />
+              </div>
             </div>
-            <MessageSquare className="w-6 h-6 text-slate-200" />
+            <div className="h-[160px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={data?.chatbotVelocity || []}>
+                  <defs>
+                    <linearGradient id="colorChat" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/><stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="4 4" vertical={false} stroke={colors.border} />
+                  <XAxis dataKey="_id" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 9, fontWeight: 800 }} dy={10} tickFormatter={(val) => val.split('-').slice(1).join('/')} />
+                  <YAxis hide />
+                  <Tooltip 
+                    contentStyle={{ 
+                      borderRadius: '16px', 
+                      border: '1px solid #f1f5f9',
+                      backgroundColor: 'rgba(255, 255, 255, 0.96)',
+                      backdropFilter: 'blur(12px)',
+                      boxShadow: '0 15px 30px -10px rgba(0,0,0,0.08)',
+                      padding: '12px',
+                      color: '#1e293b'
+                    }}
+                    itemStyle={{ color: '#34d399', fontWeight: 800, fontSize: '11px' }} 
+                    labelStyle={{ color: '#94a3b8', marginBottom: '4px', fontSize: '9px', textTransform: 'uppercase' }}
+                  />
+                  <Area type="monotone" dataKey="interactions" stroke="#10b981" strokeWidth={2.5} fill="url(#colorChat)" animationDuration={2000} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
           </div>
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={data?.chatbotVelocity || []}>
-                <defs>
-                  <linearGradient id="colorChat" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.15}/><stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="4 4" vertical={false} stroke={colors.border} />
-                <XAxis dataKey="_id" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 800 }} dy={15} tickFormatter={(val) => val.split('-').slice(1).join('/')} />
-                <YAxis hide />
-                <Tooltip 
-                  contentStyle={{ 
-                    borderRadius: '24px', 
-                    border: '1px solid #f1f5f9',
-                    backgroundColor: 'rgba(255, 255, 255, 0.96)',
-                    backdropFilter: 'blur(12px)',
-                    boxShadow: '0 25px 50px -12px rgba(0,0,0,0.1)',
-                    padding: '20px',
-                    color: '#1e293b'
-                  }}
-                  itemStyle={{ color: '#34d399', fontWeight: 800 }} 
-                  labelStyle={{ color: '#94a3b8', marginBottom: '8px', fontSize: '10px', textTransform: 'uppercase' }}
-                />
-                <Area type="monotone" dataKey="interactions" stroke="#10b981" strokeWidth={4} fill="url(#colorChat)" animationDuration={2000} />
-              </AreaChart>
-            </ResponsiveContainer>
+
+          {/* Acquisition Intent */}
+          <div className="p-8 rounded-[3rem] border shadow-2xl shadow-slate-200/50" style={{ backgroundColor: colors.bg, borderColor: colors.border }}>
+            <div className="flex items-center justify-between mb-8">
+              <h3 className="text-xl font-black text-slate-900 leading-none">Acquisition Intent</h3>
+              <Target className="w-6 h-6 text-slate-200" />
+            </div>
+            <div className="space-y-4">
+              {(data?.cartStats || []).map((product: any, i: number) => (
+                <div key={i} className="flex items-center gap-6 p-4 rounded-[1.5rem] border border-slate-50 hover:border-blue-100 hover:bg-blue-50/20 transition-all group">
+                  <div className="w-12 h-12 rounded-2xl bg-white border border-slate-100 flex items-center justify-center font-black text-slate-900 shadow-sm">{i + 1}</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-black text-slate-900 truncate">{product._id || 'Signature Asset'}</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">High Interest Shard</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-lg font-black text-slate-900">{product.adds.toLocaleString()}</p>
+                    <p className="text-[8px] font-black text-blue-500 uppercase tracking-widest">Adds</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -288,29 +315,6 @@ export default function AnalyticsPage() {
               <div key={i} className="grid grid-cols-12 py-4 border-b border-slate-50 last:border-0 hover:bg-slate-50/50 px-2 -mx-2 rounded-2xl transition-colors group">
                 <div className="col-span-8 font-bold text-slate-600 text-sm group-hover:text-blue-600 transition-colors truncate">{path._id || '/'}</div>
                 <div className="col-span-4 text-right font-black text-slate-900 text-sm">{path.views.toLocaleString()}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Acquisition Intent */}
-        <div className="p-8 rounded-[3rem] border shadow-2xl shadow-slate-200/50" style={{ backgroundColor: colors.bg, borderColor: colors.border }}>
-          <div className="flex items-center justify-between mb-8">
-            <h3 className="text-xl font-black text-slate-900 leading-none">Acquisition Intent</h3>
-            <Target className="w-6 h-6 text-slate-200" />
-          </div>
-          <div className="space-y-4">
-            {(data?.cartStats || []).map((product: any, i: number) => (
-              <div key={i} className="flex items-center gap-6 p-4 rounded-[1.5rem] border border-slate-50 hover:border-blue-100 hover:bg-blue-50/20 transition-all group">
-                <div className="w-12 h-12 rounded-2xl bg-white border border-slate-100 flex items-center justify-center font-black text-slate-900 shadow-sm">{i + 1}</div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-black text-slate-900 truncate">{product._id || 'Signature Asset'}</p>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">High Interest Shard</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-lg font-black text-slate-900">{product.adds.toLocaleString()}</p>
-                  <p className="text-[8px] font-black text-blue-500 uppercase tracking-widest">Adds</p>
-                </div>
               </div>
             ))}
           </div>

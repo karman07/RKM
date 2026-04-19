@@ -49,7 +49,7 @@ export default function LoginPage() {
             transition={{ delay: 0.1, duration: 0.4 }}
             className="inline-flex items-center justify-center w-20 h-20 bg-white border border-slate-100 rounded-2xl mb-5 shadow-xl shadow-blue-500/5 relative group p-2 overflow-hidden"
           >
-            <img src="/RKM LOGO SVG.svg" alt="RKM Logo" className="w-full h-full object-contain transform group-hover:scale-110 transition-transform duration-700" />
+            <img src="/rkm-logo.png" alt="RKM Logo" className="w-full h-full object-contain transform group-hover:scale-110 transition-transform duration-700" />
           </motion.div>
           
           <motion.h1 
