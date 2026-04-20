@@ -9,6 +9,11 @@ export interface StoneInput {
   price_override?: number | null;
 }
 
+export interface ExtraChargeInput {
+  reason: string;
+  charge: number;
+}
+
 export interface PricingInput {
   net_weight: number;
   /** Wastage percentage applied to net_weight for metal cost (e.g. 3 = 3%) */
@@ -31,6 +36,8 @@ export interface PricingInput {
   tax_percentage: number;
   discount_percentage?: number;
   price_override?: number | null;
+  /** Miscellaneous itemised extra charges (e.g. certification, packaging) */
+  extra_charges?: ExtraChargeInput[];
 }
 
 export interface StonePriceDetail {
@@ -51,6 +58,10 @@ export interface PricingResult {
   stone_price: number;
   /** Per-stone breakdown for display */
   stones_breakdown: StonePriceDetail[];
+  /** Total of all extra charges */
+  extra_charges_total: number;
+  /** Per-charge breakdown for display */
+  extra_charges_breakdown: ExtraChargeInput[];
   subtotal: number;
   discount_amount: number;
   taxable_amount: number;
@@ -110,6 +121,13 @@ export class PricingService {
       stones_breakdown.reduce((acc, s) => acc + s.price, 0).toFixed(2),
     );
 
+    // ── Extra charges ─────────────────────────────────────────────────────────
+    const extra_charges_breakdown: ExtraChargeInput[] = (input.extra_charges ?? [])
+      .filter((e) => e.reason && e.charge > 0);
+
+    const extra_charges_total = parseFloat(
+      extra_charges_breakdown.reduce((acc, e) => acc + e.charge, 0).toFixed(2),
+    );
 
     // ── Standard formula ─────────────────────────────────────────────────────
     const metal_price = parseFloat(
@@ -124,16 +142,14 @@ export class PricingService {
     );
 
     // ── Subtotal Calculation ───────────────────────────────────────────────
-    // If price_override is used, it REPLACES the making charges and stone costs
-    // but the live metal_price is STILL ADDED. This ensures the total price
-    // responds proportionally to gold market changes while honoring the 
-    // "particular price" set for the item's non-metal value.
-    const non_metal_component = input.price_override != null 
-      ? input.price_override 
+    // price_override replaces making_charges + stone_price (non-metal component).
+    // Extra charges are ALWAYS added on top as they are fixed costs.
+    const non_metal_component = input.price_override != null
+      ? input.price_override
       : (making_charges + stone_price);
 
     const subtotal = parseFloat(
-      (metal_price + non_metal_component).toFixed(2),
+      (metal_price + non_metal_component + extra_charges_total).toFixed(2),
     );
 
     const discount_amount = parseFloat(
@@ -153,6 +169,8 @@ export class PricingService {
       making_charges,
       stone_price,
       stones_breakdown,
+      extra_charges_total,
+      extra_charges_breakdown,
       subtotal,
       discount_amount,
       taxable_amount,

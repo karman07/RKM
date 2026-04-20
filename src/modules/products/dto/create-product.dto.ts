@@ -28,6 +28,26 @@ export class StoneComponentDto {
   price_override?: number;
 }
 
+export class ExtraChargeDto {
+  @IsString()
+  @IsNotEmpty()
+  reason: string;
+
+  @IsNumber()
+  @Min(0)
+  charge: number;
+}
+
+export class TaxEntryDto {
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+
+  @IsNumber()
+  @Min(0)
+  percentage: number;
+}
+
 
 export class CreateProductDto {
   @IsString()
@@ -199,6 +219,17 @@ export class CreateProductDto {
   @Min(0)
   tax_percentage?: number;
 
+  /**
+   * Dynamic per-product tax entries (SGST, CGST, IGST, etc.).
+   * Each entry has a name and percentage. Total tax = sum of all percentages.
+   * When non-empty, takes precedence over tax_percentage.
+   */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TaxEntryDto)
+  taxes?: TaxEntryDto[];
+
   @IsOptional()
   @IsNumber()
   @Min(0)
@@ -215,10 +246,22 @@ export class CreateProductDto {
   @Min(0)
   purchase_price?: number;
 
+  /** Additional generic charges */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ExtraChargeDto)
+  extra_charges?: ExtraChargeDto[];
+
   /** Maximum % discount a Manager can apply on inventory items of this product */
   @IsOptional()
   @IsNumber()
   @Min(0)
   @Max(100)
   max_manager_discount?: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  images?: string[];
 }

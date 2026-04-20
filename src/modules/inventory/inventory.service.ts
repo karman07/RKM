@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   InventoryItem,
   InventoryItemDocument,
@@ -23,6 +24,11 @@ import { QueryInventoryDto } from './dto/query-inventory.dto.js';
 import { UpdateInventoryDiscountDto } from './dto/update-inventory-discount.dto.js';
 import { BranchesService } from '../branches/branches.service.js';
 import { CustomersService } from '../customers/customers.service.js';
+import {
+  SALE_COMPLETED_EVENT,
+  SALE_RETURNED_EVENT,
+  SALE_RESERVED_EVENT,
+} from '../whatsapp/events/whatsapp.events.js';
 
 // Allowed status transitions
 const STATUS_TRANSITIONS: Record<InventoryStatus, InventoryStatus[]> = {
@@ -44,6 +50,7 @@ export class InventoryService {
     private readonly barcodeService: BarcodeService,
     private readonly branchesService: BranchesService,
     private readonly customersService: CustomersService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
 
@@ -60,13 +67,7 @@ export class InventoryService {
    *   - Gold rate changes propagate immediately via findAll recomputation
    *   - Item-level discounts don't compound with product-level discount_percentage
    */
-  private computeLiveSellingPrice(
-    product: any,
-    _item: any,
-    settings: any,
-  ): number {
-    if (!product) return 0;
-
+  private buildPricingInput(product: any, settings: any) {
     const metalRates: Record<string, number> = settings.metal_rates ?? {};
     const purityRates = this.normalizePurityRates(settings.purity_rates);
     const stoneRates: Record<string, number> = settings.stone_rates ?? {};
@@ -85,7 +86,7 @@ export class InventoryService {
       price_override: s.price_override ?? null,
     }));
 
-    const pricingInput = {
+    return {
       net_weight: product.net_weight ?? 0,
       wastage_percentage: product.wastage_percentage ?? 0,
       stones: stonesArray.length > 0 ? stonesArray : undefined,
@@ -98,10 +99,15 @@ export class InventoryService {
       tax_percentage: product.tax_percentage ?? 0,
       discount_percentage: product.discount_percentage ?? 0,
       price_override: product.price_override ?? null,
+      extra_charges: Array.isArray(product.extra_charges)
+        ? product.extra_charges.filter((e: any) => e?.reason && e?.charge > 0)
+        : [],
     };
+  }
 
-    const breakdown = this.pricingService.calculate(pricingInput);
-    // Return ONLY the formula result — item discounts are applied separately in UI
+  private computeLiveSellingPrice(product: any, _item: any, settings: any): number {
+    if (!product) return 0;
+    const breakdown = this.pricingService.calculate(this.buildPricingInput(product, settings));
     return parseFloat(breakdown.final_price.toFixed(2));
   }
 
@@ -373,7 +379,7 @@ export class InventoryService {
         .populate({
           path: 'product_id',
           // pricing_breakdown is a virtual field NOT stored in DB — we recompute it below
-          select: 'name sku metal_type purity stones wastage_percentage net_weight stone_weight stone_type making_charge_type making_charge_rate fixed_making_charge tax_percentage discount_percentage price_override purchase_price max_manager_discount barcode images dimensions',
+          select: 'name sku metal_type purity stones wastage_percentage net_weight stone_weight stone_type making_charge_type making_charge_rate fixed_making_charge tax_percentage discount_percentage price_override purchase_price max_manager_discount barcode images dimensions extra_charges gross_weight',
           populate: { path: 'category_id', select: 'name slug' },
         })
         .populate({ path: 'branch_id', select: 'name code city' })
@@ -396,20 +402,17 @@ export class InventoryService {
       const product = item.product_id as any;
       if (!product) return item;
 
-      // Recompute formula price live — this is the single source of truth for
-      // what the product is worth right now at current gold/stone rates.
-      // This number will ALWAYS match the product pricing modal.
-      const formulaPrice = this.computeLiveSellingPrice(product, item, settings);
+      const breakdown = this.pricingService.calculate(this.buildPricingInput(product, settings));
+      const formulaPrice = parseFloat(breakdown.final_price.toFixed(2));
 
       return {
         ...item,
-        // For sold/returned: keep the historical transaction price
-        // For everything else: always show live formula price
         selling_price: (item.status === InventoryStatus.SOLD || item.status === InventoryStatus.RETURNED)
           ? item.selling_price
           : formulaPrice,
-        // Always include live_selling_price for transparency
         live_selling_price: formulaPrice,
+        // Full breakdown so frontend bill/invoice can display line-by-line details
+        pricing_breakdown: breakdown,
       };
     });
 
@@ -1105,7 +1108,41 @@ export class InventoryService {
       }
     }
 
-    return item.save();
+    const savedItem = await item.save();
+
+    // ─── Emit domain events for WhatsApp notifications ────────────────────────
+    // The event listener in WhatsAppModule picks these up — InventoryService
+    // has zero knowledge of WhatsApp implementation details.
+    try {
+      if (dto.status === InventoryStatus.SOLD) {
+        this.eventEmitter.emit(SALE_COMPLETED_EVENT, {
+          customerId: undefined, // resolved by listener via phone
+          customerPhone: savedItem.sold_customer_phone,
+          customerName: savedItem.sold_customer_name,
+          itemId: savedItem._id?.toString(),
+          saleReference: savedItem.sale_reference,
+          amount: savedItem.selling_price,
+        });
+      } else if (dto.status === InventoryStatus.RETURNED) {
+        this.eventEmitter.emit(SALE_RETURNED_EVENT, {
+          customerPhone: savedItem.sold_customer_phone,
+          customerName: savedItem.sold_customer_name,
+          itemId: savedItem._id?.toString(),
+          saleReference: savedItem.sale_reference,
+        });
+      } else if (dto.status === InventoryStatus.RESERVED) {
+        this.eventEmitter.emit(SALE_RESERVED_EVENT, {
+          customerPhone: savedItem.sold_customer_phone,
+          customerName: savedItem.sold_customer_name,
+          itemId: savedItem._id?.toString(),
+        });
+      }
+    } catch (evtErr) {
+      // Event emission should never fail the main transaction
+      console.error('[InventoryService] Event emit error:', evtErr?.message);
+    }
+
+    return savedItem;
   }
 
   // ─── Update Discount ───────────────────────────────────────────────────────

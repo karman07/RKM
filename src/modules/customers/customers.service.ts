@@ -170,6 +170,10 @@ export class CustomersService {
     return this.customerModel.findById(id).exec();
   }
 
+  async findByPhone(phone: string) {
+    return this.customerModel.findOne({ phone }).exec();
+  }
+
   async findAll(page: number = 1, limit: number = 20) {
     const skip = (page - 1) * limit;
     const [data, total] = await Promise.all([

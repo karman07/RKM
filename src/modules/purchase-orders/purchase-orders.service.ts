@@ -59,16 +59,26 @@ export class PurchaseOrdersService {
     }
     
     const sourceName = (po.supplier_id as any)?.name || po.vendor_name || 'Purchase Order';
+    const publishConfig = (po as any)._publishConfig || {};
+    const branchId = publishConfig.branch_id || undefined;
+    const location = publishConfig.location || 'store';
+    const adminDiscount = publishConfig.admin_discount || 0;
     
     // Process items
     for (const item of po.items) {
       let productId = item.product_id;
       
+      // Template mode: create new product from template data (ignore existing product_id)
+      if ((item as any)._useAsTemplate) {
+        productId = undefined as any;
+      }
+      
       if (!productId) {
-        // Create product
+        // Create new product from item details
         const prod = await this.productsService.create({
           name: item.name || 'Unknown Product',
           sku: item.sku || 'SKU-' + Date.now(),
+          description: (item as any).description,
           category_id: (item.category_id as any),
           images: item.images || [],
           metal_type: item.metal_type || '22k Gold',
@@ -80,39 +90,49 @@ export class PurchaseOrdersService {
           gross_weight: item.gross_weight,
           net_weight: item.net_weight,
           stone_weight: item.stone_weight,
+          wastage_percentage: (item as any).wastage_percentage,
           has_stones: item.has_stones,
           stone_type: item.stone_type,
           stone_price: item.stone_price,
+          stones: (item as any).stones,
           making_charge_type: item.making_charge_type || 'per_gram',
           making_charge_rate: item.making_charge_rate,
           fixed_making_charge: item.fixed_making_charge,
           tax_percentage: item.tax_percentage,
+          taxes: (item as any).taxes,
           discount_percentage: item.discount_percentage,
           max_manager_discount: item.max_manager_discount,
           purchase_price: item.purchase_price,
+          price_override: (item as any).price_override,
+          extra_charges: (item as any).extra_charges,
         } as any, userId);
         productId = prod._id as any;
         item.product_id = productId;
       } else {
-         // Optionally update the existing product's pricing or discounts if needed,
-         // but for now we just use the existing product.
+        // Existing product — optionally update purchase_price if provided
+        if (item.purchase_price) {
+          await this.productsService.update(productId.toString(), {
+            purchase_price: item.purchase_price,
+          } as any);
+        }
       }
       
-      // Add to inventory
+      // Add to inventory with publish config
       if (productId && item.count > 0) {
         await this.inventoryService.addItem({
           product_id: productId.toString(),
           source: sourceName,
           reason: `Purchase Order: ${po.po_number}`,
           count: item.count,
-          location: ItemLocation.STORE,
+          location: location as any,
           selling_price: item.selling_price,
+          admin_discount: adminDiscount,
+          branch_id: branchId,
         });
       }
     }
     
     po.status = PurchaseOrderStatus.PUBLISHED;
-    // We mark changes because we might have populated product_id back into po.items
     po.markModified('items');
     return po.save();
   }

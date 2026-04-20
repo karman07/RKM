@@ -146,8 +146,29 @@ export class Product {
   @Prop({ type: Number, min: 0, default: 0 })
   wastage_charge_percentage: number;
 
+  /**
+   * @deprecated Use `taxes` array instead. Kept for backward compatibility.
+   * Represents total tax percentage when taxes array is empty.
+   */
   @Prop({ type: Number, min: 0, default: 0 })
   tax_percentage: number;
+
+  /**
+   * Dynamic tax entries (e.g. SGST @ 1.5%, CGST @ 1.5%, IGST @ 3%, etc.)
+   * Admin can add any number of taxes per product. Each entry has a name and percentage.
+   * The total tax applied is the sum of all percentages in this array.
+   * When this array is non-empty, it takes precedence over tax_percentage.
+   */
+  @Prop({
+    type: [
+      {
+        name: { type: String, required: true, trim: true },
+        percentage: { type: Number, required: true, min: 0 },
+      },
+    ],
+    default: [],
+  })
+  taxes: { name: string; percentage: number }[];
 
   @Prop({ type: Number, min: 0, default: 0 })
   discount_percentage: number;
@@ -159,6 +180,18 @@ export class Product {
   /** Fixed purchase/cost price — set by admin at product level; locked on inventory items */
   @Prop({ type: Number, min: 0, default: 0 })
   purchase_price: number;
+
+  /** Any additional miscellaneous charges for this product */
+  @Prop({
+    type: [
+      {
+        reason: { type: String, required: true, trim: true },
+        charge: { type: Number, required: true, min: 0 },
+      },
+    ],
+    default: [],
+  })
+  extra_charges: { reason: string; charge: number }[];
 
   /** Maximum discount % a Manager is allowed to apply on inventory items of this product */
   @Prop({ type: Number, min: 0, max: 100, default: 0 })

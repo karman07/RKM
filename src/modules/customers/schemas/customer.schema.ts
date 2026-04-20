@@ -41,6 +41,14 @@ export class Customer {
   @Prop({ default: true })
   isActive: boolean;
 
+  /** Whether this customer has opted in to receive WhatsApp messages */
+  @Prop({ default: false })
+  whatsappOptIn: boolean;
+
+  /** Timestamp of the last WhatsApp message sent to this customer */
+  @Prop()
+  lastContactedAt: Date;
+
   @Prop({ type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'InventoryItem' }], default: [] })
   purchase_history: mongoose.Types.ObjectId[];
 }

@@ -329,6 +329,9 @@ export class ProductsService {
       tax_percentage: p.tax_percentage ?? 0,
       discount_percentage: p.discount_percentage ?? 0,
       price_override: p.price_override ?? null,
+      extra_charges: Array.isArray(p.extra_charges)
+        ? p.extra_charges.filter((e: any) => e?.reason && e?.charge > 0)
+        : [],
     };
   }
 

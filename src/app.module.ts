@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { UsersModule } from './users/users.module';
@@ -18,10 +19,12 @@ import { PurchaseOrdersModule } from './modules/purchase-orders/purchase-orders.
 import { BranchesModule } from './modules/branches/branches.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { CustomersModule } from './modules/customers/customers.module';
+import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    EventEmitterModule.forRoot({ wildcard: false, delimiter: '.', global: true }),
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -44,6 +47,7 @@ import { CustomersModule } from './modules/customers/customers.module';
     BranchesModule,
     AttendanceModule,
     CustomersModule,
+    WhatsAppModule,
   ],
   controllers: [AppController],
   providers: [AppService],
