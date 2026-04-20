@@ -303,22 +303,30 @@ export default function DashboardPage() {
         const soldCount = dbStats.byStatus.sold?.count || 0;
         const reservedCount = dbStats.byStatus.reserved?.count || 0;
 
-        // Sales Trend (Last 14 days) - Fill gaps from DB data
+        const allSoldItems = (allSoldRes as any).data || [];
+        const sortedSoldItems = [...allSoldItems].sort((a: any, b: any) => {
+          const ta = a.sold_at ? new Date(a.sold_at).getTime() : 0;
+          const tb = b.sold_at ? new Date(b.sold_at).getTime() : 0;
+          return ta - tb;
+        });
+
         const labels: string[] = [];
         const trendData: number[] = [];
         const trendDates: Date[] = [];
-        const now = new Date();
-        for (let i = 13; i >= 0; i--) {
-          const d = new Date(now);
-          d.setDate(d.getDate() - i);
-          const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-          const dbDateStr = d.toISOString().split('T')[0];
-          
-          labels.push(dateStr);
+        
+        sortedSoldItems.forEach((sale: any) => {
+          const d = sale.sold_at ? new Date(sale.sold_at) : new Date();
+          const p = sale.selling_price || 0;
+          labels.push(d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }));
+          trendData.push(p);
           trendDates.push(d);
-          
-          const dbEntry = dbStats.salesTrend.find(t => t.date === dbDateStr);
-          trendData.push(dbEntry ? dbEntry.count : 0);
+        });
+
+        // Provide a default empty state format so chart doesn't crash visually
+        if (labels.length === 0) {
+          labels.push(new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+          trendData.push(0);
+          trendDates.push(new Date());
         }
 
         setStats({
@@ -334,7 +342,7 @@ export default function DashboardPage() {
           totalValue: dbStats.totalPurchaseValue,
           totalProfit: dbStats.totalProfit,
           salesTrend: { labels, data: trendData, dates: trendDates },
-          allSoldItems: (allSoldRes as any).data || [],
+          allSoldItems: sortedSoldItems,
           attendanceSummary: attSummary as any,
           topOperatives: (attStats || []).sort((a: any, b: any) => b.present - a.present).slice(0, 5)
         });
@@ -350,20 +358,17 @@ export default function DashboardPage() {
   }, [reportDays]);
 
   const handleChartDoubleClick = (event: any) => {
-    if (!chartRef.current || !stats) return;
+    if (!chartRef.current || !stats || stats.allSoldItems.length === 0) return;
 
     const elements = chartRef.current.getElementsAtEventForMode(event, 'nearest', { intersect: true }, false);
     if (elements.length > 0) {
       const index = elements[0].index;
-      const dateClicked = stats.salesTrend.dates[index];
-      const itemsForDay = stats.allSoldItems.filter(item => {
-        const soldDate = item.sold_at ? new Date(item.sold_at) : null;
-        return soldDate && soldDate.toDateString() === dateClicked.toDateString();
-      });
-
-      if (itemsForDay.length > 0) {
-        setSelectedBillItems(itemsForDay);
-        setSelectedBillDate(dateClicked.toLocaleDateString('en-US', { dateStyle: 'long' }));
+      // Index in chart array matches sortedSoldItems exactly
+      const sale = stats.allSoldItems[index];
+      if (sale) {
+        setSelectedBillItems([sale]);
+        const d = sale.sold_at ? new Date(sale.sold_at) : new Date();
+        setSelectedBillDate(d.toLocaleDateString('en-US', { dateStyle: 'long' }) + ' ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
       }
     }
   };

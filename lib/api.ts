@@ -136,6 +136,8 @@ export interface PricingBreakdown {
   stones_breakdown?: Array<{ stone_type: string; weight: number; rate: number; price: number; is_override: boolean }>;
   billable_metal_weight?: number;
   wastage_grams?: number;
+  extra_charges_total?: number;
+  extra_charges_breakdown?: Array<{ reason: string; charge: number }>;
   subtotal?: number;
   discount_amount?: number;
   taxable_amount?: number;
@@ -177,6 +179,13 @@ export interface Product {
   making_charge_rate?: number;
   fixed_making_charge?: number;
   tax_percentage: number;
+  /**
+   * Dynamic per-product tax entries (SGST, CGST, IGST, etc.).
+   * Each entry has a name and percentage. Total tax = sum of all percentages.
+   * When non-empty, takes precedence over tax_percentage.
+   */
+  taxes?: { name: string; percentage: number }[];
+  extra_charges?: { reason: string; charge: number }[];
   discount_percentage?: number;
   price_override?: number;
   /** Fixed cost price set by admin — auto-locked on inventory items */
@@ -589,6 +598,7 @@ export interface PoItem {
   gross_weight?: number;
   net_weight?: number;
   stone_weight?: number;
+  wastage_percentage?: number;
   has_stones?: boolean;
   stone_type?: string;
   stone_price?: number;
@@ -789,3 +799,192 @@ export const checkOut = () => request<Attendance>('/attendance/check-out', { met
 export const getCustomers = (page: number = 1, limit: number = 20) => 
   request<PaginatedResponse<Customer>>(`/customers?page=${page}&limit=${limit}`);
 export const getCustomerById = (id: string) => request<Customer>(`/customers/${id}`);
+
+// ─── WhatsApp API Helpers ─────────────────────────────────────────────────────
+
+export type WaMessageStatus = 'queued' | 'sent' | 'delivered' | 'read' | 'failed';
+export type WaMessageDirection = 'outbound' | 'inbound';
+export type WaMessageCategory = 'marketing' | 'utility' | 'authentication' | 'service';
+
+export interface WaMessage {
+  _id: string;
+  customerId?: string;
+  phoneNumber: string;
+  message: string;
+  status: WaMessageStatus;
+  direction: WaMessageDirection;
+  category: WaMessageCategory;
+  templateName?: string;
+  waMessageId?: string;
+  triggerEvent?: string;
+  errorMessage?: string;
+  sentAt?: string;
+  deliveredAt?: string;
+  messageCost: number;
+  createdAt: string;
+}
+
+export interface WaCostSummary {
+  totalMessages: number;
+  totalSent: number;
+  totalFailed: number;
+  totalDelivered: number;
+  deliveryRate: number;
+  totalCostUsd: number;
+  byCategory: { category: string; count: number; costUsd: number; share: number }[];
+}
+
+export interface WaDailyCost { date: string; sent: number; failed: number; costUsd: number; }
+export interface WaTemplateCost { templateName: string; count: number; costUsd: number; deliveryRate: number; }
+export interface WaCustomerCost { customerId: string | null; phoneNumber: string; count: number; costUsd: number; }
+export interface WaRateCard { currency: string; rates: Record<WaMessageCategory, number>; note: string; }
+
+export const waSendToCustomer = (customerId: string, payload: {
+  templateName: string; params?: string[]; category?: WaMessageCategory; triggerEvent?: string;
+}) => request<{ queued: boolean; message: string }>(`/whatsapp/customer/${customerId}`, {
+  method: 'POST', body: JSON.stringify(payload),
+});
+
+export const waSendBulk = (payload: {
+  customerIds: string[]; templateName: string; params?: string[]; productId?: string;
+}) => request<{ queued: number; skipped: number }>('/whatsapp/bulk', {
+  method: 'POST', body: JSON.stringify(payload),
+});
+
+export const waGetHistory = (customerId: string, page = 1, limit = 30) =>
+  request<{ data: WaMessage[]; meta: { total: number; page: number; limit: number; total_pages: number } }>(
+    `/whatsapp/history/${customerId}?page=${page}&limit=${limit}`
+  );
+
+export const waGetCostSummary = (startDate?: string, endDate?: string) => {
+  const qs = new URLSearchParams();
+  if (startDate) qs.append('startDate', startDate);
+  if (endDate) qs.append('endDate', endDate);
+  return request<WaCostSummary>(`/whatsapp/analytics/costs${qs.toString() ? '?' + qs.toString() : ''}`);
+};
+
+export const waGetDailyTrend = (days = 30) =>
+  request<WaDailyCost[]>(`/whatsapp/analytics/costs/trend?days=${days}`);
+
+export const waGetCostByTemplate = () =>
+  request<WaTemplateCost[]>('/whatsapp/analytics/costs/by-template');
+
+export const waGetTopCustomers = (limit = 10) =>
+  request<WaCustomerCost[]>(`/whatsapp/analytics/costs/top-customers?limit=${limit}`);
+
+export const waGetRateCard = () =>
+  request<WaRateCard>('/whatsapp/analytics/rates');
+
+// ─── WhatsApp Template API ────────────────────────────────────────────────────
+
+export type WaTemplateStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'DISABLED' | 'PAUSED' | 'IN_APPEAL';
+export type WaTemplateCategory = 'MARKETING' | 'UTILITY' | 'AUTHENTICATION';
+
+export interface WaTemplateComponent {
+  type: 'HEADER' | 'BODY' | 'FOOTER' | 'BUTTONS';
+  format?: string;
+  text?: string;
+  buttons?: { type: string; text: string; url?: string; phone_number?: string }[];
+}
+
+export interface WaTemplate {
+  _id: string;
+  name: string;
+  category: WaTemplateCategory;
+  language: string;
+  components: WaTemplateComponent[];
+  status: WaTemplateStatus;
+  metaTemplateId?: string;
+  rejectionReason?: string;
+  lastSyncedAt?: string;
+  submittedAt?: string;
+  submittedToMeta: boolean;
+  adminNotes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const waListTemplates = (status?: WaTemplateStatus) => {
+  const qs = status ? `?status=${status}` : '';
+  return request<WaTemplate[]>(`/whatsapp/templates${qs}`);
+};
+
+export const waGetTemplate = (id: string) => request<WaTemplate>(`/whatsapp/templates/${id}`);
+
+export const waCreateTemplate = (payload: {
+  name: string;
+  category: WaTemplateCategory;
+  language?: string;
+  components: WaTemplateComponent[];
+  adminNotes?: string;
+  submitToMeta?: boolean;
+}) => request<WaTemplate>('/whatsapp/templates', { method: 'POST', body: JSON.stringify(payload) });
+
+export const waUpdateTemplate = (id: string, payload: { adminNotes?: string; components?: WaTemplateComponent[] }) =>
+  request<WaTemplate>(`/whatsapp/templates/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+
+export const waSyncTemplate = (id: string) =>
+  request<WaTemplate>(`/whatsapp/templates/${id}/sync`, { method: 'POST' });
+
+export const waSubmitTemplate = (id: string) =>
+  request<WaTemplate>(`/whatsapp/templates/${id}/submit`, { method: 'POST' });
+
+export const waSyncAllTemplates = () =>
+  request<{ synced: number }>('/whatsapp/templates/sync-all', { method: 'POST' });
+
+export const waDeleteTemplate = (id: string) =>
+  request<{ deleted: boolean }>(`/whatsapp/templates/${id}`, { method: 'DELETE' });
+
+export const waTemplateStats = () =>
+  request<{ status: string; count: number }[]>('/whatsapp/templates/stats');
+
+// ─── WhatsApp Template Patch: variableMapping ─────────────────────────────────
+// Re-export updated WaTemplate type (replace via module augmentation)
+export interface WaTemplateButton {
+  type: 'QUICK_REPLY' | 'URL' | 'PHONE_NUMBER' | 'COPY_CODE' | 'CATALOG';
+  text: string;
+  url?: string;
+  phone_number?: string;
+  example?: string;
+}
+export interface WaTemplateComponentV2 {
+  type: 'HEADER' | 'BODY' | 'FOOTER' | 'BUTTONS';
+  format?: 'TEXT' | 'IMAGE' | 'VIDEO' | 'DOCUMENT' | 'LOCATION';
+  text?: string;
+  mediaUrl?: string;
+  filename?: string;
+  buttons?: WaTemplateButton[];
+}
+export interface WaTemplateV2 {
+  _id: string;
+  name: string;
+  category: 'MARKETING' | 'UTILITY' | 'AUTHENTICATION';
+  language: string;
+  components: WaTemplateComponentV2[];
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'DISABLED' | 'PAUSED' | 'IN_APPEAL';
+  metaTemplateId?: string;
+  rejectionReason?: string;
+  lastSyncedAt?: string;
+  submittedAt?: string;
+  submittedToMeta: boolean;
+  adminNotes?: string;
+  variableMapping: Record<string, string>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const waListTemplatesV2 = (status?: string) => {
+  const qs = status ? `?status=${status}` : '';
+  return request<WaTemplateV2[]>(`/whatsapp/templates${qs}`);
+};
+
+export const waCreateTemplateV2 = (payload: {
+  name: string;
+  category: string;
+  language?: string;
+  components: WaTemplateComponentV2[];
+  adminNotes?: string;
+  submitToMeta?: boolean;
+  variableMapping?: Record<string, string>;
+  sampleBodyValues?: string[];
+}) => request<WaTemplateV2>('/whatsapp/templates', { method: 'POST', body: JSON.stringify(payload) });

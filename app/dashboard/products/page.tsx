@@ -8,6 +8,7 @@ import {
   staticUrl,
   type Product, type Category, type Lookup, type PricingBreakdown,
 } from '@/lib/api';
+import { computePrice } from '@/lib/pricing';
 import Modal from '@/components/Modal';
 import { useSettings } from '@/components/SettingsContext';
 
@@ -89,6 +90,16 @@ interface StoneRow {
   price_override: string;
 }
 
+export interface ExtraChargeRow {
+  reason: string;
+  charge: string;
+}
+
+export interface TaxRow {
+  name: string;
+  percentage: string;
+}
+
 interface ProductForm {
   name: string; sku: string; category_id: string; description: string;
   gender: string; occasion: string; metal_type: string; purity: string; metal_color: string;
@@ -99,12 +110,22 @@ interface ProductForm {
   /** Multi-stone breakdown rows */
   stones: StoneRow[];
   making_charge_type: string; making_charge_rate: string; fixed_making_charge: string;
-  tax_percentage: string; discount_percentage: string; price_override: string;
+  /** @deprecated — kept for backward compat; prefer taxes array */
+  tax_percentage: string;
+  /** Dynamic per-product taxes — admin defines names (SGST, CGST, etc.) & percentages */
+  taxes: TaxRow[];
+  discount_percentage: string; price_override: string;
   /** Fixed cost price — admin sets this; it gets locked on inventory items */
   purchase_price: string;
+  extra_charges: ExtraChargeRow[];
   /** Max % discount a Manager can apply on inventory items of this product */
   max_manager_discount: string;
 }
+
+const DEFAULT_TAXES: TaxRow[] = [
+  { name: 'SGST', percentage: '1.5' },
+  { name: 'CGST', percentage: '1.5' },
+];
 
 const emptyForm: ProductForm = {
   name: '', sku: '', category_id: '', description: '', gender: '', occasion: '',
@@ -115,8 +136,10 @@ const emptyForm: ProductForm = {
   has_stones: false, stone_type: '',
   stones: [],
   making_charge_type: '', making_charge_rate: '', fixed_making_charge: '',
-  tax_percentage: '3', discount_percentage: '0', price_override: '',
-  purchase_price: '',
+  tax_percentage: '3',
+  taxes: DEFAULT_TAXES,
+  discount_percentage: '0', price_override: '',
+  purchase_price: '', extra_charges: [],
   max_manager_discount: '0',
 };
 
@@ -148,6 +171,7 @@ export default function ProductsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Product | null>(null);
   const [form, setForm] = useState<ProductForm>(emptyForm);
+  const [pendingImages, setPendingImages] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
 
@@ -207,9 +231,11 @@ export default function ProductsPage() {
       making_charge_rate: settings.making_charge_rate ? String(settings.making_charge_rate) : '',
       fixed_making_charge: settings.fixed_making_charge ? String(settings.fixed_making_charge) : '',
       tax_percentage: '3',
+      taxes: DEFAULT_TAXES,
       discount_percentage: '0',
       price_override: '',
       purchase_price: '',
+      extra_charges: [],
       max_manager_discount: '0',
     };
   }
@@ -290,6 +316,7 @@ export default function ProductsPage() {
   function openCreate() {
     setEditTarget(null);
     setProductImages([]);
+    setPendingImages([]);
     setForm(getDefaultForm());
     setFormError('');
     setActiveTab(0);
@@ -320,9 +347,21 @@ export default function ProductsPage() {
       making_charge_rate: String(p.making_charge_rate ?? ''),
       fixed_making_charge: String(p.fixed_making_charge ?? ''),
       tax_percentage: String(p.tax_percentage),
+      taxes: Array.isArray((p as any).taxes) && (p as any).taxes.length > 0
+        ? ((p as any).taxes).map((t: any) => ({
+            name: t.name || '',
+            percentage: t.percentage ? String(t.percentage) : '',
+          }))
+        : DEFAULT_TAXES,
       discount_percentage: String(p.discount_percentage ?? '0'),
       price_override: String(p.price_override ?? ''),
       purchase_price: String(p.purchase_price ?? ''),
+      extra_charges: Array.isArray((p as any).extra_charges) 
+        ? ((p as any).extra_charges).map((e: any) => ({
+            reason: e.reason || '',
+            charge: e.charge ? String(e.charge) : '',
+          }))
+        : [],
       max_manager_discount: String(p.max_manager_discount ?? '0'),
     });
     setFormError('');
@@ -356,7 +395,8 @@ export default function ProductsPage() {
     if (form.making_charge_type === 'fixed' && (!form.fixed_making_charge || Number(form.fixed_making_charge) <= 0)) {
       return 'Fixed making charge is required for fixed mode.';
     }
-    if (!form.tax_percentage || Number(form.tax_percentage) < 0) return 'Tax percentage is required.';
+    if (form.taxes.length === 0 || form.taxes.every(t => !t.name.trim() || !t.percentage)) return 'At least one tax entry (e.g. SGST, CGST) is required.';
+    if (form.taxes.some(t => Number(t.percentage) < 0)) return 'Tax percentages must be non-negative.';
     if (!form.purchase_price || Number(form.purchase_price) < 0) return 'Purchase/Cost price is required and must be valid.';
     if (Number(form.max_manager_discount) < 0 || Number(form.max_manager_discount) > 100) return 'Max manager discount must be between 0 and 100';
     return null;
@@ -396,10 +436,19 @@ export default function ProductsPage() {
         making_charge_type: form.making_charge_type,
         making_charge_rate: form.making_charge_rate ? Number(form.making_charge_rate) : undefined,
         fixed_making_charge: form.fixed_making_charge ? Number(form.fixed_making_charge) : undefined,
-        tax_percentage: Number(form.tax_percentage),
+        // Compute total tax_percentage from taxes array for backward compat
+        tax_percentage: (Array.isArray(form.taxes) ? form.taxes : [])
+          .filter(t => t.name.trim() && Number(t.percentage) > 0)
+          .reduce((sum, t) => sum + Number(t.percentage), 0),
+        taxes: (Array.isArray(form.taxes) ? form.taxes : [])
+          .filter(t => t.name.trim() !== '' && Number(t.percentage) >= 0)
+          .map(t => ({ name: t.name.trim(), percentage: Number(t.percentage) })),
         discount_percentage: form.discount_percentage ? Number(form.discount_percentage) : undefined,
         price_override: form.price_override ? Number(form.price_override) : undefined,
         purchase_price: form.purchase_price ? Number(form.purchase_price) : undefined,
+        extra_charges: (Array.isArray(form.extra_charges) ? form.extra_charges : [])
+          .filter(e => e.reason.trim() !== '' && Number(e.charge) > 0)
+          .map(e => ({ reason: e.reason.trim(), charge: Number(e.charge) })),
         max_manager_discount: form.max_manager_discount ? Number(form.max_manager_discount) : 0,
       };
       if (editTarget) {
@@ -412,7 +461,14 @@ export default function ProductsPage() {
           })
           .catch(() => {});
       } else {
-        await createProduct(payload);
+        const created = await createProduct(payload);
+        if (pendingImages.length > 0) {
+          try {
+            await uploadProductImages(created._id, pendingImages);
+          } catch (imgErr) {
+            console.error("Failed to upload images for new product", imgErr);
+          }
+        }
         showToast('Product created');
       }
       setModalOpen(false);
@@ -792,9 +848,7 @@ export default function ProductsPage() {
 
           {/* Tab Nav */}
           {(() => {
-            const tabs = editTarget
-              ? ['Basic Info', 'Metal & Weight', 'Stones', 'Pricing', 'Images']
-              : ['Basic Info', 'Metal & Weight', 'Stones', 'Pricing'];
+            const tabs = ['Basic Info', 'Metal & Weight', 'Stones', 'Pricing', 'Images'];
             return (
               <div className="flex border-b border-slate-200 -mx-1">
                 {tabs.map((label, i) => (
@@ -1028,45 +1082,42 @@ export default function ProductsPage() {
 
           {/* Tab 4: Pricing */}
           {activeTab === 3 && (() => {
-            // ── Live price calculation ─────────────────────────────────────────────
-            const net = Number(form.net_weight) || 0;
-            const wastage = Number(form.wastage_percentage) || 0;
-            const wastageGrams = (net * wastage) / 100;
-            const billableWeight = net + wastageGrams;
             const metalR = settings.purity_rates?.[form.metal_type]?.[form.purity]
               || settings.metal_rates?.[form.metal_type]
               || 0;
-            const metalCost = billableWeight * metalR;
 
-            // Sum all stones
-            const stoneDetails = (form.stones || [])
-              .filter((s) => s.stone_type && Number(s.weight) > 0)
-              .map((s) => {
-                const hasOverride = s.price_override && Number(s.price_override) > 0;
-                const price = hasOverride
-                  ? Number(s.price_override)
-                  : Number(s.weight) * (settings.stone_rates?.[s.stone_type] ?? 0);
-                return { label: s.stone_type, weight: Number(s.weight), price, is_override: hasOverride };
-              });
-            const stoneCost = stoneDetails.reduce((a, s) => a + s.price, 0);
+            const stonesInput = (form.stones || [])
+              .filter(s => s.stone_type && Number(s.weight) > 0)
+              .map(s => ({
+                stone_type: s.stone_type,
+                weight: Number(s.weight),
+                rate: settings.stone_rates?.[s.stone_type] ?? 0,
+                price_override: s.price_override ? Number(s.price_override) : null,
+              }));
 
-            const makingCost = form.making_charge_type === 'per_gram'
-              ? net * (Number(form.making_charge_rate) || 0)
-              : (Number(form.fixed_making_charge) || 0);
+            const extraInput = (Array.isArray(form.extra_charges) ? form.extra_charges : [])
+              .filter(e => e.reason && Number(e.charge) > 0)
+              .map(e => ({ reason: e.reason, charge: Number(e.charge) }));
 
-            const override = Number(form.price_override) || 0;
-            const isOverride = override > 0;
+            const taxesInput = (Array.isArray(form.taxes) ? form.taxes : [])
+              .filter(t => t.name.trim() && Number(t.percentage) >= 0);
+            const totalTaxPct = taxesInput.reduce((sum, t) => sum + Number(t.percentage), 0);
 
-            const subtotal = metalCost + stoneCost + makingCost;
-            const discountAmt = (subtotal * (Number(form.discount_percentage) || 0)) / 100;
-            const taxable = subtotal - discountAmt;
-            const taxAmt = (taxable * (Number(form.tax_percentage) || 0)) / 100;
-            const formulaResult = taxable + taxAmt;
+            const result = computePrice({
+              net_weight: Number(form.net_weight) || 0,
+              wastage_percentage: Number(form.wastage_percentage) || 0,
+              stones: stonesInput.length > 0 ? stonesInput : undefined,
+              metal_rate: metalR,
+              making_charge_type: form.making_charge_type || 'fixed',
+              making_charge_rate: Number(form.making_charge_rate) || 0,
+              fixed_making_charge: Number(form.fixed_making_charge) || 0,
+              tax_percentage: totalTaxPct,
+              discount_percentage: Number(form.discount_percentage) || 0,
+              price_override: form.price_override ? Number(form.price_override) : null,
+              extra_charges: extraInput,
+            });
 
-            const finalPrice = (isOverride && formulaResult < override) ? override : formulaResult;
-            const isFloorActive = isOverride && formulaResult < override;
-            const floorPrice = finalPrice * (1 - (Number(form.max_manager_discount) || 0) / 100);
-
+            const floorPrice = result.final_price * (1 - (Number(form.max_manager_discount) || 0) / 100);
             const fmt = (n: number) => Math.round(n).toLocaleString('en-IN');
             const fmtDec = (n: number) => n.toLocaleString('en-IN', { maximumFractionDigits: 4 });
 
@@ -1076,7 +1127,7 @@ export default function ProductsPage() {
                 <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 rounded-2xl space-y-3">
                   <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">Live Price Breakdown (from Settings rates)</p>
 
-                  {!metalR && !isOverride && (
+                  {!metalR && !result.is_override && (
                     <p className="text-[11px] text-amber-600 font-bold bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
                       ⚠️ Metal rate not set for {form.metal_type} {form.purity} — go to Settings to configure rates.
                     </p>
@@ -1086,23 +1137,23 @@ export default function ProductsPage() {
                     {/* Metal */}
                     <div className="flex justify-between">
                       <span className="text-slate-500 text-[12px]">Metal ({form.metal_type} {form.purity})</span>
-                      <span className="font-bold text-slate-800">{fmtDec(billableWeight)}g × ₹{fmt(metalR)} = <span className="text-blue-700">₹{fmt(metalCost)}</span></span>
+                      <span className="font-bold text-slate-800">{fmtDec(result.billable_metal_weight)}g × ₹{fmt(metalR)} = <span className="text-blue-700">₹{fmt(result.metal_price)}</span></span>
                     </div>
-                    {wastage > 0 && (
+                    {result.wastage_grams > 0 && (
                       <div className="flex justify-between">
-                        <span className="text-slate-400 text-[11px] pl-3">↳ Wastage ({wastage}%)</span>
-                        <span className="text-slate-500 text-[11px]">+{fmtDec(wastageGrams)}g included above</span>
+                        <span className="text-slate-400 text-[11px] pl-3">↳ Wastage ({form.wastage_percentage}%)</span>
+                        <span className="text-slate-500 text-[11px]">+{fmtDec(result.wastage_grams)}g included above</span>
                       </div>
                     )}
 
                     {/* Stones */}
-                    {stoneDetails.length > 0 && stoneDetails.map((s, i) => (
+                    {result.stones_breakdown.map((s, i) => (
                       <div key={i} className="flex justify-between">
-                        <span className="text-slate-500 text-[12px] capitalize">{s.label} stone</span>
+                        <span className="text-slate-500 text-[12px] capitalize">{s.stone_type} stone</span>
                         <span className="font-bold text-slate-800">
                           {s.is_override
                             ? <><span className="text-violet-600">Fixed</span> = ₹{fmt(s.price)}</>
-                            : <>{fmtDec(s.weight)} × ₹{fmt(s.price / s.weight)} = <span className="text-blue-700">₹{fmt(s.price)}</span></>
+                            : <>{fmtDec(s.weight)} × ₹{fmt(s.rate)} = <span className="text-blue-700">₹{fmt(s.price)}</span></>
                           }
                         </span>
                       </div>
@@ -1111,32 +1162,44 @@ export default function ProductsPage() {
                     {/* Making */}
                     <div className="flex justify-between">
                       <span className="text-slate-500 text-[12px]">Making ({form.making_charge_type === 'per_gram' ? `₹${form.making_charge_rate}/g` : 'fixed'})</span>
-                      <span className="font-bold text-slate-800">₹{fmt(makingCost)}</span>
+                      <span className="font-bold text-slate-800">₹{fmt(result.making_charges)}</span>
                     </div>
+
+                    {/* Extra Charges */}
+                    {result.extra_charges_breakdown.map((e, i) => (
+                      <div key={i} className="flex justify-between">
+                        <span className="text-slate-500 text-[12px]">{e.reason}</span>
+                        <span className="font-bold text-slate-800">₹{fmt(e.charge)}</span>
+                      </div>
+                    ))}
 
                     <div className="border-t border-blue-200 pt-1.5 flex justify-between">
                       <span className="text-slate-600 text-[12px] font-semibold">Subtotal</span>
-                      <span className="font-bold text-slate-800">₹{fmt(subtotal)}</span>
+                      <span className="font-bold text-slate-800">₹{fmt(result.subtotal)}</span>
                     </div>
 
-                    {discountAmt > 0 && (
+                    {result.discount_amount > 0 && (
                       <div className="flex justify-between">
                         <span className="text-slate-500 text-[12px]">Discount ({form.discount_percentage}%)</span>
-                        <span className="font-bold text-red-500">- ₹{fmt(discountAmt)}</span>
+                        <span className="font-bold text-red-500">- ₹{fmt(result.discount_amount)}</span>
                       </div>
                     )}
 
                     <div className="flex justify-between">
-                      <span className="text-slate-500 text-[12px]">Tax ({form.tax_percentage}%)</span>
-                      <span className="font-bold text-slate-800">+ ₹{fmt(taxAmt)}</span>
+                      <span className="text-slate-500 text-[12px]">Taxes ({totalTaxPct}%)</span>
+                      <span className="font-bold text-slate-800">
+                        {taxesInput.length > 0
+                          ? taxesInput.map(t => `${t.name} ${t.percentage}%`).join(' + ')
+                          : `${totalTaxPct}%`
+                        } = <span className="text-slate-900">₹{fmt(result.tax_amount)}</span>
+                      </span>
                     </div>
 
                     <div className="border-t border-blue-200 pt-1.5 flex justify-between items-center">
                       <div className="flex flex-col">
                         <span className="text-slate-700 font-black text-[13px]">Final Price</span>
-                        {isFloorActive && <span className="text-[9px] font-black text-violet-600 uppercase tracking-tighter">↑ Override Floor Applied</span>}
                       </div>
-                      <span className={`font-black text-lg ${isFloorActive ? 'text-violet-700' : 'text-blue-700'}`}>₹{fmt(finalPrice)}</span>
+                      <span className="font-black text-lg text-blue-700">₹{fmt(result.final_price)}</span>
                     </div>
 
                     {Number(form.max_manager_discount) > 0 && (
@@ -1160,7 +1223,120 @@ export default function ProductsPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="border border-slate-200 rounded-xl p-4 bg-slate-50 space-y-3">
+                  <label className="block text-sm font-bold text-slate-800 mb-1">Extra Charges &amp; Misc</label>
+                  {(Array.isArray(form.extra_charges) ? form.extra_charges : []).map((row, idx) => (
+                    <div key={idx} className="flex gap-2 items-center">
+                      <div className="flex-1">
+                        <input type="text" className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Reason (e.g., Certificate)" value={row.reason} onChange={(e) => {
+                          const updated = [...form.extra_charges!];
+                          updated[idx] = { ...updated[idx], reason: e.target.value };
+                          set('extra_charges', updated);
+                        }} />
+                      </div>
+                      <div className="w-1/3">
+                        <input type="number" min="0" step="1" className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Amount (₹)" value={row.charge} onChange={(e) => {
+                          const updated = [...form.extra_charges!];
+                          updated[idx] = { ...updated[idx], charge: e.target.value };
+                          set('extra_charges', updated);
+                        }} />
+                      </div>
+                      <button type="button" onClick={() => set('extra_charges', form.extra_charges!.filter((_, i) => i !== idx))} className="w-9 h-9 flex items-center justify-center rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors shrink-0">
+                        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M18 6L6 18M6 6l12 12"/></svg>
+                      </button>
+                    </div>
+                  ))}
+                  <button type="button" onClick={() => set('extra_charges', [...(Array.isArray(form.extra_charges) ? form.extra_charges : []), { reason: '', charge: '' }])} className="w-full py-2.5 border-2 border-dashed border-blue-200 rounded-xl text-[11px] font-black text-blue-500 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2">
+                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M12 5v14M5 12h14"/></svg> Add Charge Block
+                  </button>
+                </div>
+
+                {/* Dynamic Tax Builder */}
+                <div className="border border-slate-200 rounded-xl p-4 bg-slate-50 space-y-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-sm font-bold text-slate-800">Taxes <span className="text-red-500">*</span></label>
+                    <span className="text-[10px] text-slate-400">
+                      Total: {(Array.isArray(form.taxes) ? form.taxes : [])
+                        .filter(t => t.name.trim() && Number(t.percentage) >= 0)
+                        .reduce((s, t) => s + Number(t.percentage), 0)
+                        .toFixed(2)}%
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-12 gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1">
+                    <div className="col-span-6">Tax Name</div>
+                    <div className="col-span-5">Rate (%)</div>
+                    <div className="col-span-1"></div>
+                  </div>
+                  {(Array.isArray(form.taxes) ? form.taxes : []).map((row, idx) => (
+                    <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                      <div className="col-span-6">
+                        <input
+                          type="text"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-400 uppercase"
+                          placeholder="e.g. SGST, CGST, IGST"
+                          value={row.name}
+                          onChange={(e) => {
+                            const updated = [...form.taxes];
+                            updated[idx] = { ...updated[idx], name: e.target.value.toUpperCase() };
+                            set('taxes', updated);
+                          }}
+                        />
+                      </div>
+                      <div className="col-span-5">
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          max="50"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-400"
+                          placeholder="e.g. 1.5"
+                          value={row.percentage}
+                          onChange={(e) => {
+                            const updated = [...form.taxes];
+                            updated[idx] = { ...updated[idx], percentage: e.target.value };
+                            set('taxes', updated);
+                          }}
+                        />
+                      </div>
+                      <div className="col-span-1 flex justify-center">
+                        <button
+                          type="button"
+                          onClick={() => set('taxes', form.taxes.filter((_, i) => i !== idx))}
+                          className="w-8 h-8 flex items-center justify-center rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors"
+                        >
+                          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M18 6L6 18M6 6l12 12"/></svg>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => set('taxes', [...(Array.isArray(form.taxes) ? form.taxes : []), { name: '', percentage: '' }])}
+                      className="flex-1 py-2.5 border-2 border-dashed border-slate-300 rounded-xl text-[11px] font-bold text-slate-500 hover:bg-slate-100 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M12 5v14M5 12h14"/></svg>
+                      Add Tax Entry
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => set('taxes', DEFAULT_TAXES)}
+                      className="px-4 py-2.5 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-500 hover:bg-slate-100 transition-colors"
+                    >
+                      Reset to SGST+CGST
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-400 italic px-1">
+                    Add individual tax components (SGST, CGST, IGST, etc.). Each will appear as a separate column on the bill. Total tax = sum of all rates.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Wastage (%)</label>
+                    <input type="number" step="0.1" min="0" max="20" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.wastage_percentage} onChange={(e) => set('wastage_percentage', e.target.value)} placeholder="e.g. 3" />
+                    <p className="text-[10px] text-slate-400 mt-1">+{form.wastage_percentage}% → {fmtDec(result.billable_metal_weight)}g billable</p>
+                  </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Admin Discount (%)</label>
                     <input type="number" min="0" max="100" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.discount_percentage} onChange={(e) => set('discount_percentage', e.target.value)} />
@@ -1168,18 +1344,6 @@ export default function ProductsPage() {
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Max Manager Discount (%)</label>
                     <input type="number" min="0" max="100" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.max_manager_discount} onChange={(e) => set('max_manager_discount', e.target.value)} />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Wastage (%)</label>
-                    <input type="number" step="0.1" min="0" max="20" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.wastage_percentage} onChange={(e) => set('wastage_percentage', e.target.value)} placeholder="e.g. 3" />
-                    <p className="text-[10px] text-slate-400 mt-1">Wastage increases billable gold weight: {fmtDec(net)}g + {wastage}% = {fmtDec(billableWeight)}g</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Tax (%)</label>
-                    <input type="number" step="0.1" min="0" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.tax_percentage} onChange={(e) => set('tax_percentage', e.target.value)} />
                   </div>
                 </div>
 
@@ -1209,11 +1373,12 @@ export default function ProductsPage() {
             );
           })()}
 
-          {/* Tab 5: Images (edit mode only) */}
-          {activeTab === 4 && editTarget && (
+          {/* Tab 5: Images */}
+          {activeTab === 4 && (
             <div className="space-y-4">
-              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
-                <p className="text-xs text-slate-500">Barcode</p>
+              {editTarget && (
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                  <p className="text-xs text-slate-500">Barcode</p>
                 <p className="text-sm font-medium text-slate-900">{editTarget.barcode || 'Not available'}</p>
                 <p className="text-xs text-slate-500 mt-1">ID: {editTarget._id}</p>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -1247,21 +1412,36 @@ export default function ProductsPage() {
                     Print
                   </button>
                 </div>
-                {editTarget.barcode_url && (
+                {editTarget?.barcode_url && (
                   <img src={staticUrl(editTarget.barcode_url)} alt="product barcode" className="mt-3 w-full max-w-md bg-white border border-slate-200 rounded-lg p-2" />
                 )}
               </div>
+              )}
 
               <div className="grid grid-cols-3 gap-3">
-                {productImages.length === 0 && (
+                {(!editTarget ? pendingImages.length === 0 : productImages.length === 0) && (
                   <p className="col-span-3 text-center py-8 text-slate-400 text-sm border border-dashed border-slate-300 rounded-lg">No images yet — upload below</p>
                 )}
-                {productImages.map((url) => (
+                {editTarget ? productImages.map((url) => (
                   <div key={url} className="relative group rounded-lg overflow-hidden border border-slate-200 aspect-square bg-slate-100">
                     <img src={staticUrl(url)} alt="product" className="w-full h-full object-cover" />
                     <button
                       type="button"
                       onClick={() => handleRemoveImage(url)}
+                      className="absolute top-1 right-1 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  </div>
+                )) : pendingImages.map((file, i) => (
+                  <div key={i} className="relative group rounded-lg overflow-hidden border border-slate-200 aspect-square bg-slate-100">
+                    <img src={URL.createObjectURL(file)} alt="product" className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => setPendingImages((prev) => prev.filter((_, idx) => idx !== i))}
                       className="absolute top-1 right-1 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                     >
                       <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
@@ -1294,15 +1474,20 @@ export default function ProductsPage() {
                   disabled={uploading}
                   onChange={async (e) => {
                     if (!e.target.files?.length) return;
-                    setUploading(true);
-                    try {
-                      const res = await uploadProductImages(editTarget._id, Array.from(e.target.files));
-                      setProductImages(res.images);
-                      showToast('Images uploaded');
-                    } catch (err: unknown) {
-                      showToast(err instanceof Error ? err.message : 'Upload failed');
-                    } finally {
-                      setUploading(false);
+                    if (editTarget) {
+                      setUploading(true);
+                      try {
+                        const res = await uploadProductImages(editTarget._id, Array.from(e.target.files));
+                        setProductImages(res.images);
+                        showToast('Images uploaded');
+                      } catch (err: unknown) {
+                        showToast(err instanceof Error ? err.message : 'Upload failed');
+                      } finally {
+                        setUploading(false);
+                        e.target.value = '';
+                      }
+                    } else {
+                      setPendingImages((prev) => [...prev, ...Array.from(e.target.files!)]);
                       e.target.value = '';
                     }
                   }}

@@ -1,82 +1,171 @@
 'use client';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { 
-  getPurchaseOrder, 
-  updatePurchaseOrder, 
-  publishPurchaseOrder, 
-  getSuppliers, 
-  getCategories, 
-  getLookupsByType, 
-  staticUrl, 
-  type PurchaseOrder, 
-  type Supplier, 
-  type Category, 
-  type Lookup 
+import {
+  getPurchaseOrder, updatePurchaseOrder, publishPurchaseOrder,
+  getSuppliers, getCategories, getLookupsByType, getBranches,
+  getProducts, uploadProductImages, staticUrl,
+  type PurchaseOrder, type Supplier, type Category, type Lookup, type Branch, type Product,
 } from '@/lib/api';
-import Modal from '@/components/Modal';
 
+// ── Types ─────────────────────────────────────────────────────────────────────
+type ItemMode = 'new' | 'existing' | 'template';
+interface PublishConfig { branch_id: string; location: string; admin_discount: number; }
+interface TaxRow { name: string; percentage: string; }
+interface StoneRow { stone_type: string; weight: string; price_override: string; }
+interface ExtraChargeRow { reason: string; charge: string; }
+
+const DEFAULT_TAXES: TaxRow[] = [
+  { name: 'SGST', percentage: '1.5' },
+  { name: 'CGST', percentage: '1.5' },
+];
+
+// ── Shared styles ─────────────────────────────────────────────────────────────
+const INP = 'w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500';
+const INP_DIS = 'w-full px-3.5 py-2.5 border border-slate-200 rounded-lg text-sm bg-slate-50 text-slate-400 cursor-not-allowed';
+const LBL = 'block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5';
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function productToItem(p: Product, mode: ItemMode): any {
+  return {
+    product_id:        mode === 'existing' ? p._id : undefined,
+    _useAsTemplate:    mode === 'template',
+    _mode:             mode,
+    _linkedProduct:    p,
+    name:              p.name,
+    sku:               mode === 'existing' ? p.sku : `SKU-${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+    description:       p.description || '',
+    category_id:       typeof p.category_id === 'object' ? (p.category_id as Category)._id : p.category_id,
+    metal_type:        p.metal_type || '',
+    purity:            p.purity || '',
+    metal_color:       p.metal_color || '',
+    gender:            p.gender || '',
+    occasion:          p.occasion || '',
+    dimensions:        p.dimensions || '',
+    gross_weight:      p.gross_weight ?? 0,
+    net_weight:        p.net_weight ?? 0,
+    stone_weight:      p.stone_weight ?? 0,
+    wastage_percentage:p.wastage_percentage ?? 0,
+    has_stones:        p.has_stones ?? false,
+    stone_type:        p.stone_type || '',
+    stones:            (p.stones || []).map(s => ({ stone_type: s.stone_type, weight: String(s.weight), price_override: String(s.price_override ?? '') })),
+    making_charge_type:p.making_charge_type || 'per_gram',
+    making_charge_rate:p.making_charge_rate ?? 0,
+    fixed_making_charge:p.fixed_making_charge ?? 0,
+    tax_percentage:    p.tax_percentage ?? 3,
+    taxes:             Array.isArray(p.taxes) && p.taxes.length > 0 ? p.taxes.map(t => ({ name: t.name, percentage: String(t.percentage) })) : DEFAULT_TAXES,
+    extra_charges:     (p.extra_charges || []).map(e => ({ reason: e.reason, charge: String(e.charge) })),
+    discount_percentage:p.discount_percentage ?? 0,
+    max_manager_discount:p.max_manager_discount ?? 0,
+    price_override:    p.price_override ?? '',
+    purchase_price:    p.purchase_price ?? 0,
+    selling_price:     0,
+    images:            p.images || [],
+    _pendingImages:    [] as File[],
+    count:             1,
+  };
+}
+
+function blankItem(): any {
+  return {
+    product_id:         undefined,
+    _useAsTemplate:     false,
+    _mode:              'new' as ItemMode,
+    _linkedProduct:     null,
+    name: '', sku: `SKU-${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+    description: '',
+    category_id: '', metal_type: '', purity: '', metal_color: '',
+    gender: '', occasion: '', dimensions: '',
+    gross_weight: 0, net_weight: 0, stone_weight: 0, wastage_percentage: 0,
+    has_stones: false, stone_type: '', stones: [],
+    making_charge_type: 'per_gram', making_charge_rate: 0, fixed_making_charge: 0,
+    tax_percentage: 3, taxes: DEFAULT_TAXES, extra_charges: [],
+    discount_percentage: 0, max_manager_discount: 0, price_override: '',
+    purchase_price: 0, selling_price: 0, images: [], _pendingImages: [] as File[],
+    count: 1,
+  };
+}
+
+// ── Main Component ─────────────────────────────────────────────────────────────
 export default function PurchaseOrderDetailPage() {
   const { id } = useParams();
   const router = useRouter();
+
   const [po, setPo] = useState<PurchaseOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
+
+  // Lookups
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  
-  // Lookups
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [metalTypes, setMetalTypes] = useState<Lookup[]>([]);
   const [purities, setPurities] = useState<Lookup[]>([]);
   const [colors, setColors] = useState<Lookup[]>([]);
   const [genders, setGenders] = useState<Lookup[]>([]);
   const [occasions, setOccasions] = useState<Lookup[]>([]);
   const [stoneTypes, setStoneTypes] = useState<Lookup[]>([]);
+  const [makingTypes, setMakingTypes] = useState<Lookup[]>([]);
+
+  // Product search for existing / template
+  const [productSearch, setProductSearch] = useState<Record<number, string>>({});
+  const [productResults, setProductResults] = useState<Record<number, Product[]>>({});
+  const [productSearchOpen, setProductSearchOpen] = useState<Record<number, boolean>>({});
+  const searchTimers = useRef<Record<number, NodeJS.Timeout>>({});
 
   const [poForm, setPoForm] = useState<Partial<PurchaseOrder>>({
-    supplier_id: '',
-    vendor_name: '',
-    purchase_date: new Date().toISOString().split('T')[0],
-    invoice_number: '',
-    total_amount: 0,
-    items: []
+    supplier_id: '', vendor_name: '', purchase_date: new Date().toISOString().split('T')[0],
+    invoice_number: '', total_amount: 0, items: [],
   });
 
+  const [showPublishModal, setShowPublishModal] = useState(false);
+  const [publishConfig, setPublishConfig] = useState<PublishConfig>({ branch_id: '', location: 'store', admin_discount: 0 });
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'danger' } | null>(null);
 
+  const showToast = useCallback((message: string, type: 'success' | 'danger') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3500);
+  }, []);
+
+  // ── Load data ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     getSuppliers().then(setSuppliers).catch(() => {});
-    getCategories().then(res => setCategories(Array.isArray(res) ? res : (res as any)?.data || [])).catch(() => {});
-    getLookupsByType('metal_type').then(res => setMetalTypes(res || [])).catch(() => {});
-    getLookupsByType('purity').then(res => setPurities(res || [])).catch(() => {});
-    getLookupsByType('metal_color').then(res => setColors(res || [])).catch(() => {});
-    getLookupsByType('gender').then(res => setGenders(res || [])).catch(() => {});
-    getLookupsByType('occasion').then(res => setOccasions(res || [])).catch(() => {});
-    getLookupsByType('stone_type').then(res => setStoneTypes(res || [])).catch(() => {});
+    getCategories().then(r => setCategories(Array.isArray(r) ? r : (r as any)?.data || [])).catch(() => {});
+    getBranches().then(setBranches).catch(() => {});
+    getLookupsByType('metal_type').then(r => setMetalTypes(r || [])).catch(() => {});
+    getLookupsByType('purity').then(r => setPurities(r || [])).catch(() => {});
+    getLookupsByType('metal_color').then(r => setColors(r || [])).catch(() => {});
+    getLookupsByType('gender').then(r => setGenders(r || [])).catch(() => {});
+    getLookupsByType('occasion').then(r => setOccasions(r || [])).catch(() => {});
+    getLookupsByType('stone_type').then(r => setStoneTypes(r || [])).catch(() => {});
+    getLookupsByType('making_charge_type').then(r => setMakingTypes(r || [])).catch(() => {});
   }, []);
 
   async function loadPO() {
-    if (id === 'new') {
-      setLoading(false);
-      return;
-    }
+    if (id === 'new') { setLoading(false); return; }
     try {
       const data = await getPurchaseOrder(id as string);
-      
-      // Normalize IDs so they are strings for the form (not populated objects)
-      const normalizedData = {
+      const normalized = {
         ...data,
         supplier_id: (data.supplier_id && typeof data.supplier_id === 'object') ? (data.supplier_id as any)._id : data.supplier_id,
         items: (data.items || []).map((item: any) => ({
           ...item,
-          category_id: (item.category_id && typeof item.category_id === 'object') ? item.category_id._id : item.category_id
-        }))
+          _mode: item.product_id ? 'existing' : 'new',
+          _pendingImages: [],
+          category_id: item.category_id && typeof item.category_id === 'object' ? item.category_id._id : item.category_id,
+          taxes: Array.isArray(item.taxes) && item.taxes.length > 0
+            ? item.taxes.map((t: any) => ({ name: t.name || '', percentage: String(t.percentage ?? '') }))
+            : DEFAULT_TAXES,
+          stones: Array.isArray(item.stones) && item.stones.length > 0
+            ? item.stones.map((s: any) => ({ stone_type: s.stone_type || '', weight: String(s.weight ?? ''), price_override: String(s.price_override ?? '') }))
+            : [],
+          extra_charges: Array.isArray(item.extra_charges) ? item.extra_charges.map((e: any) => ({ reason: e.reason || '', charge: String(e.charge ?? '') })) : [],
+        })),
       };
-
       setPo(data);
-      setPoForm(normalizedData);
-    } catch (e) {
+      setPoForm(normalized);
+    } catch {
       showToast('Failed to load purchase order', 'danger');
     } finally {
       setLoading(false);
@@ -85,574 +174,747 @@ export default function PurchaseOrderDetailPage() {
 
   useEffect(() => { loadPO(); }, [id]);
 
-  // Auto-calculate total amount
   useEffect(() => {
-    const total = (poForm.items || []).reduce((sum, item) => {
-      return sum + ((item.purchase_price || 0) * (item.count || 1));
-    }, 0);
-    if (total !== poForm.total_amount) {
-      setPoForm(prev => ({ ...prev, total_amount: total }));
-    }
+    const total = (poForm.items || []).reduce((s, item) => s + ((item as any).purchase_price || 0) * ((item as any).count || 1), 0);
+    if (total !== poForm.total_amount) setPoForm(prev => ({ ...prev, total_amount: total }));
   }, [poForm.items]);
 
-  function showToast(message: string, type: 'success' | 'danger') {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
+  // ── Product search ────────────────────────────────────────────────────────────
+  function searchProducts(idx: number, query: string) {
+    setProductSearch(p => ({ ...p, [idx]: query }));
+    if (searchTimers.current[idx]) clearTimeout(searchTimers.current[idx]);
+    if (!query.trim()) { setProductResults(p => ({ ...p, [idx]: [] })); return; }
+    searchTimers.current[idx] = setTimeout(async () => {
+      try {
+        const res = await getProducts({ search: query, limit: '8' });
+        setProductResults(p => ({ ...p, [idx]: res.data || [] }));
+        setProductSearchOpen(p => ({ ...p, [idx]: true }));
+      } catch {}
+    }, 350);
   }
 
-  function handleAddItem() {
-    const newItem = {
-      name: '',
-      sku: `SKU-${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
-      category_id: '',
-      metal_type: 'Gold',
-      purity: '22K',
-      metal_color: 'Yellow Gold',
-      gender: 'Unisex',
-      occasion: 'Casual',
-      dimensions: '',
-      has_stones: false,
-      stone_type: '',
-      stone_weight: 0,
-      count: 1,
-      buy_price: 0,
-      purchase_price: 0,
-      selling_price: 0,
-      gross_weight: 0,
-      net_weight: 0,
-      images: []
-    };
-    setPoForm(prev => ({ ...prev, items: [...(prev.items || []), newItem] }));
+  function selectProduct(idx: number, product: Product, mode: ItemMode) {
+    const newItem = productToItem(product, mode);
+    const items = [...(poForm.items || [])];
+    items[idx] = newItem;
+    setPoForm(prev => ({ ...prev, items }));
+    setProductSearchOpen(p => ({ ...p, [idx]: false }));
+    setProductSearch(p => ({ ...p, [idx]: product.name }));
   }
 
-  function handleUpdateItem(index: number, field: string, value: any) {
-    const newItems = [...(poForm.items || [])];
-    newItems[index] = { ...newItems[index], [field]: value };
-    // If buy_price changes, update purchase_price for compatibility
-    if (field === 'buy_price') {
-      newItems[index].purchase_price = value;
+  // ── Item helpers ──────────────────────────────────────────────────────────────
+  function addItem() {
+    setPoForm(prev => ({ ...prev, items: [...(prev.items || []), blankItem()] }));
+  }
+
+  function setItemField(index: number, field: string, value: any) {
+    const items = [...(poForm.items || [])];
+    items[index] = { ...items[index], [field]: value };
+    if (field === 'purchase_price') (items[index] as any).buy_price = value;
+    setPoForm(prev => ({ ...prev, items }));
+  }
+
+  function setItemMode(index: number, mode: ItemMode) {
+    const items = [...(poForm.items || [])];
+    const cur = items[index] as any;
+    if (mode === 'new') {
+      items[index] = { ...blankItem(), count: cur.count || 1 };
+    } else {
+      // Keep current data but update mode flags
+      items[index] = { ...cur, _mode: mode, _useAsTemplate: mode === 'template', product_id: mode === 'existing' ? cur.product_id : undefined };
     }
-    setPoForm(prev => ({ ...prev, items: newItems }));
+    setPoForm(prev => ({ ...prev, items }));
+    setProductSearch(p => ({ ...p, [index]: '' }));
+    setProductResults(p => ({ ...p, [index]: [] }));
   }
 
-  function handleRemoveItem(index: number) {
+  function removeItem(index: number) {
     setPoForm(prev => ({ ...prev, items: (prev.items || []).filter((_, i) => i !== index) }));
   }
 
+  // ── Save ──────────────────────────────────────────────────────────────────────
   async function handleSave() {
     setSaving(true);
     try {
-      if (id === 'new') {
-        // Implementation for createPO if needed, otherwise route to standard service
-      } else {
-        await updatePurchaseOrder(id as string, poForm);
-        showToast('Purchase order saved successfully', 'success');
-        loadPO();
+      const payload = {
+        ...poForm,
+        _publishConfig: publishConfig,
+        items: (poForm.items || []).map((item: any) => ({
+          ...item,
+          _pendingImages: undefined, // don't send File objects
+          taxes: (item.taxes || []).filter((t: TaxRow) => t.name.trim()).map((t: TaxRow) => ({ name: t.name, percentage: Number(t.percentage) || 0 })),
+          stones: (item.stones || []).filter((s: StoneRow) => s.stone_type).map((s: StoneRow) => ({ stone_type: s.stone_type, weight: Number(s.weight) || 0, price_override: s.price_override ? Number(s.price_override) : null })),
+          extra_charges: (item.extra_charges || []).filter((e: ExtraChargeRow) => e.reason).map((e: ExtraChargeRow) => ({ reason: e.reason, charge: Number(e.charge) || 0 })),
+          tax_percentage: (item.taxes || []).reduce((s: number, t: TaxRow) => s + (Number(t.percentage) || 0), 0),
+        })),
+      };
+      const saved = await updatePurchaseOrder(id as string, payload);
+
+      // Upload any pending images for new products created in previous saves
+      for (let i = 0; i < (poForm.items || []).length; i++) {
+        const item = (poForm.items || [])[i] as any;
+        const savedItem = (saved as any)?.items?.[i];
+        const productId = savedItem?.product_id || item.product_id;
+        if (productId && item._pendingImages?.length > 0) {
+          try { await uploadProductImages(productId.toString(), item._pendingImages); } catch {}
+        }
       }
-    } catch (e) {
-      showToast('Failed to save changes', 'danger');
+
+      showToast('Purchase order saved successfully', 'success');
+      loadPO();
+    } catch (e: any) {
+      showToast(e?.message || 'Failed to save changes', 'danger');
     } finally {
       setSaving(false);
     }
   }
 
-  async function handlePublish() {
-    if (!confirm('Are you sure you want to publish? This will lock the PO and add items to inventory.')) return;
+  // ── Publish ───────────────────────────────────────────────────────────────────
+  async function handlePublishConfirm() {
     setPublishing(true);
+    setShowPublishModal(false);
     try {
+      await handleSave();
       await publishPurchaseOrder(id as string);
-      showToast('Purchase order published to inventory', 'success');
+      showToast('Published to inventory!', 'success');
       loadPO();
-    } catch (e) {
-      showToast('Publishing failed - check item details', 'danger');
+    } catch (e: any) {
+      showToast(e?.message || 'Publishing failed', 'danger');
     } finally {
       setPublishing(false);
     }
   }
 
   const isPublished = po?.status === 'published';
+  const totalItems = (poForm.items || []).length;
+  const fmt = (n: number) => n.toLocaleString('en-IN');
 
   if (loading) return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+    <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
       <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Hydrating Ledger...</p>
+      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Loading...</p>
     </div>
   );
 
   return (
-    <div className="space-y-10 animate-[fadeRise_400ms_ease-out] pb-20">
-      <style jsx global>{`
-        @media print {
-          @page {
-            size: A4;
-            margin: 0mm !important; /* Removes browser watermark */
-          }
-          body {
-            background: white !important;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-          }
-          /* Suppress all dashboard furniture entirely */
-          .admin-shell header, .admin-shell aside, .no-print {
-            display: none !important;
-          }
-          /* Let the document flow naturally within the page margins */
-          .print-document {
-            display: block !important;
-            width: 100% !important;
-            background: white !important;
-            padding: 8mm !important; /* Replaces browser margin, tighter fit */
-            box-sizing: border-box !important;
-          }
-        }
-      `}</style>
+    <div className="max-w-5xl mx-auto px-4 py-6 pb-16" style={{ fontFamily: '"Inter", system-ui, sans-serif' }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap'); @keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
-      <div className="no-print space-y-10">
-        {toast && (
-          <div className={`fixed top-8 left-1/2 -track-x-1/2 z-[200] px-8 py-4 rounded-2xl shadow-2xl backdrop-blur-md border animate-[fadeRise_300ms_ease-out] flex items-center gap-3 ${
-            toast.type === 'success' ? 'bg-emerald-500/90 text-white border-emerald-400' : 'bg-red-500/90 text-white border-red-400'
-          }`}>
-            <p className="text-[10px] font-black uppercase tracking-widest">{toast.message}</p>
-          </div>
-        )}
+      {/* Toast */}
+      {toast && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[300] px-6 py-3 rounded-xl font-bold text-sm shadow-2xl flex items-center gap-2"
+          style={{ background: toast.type === 'success' ? '#1d4ed8' : '#ef4444', color: '#fff' }}>
+          {toast.type === 'success' ? '✓' : '✕'} {toast.message}
+        </div>
+      )}
 
-        {/* Hero Header */}
-        <section className="flex flex-col md:flex-row items-start md:items-end justify-between gap-6">
+      {/* ── Header ───────────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
         <div>
-          <div className="flex items-center gap-3 mb-2">
-            <button onClick={() => router.back()} className="p-2 -ml-2 text-slate-400 hover:text-slate-900 transition-colors">
-              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M15 19l-7-7 7-7" /></svg>
+          <div className="flex items-center gap-2.5 mb-1.5">
+            <button onClick={() => router.back()} className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition-colors">
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M15 19l-7-7 7-7" /></svg>
             </button>
-            <span className={`px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-widest ${
-              isPublished ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'
-            }`}>
-              {isPublished ? 'Published & Locked' : 'Draft Protocol'}
+            <span className={`px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-widest border ${isPublished ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+              {isPublished ? 'Published & Locked' : 'Draft'}
             </span>
           </div>
-          <h1 className="text-4xl font-black text-slate-900 tracking-tighter">
-            {poForm.po_number || 'Initializing New PO...'}
-          </h1>
-          <p className="text-sm font-medium text-slate-500 mt-1">Registry of artisanal acquisitions and inventory ingress.</p>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">{poForm.po_number || 'New Purchase Order'}</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{totalItems} item{totalItems !== 1 ? 's' : ''} &middot; Total: ₹{fmt(poForm.total_amount || 0)}</p>
         </div>
-
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={() => window.print()}
-            className="px-6 py-3.5 rounded-2xl bg-white border border-slate-200 text-slate-900 text-xs font-black uppercase tracking-widest shadow-sm hover:bg-slate-50 transition-all flex items-center gap-2"
-          >
-            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z" /></svg>
-            Print Ledger
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-300 bg-white text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors">
+            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z" /></svg>
+            Print
           </button>
           {!isPublished && (
             <>
-              <button 
-                onClick={handleSave} 
-                className="px-6 py-3.5 rounded-2xl bg-slate-900 text-white text-xs font-black uppercase tracking-widest shadow-xl hover:bg-blue-600 transition-all disabled:opacity-50"
-                disabled={saving}
-              >
-                {saving ? 'Syncing...' : 'Commit Draft'}
+              <button onClick={handleSave} disabled={saving} className="px-4 py-2.5 rounded-lg border border-blue-600 bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 transition-colors disabled:opacity-60">
+                {saving ? 'Saving...' : 'Save Draft'}
               </button>
-              <button 
-                onClick={handlePublish} 
-                className="px-6 py-3.5 rounded-2xl bg-blue-600 text-white text-xs font-black uppercase tracking-widest shadow-xl hover:bg-blue-700 transition-all disabled:opacity-50"
-                disabled={publishing}
-              >
-                {publishing ? 'Ingressing...' : 'Publish to Vault'}
+              <button onClick={() => setShowPublishModal(true)} disabled={publishing} className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 transition-colors disabled:opacity-50">
+                {publishing ? <><span style={{ display: 'inline-block', width: '14px', height: '14px', border: '2px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />Publishing...</> : 'Publish to Inventory'}
               </button>
             </>
           )}
         </div>
-      </section>
+      </div>
 
-      {/* Supplier & Context Card */}
-      <section className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-8 md:p-12">
-        <div className="flex items-center gap-4 mb-8">
-           <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400">
-              <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
-           </div>
-           <div>
-              <h3 className="text-lg font-black text-slate-900 uppercase">Supplier Logistics</h3>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Metadata for official record</p>
-           </div>
+      {/* ── Supplier & Meta ───────────────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 mb-4">
+        <h2 className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-4">Supplier & Order Details</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div>
+            <label className={LBL}>Supplier <span className="text-red-500">*</span></label>
+            <select disabled={isPublished} className={isPublished ? INP_DIS : INP}
+              value={(poForm.supplier_id as string) || ''}
+              onChange={e => { const s = suppliers.find(x => x._id === e.target.value); setPoForm(prev => ({ ...prev, supplier_id: e.target.value, vendor_name: s?.name || '' })); }}>
+              <option value="">Select supplier...</option>
+              {suppliers.map(s => <option key={s._id} value={s._id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={LBL}>Invoice Ref</label>
+            <input className={isPublished ? INP_DIS : INP} disabled={isPublished} value={poForm.invoice_number || ''} onChange={e => setPoForm(prev => ({ ...prev, invoice_number: e.target.value }))} placeholder="INV-XXXX-XXXX" />
+          </div>
+          <div>
+            <label className={LBL}>Purchase Date</label>
+            <input type="date" className={isPublished ? INP_DIS : INP} disabled={isPublished} value={poForm.purchase_date?.split('T')[0] || ''} onChange={e => setPoForm(prev => ({ ...prev, purchase_date: e.target.value }))} />
+          </div>
+          <div>
+            <label className={LBL + ' text-blue-600'}>Total Value (₹)</label>
+            <div className="px-3.5 py-2.5 rounded-lg border border-blue-100 bg-blue-50 text-blue-700 font-black text-[15px] tabular-nums">₹{fmt(poForm.total_amount || 0)}</div>
+          </div>
         </div>
+        {poForm.supplier_id && (() => {
+          const s = suppliers.find(x => x._id === (poForm.supplier_id as string));
+          return s ? (
+            <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-500 border-t border-slate-100 pt-3">
+              {s.phone && <span>Phone: {s.phone}</span>}
+              {s.email && <span>Email: {s.email}</span>}
+              {s.address && <span>Address: {s.address}</span>}
+              {s.gst_number && <span>GSTIN: {s.gst_number}</span>}
+            </div>
+          ) : null;
+        })()}
+      </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-           <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Origin Vendor <span className="text-red-500">*</span></label>
-              <select 
-                value={(poForm.supplier_id as string) || ''} 
-                disabled={isPublished}
-                onChange={e => {
-                  const s = suppliers.find(x => x._id === e.target.value);
-                  setPoForm(prev => ({ ...prev, supplier_id: e.target.value, vendor_name: s?.name || '' }));
-                }}
-                className="w-full px-4 py-3.5 rounded-2xl border border-slate-200 text-sm font-semibold focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all appearance-none bg-slate-50/50"
-              >
-                <option value="">Select Producer...</option>
-                {suppliers.map(s => <option key={s._id} value={s._id}>{s.name}</option>)}
-              </select>
-           </div>
-           <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Vendor Invoice Ref</label>
-              <input 
-                disabled={isPublished}
-                className="w-full px-4 py-3.5 rounded-2xl border border-slate-200 text-sm font-semibold focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all placeholder:text-slate-300" 
-                value={poForm.invoice_number || ''} 
-                onChange={e => setPoForm(prev => ({ ...prev, invoice_number: e.target.value }))}
-                placeholder="INV-XXXX-XXXX"
-              />
-           </div>
-           <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Registry Date</label>
-              <input 
-                type="date" 
-                disabled={isPublished}
-                className="w-full px-4 py-3.5 rounded-2xl border border-slate-200 text-sm font-semibold focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all" 
-                value={poForm.purchase_date?.split('T')[0] || ''} 
-                onChange={e => setPoForm(prev => ({ ...prev, purchase_date: e.target.value }))} 
-              />
-           </div>
-           <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-blue-600">Aggregate Valuation (₹)</label>
-              <div className="w-full px-4 py-3.5 rounded-2xl bg-blue-50/50 border border-blue-100 text-md font-black text-blue-700 font-mono">
-                {poForm.total_amount?.toLocaleString()}
-              </div>
-           </div>
+      {/* ── Product Items ─────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-lg font-black text-slate-900">Product Line Items</h2>
+          <p className="text-xs text-slate-500">{totalItems} product{totalItems !== 1 ? 's' : ''} in this order</p>
         </div>
-      </section>
+        {!isPublished && (
+          <button onClick={addItem} className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-blue-600 bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 transition-colors">
+            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M12 5v14M5 12h14" /></svg>
+            Add Product
+          </button>
+        )}
+      </div>
 
-      {/* Asset Allocation (Line Items) */}
-      <section className="space-y-6">
-        <div className="flex items-center justify-between">
-           <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-slate-900 rounded-2xl flex items-center justify-center text-white shadow-lg">
-                 <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
+      {totalItems === 0 && (
+        <div className="text-center py-14 bg-white rounded-2xl border-2 border-dashed border-slate-200 text-slate-400 mb-4">
+          <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} className="mx-auto mb-2 text-slate-300"><path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
+          <p className="text-sm font-semibold">No products added yet</p>
+          <p className="text-xs mt-1">Click "Add Product" to start building your order</p>
+        </div>
+      )}
+
+      {(poForm.items || []).map((item: any, idx) => (
+        <ItemCard
+          key={idx} idx={idx} item={item} isPublished={isPublished}
+          categories={categories} metalTypes={metalTypes} purities={purities}
+          colors={colors} genders={genders} occasions={occasions}
+          stoneTypes={stoneTypes} makingTypes={makingTypes}
+          productSearch={productSearch[idx] || ''}
+          productResults={productResults[idx] || []}
+          productSearchOpen={productSearchOpen[idx] || false}
+          onSearchChange={(q) => searchProducts(idx, q)}
+          onSelectProduct={(p, mode) => selectProduct(idx, p, mode)}
+          onCloseSearch={() => setProductSearchOpen(p => ({ ...p, [idx]: false }))}
+          onModeChange={(mode) => setItemMode(idx, mode)}
+          onFieldChange={(field, val) => setItemField(idx, field, val)}
+          onRemove={() => removeItem(idx)}
+          fmt={fmt}
+        />
+      ))}
+
+      {/* ── Summary Footer ────────────────────────────────────────────────────── */}
+      {totalItems > 0 && (
+        <div className="flex items-center justify-between bg-slate-900 text-white rounded-2xl p-6 mt-2">
+          <div>
+            <div className="text-xs text-slate-400 mb-1">{totalItems} Product{totalItems !== 1 ? 's' : ''}</div>
+            <div className="text-2xl font-black">₹{fmt(poForm.total_amount || 0)}</div>
+          </div>
+          {!isPublished && (
+            <button onClick={() => setShowPublishModal(true)} className="px-6 py-3 rounded-xl bg-blue-600 text-white font-bold text-sm hover:bg-blue-500 transition-colors">
+              Publish to Inventory
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ── Publish Modal ─────────────────────────────────────────────────────── */}
+      {showPublishModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[200] p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
+            <div className="bg-slate-900 text-white px-6 py-5">
+              <div className="text-lg font-black">Publish to Inventory</div>
+              <div className="text-xs text-slate-400 mt-1">Configure how {totalItems} product{totalItems !== 1 ? 's' : ''} will be added. This action is <b>irreversible</b>.</div>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-sm flex justify-between">
+                <span className="text-slate-600">Total Items</span><span className="font-bold">{totalItems}</span>
               </div>
               <div>
-                <h3 className="text-xl font-black text-slate-900">Asset Specification Ledger</h3>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">{poForm.items?.length || 0} Individual items identified for ingress</p>
+                <label className={LBL}>Target Branch (optional)</label>
+                <select className={INP} value={publishConfig.branch_id} onChange={e => setPublishConfig(p => ({ ...p, branch_id: e.target.value }))}>
+                  <option value="">Central / Unallocated Stock</option>
+                  {branches.map(b => <option key={b._id} value={b._id}>{b.name} ({b.code})</option>)}
+                </select>
+                <p className="text-[11px] text-slate-400 mt-1">Can be reassigned later from inventory.</p>
               </div>
-           </div>
-           {!isPublished && (
-             <button 
-               onClick={handleAddItem}
-               className="px-6 py-3.5 rounded-2xl bg-white border-2 border-slate-900 text-slate-900 text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all active:scale-95 shadow-md flex items-center gap-2"
-             >
-                <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M12 5v14M5 12h14" /></svg>
-                Append New Asset
-             </button>
-           )}
+              <div>
+                <label className={LBL}>Storage Location <span className="text-red-500">*</span></label>
+                <select className={INP} value={publishConfig.location} onChange={e => setPublishConfig(p => ({ ...p, location: e.target.value }))}>
+                  <option value="store">Store / Showroom</option>
+                  <option value="warehouse">Warehouse</option>
+                  <option value="vault">Vault / Safe</option>
+                  <option value="display">Display Case</option>
+                </select>
+              </div>
+              <div>
+                <label className={LBL}>Initial Admin Discount (%) for all items</label>
+                <input type="number" min="0" max="100" step="0.5" className={INP} value={publishConfig.admin_discount} onChange={e => setPublishConfig(p => ({ ...p, admin_discount: parseFloat(e.target.value) || 0 }))} placeholder="0" />
+              </div>
+              <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-100 rounded-xl text-xs text-red-700">
+                <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} className="shrink-0 mt-0.5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                <div>The publish flow saves your draft automatically before publishing.</div>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-100 flex gap-3 justify-end">
+              <button onClick={() => setShowPublishModal(false)} className="px-5 py-2.5 rounded-lg border border-slate-300 bg-white font-bold text-sm text-slate-700 hover:bg-slate-50 transition-colors">Cancel</button>
+              <button onClick={handlePublishConfirm} className="px-6 py-2.5 rounded-lg bg-blue-600 text-white font-bold text-sm hover:bg-blue-700 transition-colors">Confirm & Publish</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── ItemCard Component ─────────────────────────────────────────────────────────
+function ItemCard({
+  idx, item, isPublished,
+  categories, metalTypes, purities, colors, genders, occasions, stoneTypes, makingTypes,
+  productSearch, productResults, productSearchOpen,
+  onSearchChange, onSelectProduct, onCloseSearch,
+  onModeChange, onFieldChange, onRemove, fmt,
+}: any) {
+  const mode: ItemMode = item._mode || 'new';
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const modeTab = (m: ItemMode, label: string, desc: string) => (
+    <button
+      type="button"
+      onClick={() => !isPublished && onModeChange(m)}
+      className={`flex-1 p-3 rounded-xl border-2 text-left transition-all ${mode === m ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white hover:border-slate-300'} ${isPublished ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+    >
+      <div className={`text-xs font-black uppercase tracking-widest mb-0.5 ${mode === m ? 'text-blue-600' : 'text-slate-500'}`}>{label}</div>
+      <div className="text-[10px] text-slate-400 leading-tight">{desc}</div>
+    </button>
+  );
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 mb-4 overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-black text-sm">{idx + 1}</div>
+          <div>
+            <div className="font-bold text-slate-900 text-sm">{item.name || <span className="text-slate-400">Unnamed Product</span>}</div>
+            <div className="text-xs text-slate-400">
+              {mode === 'new' && 'New Product'}
+              {mode === 'existing' && `Using existing: ${item._linkedProduct?.name || item.name || '...'}`}
+              {mode === 'template' && `Template from: ${item._linkedProduct?.name || '...'}`}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="px-3 py-1 rounded-lg bg-green-50 border border-green-100 text-green-700 font-bold text-sm">₹{fmt((item.purchase_price || 0) * (item.count || 1))}</span>
+          {!isPublished && (
+            <button onClick={onRemove} className="w-8 h-8 flex items-center justify-center rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors border border-red-100">
+              <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="p-6 space-y-5">
+        {/* ── Mode Selector ─── */}
+        {!isPublished && (
+          <div>
+            <label className={LBL}>Product Mode</label>
+            <div className="flex gap-2">
+              {modeTab('new', 'New Product', 'Create a brand new product from scratch')}
+              {modeTab('existing', 'Existing Product', 'Link to an existing product in catalog')}
+              {modeTab('template', 'Use as Template', 'Clone existing product as a new one')}
+            </div>
+          </div>
+        )}
+
+        {/* ── Product Search (for existing / template) ─── */}
+        {(mode === 'existing' || mode === 'template') && !isPublished && (
+          <div className="relative">
+            <label className={LBL}>
+              {mode === 'existing' ? 'Search & Select Existing Product' : 'Search Product to Use as Template'}
+            </label>
+            <div className="relative">
+              <svg width="14" height="14" className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+              <input
+                className="w-full pl-9 pr-4 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Search by name or SKU..."
+                value={productSearch}
+                onChange={e => onSearchChange(e.target.value)}
+                onFocus={() => productResults.length > 0 && onSearchChange(productSearch)}
+              />
+            </div>
+            {productSearchOpen && productResults.length > 0 && (
+              <div className="absolute z-30 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+                {productResults.map((p: Product) => (
+                  <button
+                    key={p._id} type="button"
+                    onClick={() => onSelectProduct(p, mode)}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0 text-left"
+                  >
+                    {p.images?.[0] ? (
+                      <img src={staticUrl(p.images[0])} alt="" className="w-9 h-9 rounded-lg object-cover border border-slate-100 shrink-0" />
+                    ) : (
+                      <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} className="text-slate-400"><path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <div className="font-semibold text-sm text-slate-900 truncate">{p.name}</div>
+                      <div className="text-xs text-slate-400">{p.sku} &middot; {p.metal_type} {p.purity} &middot; {p.gross_weight}g</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+            {item._linkedProduct && (
+              <div className="mt-2 flex items-center gap-2 text-xs text-blue-700 bg-blue-50 border border-blue-100 px-3 py-2 rounded-lg">
+                <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M5 13l4 4L19 7"/></svg>
+                {mode === 'existing' ? 'Linked to' : 'Template from'}: <b>{item._linkedProduct.name}</b>
+                {mode === 'template' && <span className="ml-1 text-slate-400">(will create new product)</span>}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── For existing product: only show count + purchase price ─── */}
+        {mode === 'existing' && (
+          <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Inventory Configuration</p>
+            <p className="text-xs text-slate-500 mb-3">All product details will be taken from the existing catalog entry. Only specify how many units and at what cost you are purchasing.</p>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className={LBL}>Cost Price (₹) <span className="text-red-500">*</span></label>
+                <input type="number" min="0" className={isPublished ? INP_DIS : `w-full px-3.5 py-2.5 border border-green-200 rounded-lg text-sm bg-green-50 focus:outline-none focus:ring-2 focus:ring-green-400`}
+                  disabled={isPublished} value={item.purchase_price || ''} onChange={e => onFieldChange('purchase_price', parseFloat(e.target.value) || 0)} placeholder="Cost from supplier" />
+              </div>
+              <div>
+                <label className={LBL}>Quantity</label>
+                <input type="number" min="1" className={isPublished ? INP_DIS : INP} disabled={isPublished} value={item.count || 1} onChange={e => onFieldChange('count', parseInt(e.target.value) || 1)} />
+              </div>
+              <div>
+                <label className={LBL}>Line Total (₹)</label>
+                <div className="px-3.5 py-2.5 rounded-lg border border-slate-100 bg-slate-50 font-black text-slate-900 text-sm">₹{fmt((item.purchase_price || 0) * (item.count || 1))}</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Full product form for new / template ─── */}
+        {(mode === 'new' || mode === 'template') && (
+          <FullProductForm
+            item={item} isPublished={isPublished}
+            categories={categories} metalTypes={metalTypes} purities={purities}
+            colors={colors} genders={genders} occasions={occasions}
+            stoneTypes={stoneTypes} makingTypes={makingTypes}
+            fileRef={fileRef}
+            onFieldChange={onFieldChange}
+            fmt={fmt}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── FullProductForm Component ──────────────────────────────────────────────────
+function FullProductForm({ item, isPublished, categories, metalTypes, purities, colors, genders, occasions, stoneTypes, makingTypes, fileRef, onFieldChange, fmt }: any) {
+  const dis = isPublished;
+
+  return (
+    <div className="space-y-5">
+      {/* Product Information */}
+      <div>
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Product Information</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="col-span-2">
+            <label className={LBL}>Product Name <span className="text-red-500">*</span></label>
+            <input className={dis ? INP_DIS : INP} disabled={dis} value={item.name || ''} onChange={e => onFieldChange('name', e.target.value)} placeholder="e.g. Gold Diamond Ring" />
+          </div>
+          <div>
+            <label className={LBL}>SKU</label>
+            <input className={dis ? INP_DIS : INP} disabled={dis} value={item.sku || ''} onChange={e => onFieldChange('sku', e.target.value)} />
+          </div>
+          <div>
+            <label className={LBL}>Category</label>
+            <select className={dis ? INP_DIS : INP} disabled={dis} value={(item.category_id as string) || ''} onChange={e => onFieldChange('category_id', e.target.value)}>
+              <option value="">Select category...</option>
+              {categories.map((c: Category) => <option key={c._id} value={c._id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={LBL}>Gender</label>
+            <select className={dis ? INP_DIS : INP} disabled={dis} value={item.gender || ''} onChange={e => onFieldChange('gender', e.target.value)}>
+              <option value="">Select</option>
+              {genders.map((l: Lookup) => <option key={l._id} value={l.value}>{l.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={LBL}>Occasion</label>
+            <select className={dis ? INP_DIS : INP} disabled={dis} value={item.occasion || ''} onChange={e => onFieldChange('occasion', e.target.value)}>
+              <option value="">Select</option>
+              {occasions.map((l: Lookup) => <option key={l._id} value={l.value}>{l.label}</option>)}
+            </select>
+          </div>
+          <div className="col-span-2">
+            <label className={LBL}>Dimensions</label>
+            <input className={dis ? INP_DIS : INP} disabled={dis} value={item.dimensions || ''} onChange={e => onFieldChange('dimensions', e.target.value)} placeholder="e.g. 15mm x 20mm" />
+          </div>
+          <div className="col-span-4">
+            <label className={LBL}>Description</label>
+            <input className={dis ? INP_DIS : INP} disabled={dis} value={item.description || ''} onChange={e => onFieldChange('description', e.target.value)} placeholder="Short description" />
+          </div>
+        </div>
+      </div>
+
+      {/* Metal & Weight */}
+      <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Metal & Weight</p>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div>
+            <label className={LBL}>Metal Type</label>
+            <select className={dis ? INP_DIS : INP} disabled={dis} value={item.metal_type || ''} onChange={e => onFieldChange('metal_type', e.target.value)}>
+              <option value="">Select metal</option>
+              {metalTypes.map((l: Lookup) => <option key={l._id} value={l.value}>{l.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={LBL}>Purity</label>
+            <select className={dis ? INP_DIS : INP} disabled={dis} value={item.purity || ''} onChange={e => onFieldChange('purity', e.target.value)}>
+              <option value="">Select purity</option>
+              {purities.map((l: Lookup) => <option key={l._id} value={l.value}>{l.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={LBL}>Color / Finish</label>
+            <select className={dis ? INP_DIS : INP} disabled={dis} value={item.metal_color || ''} onChange={e => onFieldChange('metal_color', e.target.value)}>
+              <option value="">Select color</option>
+              {colors.map((l: Lookup) => <option key={l._id} value={l.value}>{l.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={LBL}>Gross Weight (g)</label>
+            <input type="number" step="0.001" min="0" className={dis ? INP_DIS : INP} disabled={dis} value={item.gross_weight || ''} onChange={e => onFieldChange('gross_weight', parseFloat(e.target.value) || 0)} />
+          </div>
+          <div>
+            <label className={LBL}>Net Weight (g)</label>
+            <input type="number" step="0.001" min="0" className={dis ? INP_DIS : INP} disabled={dis} value={item.net_weight || ''} onChange={e => onFieldChange('net_weight', parseFloat(e.target.value) || 0)} />
+          </div>
+          <div>
+            <label className={LBL}>Stone Weight (g)</label>
+            <input type="number" step="0.001" min="0" className={dis ? INP_DIS : INP} disabled={dis} value={item.stone_weight || ''} onChange={e => onFieldChange('stone_weight', parseFloat(e.target.value) || 0)} />
+          </div>
+        </div>
+      </div>
+
+      {/* Stones */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
+          <div>
+            <p className="text-sm font-bold text-slate-900">Has Stones / Diamonds</p>
+            <p className="text-xs text-slate-500 mt-0.5">{item.has_stones ? 'Stone rows active below.' : 'Toggle to add stone components.'}</p>
+          </div>
+          <button type="button" disabled={dis} onClick={() => onFieldChange('has_stones', !item.has_stones)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${item.has_stones ? 'bg-blue-600' : 'bg-slate-300'} ${dis ? 'opacity-50 cursor-not-allowed' : ''}`}>
+            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${item.has_stones ? 'translate-x-6' : 'translate-x-1'}`} />
+          </button>
+        </div>
+        {item.has_stones && (
+          <div className="space-y-3 pl-1">
+            <div className="grid grid-cols-12 gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400 px-1">
+              <div className="col-span-5">Stone Type</div><div className="col-span-3">Weight (g/ct)</div><div className="col-span-3">Price Override (₹)</div><div className="col-span-1"></div>
+            </div>
+            {(item.stones || []).map((row: StoneRow, si: number) => (
+              <div key={si} className="grid grid-cols-12 gap-2 items-center">
+                <div className="col-span-5">
+                  <select className={dis ? INP_DIS : INP} disabled={dis} value={row.stone_type}
+                    onChange={e => { const s = [...(item.stones || [])]; s[si] = { ...s[si], stone_type: e.target.value }; onFieldChange('stones', s); }}>
+                    <option value="">Select stone</option>
+                    {stoneTypes.map((l: Lookup) => <option key={l._id} value={l.value}>{l.label}</option>)}
+                  </select>
+                </div>
+                <div className="col-span-3">
+                  <input type="number" step="0.001" min="0" className={dis ? INP_DIS : INP} disabled={dis} placeholder="0.00" value={row.weight}
+                    onChange={e => { const s = [...(item.stones || [])]; s[si] = { ...s[si], weight: e.target.value }; onFieldChange('stones', s); }} />
+                </div>
+                <div className="col-span-3">
+                  <input type="number" step="1" min="0" className={dis ? INP_DIS : INP} disabled={dis} placeholder="Market rate" value={row.price_override}
+                    onChange={e => { const s = [...(item.stones || [])]; s[si] = { ...s[si], price_override: e.target.value }; onFieldChange('stones', s); }} />
+                </div>
+                <div className="col-span-1 flex justify-center">
+                  {!dis && <button type="button" onClick={() => onFieldChange('stones', (item.stones || []).filter((_: any, i: number) => i !== si))} className="w-8 h-8 flex items-center justify-center rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors">
+                    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M18 6L6 18M6 6l12 12"/></svg>
+                  </button>}
+                </div>
+              </div>
+            ))}
+            {!dis && <button type="button" onClick={() => onFieldChange('stones', [...(item.stones || []), { stone_type: '', weight: '', price_override: '' }])}
+              className="w-full py-3 border-2 border-dashed border-blue-200 rounded-xl text-[11px] font-black text-blue-500 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2">
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M12 5v14M5 12h14"/></svg>Add Stone Component
+            </button>}
+          </div>
+        )}
+      </div>
+
+      {/* Pricing Configuration */}
+      <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pricing Configuration</p>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className={LBL}>Making Charge Type</label>
+            <select className={dis ? INP_DIS : INP} disabled={dis} value={item.making_charge_type || 'per_gram'} onChange={e => onFieldChange('making_charge_type', e.target.value)}>
+              <option value="per_gram">Per Gram</option>
+              <option value="fixed">Fixed Amount</option>
+              {makingTypes.map((l: Lookup) => <option key={l._id} value={l.value}>{l.label}</option>)}
+            </select>
+          </div>
+          <div>
+            {item.making_charge_type === 'fixed' ? (
+              <><label className={LBL}>Fixed Amount (₹)</label><input type="number" min="0" className={dis ? INP_DIS : INP} disabled={dis} value={item.fixed_making_charge || ''} onChange={e => onFieldChange('fixed_making_charge', parseFloat(e.target.value) || 0)} /></>
+            ) : (
+              <><label className={LBL}>Rate per gram (₹)</label><input type="number" min="0" className={dis ? INP_DIS : INP} disabled={dis} value={item.making_charge_rate || ''} onChange={e => onFieldChange('making_charge_rate', parseFloat(e.target.value) || 0)} /></>
+            )}
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-4">
+          <div><label className={LBL}>Wastage (%)</label><input type="number" step="0.1" min="0" max="20" className={dis ? INP_DIS : INP} disabled={dis} value={item.wastage_percentage ?? ''} onChange={e => onFieldChange('wastage_percentage', parseFloat(e.target.value) || 0)} placeholder="e.g. 3" /></div>
+          <div><label className={LBL}>Admin Discount (%)</label><input type="number" min="0" max="100" className={dis ? INP_DIS : INP} disabled={dis} value={item.discount_percentage ?? ''} onChange={e => onFieldChange('discount_percentage', parseFloat(e.target.value) || 0)} /></div>
+          <div><label className={LBL}>Max Manager Discount (%)</label><input type="number" min="0" max="100" className={dis ? INP_DIS : INP} disabled={dis} value={item.max_manager_discount ?? ''} onChange={e => onFieldChange('max_manager_discount', parseFloat(e.target.value) || 0)} /></div>
         </div>
 
-        <div className="space-y-8">
-          {poForm.items?.map((item, idx) => (
-            <div key={idx} className="group relative bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-8 md:p-10 transition-all hover:border-blue-200">
-               {!isPublished && (
-                 <button 
-                   onClick={() => handleRemoveItem(idx)}
-                   className="absolute top-8 right-8 p-3 rounded-2xl bg-rose-50 text-rose-500 opacity-0 group-hover:opacity-100 transition-all hover:bg-rose-500 hover:text-white active:scale-90"
-                 >
-                    <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                 </button>
-               )}
-
-               <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-                  {/* Visual Preview */}
-                  <div className="lg:col-span-2 space-y-4">
-                     <div className="aspect-square rounded-[2rem] bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center overflow-hidden">
-                        {item.images?.[0] ? (
-                          <img src={staticUrl(item.images[0])} className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="text-center p-4">
-                             <svg width="32" height="32" className="mx-auto text-slate-300 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                             <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Asset Portrait Required</p>
-                          </div>
-                        )}
-                     </div>
-                     <div className="space-y-1">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Allocation Sku</label>
-                        <input 
-                          disabled={isPublished}
-                          className="w-full px-3 py-2 rounded-xl border border-slate-100 bg-slate-50/50 text-[10px] font-black text-slate-500 uppercase tracking-widest focus:ring-2 focus:ring-blue-500/10 outline-none"
-                          value={item.sku}
-                          onChange={e => handleUpdateItem(idx, 'sku', e.target.value)}
-                        />
-                     </div>
-                  </div>
-
-                  {/* Core Attributes */}
-                  <div className="lg:col-span-10 grid grid-cols-1 md:grid-cols-4 gap-x-8 gap-y-6">
-                     <div className="md:col-span-2 space-y-1.5">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Descriptive Designation <span className="text-red-500">*</span></label>
-                        <input 
-                          disabled={isPublished}
-                          className="w-full px-4 py-3 bg-slate-50/50 rounded-2xl border border-slate-200 text-sm font-semibold focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all" 
-                          placeholder="e.g. Victorian Diamond Studs"
-                          value={item.name}
-                          onChange={e => handleUpdateItem(idx, 'name', e.target.value)}
-                        />
-                     </div>
-                     <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Catalogue</label>
-                        <select 
-                          disabled={isPublished}
-                          value={(item.category_id as string) || ''} 
-                          onChange={e => handleUpdateItem(idx, 'category_id', e.target.value)}
-                          className="w-full px-4 py-3 bg-slate-50/50 rounded-2xl border border-slate-200 text-sm font-semibold outline-none appearance-none"
-                        >
-                          <option value="">Select Category...</option>
-                          {categories.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
-                        </select>
-                     </div>
-                     <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-emerald-600">Buy Valuation (₹)</label>
-                        <input 
-                          type="number"
-                          disabled={isPublished}
-                          className="w-full px-4 py-3 bg-emerald-50/30 rounded-2xl border border-emerald-100 text-sm font-black text-emerald-700 font-mono outline-none" 
-                          value={item.buy_price || ''}
-                          onChange={e => handleUpdateItem(idx, 'buy_price', parseFloat(e.target.value) || 0)}
-                        />
-                     </div>
-
-                     {/* Second Row Lookups */}
-                     <div className="grid grid-cols-2 gap-4 md:col-span-2">
-                        <div className="space-y-1.5">
-                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Base Material</label>
-                           <select disabled={isPublished} value={item.metal_type} onChange={e => handleUpdateItem(idx, 'metal_type', e.target.value)} className="w-full px-4 py-3 bg-slate-50/50 rounded-2xl border border-slate-200 text-[10px] font-black uppercase tracking-widest outline-none">
-                              {metalTypes.map(l => <option key={l._id} value={l.value}>{l.label}</option>)}
-                           </select>
-                        </div>
-                        <div className="space-y-1.5">
-                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Integrity/Purity</label>
-                           <select disabled={isPublished} value={item.purity} onChange={e => handleUpdateItem(idx, 'purity', e.target.value)} className="w-full px-4 py-3 bg-slate-50/50 rounded-2xl border border-slate-200 text-[10px] font-black uppercase tracking-widest outline-none">
-                              {purities.map(l => <option key={l._id} value={l.value}>{l.label}</option>)}
-                           </select>
-                        </div>
-                     </div>
-                     <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Visual Finish</label>
-                        <select disabled={isPublished} value={item.metal_color} onChange={e => handleUpdateItem(idx, 'metal_color', e.target.value)} className="w-full px-4 py-3 bg-slate-50/50 rounded-2xl border border-slate-200 text-[10px] font-black uppercase tracking-widest outline-none">
-                           {colors.map(l => <option key={l._id} value={l.value}>{l.label}</option>)}
-                        </select>
-                     </div>
-                     <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-indigo-600">Suggested Sell (₹)</label>
-                        <input 
-                          type="number"
-                          disabled={isPublished}
-                          className="w-full px-4 py-3 bg-indigo-50/30 rounded-2xl border border-indigo-100 text-sm font-black text-indigo-700 font-mono outline-none" 
-                          value={item.selling_price || ''}
-                          onChange={e => handleUpdateItem(idx, 'selling_price', parseFloat(e.target.value) || 0)}
-                        />
-                     </div>
-
-                     {/* Metrics Row */}
-                     <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Gross Wt (g)</label>
-                           <input disabled={isPublished} type="number" className="w-full px-4 py-3 bg-slate-50/50 rounded-2xl border border-slate-200 text-xs font-bold outline-none" value={item.gross_weight || ''} onChange={e => handleUpdateItem(idx, 'gross_weight', parseFloat(e.target.value) || 0)} />
-                        </div>
-                        <div className="space-y-1.5">
-                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Net Wt (g)</label>
-                           <input disabled={isPublished} type="number" className="w-full px-4 py-3 bg-slate-50/50 rounded-2xl border border-slate-200 text-xs font-bold outline-none" value={item.net_weight || ''} onChange={e => handleUpdateItem(idx, 'net_weight', parseFloat(e.target.value) || 0)} />
-                        </div>
-                     </div>
-                     <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Allocation Count</label>
-                        <input disabled={isPublished} type="number" className="w-full px-4 py-3 bg-slate-50/50 rounded-2xl border border-slate-200 text-xs font-bold outline-none" value={item.count || ''} onChange={e => handleUpdateItem(idx, 'count', parseInt(e.target.value) || 0)} />
-                     </div>
-                     <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Physica Dimensions</label>
-                        <input disabled={isPublished} className="w-full px-4 py-3 bg-slate-50/50 rounded-2xl border border-slate-200 text-xs font-bold outline-none" placeholder="e.g. 15mm x 20mm" value={item.dimensions || ''} onChange={e => handleUpdateItem(idx, 'dimensions', e.target.value)} />
-                     </div>
-                     <div className="flex items-end pb-3">
-                        <button 
-                          disabled={isPublished}
-                          onClick={() => handleUpdateItem(idx, 'has_stones', !item.has_stones)}
-                          className={`flex items-center gap-3 px-4 py-2.5 rounded-2xl border transition-all ${item.has_stones ? 'bg-amber-50 border-amber-200 text-amber-700 shadow-sm' : 'bg-slate-50 border-slate-100 text-slate-400'}`}
-                        >
-                           <div className={`w-3 h-3 rounded-full ${item.has_stones ? 'bg-amber-500 animate-pulse' : 'bg-slate-300'}`} />
-                           <span className="text-[10px] font-black uppercase tracking-widest">Gemstone Attachment</span>
-                        </button>
-                     </div>
-
-                     {/* Hidden Dynamic Gemstone Fields */}
-                     {item.has_stones && (
-                       <div className="md:col-span-4 grid grid-cols-2 gap-8 p-6 bg-amber-50/50 rounded-3xl border border-amber-100 animate-[fadeRise_200ms_ease-out]">
-                          <div className="space-y-1.5">
-                             <label className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Geological Classification</label>
-                             <select disabled={isPublished} value={item.stone_type} onChange={e => handleUpdateItem(idx, 'stone_type', e.target.value)} className="w-full px-4 py-3 bg-white rounded-2xl border border-amber-200 text-xs font-bold outline-none appearance-none">
-                                <option value="">Select Stone...</option>
-                                {stoneTypes.map(l => <option key={l._id} value={l.value}>{l.label}</option>)}
-                             </select>
-                          </div>
-                          <div className="space-y-1.5">
-                             <label className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Stone Mass (g)</label>
-                             <input disabled={isPublished} type="number" step="0.01" className="w-full px-4 py-3 bg-white rounded-2xl border border-amber-200 text-xs font-bold outline-none" value={item.stone_weight || ''} onChange={e => handleUpdateItem(idx, 'stone_weight', parseFloat(e.target.value) || 0)} />
-                          </div>
-                       </div>
-                     )}
-                  </div>
-               </div>
+        {/* Extra Charges */}
+        <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-3">
+          <label className="block text-sm font-bold text-slate-800">Extra Charges & Misc</label>
+          {(item.extra_charges || []).map((row: ExtraChargeRow, ei: number) => (
+            <div key={ei} className="flex gap-2 items-center">
+              <input type="text" className={dis ? INP_DIS : INP} disabled={dis} placeholder="Reason (e.g., Certificate)" value={row.reason}
+                onChange={e => { const arr = [...(item.extra_charges || [])]; arr[ei] = { ...arr[ei], reason: e.target.value }; onFieldChange('extra_charges', arr); }} />
+              <div className="w-1/3">
+                <input type="number" min="0" className={dis ? INP_DIS : INP} disabled={dis} placeholder="Amount (₹)" value={row.charge}
+                  onChange={e => { const arr = [...(item.extra_charges || [])]; arr[ei] = { ...arr[ei], charge: e.target.value }; onFieldChange('extra_charges', arr); }} />
+              </div>
+              {!dis && <button type="button" onClick={() => onFieldChange('extra_charges', (item.extra_charges || []).filter((_: any, i: number) => i !== ei))} className="w-9 h-9 flex items-center justify-center rounded-lg bg-red-50 text-red-500 hover:bg-red-100 shrink-0">
+                <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>}
             </div>
           ))}
+          {!dis && <button type="button" onClick={() => onFieldChange('extra_charges', [...(item.extra_charges || []), { reason: '', charge: '' }])}
+            className="w-full py-2.5 border-2 border-dashed border-blue-200 rounded-xl text-[11px] font-black text-blue-500 hover:bg-blue-50 flex items-center justify-center gap-2">
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M12 5v14M5 12h14"/></svg>Add Charge Block
+          </button>}
         </div>
-      </section>
-      </div>
 
-      {/* Professional Legal Invoice (Modern Corporate Edition) */}
-      <div className="hidden print:block print-document bg-white text-slate-800 font-sans w-full">
-        <div className="w-full max-w-[194mm] mx-auto flex flex-col bg-white">
-          
-          {/* Top Header Stringent Line */}
-          <div className="h-2 w-full bg-emerald-800 mb-8 rounded-sm"></div>
-
-          {/* Top Header Block */}
-          <div className="flex justify-between items-start border-b border-emerald-800 pb-8">
-            <div>
-              <h1 className="text-4xl font-extrabold tracking-tight text-emerald-900 leading-none">RKM Jewellers</h1>
-              <p className="text-[11px] font-bold uppercase tracking-widest text-emerald-800 mt-2">Purchase Order & Asset Manifest</p>
-              <div className="mt-4 text-xs font-medium text-emerald-900 leading-relaxed">
-                 Principal Boutique & Vault • New Delhi<br />
-                 GSTIN: 07AAACRKM1234Z5<br />
-                 Maison ID: PV-071
+        {/* Dynamic Taxes */}
+        <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-3">
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-sm font-bold text-slate-800">Taxes <span className="text-red-500">*</span></label>
+            <span className="text-[10px] text-slate-400">Total: {(item.taxes || []).reduce((s: number, t: TaxRow) => s + (Number(t.percentage) || 0), 0).toFixed(2)}%</span>
+          </div>
+          <div className="grid grid-cols-12 gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1">
+            <div className="col-span-6">Tax Name</div><div className="col-span-5">Rate (%)</div><div className="col-span-1"></div>
+          </div>
+          {(item.taxes || []).map((row: TaxRow, ti: number) => (
+            <div key={ti} className="grid grid-cols-12 gap-2 items-center">
+              <div className="col-span-6">
+                <input type="text" className={dis ? INP_DIS : INP} disabled={dis} placeholder="e.g. SGST, CGST" value={row.name}
+                  onChange={e => { const arr = [...(item.taxes || [])]; arr[ti] = { ...arr[ti], name: e.target.value.toUpperCase() }; onFieldChange('taxes', arr); }} />
+              </div>
+              <div className="col-span-5">
+                <input type="number" step="0.01" min="0" max="50" className={dis ? INP_DIS : INP} disabled={dis} placeholder="e.g. 1.5" value={row.percentage}
+                  onChange={e => { const arr = [...(item.taxes || [])]; arr[ti] = { ...arr[ti], percentage: e.target.value }; onFieldChange('taxes', arr); }} />
+              </div>
+              <div className="col-span-1 flex justify-center">
+                {!dis && <button type="button" onClick={() => onFieldChange('taxes', (item.taxes || []).filter((_: any, i: number) => i !== ti))} className="w-8 h-8 flex items-center justify-center rounded-lg bg-red-50 text-red-500 hover:bg-red-100">
+                  <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>}
               </div>
             </div>
-            <div className="text-right">
-              <h2 className="text-3xl font-light uppercase tracking-widest text-emerald-900 mb-2">Voucher</h2>
-              <div className="inline-block px-3 py-1 bg-white border border-emerald-800 rounded">
-                 <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-900">PO: {poForm.po_number || 'DRAFT-SYSTEM-AUTH'}</p>
-              </div>
+          ))}
+          {!dis && (
+            <div className="flex gap-2 pt-1">
+              <button type="button" onClick={() => onFieldChange('taxes', [...(item.taxes || []), { name: '', percentage: '' }])}
+                className="flex-1 py-2.5 border-2 border-dashed border-slate-300 rounded-xl text-[11px] font-bold text-slate-500 hover:bg-slate-100 flex items-center justify-center gap-2">
+                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M12 5v14M5 12h14"/></svg>Add Tax Entry
+              </button>
+              <button type="button" onClick={() => onFieldChange('taxes', DEFAULT_TAXES)} className="px-4 py-2.5 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-500 hover:bg-slate-100">Reset to SGST+CGST</button>
             </div>
-          </div>
-
-          {/* Manifest Info Grid */}
-          <div className="grid grid-cols-2 mt-8 gap-8">
-             <div className="bg-white p-6 rounded-xl border border-emerald-800">
-                <p className="text-[10px] font-black text-emerald-900 uppercase tracking-widest mb-3">Supplier Information</p>
-                <p className="text-sm font-bold text-slate-900 uppercase tracking-tight">{poForm.vendor_name || 'Individual Artisan'}</p>
-                <div className="mt-3 space-y-1">
-                   <p className="text-xs font-medium text-slate-900 leading-relaxed max-w-[250px]">{suppliers.find(s => s._id === poForm.supplier_id)?.address || 'Registered Address In System'}</p>
-                   <p className="text-xs font-medium text-slate-900 mt-2">Tel: {suppliers.find(s => s._id === poForm.supplier_id)?.phone || 'Maison Record Only'}</p>
-                </div>
-             </div>
-             
-             <div className="grid grid-cols-2 gap-4">
-                <div className="bg-white p-5 rounded-xl border border-emerald-800 flex flex-col justify-center">
-                   <p className="text-[10px] font-black text-emerald-900 uppercase tracking-widest mb-1.5">Issue Date</p>
-                   <p className="text-sm font-bold text-slate-900">{poForm.purchase_date ? new Date(poForm.purchase_date).toLocaleDateString('en-GB') : 'SYSTEM-PENDING'}</p>
-                </div>
-                <div className="bg-white p-5 rounded-xl border border-emerald-800 flex flex-col justify-center">
-                   <p className="text-[10px] font-black text-emerald-900 uppercase tracking-widest mb-1.5">Vendor Invoice Ref</p>
-                   <p className="text-sm font-bold text-slate-900">{poForm.invoice_number || 'NOT SPECIFIED'}</p>
-                </div>
-                <div className="col-span-2 bg-white p-5 rounded-xl border border-emerald-800 flex flex-col justify-center">
-                   <p className="text-[10px] font-black text-emerald-900 uppercase tracking-widest mb-1.5">Authorization Status</p>
-                   <p className="text-sm font-bold text-emerald-900 uppercase">{isPublished ? 'Published & Locked To Vault' : 'Draft / Unverified'}</p>
-                </div>
-             </div>
-          </div>
-
-          {/* Asset Ledger */}
-          <div className="mt-10 rounded-xl border border-emerald-800">
-             <table className="w-full text-sm text-left">
-                <thead className="bg-white border-b border-emerald-800 text-emerald-900">
-                   <tr>
-                      <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest">Item Description</th>
-                      <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest">Specifications</th>
-                      <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-right">Qty</th>
-                      <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-right">Unit Price</th>
-                      <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-right">Total (INR)</th>
-                   </tr>
-                </thead>
-                <tbody className="divide-y divide-emerald-800/20">
-                   {poForm.items?.map((item, i) => (
-                      <tr key={i} className="bg-white">
-                         <td className="px-6 py-5">
-                            <div className="flex items-center gap-4">
-                               <div className="w-12 h-12 rounded border border-emerald-800 bg-white overflow-hidden flex-shrink-0">
-                                  {item.images?.[0] ? <img src={staticUrl(item.images[0])} className="w-full h-full object-cover" /> : <div className="flex items-center justify-center h-full w-full text-[8px] text-emerald-800 font-bold">NO IMG</div>}
-                               </div>
-                               <div>
-                                  <p className="font-bold text-slate-900 uppercase tracking-tight">{item.name}</p>
-                                  <p className="text-[10px] font-bold text-emerald-800/70 uppercase tracking-widest mt-1">SKU: {item.sku}</p>
-                                  <p className="text-[10px] font-bold text-emerald-900 mt-1">{categories.find(c => c._id === item.category_id)?.name || 'General Inventory'}</p>
-                               </div>
-                            </div>
-                         </td>
-                         <td className="px-6 py-5 align-middle">
-                            <p className="text-xs font-bold text-slate-900">{item.metal_type} {item.purity}</p>
-                            <p className="text-[11px] font-medium text-slate-700 mt-1">{item.metal_color} • Net: {item.net_weight}g</p>
-                            {item.has_stones && (
-                              <p className="text-[10px] font-bold text-emerald-900 mt-2 bg-white border border-emerald-800 px-2 py-0.5 rounded inline-block">Stone: {item.stone_type} ({item.stone_weight}g)</p>
-                            )}
-                         </td>
-                         <td className="px-6 py-5 align-middle text-right font-medium text-slate-900">
-                            {item.count}
-                         </td>
-                         <td className="px-6 py-5 align-middle text-right text-slate-900">
-                            <span className="font-medium">₹{item.purchase_price?.toLocaleString()}</span>
-                         </td>
-                         <td className="px-6 py-5 align-middle text-right font-bold text-slate-900">
-                            ₹{((item.purchase_price || 0) * (item.count || 1)).toLocaleString()}
-                         </td>
-                      </tr>
-                   ))}
-                   {(!poForm.items || poForm.items.length === 0) && (
-                     <tr>
-                       <td colSpan={5} className="px-6 py-8 text-center text-sm text-emerald-900 italic">No line items recorded on this voucher.</td>
-                     </tr>
-                   )}
-                </tbody>
-             </table>
-          </div>
-
-          {/* Financial Totals */}
-          <div className="mt-8 flex justify-end">
-             <div className="w-80 rounded-xl bg-white p-6 border border-emerald-800">
-                <div className="flex justify-between items-center py-2 border-b border-emerald-800/30">
-                   <p className="text-xs font-bold text-emerald-900 uppercase tracking-wider">Subtotal</p>
-                   <p className="text-sm font-bold text-slate-900">₹{poForm.total_amount?.toLocaleString()}</p>
-                </div>
-                <div className="flex justify-between items-center py-2 border-b border-emerald-800/30">
-                   <p className="text-xs font-bold text-emerald-900 uppercase tracking-wider">Tax & Duties</p>
-                   <p className="text-[10px] font-black text-emerald-800 uppercase">Inclusive</p>
-                </div>
-                <div className="flex justify-between items-end pt-4">
-                   <p className="text-sm font-black text-emerald-900 uppercase tracking-wider">Total Due</p>
-                   <p className="text-3xl font-extrabold text-slate-900 tracking-tight">₹{poForm.total_amount?.toLocaleString()}</p>
-                </div>
-             </div>
-          </div>
-
-          {/* Verification Blocks */}
-          <div className="mt-auto pt-16 flex justify-between items-end">
-             <div className="w-64">
-                <div className="border-b border-emerald-800 pb-2 mb-2 text-center">
-                   <p className="text-xs italic text-emerald-900 capitalize">Vendor signature</p>
-                </div>
-                <p className="text-[10px] font-bold text-emerald-800 uppercase tracking-widest text-center">{poForm.vendor_name || 'Authorized Signatory'}</p>
-             </div>
-             
-             <div className="flex-1 px-12 text-center flex flex-col justify-end">
-                {/* Empty central divider to balance signature blocks */}
-             </div>
-
-             <div className="w-64">
-                <div className="border-b border-emerald-800 pb-2 mb-2 text-center">
-                   <p className="text-xs italic text-emerald-900 capitalize">Maison signature</p>
-                </div>
-                <p className="text-[10px] font-bold text-emerald-800 uppercase tracking-widest text-center">RKM Principal Authority</p>
-             </div>
-          </div>
-          
-          {/* Footer */}
-          <div className="mt-12 text-center border-t border-emerald-800 pt-6">
-             <p className="text-[9px] font-black text-emerald-900 uppercase tracking-[0.4em]">Confidential Business Record • RKM Jewellers</p>
-          </div>
+          )}
         </div>
       </div>
+
+      {/* Purchase Price, Override, Qty, Total */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div>
+          <label className={LBL + ' text-green-700'}>Cost Price (₹) <span className="text-red-500">*</span></label>
+          <input type="number" min="0" step="1" className={dis ? INP_DIS : 'w-full px-3.5 py-2.5 border border-green-200 rounded-lg text-sm bg-green-50 focus:outline-none focus:ring-2 focus:ring-green-400'}
+            disabled={dis} value={item.purchase_price || ''} onChange={e => onFieldChange('purchase_price', parseFloat(e.target.value) || 0)} placeholder="Cost from supplier" />
+        </div>
+        <div>
+          <label className={LBL + ' text-violet-700'}>Price Override (₹)</label>
+          <input type="number" className={dis ? INP_DIS : 'w-full px-3.5 py-2.5 border border-violet-200 rounded-lg text-sm bg-violet-50 focus:outline-none focus:ring-2 focus:ring-violet-400'}
+            disabled={dis} value={item.price_override || ''} onChange={e => onFieldChange('price_override', e.target.value)} placeholder="Min base price (floor)" />
+        </div>
+        <div>
+          <label className={LBL}>Quantity</label>
+          <input type="number" min="1" className={dis ? INP_DIS : INP} disabled={dis} value={item.count || 1} onChange={e => onFieldChange('count', parseInt(e.target.value) || 1)} />
+        </div>
+        <div>
+          <label className={LBL}>Line Total (₹)</label>
+          <div className="px-3.5 py-2.5 rounded-lg border border-slate-100 bg-slate-50 font-black text-slate-900 text-sm">₹{fmt((item.purchase_price || 0) * (item.count || 1))}</div>
+        </div>
+      </div>
+
+      {/* Image Upload (only for new/template) */}
+      {!dis && (
+        <div>
+          <label className={LBL}>Product Images</label>
+          <div className="space-y-3">
+            {(item._pendingImages || []).length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {(item._pendingImages || []).map((f: File, fi: number) => (
+                  <div key={fi} className="relative group">
+                    <img src={URL.createObjectURL(f)} alt="" className="w-16 h-16 rounded-lg object-cover border border-slate-200" />
+                    <button type="button" onClick={() => onFieldChange('_pendingImages', (item._pendingImages || []).filter((_: any, i: number) => i !== fi))}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <svg width="9" height="9" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M18 6L6 18M6 6l12 12"/></svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {(item.images || []).length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {(item.images || []).map((url: string, ii: number) => (
+                  <img key={ii} src={staticUrl(url)} alt="" className="w-16 h-16 rounded-lg object-cover border border-slate-200" />
+                ))}
+              </div>
+            )}
+            <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-blue-300 rounded-xl py-5 cursor-pointer hover:bg-blue-50 transition-colors">
+              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} className="text-blue-500"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <span className="text-xs text-blue-600 font-bold">Upload Images</span>
+              <span className="text-[10px] text-slate-400">JPG, PNG, WebP · Upload after saving draft</span>
+              <input type="file" accept="image/*" multiple className="hidden"
+                onChange={e => { if (e.target.files?.length) onFieldChange('_pendingImages', [...(item._pendingImages || []), ...Array.from(e.target.files!)]); e.target.value = ''; }} />
+            </label>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

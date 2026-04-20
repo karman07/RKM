@@ -366,6 +366,20 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Client Relations</span>}
             </Link>
             <Link
+              href="/dashboard/whatsapp"
+              onClick={onNavigate}
+              title={isCollapsed ? "WhatsApp Control" : ""}
+              className={navClass(pathname.startsWith('/dashboard/whatsapp'))}
+              style={getNavStyle(pathname.startsWith('/dashboard/whatsapp'))}
+            >
+              {isCollapsed && pathname.startsWith('/dashboard/whatsapp') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname.startsWith('/dashboard/whatsapp')} color={pathname.startsWith('/dashboard/whatsapp') ? colors.activeText : colors.textMuted}>
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                <path d="M8 10h.01M12 10h.01M16 10h.01" />
+              </NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">WhatsApp Control</span>}
+            </Link>
+            <Link
               href="/dashboard/blogs"
               onClick={onNavigate}
               title={isCollapsed ? "Blogs" : ""}
@@ -396,6 +410,7 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
           </div>
         </section>
       </nav>
+
 
       <div className={`p-8 mt-auto space-y-4 border-t ${isCollapsed ? 'flex flex-col items-center' : ''}`} style={{ borderColor: colors.border }}>
         <button
