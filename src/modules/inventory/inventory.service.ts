@@ -382,8 +382,8 @@ export class InventoryService {
           select: 'name sku metal_type purity stones wastage_percentage net_weight stone_weight stone_type making_charge_type making_charge_rate fixed_making_charge tax_percentage discount_percentage price_override purchase_price max_manager_discount barcode images dimensions extra_charges gross_weight',
           populate: { path: 'category_id', select: 'name slug' },
         })
-        .populate({ path: 'branch_id', select: 'name code city' })
-        .populate({ path: 'sold_at_branch_id', select: 'name code city' })
+        .populate({ path: 'branch_id', select: 'name code city address phone email state pincode gstin' })
+        .populate({ path: 'sold_at_branch_id', select: 'name code city address phone email state pincode gstin' })
         .populate({ path: 'sold_by_user_id', select: 'name email role' })
         .populate({ path: 'sold_by_manager_id', select: 'name email role' })
         .populate({ path: 'damaged_by_user_id', select: 'name email role' })

@@ -64,6 +64,15 @@ export class Settings {
   /** Optional human-readable note (e.g. "Updated 12 Apr 2026") */
   @Prop({ type: String, default: '' })
   note: string;
+
+  /**
+   * Percentage of stone value to refund when a customer returns an item.
+   * Gold (metal) value is always refunded at 100%.
+   * Admin can adjust this from Settings panel.
+   * Default: 50 (50% of stone value is refunded)
+   */
+  @Prop({ type: Number, min: 0, max: 100, default: 50 })
+  stone_refund_percentage: number;
 }
 
 export const SettingsSchema = SchemaFactory.createForClass(Settings);

@@ -40,6 +40,11 @@ export class CreateBranchDto {
   @IsOptional()
   @IsBoolean()
   is_active?: boolean;
+
+  /** GSTIN of this branch — printed on tax invoices */
+  @IsOptional()
+  @IsString()
+  gstin?: string;
 }
 
 export class UpdateBranchDto extends CreateBranchDto {}

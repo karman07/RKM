@@ -8,7 +8,7 @@ export class Customer {
   @Prop({ required: true, trim: true })
   name: string;
 
-  @Prop({ unique: true, lowercase: true, trim: true, sparse: true })
+  @Prop({ lowercase: true, trim: true, sparse: true })
   email: string;
 
   @Prop({ unique: true, trim: true, sparse: true })

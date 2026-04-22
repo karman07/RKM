@@ -1,4 +1,4 @@
-import { IsNumber, IsObject, IsOptional, IsString, Min } from 'class-validator';
+import { IsNumber, IsObject, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class UpdateSettingsDto {
   /** Per-metal rates in ₹/g — e.g. { gold: 6800, silver: 90, platinum: 3200 } */
@@ -33,4 +33,11 @@ export class UpdateSettingsDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  /** Percentage of stone value to refund to customer (0-100). Metal is always 100%. */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  stone_refund_percentage?: number;
 }

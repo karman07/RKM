@@ -82,14 +82,10 @@ export class CustomersService {
   async login(loginDto: LoginCustomerDto) {
     const decodedToken = await this.verifyFirebaseToken(loginDto.firebaseToken);
     
-    // Check if customer exists based on UID / phone / email
-    // For simplicity, we match on email or phone
-    const query: any = {};
-    if (decodedToken.email) query.email = decodedToken.email;
-    else if (decodedToken.phone_number) query.phone = decodedToken.phone_number;
-    else throw new UnauthorizedException('Token contains no email or phone');
+    // Check if customer exists strictly based on phone to prevent email collisions
+    if (!decodedToken.phone_number) throw new UnauthorizedException('A verified mobile number is strictly required for authentication');
 
-    const customer = await this.customerModel.findOne(query);
+    const customer = await this.customerModel.findOne({ phone: decodedToken.phone_number });
     
     if (!customer) {
       // Frontend needs to register
@@ -116,23 +112,17 @@ export class CustomersService {
   async register(registerDto: RegisterCustomerDto) {
     const decodedToken = await this.verifyFirebaseToken(registerDto.firebaseToken);
     
-    const emailFromToken = decodedToken.email;
     const phone = decodedToken.phone_number;
+    if (!phone) {
+      throw new BadRequestException('A verified mobile number is strictly required to register an account');
+    }
     
-    // Use email from token if available, otherwise fallback to DTO email
+    // Email is purely metadata and not used for identity binding
+    const emailFromToken = decodedToken.email;
     const email = emailFromToken || registerDto.email || undefined;
 
-    if (!email && !phone) {
-      throw new BadRequestException('Token contains no email or phone');
-    }
-
-    // Check existing
-    const existing = await this.customerModel.findOne({
-      $or: [
-        ...(email ? [{ email }] : []),
-        ...(phone ? [{ phone }] : [])
-      ]
-    });
+    // Check existing solely by phone because family members might share the same email
+    const existing = await this.customerModel.findOne({ phone });
 
     if (existing) {
       // Generate token
@@ -193,7 +183,15 @@ export class CustomersService {
   }
 
   async updateProfile(id: string, updateDto: any) {
-    return this.customerModel.findByIdAndUpdate(id, { $set: updateDto }, { new: true }).exec();
+    try {
+      return await this.customerModel.findByIdAndUpdate(id, { $set: updateDto }, { new: true }).exec();
+    } catch (e: any) {
+      if (e.code === 11000) {
+        const field = Object.keys(e.keyPattern || {})[0] || 'field';
+        throw new BadRequestException(`This ${field} is already in use by another account.`);
+      }
+      throw e;
+    }
   }
 
   async updateProfileImage(id: string, imageUrl: string) {
@@ -230,40 +228,71 @@ export class CustomersService {
 
     if (!customer) {
       console.log(`[CustomersService] Creating new customer: ${details.name}`);
-      customer = new this.customerModel({
-        ...details,
-        isPhoneVerified: true,
-        isEmailVerified: !!details.email,
-        isActive: true,
-        purchase_history: itemId ? [new Types.ObjectId(itemId)] : [],
-      });
-      const saved = await customer.save();
-      console.log(`[CustomersService] New customer saved with ID: ${saved._id}`);
-    } else {
-      console.log(`[CustomersService] Found existing customer: ${customer.name} (ID: ${customer._id})`);
-      // Potentially update missing details if info provided is more complete
+      try {
+        customer = new this.customerModel({
+          ...details,
+          isPhoneVerified: true,
+          isEmailVerified: !!details.email,
+          isActive: true,
+          purchase_history: itemId ? [new Types.ObjectId(itemId)] : [],
+        });
+        const saved = await customer.save();
+        console.log(`[CustomersService] New customer saved with ID: ${saved._id}`);
+      } catch (e: any) {
+        if (e.code === 11000) {
+          console.warn(`[CustomersService] Duplicate key during creation, trying to find again: ${e.message}`);
+          // If creation failed due to race condition, re-fetch
+          customer = await this.customerModel.findOne({ $or: orQuery });
+          if (!customer) throw e; // Should not happen if it was a duplicate key error
+        } else {
+          throw e;
+        }
+      }
+    }
+
+    if (customer) {
+      console.log(`[CustomersService] Processing customer: ${customer.name} (ID: ${customer._id})`);
       const update: any = {};
+      
+      // Basic info updates
       if (!customer.address && details.address) update.address = details.address;
       if (!customer.city && details.city) update.city = details.city;
       if (!customer.state && details.state) update.state = details.state;
       if (!customer.country && details.country) update.country = details.country;
-      if (!customer.name && details.name) update.name = details.name; // In case only phone was matched
+      if (!customer.name && details.name) update.name = details.name;
+
+      // Email update: ONLY if it doesn't collide with another record
+      if (details.email && customer.email !== details.email) {
+        const emailExists = await this.customerModel.findOne({ email: details.email });
+        if (!emailExists) {
+          update.email = details.email;
+          update.isEmailVerified = true;
+        } else {
+          console.warn(`[CustomersService] Email ${details.email} already belongs to another customer (ID: ${emailExists._id}), skipping email update for ${customer._id}`);
+        }
+      }
       
       if (itemId) {
         const itemObjId = new Types.ObjectId(itemId);
-        const history = customer.purchase_history || [];
-        if (!history.some(id => id.toString() === itemId)) {
-          console.log(`[CustomersService] Appending itemId ${itemId} to purchase_history for existing customer`);
-          update.purchase_history = [...history, itemObjId];
-        } else {
-          console.log(`[CustomersService] itemId ${itemId} already in purchase_history`);
+        const history = (customer.purchase_history || []).map(id => id.toString());
+        if (!history.includes(itemId)) {
+          console.log(`[CustomersService] Appending itemId ${itemId} to purchase_history`);
+          // Use $addToSet logic or just push
+          update.purchase_history = [...(customer.purchase_history || []), itemObjId];
         }
       }
 
       if (Object.keys(update).length > 0) {
-        console.log(`[CustomersService] Applying updates to customer ${customer._id}: ${Object.keys(update).join(', ')}`);
-        Object.assign(customer, update);
-        await customer.save();
+        try {
+          console.log(`[CustomersService] Applying updates to customer ${customer._id}: ${Object.keys(update).join(', ')}`);
+          await this.customerModel.findByIdAndUpdate(customer._id, { $set: update }, { new: true }).exec();
+        } catch (e: any) {
+          if (e.code === 11000) {
+            console.warn(`[CustomersService] Duplicate key during update for ${customer._id}: ${e.message}`);
+          } else {
+            throw e;
+          }
+        }
       } else {
         console.log(`[CustomersService] No updates needed for customer ${customer._id}`);
       }

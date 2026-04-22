@@ -113,7 +113,7 @@ export class PurchaseOrdersService {
         if (item.purchase_price) {
           await this.productsService.update(productId.toString(), {
             purchase_price: item.purchase_price,
-          } as any);
+          } as any, userId);
         }
       }
       
@@ -126,7 +126,6 @@ export class PurchaseOrdersService {
           count: item.count,
           location: location as any,
           selling_price: item.selling_price,
-          admin_discount: adminDiscount,
           branch_id: branchId,
         });
       }

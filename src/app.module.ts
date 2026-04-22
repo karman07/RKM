@@ -20,6 +20,8 @@ import { BranchesModule } from './modules/branches/branches.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
+import { FeedbackModule } from './modules/feedback/feedback.module';
+import { GoldInvestmentModule } from './modules/gold-investment/gold-investment.module';
 
 @Module({
   imports: [
@@ -48,6 +50,8 @@ import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
     AttendanceModule,
     CustomersModule,
     WhatsAppModule,
+    FeedbackModule,
+    GoldInvestmentModule,
   ],
   controllers: [AppController],
   providers: [AppService],

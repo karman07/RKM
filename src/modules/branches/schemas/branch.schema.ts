@@ -34,6 +34,10 @@ export class Branch {
 
   @Prop({ trim: true })
   pincode?: string;
+
+  /** GSTIN for this branch — displayed on tax invoices */
+  @Prop({ trim: true, uppercase: true })
+  gstin?: string;
 }
 
 export const BranchSchema = SchemaFactory.createForClass(Branch);
