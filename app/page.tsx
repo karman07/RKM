@@ -7,6 +7,7 @@ import CategorySection from "../components/CategorySection";
 import AboutTeaser from "../components/AboutTeaser";
 import FeatureSplit from "../components/FeatureSplit";
 import MapSection from "../components/MapSection";
+import GoldInvestmentTeaser from "../components/GoldInvestmentTeaser";
 
 interface Category {
   _id: string;
@@ -88,6 +89,9 @@ export default function LandingPage() {
             )}
           </div>
         </section>
+
+        {/* Gold Investment Promo Section */}
+        <GoldInvestmentTeaser />
 
         {/* About Section Teaser */}
         <AboutTeaser />

@@ -144,12 +144,7 @@ export default function AuthDialog() {
 
 
   const getFlagEmoji = (countryCode: string) => {
-    if (!countryCode) return '🏳️';
-    const codePoints = countryCode
-      .toUpperCase()
-      .split('')
-      .map(char => 127397 + char.charCodeAt(0));
-    return String.fromCodePoint(...codePoints);
+    return countryCode?.toUpperCase() || '-';
   };
 
   const setupRecaptcha = () => {
@@ -327,8 +322,8 @@ export default function AuthDialog() {
             .custom-scrollbar::-webkit-scrollbar-thumb { background: #E2E8F0; border-radius: 10px; }
           `}} />
           {error && (
-            <div className="mb-6 p-4 rounded-xl bg-red-50 text-red-600 text-xs font-bold border border-red-100 flex items-start gap-2">
-              <span className="mt-0.5">⚠️</span>{error}
+            <div className="mb-6 p-4 rounded-xl bg-red-50 text-red-600 text-xs font-bold border border-red-100 flex items-start">
+              {error.replace(/Firebase: /gi, '').split('(')[0].trim().replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase())}
             </div>
           )}
 
@@ -347,7 +342,7 @@ export default function AuthDialog() {
                       onClick={() => setIsDialCodeOpen(!isDialCodeOpen)}
                       className="h-[60px] px-6 bg-white border border-slate-200 rounded-2xl flex items-center gap-3 hover:border-slate-400 hover:shadow-lg hover:shadow-slate-100 transition-all duration-300 group"
                     >
-                      <span className="text-xl">{getFlagEmoji(selectedDialCode.code)}</span>
+                      <span className="text-xs font-black text-slate-400 bg-slate-50 px-2 py-1 rounded-md">{getFlagEmoji(selectedDialCode.code)}</span>
                       <span className="text-sm font-black text-slate-800 tracking-tight">{selectedDialCode.dial_code}</span>
                       <ChevronDown size={14} className={`text-slate-400 transition-transform duration-500 ${isDialCodeOpen ? 'rotate-180 text-[#1A6B3A]' : ''}`} />
                     </button>
@@ -382,7 +377,7 @@ export default function AuthDialog() {
                                 className="w-full px-5 py-4 text-left hover:bg-slate-50 flex items-center justify-between transition-all group border-b border-slate-50 last:border-0"
                               >
                                 <div className="flex items-center gap-4">
-                                  <span className="text-2xl">{getFlagEmoji(c.code)}</span>
+                                  <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-2 py-1 rounded-md">{getFlagEmoji(c.code)}</span>
                                   <div className="flex flex-col gap-0.5">
                                     <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider group-hover:text-[#1A6B3A]">{c.name}</span>
                                     <span className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.1em]">{c.code}</span>

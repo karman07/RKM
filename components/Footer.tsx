@@ -116,7 +116,16 @@ export default function Footer() {
             <Link href="/products" className="text-[10px] font-bold uppercase tracking-[0.2em] hover:text-[#B8975A] transition-colors">Fine Collections</Link>
             <Link href="/about" className="text-[10px] font-bold uppercase tracking-[0.2em] hover:text-[#B8975A] transition-colors">The RKM Story</Link>
             <Link href="/blogs" className="text-[10px] font-bold uppercase tracking-[0.2em] hover:text-[#B8975A] transition-colors">Artisan Journal</Link>
+            <Link href="/gold-investment" className="text-[10px] font-bold uppercase tracking-[0.2em] hover:text-[#B8975A] transition-colors">Gold Investments</Link>
             <Link href="/wishlist" className="text-[10px] font-bold uppercase tracking-[0.2em] hover:text-[#B8975A] transition-colors">Wishlist</Link>
+            <a 
+              href={process.env.NEXT_PUBLIC_FEEDBACK_URL || "http://localhost:3003"} 
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#B8975A] hover:text-white transition-colors"
+            >
+              Client Feedback
+            </a>
             <address className="not-italic opacity-50 text-[9px] leading-loose mt-4 uppercase tracking-[0.3em] font-medium transition-opacity hover:opacity-100">
               Phase 3B2, Mohali<br/>Punjab 160059<br/>Serving Chandigarh & Tri-city
             </address>

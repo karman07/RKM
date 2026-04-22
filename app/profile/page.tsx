@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppSelector, useAppDispatch } from '../../store/store';
 import { setAuth, logout } from '../../store/authSlice';
-import { Camera, MapPin, User, Mail, Phone, Home, Globe, CheckCircle2, AlertCircle, Loader2, ChevronLeft, LogOut, ShieldCheck, CreditCard, ShoppingBag, Heart, X } from 'lucide-react';
+import { Camera, MapPin, User, Mail, Phone, Home, Globe, CheckCircle2, AlertCircle, Loader2, ChevronLeft, LogOut, ShieldCheck, CreditCard, ShoppingBag, Heart, X, Gem } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import LogoutDialog from '../../components/LogoutDialog';
@@ -19,6 +19,8 @@ export default function ProfilePage() {
   const [success, setSuccess] = useState('');
   const [isLogoutOpen, setIsLogoutOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [goldSubs, setGoldSubs] = useState<any[]>([]);
+  const [subsLoading, setSubsLoading] = useState(false);
 
   const [form, setForm] = useState({
     name: '',
@@ -51,8 +53,26 @@ export default function ProfilePage() {
         state: authState.customer.state || '',
         country: authState.customer.country || ''
       });
+      fetchGoldSubscriptions(authState.token);
     }
   }, [authState.token, authState.customer]);
+
+  const fetchGoldSubscriptions = async (token: string) => {
+    setSubsLoading(true);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/gold-investment/my-subscriptions`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setGoldSubs(data);
+      }
+    } catch {
+      // Ignore
+    } finally {
+      setSubsLoading(false);
+    }
+  };
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -189,6 +209,13 @@ export default function ProfilePage() {
                   </div>
                   <span className="bg-slate-50 text-slate-400 px-2.5 py-1 rounded-lg">Items</span>
                 </div>
+                <div className="flex items-center justify-between text-xs py-3 border-t border-slate-50/50 group cursor-pointer" onClick={() => router.push('/gold-investment')}>
+                  <div className="flex items-center gap-3 text-slate-500">
+                    <Gem size={16} className="text-slate-300 group-hover:text-[#1A6B3A] transition-colors" />
+                    <span className="font-bold uppercase tracking-wider group-hover:text-slate-900 transition-colors">Gold Investments</span>
+                  </div>
+                  <span className="bg-slate-50 text-slate-400 px-2.5 py-1 rounded-lg">{goldSubs.length}</span>
+                </div>
                 <div className="flex items-center justify-between text-xs py-3 border-t border-slate-50/50">
                   <div className="flex items-center gap-3 text-slate-500">
                     <ShoppingBag size={16} className="text-slate-300" />
@@ -198,6 +225,36 @@ export default function ProfilePage() {
                 </div>
               </div>
             </div>
+
+            {/* Gold Subscriptions Quick View */}
+            {goldSubs.length > 0 && (
+              <div className="bg-white rounded-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.04)] border border-slate-50 p-8 mt-6">
+                <h3 className="text-sm font-serif font-bold text-slate-900 flex items-center gap-2 mb-6">
+                  <Gem size={18} className="text-[#1A6B3A]" /> Your Active Plans
+                </h3>
+                <div className="space-y-4">
+                  {goldSubs.map(sub => (
+                    <div key={sub._id} className="p-4 rounded-3xl bg-slate-50 border border-slate-100 flex items-center justify-between">
+                      <div>
+                        <p className="font-bold text-slate-900 text-sm">{sub.plan?.name}</p>
+                        <p className="text-[10px] font-black uppercase text-slate-400 track-[0.1em] mt-1">Paid: {sub.installmentsPaid} / {sub.plan?.durationMonths}</p>
+                        {sub.nextDueDate && (
+                          <p className="text-[9px] font-bold text-[#1A6B3A] uppercase mt-1">
+                            Next Due: {new Date(sub.nextDueDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </p>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-emerald-600 text-sm">₹{sub.amountAccumulated}</p>
+                        <span className="text-[8px] font-black uppercase bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded mt-1 inline-block">
+                          {sub.status}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
           </div>
 

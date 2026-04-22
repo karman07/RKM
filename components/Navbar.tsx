@@ -147,8 +147,8 @@ export default function Navbar() {
           const items: SearchProduct[] = Array.isArray(data)
             ? data
             : Array.isArray(data?.data)
-            ? data.data
-            : [];
+              ? data.data
+              : [];
           setAllProducts(items);
           setProductsLoaded(true);
         })
@@ -209,9 +209,9 @@ export default function Navbar() {
 
   return (
     <>
-      <CartDrawer 
-        isOpen={cartDrawerOpen} 
-        onClose={() => setCartDrawerOpen(false)} 
+      <CartDrawer
+        isOpen={cartDrawerOpen}
+        onClose={() => setCartDrawerOpen(false)}
       />
 
       {/* ── Full-screen search overlay ── */}
@@ -305,7 +305,7 @@ export default function Navbar() {
             {/* Loading shimmer */}
             {liveLoading && (
               <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 sm:gap-4">
-                {[0,1,2,3].map((i) => (
+                {[0, 1, 2, 3].map((i) => (
                   <div key={i} className="animate-pulse">
                     <div className="aspect-square bg-white/5 mb-3" />
                     <div className="h-2.5 bg-white/5 rounded mb-2 w-3/4" />
@@ -341,11 +341,10 @@ export default function Navbar() {
                       product.images?.length > 0
                         ? product.images[0].startsWith("http")
                           ? product.images[0]
-                          : `${API_BASE_URL.replace("/api", "")}${
-                              product.images[0].startsWith("/static")
-                                ? product.images[0]
-                                : "/static" + product.images[0]
-                            }`
+                          : `${API_BASE_URL.replace("/api", "")}${product.images[0].startsWith("/static")
+                            ? product.images[0]
+                            : "/static" + product.images[0]
+                          }`
                         : "https://images.unsplash.com/photo-1611591437281-460bfbe1220a?q=80&w=600&auto=format&fit=crop";
                     return (
                       <Link
@@ -443,21 +442,20 @@ export default function Navbar() {
       {/* ── Main Navbar ── */}
       <nav
         style={{ backgroundColor: bg, borderBottomColor: borderCol, color: textCol }}
-        className={`fixed top-0 left-0 w-full z-50 border-b transition-all duration-700 ease-in-out ${
-          solid ? "shadow-[0_2px_20px_rgba(0,0,0,0.07)] backdrop-blur-xl" : ""
-        }`}
+        className={`fixed top-0 left-0 w-full z-50 border-b transition-all duration-700 ease-in-out ${solid ? "shadow-[0_2px_20px_rgba(0,0,0,0.07)] backdrop-blur-xl" : ""
+          }`}
       >
         <div className="max-w-[1440px] mx-auto px-6 lg:px-12 h-[70px] flex items-center gap-8">
           <Link href="/" className="flex-shrink-0 flex items-center group">
             <div className="h-11 flex items-center justify-center transition-all duration-300">
-               <img src="/RKM LOGO SVG.svg" alt="RKM Jewellers" className="h-full w-auto object-contain transform group-hover:scale-105 transition-transform duration-700" />
+              <img src="/RKM LOGO SVG.svg" alt="RKM Jewellers" className="h-full w-auto object-contain transform group-hover:scale-105 transition-transform duration-700" />
             </div>
           </Link>
 
           {/* ── Desktop Nav ── */}
           <div className="hidden lg:flex items-center gap-1 flex-1 justify-center">
             <NavLink href="/" color={textCol}>Home</NavLink>
-            
+
             {/* ── Shop By mega-menu ── */}
             {lookupEntries.length > 0 && (
               <div ref={shopRef} className="relative">
@@ -532,7 +530,7 @@ export default function Navbar() {
                 )}
               </div>
             )}
-
+            <NavLink href="/gold-investment" color={textCol}>Gold Investments</NavLink>
             <NavLink href="/about" color={textCol}>Our Story</NavLink>
             <NavLink href="/blogs" color={textCol}>Blogs</NavLink>
             <NavLink href="/terms" color={textCol}>Terms</NavLink>
@@ -560,9 +558,9 @@ export default function Navbar() {
                   >
                     <div className="w-6 h-6 rounded-full bg-[#1A6B3A] text-white flex items-center justify-center text-[9px] font-black overflow-hidden ring-2 ring-white shadow-sm transition-transform group-hover:scale-110">
                       {authState.customer?.profileImage ? (
-                        <img 
-                          src={`${process.env.NEXT_PUBLIC_API_URL}${authState.customer.profileImage}`} 
-                          className="w-full h-full object-cover" 
+                        <img
+                          src={`${process.env.NEXT_PUBLIC_API_URL}${authState.customer.profileImage}`}
+                          className="w-full h-full object-cover"
                           alt="Profile"
                         />
                       ) : (
@@ -570,31 +568,31 @@ export default function Navbar() {
                       )}
                     </div>
                   </button>
-                  
+
                   {/* Profile Dropdown */}
                   <div className="absolute top-full right-0 mt-2 w-56 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.12)] rounded-3xl border border-slate-50 py-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible translate-y-2 group-hover:translate-y-0 transition-all duration-300 z-[100] overflow-hidden">
                     <div className="px-5 py-4 border-b border-slate-50 mb-1 bg-slate-50/50">
                       <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Member</p>
                       <p className="text-xs font-black text-slate-800 truncate mt-0.5">{authState.customer?.name}</p>
                     </div>
-                    
-                    <Link 
-                      href="/profile" 
+
+                    <Link
+                      href="/profile"
                       className="flex items-center gap-3 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 hover:text-[#1A6B3A] hover:bg-emerald-50 transition-all"
                     >
                       <UserIcon size={14} className="opacity-50" /> My Profile
                     </Link>
-                    
-                    <Link 
-                      href="/wishlist" 
+
+                    <Link
+                      href="/wishlist"
                       className="flex items-center gap-3 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 hover:text-[#1A6B3A] hover:bg-emerald-50 transition-all"
                     >
                       <Heart size={14} className="opacity-50" /> Saved Items
                     </Link>
 
                     <div className="mx-5 my-1 border-t border-slate-50"></div>
-                    
-                    <button 
+
+                    <button
                       onClick={() => setIsLogoutOpen(true)}
                       className="w-full flex items-center gap-3 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 transition-all"
                     >
@@ -685,7 +683,7 @@ export default function Navbar() {
                 className="flex items-center justify-between py-4 text-[11px] font-black tracking-[0.28em] uppercase text-[#1A1A1A] hover:text-[#B8975A] border-b border-[#F2EEE8] transition-colors"
               >
                 Home
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6" /></svg>
               </Link>
               <Link
                 href="/blogs"
@@ -693,7 +691,7 @@ export default function Navbar() {
                 className="flex items-center justify-between py-4 text-[11px] font-black tracking-[0.28em] uppercase text-[#1A1A1A] hover:text-[#B8975A] border-b border-[#F2EEE8] transition-colors"
               >
                 Blogs
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6" /></svg>
               </Link>
               {lookupEntries.map(([type, items]) => (
                 <div key={type} className="py-4 border-b border-[#F2EEE8]">
@@ -703,17 +701,17 @@ export default function Navbar() {
                   >
                     {LOOKUP_LABELS[type] ?? type.replace(/_/g, " ")}
                   </p>
-                      <div className="flex flex-wrap gap-2">
-                        {items.map((item) => (
-                          <Link
-                            key={item._id}
-                            href={`/products?${type}=${item.value}`}
-                            className="text-[10px] font-semibold text-[#4A4A4A] hover:text-[#B8975A] px-4 py-2 rounded-full border border-[#E5E0D8] hover:border-[#B8975A] transition-all duration-200"
-                          >
-                            {item.label}
-                          </Link>
-                        ))}
-                      </div>
+                  <div className="flex flex-wrap gap-2">
+                    {items.map((item) => (
+                      <Link
+                        key={item._id}
+                        href={`/products?${type}=${item.value}`}
+                        className="text-[10px] font-semibold text-[#4A4A4A] hover:text-[#B8975A] px-4 py-2 rounded-full border border-[#E5E0D8] hover:border-[#B8975A] transition-all duration-200"
+                      >
+                        {item.label}
+                      </Link>
+                    ))}
+                  </div>
                 </div>
               ))}
 
@@ -722,7 +720,15 @@ export default function Navbar() {
                 className="flex items-center justify-between py-4 text-[11px] font-black tracking-[0.28em] uppercase text-[#1A1A1A] hover:text-[#B8975A] border-b border-[#F2EEE8] transition-colors"
               >
                 Our Story
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6" /></svg>
+              </Link>
+
+              <Link
+                href="/gold-investment"
+                className="flex items-center justify-between py-4 text-[11px] font-black tracking-[0.28em] uppercase text-[#1A1A1A] hover:text-[#B8975A] border-b border-[#F2EEE8] transition-colors"
+              >
+                Gold Investments
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6" /></svg>
               </Link>
 
               {/* Legal – mobile */}
@@ -747,13 +753,13 @@ export default function Navbar() {
         )}
       </nav>
 
-      <LogoutDialog 
-        isOpen={isLogoutOpen} 
-        onClose={() => setIsLogoutOpen(false)} 
+      <LogoutDialog
+        isOpen={isLogoutOpen}
+        onClose={() => setIsLogoutOpen(false)}
         onConfirm={() => {
           dispatch(logout());
           setIsLogoutOpen(false);
-        }} 
+        }}
       />
     </>
   );
@@ -776,11 +782,10 @@ function NavLink({
     <Link
       href={href}
       style={{ color }}
-      className={`relative py-2 whitespace-nowrap group hover:opacity-55 transition-opacity duration-300 uppercase ${
-        small
+      className={`relative py-2 whitespace-nowrap group hover:opacity-55 transition-opacity duration-300 uppercase ${small
           ? "px-2 text-[8.5px] font-bold tracking-[0.22em] opacity-60 hover:opacity-100"
           : "px-4 text-[10px] font-black tracking-[0.32em]"
-      }`}
+        }`}
     >
       {children}
       {!small && (
