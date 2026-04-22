@@ -58,6 +58,8 @@ export interface Branch {
   city?: string;
   state?: string;
   pincode?: string;
+  /** GSTIN for invoicing — shown on tax invoice header */
+  gstin?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -523,6 +525,11 @@ export const bulkDeleteInventory = (ids: string[], reason: string, notes?: strin
 export const getDeletedInventory = (params?: Record<string, string>) =>
   request<{ data: InventoryItem[]; meta: { total: number; page: number; limit: number; total_pages: number } }>('/inventory/deleted' + (params ? '?' + new URLSearchParams(params).toString() : ''));
 
+export const getReturnedInventory = (params?: Record<string, string>) =>
+  request<{ data: InventoryItem[]; meta: { total: number; page: number; limit: number; total_pages: number } }>(
+    '/inventory' + '?' + new URLSearchParams({ status: 'returned', limit: '200', page: '1', ...(params ?? {}) }).toString()
+  );
+
 export const updateInventoryStatus = (
   id: string,
   payload: {
@@ -678,6 +685,12 @@ export interface AppSettings {
   making_charge_rate: number;
   fixed_making_charge: number;
   note?: string;
+  /**
+   * Percentage of stone/diamond value to return to customer on refund.
+   * Metal (gold/silver/platinum) value is always refunded at 100%.
+   * Admin-configurable. Default: 50%.
+   */
+  stone_refund_percentage?: number;
   updatedAt?: string;
 }
 
@@ -988,3 +1001,145 @@ export const waCreateTemplateV2 = (payload: {
   variableMapping?: Record<string, string>;
   sampleBodyValues?: string[];
 }) => request<WaTemplateV2>('/whatsapp/templates', { method: 'POST', body: JSON.stringify(payload) });
+
+export interface Feedback {
+  _id: string;
+  channel?: 'in-store' | 'online';
+  storeCode?: string;
+  title?: string;
+  gender?: string;
+  name?: string;
+  mobile?: string;
+  email?: string;
+  dob?: string;
+  country?: string;
+  state?: string;
+  district?: string;
+  address?: string;
+  type: 'conversion' | 'non-conversion';
+  overallExperience?: string;
+  staffHelpfulness?: string;
+  visitAgain?: string;
+  recommend?: string;
+  notPurchaseReason?: string;
+  notPurchaseReasonOther?: string;
+  categoryLookingFor?: string;
+  categoryLookingForOther?: string;
+  typeLookingFor?: string;
+  typeLookingForOther?: string;
+  priceBand?: string;
+  weightBand?: string;
+  createdAt: string;
+}
+
+export async function createFeedback(data: any | any[]) {
+  const res = await fetch(`${API_BASE}/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(err.message || 'Failed to submit feedback');
+  }
+  return res.json();
+}
+
+export async function getFeedbacks(params?: { page?: number; limit?: number }) {
+  const q = new URLSearchParams();
+  if (params?.page) q.set('page', String(params.page));
+  if (params?.limit) q.set('limit', String(params.limit));
+  return request<{ data: Feedback[]; meta: Meta }>(`/feedback?${q.toString()}`);
+}
+
+export async function deleteFeedback(id: string) {
+  return request<void>(`/feedback/${id}`, { method: 'DELETE' });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gold Investment Plans & Subscriptions
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface InvestmentPlan {
+  _id: string;
+  name: string;
+  description?: string;
+  monthlyAmount: number;
+  durationMonths: number;
+  interestRate: number;
+  redemptionDiscount: number;
+  isActive: boolean;
+  razorpayPlanId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GoldSubscription {
+  _id: string;
+  plan: InvestmentPlan;
+  customerName: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  razorpaySubscriptionId: string;
+  razorpayCustomerId?: string;
+  status: 'active' | 'cancelled' | 'completed' | 'halted' | 'pending';
+  amountAccumulated: number;
+  interestAccumulated: number;
+  startedAt?: string;
+  endedAt?: string;
+  maturesAt?: string;
+  redeemed: boolean;
+  redemptionDate?: string;
+  installmentsPaid: number;
+  adminNotes?: string;
+  interestStopped: boolean;
+  createdAt: string;
+}
+
+export interface GoldStats {
+  total: number;
+  active: number;
+  cancelled: number;
+  completed: number;
+  halted: number;
+  totalAccumulated: number;
+  totalInterest: number;
+}
+
+// Plans
+export async function getInvestmentPlans(): Promise<InvestmentPlan[]> {
+  return request<InvestmentPlan[]>('/gold-investment/plans');
+}
+
+export async function createInvestmentPlan(data: Partial<InvestmentPlan>): Promise<InvestmentPlan> {
+  return request<InvestmentPlan>('/gold-investment/plans', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function updateInvestmentPlan(id: string, data: Partial<InvestmentPlan>): Promise<InvestmentPlan> {
+  return request<InvestmentPlan>(`/gold-investment/plans/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+}
+
+export async function deleteInvestmentPlan(id: string): Promise<void> {
+  return request<void>(`/gold-investment/plans/${id}`, { method: 'DELETE' });
+}
+
+// Subscriptions
+export async function getSubscriptions(params?: { status?: string; planId?: string }): Promise<GoldSubscription[]> {
+  const q = new URLSearchParams();
+  if (params?.status) q.set('status', params.status);
+  if (params?.planId) q.set('planId', params.planId);
+  return request<GoldSubscription[]>(`/gold-investment/subscriptions?${q.toString()}`);
+}
+
+export async function createSubscription(data: { planId: string; customerName: string; customerEmail?: string; customerPhone?: string }): Promise<{ subscription: GoldSubscription; shortUrl: string }> {
+  return request<{ subscription: GoldSubscription; shortUrl: string }>('/gold-investment/subscriptions', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function updateSubscription(id: string, data: { adminNotes?: string; redeemed?: boolean }): Promise<GoldSubscription> {
+  return request<GoldSubscription>(`/gold-investment/subscriptions/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+}
+
+// Stats
+export async function getGoldStats(): Promise<GoldStats> {
+  return request<GoldStats>('/gold-investment/stats');
+}

@@ -240,6 +240,20 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Damaged Items</span>}
             </Link>
             <Link
+              href="/dashboard/refunds"
+              onClick={onNavigate}
+              title={isCollapsed ? "Refunds" : ""}
+              className={navClass(pathname.startsWith('/dashboard/refunds'))}
+              style={getNavStyle(pathname.startsWith('/dashboard/refunds'))}
+            >
+              {isCollapsed && pathname.startsWith('/dashboard/refunds') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname.startsWith('/dashboard/refunds')} color={pathname.startsWith('/dashboard/refunds') ? colors.activeText : colors.textMuted}>
+                <path d="M9 14l-4-4 4-4" />
+                <path d="M5 10h11a4 4 0 1 1 0 8h-1" />
+              </NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Refunds</span>}
+            </Link>
+            <Link
               href="/dashboard/attendance"
               onClick={onNavigate}
               title={isCollapsed ? "Attendance" : ""}
@@ -364,6 +378,34 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
                 <path d="M16 3.13a4 4 0 0 1 0 7.75" />
               </NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Client Relations</span>}
+            </Link>
+            <Link
+              href="/dashboard/feedback"
+              onClick={onNavigate}
+              title={isCollapsed ? "Feedback Analytics" : ""}
+              className={navClass(pathname.startsWith('/dashboard/feedback'))}
+              style={getNavStyle(pathname.startsWith('/dashboard/feedback'))}
+            >
+              {isCollapsed && pathname.startsWith('/dashboard/feedback') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname.startsWith('/dashboard/feedback')} color={pathname.startsWith('/dashboard/feedback') ? colors.activeText : colors.textMuted}>
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+              </NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Feedback Analytics</span>}
+            </Link>
+            <Link
+              href="/dashboard/gold-investment"
+              onClick={onNavigate}
+              title={isCollapsed ? "Gold Investment" : ""}
+              className={navClass(pathname.startsWith('/dashboard/gold-investment'))}
+              style={getNavStyle(pathname.startsWith('/dashboard/gold-investment'))}
+            >
+              {isCollapsed && pathname.startsWith('/dashboard/gold-investment') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname.startsWith('/dashboard/gold-investment')} color={pathname.startsWith('/dashboard/gold-investment') ? colors.activeText : colors.textMuted}>
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 8v8" />
+                <path d="M8 12h8" />
+              </NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Gold Investment</span>}
             </Link>
             <Link
               href="/dashboard/whatsapp"

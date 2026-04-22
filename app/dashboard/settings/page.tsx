@@ -45,6 +45,7 @@ export default function SettingsPage() {
   const [chargeRate, setChargeRate] = useState('');
   const [fixedCharge, setFixedCharge] = useState('');
   const [note, setNote] = useState('');
+  const [stoneRefundPct, setStoneRefundPct] = useState<string>('50');
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'danger' | 'info' } | null>(null);
   const [error, setError] = useState('');
@@ -113,6 +114,7 @@ export default function SettingsPage() {
     setChargeRate(settings.making_charge_rate ? String(settings.making_charge_rate) : '');
     setFixedCharge(settings.fixed_making_charge ? String(settings.fixed_making_charge) : '');
     setNote(settings.note ?? '');
+    setStoneRefundPct(settings.stone_refund_percentage != null ? String(settings.stone_refund_percentage) : '50');
   }, [loading, lookupsLoading, settings, purityLookups, metalConfig]);
 
   function showToast(message: string, type: 'success' | 'danger' | 'info' = 'info') {
@@ -148,6 +150,7 @@ export default function SettingsPage() {
         making_charge_rate: Number(chargeRate) || 0,
         fixed_making_charge: Number(fixedCharge) || 0,
         note: note.trim(),
+        stone_refund_percentage: Number(stoneRefundPct) || 50,
       });
       await reload();
       showToast('Rates saved. Syncing inventory prices…', 'info');
@@ -394,6 +397,53 @@ export default function SettingsPage() {
                   value={chargeType === 'per_gram' ? chargeRate : fixedCharge}
                   onChange={(e) => chargeType === 'per_gram' ? setChargeRate(e.target.value) : setFixedCharge(e.target.value)}
                 />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── Refund Policy ── */}
+        <section
+          className="border rounded-2xl p-6 space-y-6 shadow-sm"
+          style={{ backgroundColor: colors.bg, borderColor: colors.border }}
+        >
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center shrink-0 shadow-sm border border-red-100/50 transition-transform hover:scale-105 duration-300">
+              <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} className="text-red-500">
+                <path d="M9 14l-4-4 4-4" /><path d="M5 10h11a4 4 0 1 1 0 8h-1" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-[15px] font-bold" style={{ color: colors.textMain }}>Refund Policy Settings</h2>
+              <p className="text-xs mt-1 opacity-70" style={{ color: colors.textMuted }}>
+                Configure how much of stone/diamond value is returned to the customer on a refund. Metal (gold/silver/platinum) value is always refunded at 100%.
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+            <div className="space-y-3">
+              <label className="text-[13px] font-bold" style={{ color: colors.textMain }}>Stone / Gemstone Refund Percentage (%)</label>
+              <div className="relative">
+                <input
+                  type="number" min={0} max={100} step={1}
+                  className="w-full pr-10 pl-4 py-3 border rounded-xl text-sm font-semibold transition-all focus:outline-none focus:ring-2 focus:ring-red-400/20"
+                  style={{ backgroundColor: theme === 'light' ? '#f8fafc' : '#162846', borderColor: colors.border, color: colors.textMain }}
+                  placeholder="50"
+                  value={stoneRefundPct}
+                  onChange={e => setStoneRefundPct(e.target.value)}
+                />
+                <span className="absolute inset-y-0 right-4 flex items-center text-sm font-bold opacity-40" style={{ color: colors.textMain }}>%</span>
+              </div>
+              <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: colors.textMuted }}>
+                Currently: {stoneRefundPct || 50}% of assessed stone value is refunded
+              </p>
+            </div>
+            <div className="p-4 rounded-2xl bg-red-50 border border-red-100 space-y-2">
+              <p className="text-xs font-black text-red-700 uppercase tracking-widest">Refund Formula</p>
+              <div className="text-[11px] text-red-700 space-y-1 font-medium">
+                <div>✓ Metal Value → <b>100%</b> returned</div>
+                <div>◑ Stone Value → <b>{stoneRefundPct || 50}%</b> returned</div>
+                <div>✗ Making Charges → <b>0%</b> (not returned)</div>
               </div>
             </div>
           </div>

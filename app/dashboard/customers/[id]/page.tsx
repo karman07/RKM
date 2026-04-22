@@ -116,27 +116,29 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
       </div>
 
       {/* ── Main Grid ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
 
         {/* ── Left Column ── */}
-        <div className="space-y-6">
+        <div className="lg:col-span-5 xl:col-span-4 space-y-6">
 
           {/* Stat Cards */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
+          <div className="flex flex-col sm:flex-row gap-5">
+            <div className="bg-white border border-slate-100 rounded-[32px] p-6 shadow-sm flex-1 min-w-[140px]">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Total Orders</p>
               <h4 className="text-3xl font-serif font-bold text-slate-900">{orders.length}</h4>
               <div className="mt-4 flex items-center gap-1.5 text-[10px] font-bold text-blue-600">
                 <ShoppingBag size={12} /> Purchases
               </div>
             </div>
-            <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm relative overflow-hidden group">
+            <div className="bg-white border border-slate-100 rounded-[32px] p-6 shadow-sm flex-[1.4] min-w-[200px] relative overflow-hidden group">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 relative z-10">Total Spent</p>
-              <h4 className="text-2xl font-serif font-bold text-slate-900 relative z-10">₹{totalSpent.toLocaleString('en-IN')}</h4>
+              <h4 className="text-2xl sm:text-xl lg:text-2xl xl:text-3xl font-serif font-bold text-slate-900 relative z-10 break-words leading-tight">
+                ₹{totalSpent.toLocaleString('en-IN')}
+              </h4>
               <div className="mt-4 flex items-center gap-1.5 text-[10px] font-bold text-blue-600 relative z-10">
                 <TrendingUp size={12} /> Lifetime Value
               </div>
-              <div className="absolute -right-6 -bottom-6 w-20 h-20 bg-blue-50 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
+              <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-blue-50 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
             </div>
           </div>
 
@@ -190,7 +192,7 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
         </div>
 
         {/* ── Right Column: Acquisition Ledger ── */}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-7 xl:col-span-8">
           <div className="bg-white border border-slate-100 rounded-[28px] shadow-sm overflow-hidden">
 
             {/* Section Header */}

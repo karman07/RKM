@@ -15,6 +15,7 @@ import {
   updateInventoryStatus,
   updateInventoryDiscount,
   getInventoryStats,
+  getSettings,
   type InventoryItem,
   type Lookup,
   type Product,
@@ -95,6 +96,7 @@ export default function InventoryPage() {
   const [dbStats, setDbStats] = useState({ totalCount: 0, totalValue: 0, byStatus: {} as any });
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'danger' | 'info' } | null>(null);
   const [user, setUser] = useState<User | null>(null);
+  const [settings, setSettings] = useState<any>(null);
 
   const [statusFilter, setStatusFilter] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
@@ -207,12 +209,13 @@ export default function InventoryPage() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    Promise.all([getProducts({ limit: '1000' }), getLookups(), getBranches().catch(() => []), getMe().catch(() => null)])
-      .then(([productResponse, lookupData, branchData, meData]) => {
+    Promise.all([getProducts({ limit: '1000' }), getLookups(), getBranches().catch(() => []), getMe().catch(() => null), getSettings().catch(() => null)])
+      .then(([productResponse, lookupData, branchData, meData, settingsData]) => {
         setProducts(productResponse.data);
         setLookups(lookupData);
         setBranches(branchData);
         setUser(meData);
+        setSettings(settingsData);
       });
   }, []);
 
@@ -927,6 +930,46 @@ export default function InventoryPage() {
                 </select>
               </div>
             </div>
+          )}
+
+          {newStatus === 'returned' && statusModal && (
+            (() => {
+              const stoneRefundPct = settings?.stone_refund_percentage ?? 50;
+              const sp = Number(newSellingPrice) || statusModal.selling_price;
+              const isStoneApplicable = (statusModal.stone_weight || 0) > 0;
+              const metalValue = isStoneApplicable ? Math.round(sp * ((statusModal.net_weight || 0) / (statusModal.gross_weight || 1))) : sp;
+              const stoneValue = isStoneApplicable ? Math.round(sp - metalValue) : 0;
+              const stoneRefund = isStoneApplicable ? Math.round(stoneValue * stoneRefundPct / 100) : 0;
+              const totalRefund = metalValue + stoneRefund;
+
+              return (
+                <div className="p-5 bg-blue-50/50 rounded-2xl border border-blue-100 animate-[fadeRise_300ms_ease-out] shadow-sm">
+                  <h4 className="text-sm font-black text-blue-900 mb-4 tracking-tight">Refund Policy Applied</h4>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-500 font-bold uppercase tracking-widest">Original Sale Price</span>
+                      <span className="text-slate-900 font-black">₹{fmt(sp)}</span>
+                    </div>
+                    {isStoneApplicable && (
+                      <>
+                        <div className="flex justify-between items-center text-[10px]">
+                          <span className="text-slate-400 font-bold uppercase tracking-widest">Metal Value (100% Refundable)</span>
+                          <span className="text-slate-700 font-black">₹{fmt(metalValue)}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-[10px]">
+                          <span className="text-slate-400 font-bold uppercase tracking-widest">Stone Value ({stoneRefundPct}% Refundable)</span>
+                          <span className="text-slate-700 font-black">₹{fmt(stoneValue)} → <span className="text-blue-600">₹{fmt(stoneRefund)}</span></span>
+                        </div>
+                      </>
+                    )}
+                    <div className="pt-3 mt-3 border-t border-blue-200/50 flex justify-between items-center">
+                      <span className="text-xs text-blue-800 font-black uppercase tracking-widest">Total Authorized Refund</span>
+                      <span className="text-xl text-blue-700 font-black">₹{fmt(totalRefund)}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()
           )}
 
           <div className="pt-2 flex gap-4">

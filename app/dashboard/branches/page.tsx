@@ -38,6 +38,7 @@ export default function BranchesPage() {
     city: '',
     state: '',
     pincode: '',
+    gstin: '',
     is_active: true
   });
   const [saving, setSaving] = useState(false);
@@ -70,7 +71,7 @@ export default function BranchesPage() {
 
   function openCreate() {
     setEditTarget(null);
-    setForm({ name: '', code: '', address: '', phone: '', email: '', manager: '', city: '', state: '', pincode: '', is_active: true });
+    setForm({ name: '', code: '', address: '', phone: '', email: '', manager: '', city: '', state: '', pincode: '', gstin: '', is_active: true });
     setError('');
     setModalOpen(true);
   }
@@ -381,6 +382,17 @@ export default function BranchesPage() {
                 ))}
               </select>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] uppercase tracking-widest font-black text-slate-400 ml-1">GSTIN <span className="text-slate-300 font-medium normal-case tracking-normal">(shown on tax invoices)</span></label>
+            <input
+              className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:border-blue-500 focus:bg-white transition-all font-mono tracking-wider"
+              value={form.gstin ?? ''}
+              onChange={(e) => setForm({...form, gstin: e.target.value.toUpperCase()})}
+              placeholder="e.g. 03AABCR1234F1Z5"
+              maxLength={15}
+            />
           </div>
 
           <div className="flex items-center justify-between p-5 bg-slate-50 rounded-[2rem] border border-slate-100">
