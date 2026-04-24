@@ -934,10 +934,11 @@ export default function InventoryPage() {
 
           {newStatus === 'returned' && statusModal && (
             (() => {
+              const productObj: any = typeof statusModal.product_id === 'object' ? statusModal.product_id : {};
               const stoneRefundPct = settings?.stone_refund_percentage ?? 50;
               const sp = Number(newSellingPrice) || statusModal.selling_price;
-              const isStoneApplicable = (statusModal.stone_weight || 0) > 0;
-              const metalValue = isStoneApplicable ? Math.round(sp * ((statusModal.net_weight || 0) / (statusModal.gross_weight || 1))) : sp;
+              const isStoneApplicable = (productObj.stone_weight || 0) > 0;
+              const metalValue = isStoneApplicable ? Math.round(sp * ((productObj.net_weight || 0) / (productObj.gross_weight || 1))) : sp;
               const stoneValue = isStoneApplicable ? Math.round(sp - metalValue) : 0;
               const stoneRefund = isStoneApplicable ? Math.round(stoneValue * stoneRefundPct / 100) : 0;
               const totalRefund = metalValue + stoneRefund;

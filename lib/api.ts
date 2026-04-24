@@ -1049,7 +1049,7 @@ export async function getFeedbacks(params?: { page?: number; limit?: number }) {
   const q = new URLSearchParams();
   if (params?.page) q.set('page', String(params.page));
   if (params?.limit) q.set('limit', String(params.limit));
-  return request<{ data: Feedback[]; meta: Meta }>(`/feedback?${q.toString()}`);
+  return request<{ data: Feedback[]; meta: { total: number; page: number; limit: number; total_pages: number } }>(`/feedback?${q.toString()}`);
 }
 
 export async function deleteFeedback(id: string) {

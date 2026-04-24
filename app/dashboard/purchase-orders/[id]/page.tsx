@@ -410,11 +410,11 @@ export default function PurchaseOrderDetailPage() {
           productSearch={productSearch[idx] || ''}
           productResults={productResults[idx] || []}
           productSearchOpen={productSearchOpen[idx] || false}
-          onSearchChange={(q) => searchProducts(idx, q)}
-          onSelectProduct={(p, mode) => selectProduct(idx, p, mode)}
+          onSearchChange={(q: string) => searchProducts(idx, q)}
+          onSelectProduct={(p: Product, mode: ItemMode) => selectProduct(idx, p, mode)}
           onCloseSearch={() => setProductSearchOpen(p => ({ ...p, [idx]: false }))}
-          onModeChange={(mode) => setItemMode(idx, mode)}
-          onFieldChange={(field, val) => setItemField(idx, field, val)}
+          onModeChange={(mode: ItemMode) => setItemMode(idx, mode)}
+          onFieldChange={(field: string, val: any) => setItemField(idx, field, val)}
           onRemove={() => removeItem(idx)}
           fmt={fmt}
         />
