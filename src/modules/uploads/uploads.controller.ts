@@ -85,9 +85,6 @@ export class UploadsController {
     return this.uploadsService.uploadCategoryImage(categoryId, file);
   }
 
-  /**
-   * Upload a single blog cover image.
-   */
   @Post('blogs')
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   @HttpCode(HttpStatus.OK)
@@ -95,5 +92,17 @@ export class UploadsController {
   uploadBlogImage(@UploadedFile() file: Express.Multer.File) {
     if (!file) throw new BadRequestException('No file uploaded');
     return this.uploadsService.buildFileResponse('blogs', file);
+  }
+
+  /**
+   * Upload a single user avatar image.
+   */
+  @Post('users')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER)
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FileInterceptor('file', multerConfig('users')))
+  uploadUserImage(@UploadedFile() file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No file uploaded');
+    return this.uploadsService.buildFileResponse('users', file);
   }
 }

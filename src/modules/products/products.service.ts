@@ -141,6 +141,22 @@ export class ProductsService {
     };
   }
 
+  async findIdsByFilters(filters: { search?: string, category_id?: string, metal_type?: string, purity?: string }): Promise<Types.ObjectId[]> {
+    const query: Record<string, unknown> = { deleted_at: null };
+    if (filters.search) {
+      query.$or = [
+        { name: { $regex: filters.search, $options: 'i' } },
+        { sku: { $regex: filters.search, $options: 'i' } },
+      ];
+    }
+    if (filters.category_id) query.category_id = new Types.ObjectId(filters.category_id);
+    if (filters.metal_type) query.metal_type = filters.metal_type;
+    if (filters.purity) query.purity = filters.purity;
+
+    const products = await this.productModel.find(query).select('_id').lean();
+    return products.map(p => p._id as Types.ObjectId);
+  }
+
   async findOne(id: string, currentMetalRate?: number): Promise<any> {
     this.validateObjectId(id);
 

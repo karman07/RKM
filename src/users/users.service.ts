@@ -51,9 +51,11 @@ export class UsersService {
     };
   }
 
-  async findByRole(role: UserRole, page: number = 1, limit: number = 20): Promise<{ data: UserDocument[]; meta: any }> {
+  async findByRole(role: UserRole, page: number = 1, limit: number = 20, branchId?: string): Promise<{ data: UserDocument[]; meta: any }> {
     const skip = (page - 1) * limit;
-    const query = { role };
+    const query: any = { role };
+    if (branchId) query.branch = branchId;
+    
     const [data, total] = await Promise.all([
       this.userModel.find(query)
         .select('-password')

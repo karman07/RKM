@@ -102,4 +102,17 @@ export class UpdateInventoryStatusDto {
   @IsString()
   @MaxLength(500)
   damage_reason?: string;
+
+  // ─── Return / Refund Valuation ───────────────────────────────────────────────
+  /** Manager's proposed refund value for the returned item */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  return_proposed_value?: number;
+
+  /** Notes from the manager about the return */
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  return_manager_notes?: string;
 }

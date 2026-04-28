@@ -98,6 +98,10 @@ export class CreateProductDto {
   status?: string;
 
   @IsOptional()
+  @IsBoolean()
+  in_stock?: boolean;
+
+  @IsOptional()
   @IsString()
   @MaxLength(100)
   barcode?: string;

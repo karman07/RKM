@@ -52,8 +52,12 @@ export class UsersController {
   // ─── Admin & Manager: Get cashiers only ────────────────────────────────────
   @Get('cashiers')
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
-  getCashiers(@Query('page') page?: number, @Query('limit') limit?: number) {
-    return this.usersService.findByRole(UserRole.CASHIER, Number(page) || 1, Number(limit) || 20);
+  getCashiers(
+    @Query('page') page?: number, 
+    @Query('limit') limit?: number,
+    @Query('branch_id') branchId?: string
+  ) {
+    return this.usersService.findByRole(UserRole.CASHIER, Number(page) || 1, Number(limit) || 20, branchId);
   }
 
   // ─── Admin & Manager: Get specific user ────────────────────────────────────
@@ -63,8 +67,8 @@ export class UsersController {
     // Manager can only view cashiers
     if (req.user.role === UserRole.MANAGER) {
       return this.usersService.findById(id).then((user) => {
-        if (user.role !== UserRole.CASHIER) {
-          throw new ForbiddenException('Managers can only view cashiers');
+        if (user._id.toString() !== req.user.userId && user.role !== UserRole.CASHIER) {
+          throw new ForbiddenException('Managers can only view themselves or their branch cashiers');
         }
         return user;
       });
@@ -82,8 +86,8 @@ export class UsersController {
   ) {
     if (req.user.role === UserRole.MANAGER) {
       const target = await this.usersService.findById(id);
-      if (target.role !== UserRole.CASHIER) {
-        throw new ForbiddenException('Managers can only update cashiers');
+      if (target.role !== UserRole.CASHIER && target._id.toString() !== req.user.userId) {
+        throw new ForbiddenException('Managers can only update themselves or cashiers');
       }
     }
     return this.usersService.update(id, dto);

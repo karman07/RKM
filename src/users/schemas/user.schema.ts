@@ -26,17 +26,11 @@ export class User {
   @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'Branch', required: false })
   branch?: string;
 
-  @Prop({ default: 0 })
-  base_salary: number;
-
-  @Prop({ default: 'monthly' })
-  salary_type: string; // monthly, daily
-
-  @Prop({ type: Date })
-  joining_date: Date;
-
   @Prop({ default: true })
   isActive: boolean;
+
+  @Prop({ type: String, required: false })
+  avatar?: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

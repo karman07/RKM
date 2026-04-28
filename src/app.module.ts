@@ -22,6 +22,8 @@ import { CustomersModule } from './modules/customers/customers.module';
 import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
 import { GoldInvestmentModule } from './modules/gold-investment/gold-investment.module';
+import { ItemAttendanceModule } from './modules/item-attendance/item-attendance.module';
+import { HrModule } from './modules/hr/hr.module';
 
 @Module({
   imports: [
@@ -52,6 +54,8 @@ import { GoldInvestmentModule } from './modules/gold-investment/gold-investment.
     WhatsAppModule,
     FeedbackModule,
     GoldInvestmentModule,
+    ItemAttendanceModule,
+    HrModule,
   ],
   controllers: [AppController],
   providers: [AppService],

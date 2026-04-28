@@ -52,6 +52,9 @@ export class Product {
   @Prop({ type: String, default: 'active' })
   status: string;
 
+  @Prop({ type: Boolean, default: true })
+  in_stock: boolean;
+
   // Identification
   @Prop({ unique: true, sparse: true, trim: true })
   barcode: string;

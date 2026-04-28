@@ -63,4 +63,16 @@ export class QueryInventoryDto {
   @IsOptional()
   @IsString()
   sold_customer_email?: string;
+
+  @IsOptional()
+  @IsMongoId()
+  category_id?: string;
+
+  @IsOptional()
+  @IsString()
+  metal_type?: string;
+
+  @IsOptional()
+  @IsString()
+  purity?: string;
 }

@@ -9,6 +9,7 @@ export enum InventoryStatus {
   RESERVED = 'reserved',
   DAMAGED = 'damaged',
   RETURNED = 'returned',
+  STOLEN = 'stolen',
 }
 
 export enum ItemLocation {
@@ -165,6 +166,31 @@ export class InventoryItem {
 
   @Prop({ type: Date, default: null })
   returned_at: Date | null;
+
+  // ─── Return / Refund Valuation ────────────────────────────────────────────────
+  /** Refund value proposed by the branch manager */
+  @Prop({ type: Number, min: 0, default: null })
+  return_proposed_value: number | null;
+
+  /** Notes from the manager when proposing the return value */
+  @Prop({ trim: true, default: '' })
+  return_manager_notes: string;
+
+  /** Final refund amount approved and set by admin */
+  @Prop({ type: Number, min: 0, default: null })
+  return_admin_approved_value: number | null;
+
+  /** Notes from admin when approving/rejecting the return */
+  @Prop({ trim: true, default: '' })
+  return_admin_notes: string;
+
+  /** Tracks the refund workflow state */
+  @Prop({ type: String, enum: ['pending', 'proposed', 'approved', 'rejected'], default: 'pending' })
+  return_refund_status: 'pending' | 'proposed' | 'approved' | 'rejected';
+
+  /** When the admin set the final refund value */
+  @Prop({ type: Date, default: null })
+  return_approved_at: Date | null;
 
   // ─── Damage Tracking ─────────────────────────────────────────────────────────
   @Prop({ trim: true, default: '' })

@@ -98,7 +98,7 @@ export class InventoryController {
   }
 
   @Get('damaged')
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER)
   getDamagedItems(
     @Query('page') page: string,
     @Query('limit') limit: string,
@@ -108,6 +108,36 @@ export class InventoryController {
       Number(page) || 1,
       Number(limit) || 20,
       branchId,
+    );
+  }
+
+  @Get('stolen')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER)
+  getStolenItems(
+    @Query('page') page: string,
+    @Query('limit') limit: string,
+    @Query('branch_id') branchId: string,
+  ) {
+    return this.inventoryService.getStolenItems(
+      Number(page) || 1,
+      Number(limit) || 20,
+      branchId,
+    );
+  }
+
+  @Get('returned')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER)
+  getReturnedItems(
+    @Query('page') page: string,
+    @Query('limit') limit: string,
+    @Query('branch_id') branchId: string,
+    @Query('refund_status') refundStatus: string,
+  ) {
+    return this.inventoryService.getReturnedItems(
+      Number(page) || 1,
+      Number(limit) || 20,
+      branchId,
+      refundStatus,
     );
   }
 
@@ -148,13 +178,13 @@ export class InventoryController {
   }
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER)
   findAll(@Query() query: QueryInventoryDto) {
     return this.inventoryService.findAll(query);
   }
 
   @Get('barcode/:code')
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER)
   findByBarcode(@Param('code') code: string) {
     return this.inventoryService.findByBarcode(code);
   }
@@ -170,7 +200,7 @@ export class InventoryController {
     @Body() dto: UpdateInventoryStatusDto,
     @Request() req: any,
   ) {
-    const userId = req.user?.sub || req.user?._id || req.user?.id;
+    const userId = req.user?.userId || req.user?.sub || req.user?._id || req.user?.id;
     const userBranchId = req.user?.branch?._id || req.user?.branch || undefined;
     const userRole = req.user?.role;
     return this.inventoryService.updateStatus(id, dto, userId?.toString(), userBranchId?.toString(), userRole);
@@ -189,5 +219,42 @@ export class InventoryController {
     @Request() req: any,
   ) {
     return this.inventoryService.updateDiscount(id, dto, req.user.role);
+  }
+
+  /**
+   * PATCH /inventory/:id/return-approval
+   * Admin-only: Set the final approved refund value for a returned item.
+   * Body: { approved_value: number, notes: string, action: 'approved' | 'rejected' }
+   */
+  @Patch(':id/return-approval')
+  @Roles(UserRole.ADMIN)
+  approveReturn(
+    @Param('id') id: string,
+    @Body() body: { approved_value: number; notes?: string; action: 'approved' | 'rejected' },
+  ) {
+    return this.inventoryService.approveReturn(
+      id,
+      body.approved_value ?? 0,
+      body.notes ?? '',
+      body.action ?? 'approved',
+    );
+  }
+
+  /**
+   * PATCH /inventory/:id/return-proposal
+   * Manager: Propose a refund value for a returned item.
+   * Body: { proposed_value: number, manager_notes?: string }
+   */
+  @Patch(':id/return-proposal')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  proposeReturn(
+    @Param('id') id: string,
+    @Body() body: { proposed_value: number; manager_notes?: string },
+  ) {
+    return this.inventoryService.proposeReturn(
+      id,
+      body.proposed_value ?? 0,
+      body.manager_notes ?? '',
+    );
   }
 }

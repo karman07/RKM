@@ -32,11 +32,12 @@ import {
 
 // Allowed status transitions
 const STATUS_TRANSITIONS: Record<InventoryStatus, InventoryStatus[]> = {
-  [InventoryStatus.AVAILABLE]: [InventoryStatus.RESERVED, InventoryStatus.SOLD, InventoryStatus.DAMAGED],
-  [InventoryStatus.RESERVED]: [InventoryStatus.SOLD, InventoryStatus.AVAILABLE],
+  [InventoryStatus.AVAILABLE]: [InventoryStatus.RESERVED, InventoryStatus.SOLD, InventoryStatus.DAMAGED, InventoryStatus.STOLEN],
+  [InventoryStatus.RESERVED]: [InventoryStatus.SOLD, InventoryStatus.AVAILABLE, InventoryStatus.STOLEN],
   [InventoryStatus.SOLD]: [InventoryStatus.RETURNED],
-  [InventoryStatus.DAMAGED]: [InventoryStatus.AVAILABLE],
-  [InventoryStatus.RETURNED]: [InventoryStatus.AVAILABLE],
+  [InventoryStatus.DAMAGED]: [InventoryStatus.AVAILABLE, InventoryStatus.STOLEN],
+  [InventoryStatus.RETURNED]: [InventoryStatus.AVAILABLE, InventoryStatus.STOLEN],
+  [InventoryStatus.STOLEN]: [InventoryStatus.AVAILABLE],
 };
 
 @Injectable()
@@ -109,6 +110,27 @@ export class InventoryService {
     if (!product) return 0;
     const breakdown = this.pricingService.calculate(this.buildPricingInput(product, settings));
     return parseFloat(breakdown.final_price.toFixed(2));
+  }
+
+  async enrichItemsWithPricing(items: any[]) {
+    const settings = await this.settingsService.get();
+    return items.map((item: any) => {
+      const plainItem = item.toObject ? item.toObject() : item;
+      const product = plainItem.product_id as any;
+      if (!product) return plainItem;
+
+      const breakdown = this.pricingService.calculate(this.buildPricingInput(product, settings));
+      const formulaPrice = parseFloat(breakdown.final_price.toFixed(2));
+
+      return {
+        ...plainItem,
+        selling_price: (plainItem.status === InventoryStatus.SOLD || plainItem.status === InventoryStatus.RETURNED)
+          ? plainItem.selling_price
+          : formulaPrice,
+        live_selling_price: formulaPrice,
+        pricing_breakdown: breakdown,
+      };
+    });
   }
 
   /** Replicates ProductsService.normalizePurityRates for use without circular dependency. */
@@ -328,7 +350,8 @@ export class InventoryService {
       product_id, status, location, branch_id, unallocated, 
       sold_at_branch_id, sold_after, sold_by_user_id, 
       page = 1, limit = 20, search,
-      sold_customer_phone, sold_customer_email
+      sold_customer_phone, sold_customer_email,
+      category_id, metal_type, purity
     } = query;
     const skip = (page - 1) * limit;
 
@@ -366,11 +389,26 @@ export class InventoryService {
     if (sold_customer_phone) filter.sold_customer_phone = sold_customer_phone;
     if (sold_customer_email) filter.sold_customer_email = sold_customer_email;
 
-    if (search) {
-      filter.$or = [
-        { barcode: { $regex: search, $options: 'i' } },
-        { unique_item_code: { $regex: search, $options: 'i' } },
-      ];
+    if (search || category_id || metal_type || purity) {
+      const matchingProductIds = await this.productsService.findIdsByFilters({
+        search,
+        category_id,
+        metal_type,
+        purity,
+      });
+
+      if (search) {
+        // If there's a search term, match EITHER inventory specific fields OR matching products
+        filter.$or = [
+          { barcode: { $regex: search, $options: 'i' } },
+          { unique_item_code: { $regex: search, $options: 'i' } },
+          { sale_reference: { $regex: search, $options: 'i' } },
+          { product_id: { $in: matchingProductIds } },
+        ];
+      } else {
+        // If only category/metal/purity filters are applied, just match the products
+        filter.product_id = { $in: matchingProductIds };
+      }
     }
 
     const [items, total] = await Promise.all([
@@ -394,27 +432,7 @@ export class InventoryService {
       this.inventoryModel.countDocuments(filter as any),
     ]);
 
-    // Fetch current Settings ONCE. We recompute the price from the product's raw fields
-    // + current rates — NOT from pricing_breakdown (which is virtual, not in DB).
-    const settings = await this.settingsService.get();
-
-    const data = items.map((item: any) => {
-      const product = item.product_id as any;
-      if (!product) return item;
-
-      const breakdown = this.pricingService.calculate(this.buildPricingInput(product, settings));
-      const formulaPrice = parseFloat(breakdown.final_price.toFixed(2));
-
-      return {
-        ...item,
-        selling_price: (item.status === InventoryStatus.SOLD || item.status === InventoryStatus.RETURNED)
-          ? item.selling_price
-          : formulaPrice,
-        live_selling_price: formulaPrice,
-        // Full breakdown so frontend bill/invoice can display line-by-line details
-        pricing_breakdown: breakdown,
-      };
-    });
+    const data = await this.enrichItemsWithPricing(items);
 
     return {
       data,
@@ -698,14 +716,19 @@ export class InventoryService {
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
 
     const [
       stockStats,
       salesToday,
       salesTrend7d,
       salesTrend30d,
+      salesTrendYearly,
+      salesLifetime,
       topProducts,
       cashierPerformance,
+      managerPerformance,
       damagedItems,
       lowStockWarnings,
     ] = await Promise.all([
@@ -731,6 +754,17 @@ export class InventoryService {
         { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$sold_at' } }, count: { $sum: 1 }, revenue: { $sum: '$selling_price' } } },
         { $sort: { _id: 1 } },
       ]),
+      // Yearly trend (monthly buckets over last 12 months)
+      this.inventoryModel.aggregate([
+        { $match: { is_deleted: { $ne: true }, sold_at_branch_id: bid, status: InventoryStatus.SOLD, sold_at: { $gte: oneYearAgo } } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$sold_at' } }, count: { $sum: 1 }, revenue: { $sum: '$selling_price' } } },
+        { $sort: { _id: 1 } },
+      ]),
+      // Lifetime totals
+      this.inventoryModel.aggregate([
+        { $match: { is_deleted: { $ne: true }, sold_at_branch_id: bid, status: InventoryStatus.SOLD } },
+        { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$selling_price' }, profit: { $sum: { $subtract: ['$selling_price', '$purchase_price'] } } } },
+      ]),
       // Top 5 selling products at this branch
       this.inventoryModel.aggregate([
         { $match: { is_deleted: { $ne: true }, sold_at_branch_id: bid, status: InventoryStatus.SOLD } },
@@ -741,10 +775,19 @@ export class InventoryService {
         { $sort: { count: -1 } },
         { $limit: 5 },
       ]),
-      // Cashier performance at this branch
+      // Cashier (sold_by_user_id) performance at this branch
       this.inventoryModel.aggregate([
         { $match: { is_deleted: { $ne: true }, sold_at_branch_id: bid, status: InventoryStatus.SOLD, sold_by_user_id: { $ne: null } } },
         { $group: { _id: '$sold_by_user_id', sales_count: { $sum: 1 }, total_revenue: { $sum: '$selling_price' } } },
+        { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
+        { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
+        { $project: { user_id: '$_id', user_name: { $ifNull: ['$user.name', 'Unknown'] }, user_role: '$user.role', sales_count: 1, total_revenue: 1, _id: 0 } },
+        { $sort: { sales_count: -1 } },
+      ]),
+      // Manager (sold_by_manager_id) performance at this branch
+      this.inventoryModel.aggregate([
+        { $match: { is_deleted: { $ne: true }, sold_at_branch_id: bid, status: InventoryStatus.SOLD, sold_by_manager_id: { $ne: null } } },
+        { $group: { _id: '$sold_by_manager_id', sales_count: { $sum: 1 }, total_revenue: { $sum: '$selling_price' } } },
         { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
         { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
         { $project: { user_id: '$_id', user_name: { $ifNull: ['$user.name', 'Unknown'] }, user_role: '$user.role', sales_count: 1, total_revenue: 1, _id: 0 } },
@@ -790,10 +833,17 @@ export class InventoryService {
         revenue: salesToday[0]?.revenue || 0,
         profit: salesToday[0]?.profit || 0,
       },
+      salesLifetime: {
+        count: salesLifetime[0]?.count || 0,
+        revenue: salesLifetime[0]?.revenue || 0,
+        profit: salesLifetime[0]?.profit || 0,
+      },
       salesTrend7d,
       salesTrend30d,
+      salesTrendYearly,
       topProducts,
       cashierPerformance,
+      managerPerformance,
       damagedItems,
       lowStockWarnings,
     };
@@ -804,6 +854,34 @@ export class InventoryService {
   async getDamagedItems(page = 1, limit = 20, branchId?: string) {
     const skip = (page - 1) * limit;
     const filter: Record<string, unknown> = { is_deleted: { $ne: true }, status: InventoryStatus.DAMAGED };
+    if (branchId && Types.ObjectId.isValid(branchId)) {
+      filter.branch_id = new Types.ObjectId(branchId);
+    }
+
+    const [items, total] = await Promise.all([
+      this.inventoryModel
+        .find(filter as any)
+        .populate({ path: 'product_id', select: 'name sku metal_type images' })
+        .populate({ path: 'branch_id', select: 'name code' })
+        .populate({ path: 'damaged_by_user_id', select: 'name email role' })
+        .sort({ damaged_at: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      this.inventoryModel.countDocuments(filter as any),
+    ]);
+
+    return {
+      data: items,
+      meta: { total, page: Number(page), limit: Number(limit), total_pages: Math.ceil(total / limit) },
+    };
+  }
+
+  // ─── Get Stolen Items ──────────────────────────────────────────────────────
+
+  async getStolenItems(page = 1, limit = 20, branchId?: string) {
+    const skip = (page - 1) * limit;
+    const filter: Record<string, unknown> = { is_deleted: { $ne: true }, status: InventoryStatus.STOLEN };
     if (branchId && Types.ObjectId.isValid(branchId)) {
       filter.branch_id = new Types.ObjectId(branchId);
     }
@@ -1094,15 +1172,26 @@ export class InventoryService {
     }
 
     if (dto.status === InventoryStatus.RESERVED) item.reserved_at = now;
-    if (dto.status === InventoryStatus.RETURNED) item.returned_at = now;
+    if (dto.status === InventoryStatus.RETURNED) {
+      item.returned_at = now;
+      // Capture manager's proposed refund value and notes
+      if (dto.return_proposed_value != null && dto.return_proposed_value >= 0) {
+        item.return_proposed_value = dto.return_proposed_value;
+      }
+      if (dto.return_manager_notes?.trim()) {
+        item.return_manager_notes = dto.return_manager_notes.trim();
+      }
+      // Mark as proposed if a value was given, otherwise pending
+      (item as any).return_refund_status = dto.return_proposed_value != null ? 'proposed' : 'pending';
+    }
 
-    // ─── Damage Traceability ──────────────────────────────────────────────────
-    if (dto.status === InventoryStatus.DAMAGED) {
+    // ─── Damage & Stolen Traceability ──────────────────────────────────────────
+    if (dto.status === InventoryStatus.DAMAGED || dto.status === InventoryStatus.STOLEN) {
       item.damaged_at = now;
       if (dto.damage_reason?.trim()) {
         item.damage_reason = dto.damage_reason.trim();
       }
-      // Record who reported the damage
+      // Record who reported the damage/stolen status
       if (requestingUserId && Types.ObjectId.isValid(requestingUserId)) {
         item.damaged_by_user_id = new Types.ObjectId(requestingUserId) as any;
       }
@@ -1143,6 +1232,88 @@ export class InventoryService {
     }
 
     return savedItem;
+  }
+
+  // ─── Propose Return Valuation (Manager) ──────────────────────────────────────────────
+
+  async proposeReturn(
+    id: string,
+    proposedValue: number,
+    managerNotes: string,
+  ): Promise<InventoryItemDocument> {
+    this.validateObjectId(id);
+    const item = await this.inventoryModel.findById(id);
+    if (!item) throw new NotFoundException(`Inventory item ${id} not found`);
+    if (item.status !== InventoryStatus.RETURNED) {
+      throw new BadRequestException('Item must be in returned status to propose a refund value');
+    }
+    (item as any).return_proposed_value = proposedValue;
+    (item as any).return_manager_notes = managerNotes ?? '';
+    (item as any).return_refund_status = 'proposed';
+    return item.save();
+  }
+
+  // ─── Approve / Reject Return Valuation (Admin only) ─────────────────────────
+
+  async approveReturn(
+    id: string,
+    adminApprovedValue: number,
+    adminNotes: string,
+    action: 'approved' | 'rejected',
+  ): Promise<InventoryItemDocument> {
+    this.validateObjectId(id);
+    const item = await this.inventoryModel.findById(id);
+    if (!item) throw new NotFoundException(`Inventory item ${id} not found`);
+    if (item.status !== InventoryStatus.RETURNED) {
+      throw new BadRequestException('Item must be in returned status to approve/reject refund valuation');
+    }
+    (item as any).return_admin_approved_value = adminApprovedValue;
+    (item as any).return_admin_notes = adminNotes ?? '';
+    (item as any).return_refund_status = action;
+    (item as any).return_approved_at = new Date();
+    return item.save();
+  }
+
+  // ─── Get Returned Items ─────────────────────────────────────────────────────
+
+  async getReturnedItems(page = 1, limit = 20, branchId?: string, refundStatus?: string) {
+    const skip = (page - 1) * limit;
+    const filter: Record<string, unknown> = {
+      is_deleted: { $ne: true },
+      status: InventoryStatus.RETURNED,
+    };
+    if (branchId && Types.ObjectId.isValid(branchId)) {
+      filter.branch_id = new Types.ObjectId(branchId);
+    }
+    if (refundStatus === 'pending') {
+      filter.return_refund_status = { $in: ['pending', 'proposed', null] };
+    } else if (refundStatus === 'processed') {
+      filter.return_refund_status = { $in: ['approved', 'rejected'] };
+    } else if (refundStatus) {
+      filter.return_refund_status = refundStatus;
+    }
+
+    const [items, total] = await Promise.all([
+      this.inventoryModel
+        .find(filter as any)
+        .populate({
+          path: 'product_id',
+          select: 'name sku metal_type purity net_weight stone_weight gross_weight making_charge_type making_charge_rate fixed_making_charge tax_percentage images',
+        })
+        .populate({ path: 'branch_id', select: 'name code city' })
+        .populate({ path: 'sold_at_branch_id', select: 'name code city' })
+        .populate({ path: 'sold_by_manager_id', select: 'name email' })
+        .sort({ returned_at: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      this.inventoryModel.countDocuments(filter as any),
+    ]);
+
+    return {
+      data: items,
+      meta: { total, page: Number(page), limit: Number(limit), total_pages: Math.ceil(total / limit) },
+    };
   }
 
   // ─── Update Discount ───────────────────────────────────────────────────────

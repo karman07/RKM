@@ -22,11 +22,12 @@ export class AttendanceController {
   @Post('mark')
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   mark(@Body() data: any, @Req() req: any) {
-    return this.attendanceService.markAttendance(data, req.user?.sub || req.user?._id);
+    const uid = req.user?.userId || req.user?.sub || req.user?._id;
+    return this.attendanceService.markAttendance(data, uid);
   }
 
   @Get('user/:userId')
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER)
   getUserAttendance(
     @Param('userId') userId: string,
     @Query('start') start?: string,
@@ -46,7 +47,7 @@ export class AttendanceController {
   }
 
   @Get('stats/:userId')
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER)
   getStats(
     @Param('userId') userId: string,
     @Query('month') month: number,
@@ -58,21 +59,23 @@ export class AttendanceController {
   // Self check-in/out for loyalty (Optional but good)
   @Post('check-in')
   checkIn(@Req() req: any) {
+    const uid = req.user?.userId || req.user?.sub || req.user?._id;
     return this.attendanceService.markAttendance({
-      user_id: req.user?.sub || req.user?._id,
+      user_id: uid,
       date: new Date(),
       status: 'present',
       check_in: new Date(),
-    }, req.user?.sub || req.user?._id);
+    }, uid);
   }
 
   @Post('check-out')
   checkOut(@Req() req: any) {
+    const uid = req.user?.userId || req.user?.sub || req.user?._id;
     return this.attendanceService.markAttendance({
-      user_id: req.user?.sub || req.user?._id,
+      user_id: uid,
       date: new Date(),
       check_out: new Date(),
-    }, req.user?.sub || req.user?._id);
+    }, uid);
   }
 
   @Get('all-stats')
