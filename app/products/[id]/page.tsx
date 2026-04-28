@@ -39,6 +39,7 @@ interface Product {
     discount_amount: number;
     final_price: number;
   };
+  in_stock?: boolean;
 }
 
 export default function ProductDetailPage() {
@@ -102,6 +103,7 @@ export default function ProductDetailPage() {
 
   const handleAddToCart = () => {
     if (product) {
+      if (product.in_stock === false) return;
       if (!authState.token) {
         dispatch(openAuthDialog());
         return;
@@ -202,7 +204,11 @@ export default function ProductDetailPage() {
 
                 {/* Acquisition Actions - Solid Premium Aesthetic */}
                 <div className="pt-4">
-                  {cartQty > 0 ? (
+                  {product.in_stock === false ? (
+                    <div className="w-full bg-[#EAEAEA] text-[#999999] py-10 uppercase tracking-[0.6em] text-[11px] font-black shadow-inner flex items-center justify-center gap-4 rounded-full cursor-not-allowed">
+                       Unavailable Right Now
+                    </div>
+                  ) : cartQty > 0 ? (
                     <FadeIn direction="none" delay={0}>
                       <div className="flex items-center w-full border-2 border-[#1A2E26] rounded-full overflow-hidden h-20 shadow-lg">
                         <button 

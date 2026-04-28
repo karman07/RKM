@@ -26,6 +26,7 @@ interface Product {
     discount_amount?: number;
     discount_percentage?: number;
   };
+  in_stock?: boolean;
 }
 
 interface ProductCardProps {
@@ -132,6 +133,7 @@ export default function ProductCard({ product, index, badge }: ProductCardProps)
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
+                  if (product.in_stock === false) return;
                   if (!authState.token) {
                     dispatch(openAuthDialog());
                     return;
@@ -139,10 +141,17 @@ export default function ProductCard({ product, index, badge }: ProductCardProps)
                   trackEvent('add_to_cart', { productId: product._id, productName: product.name, price: product.pricing_breakdown?.final_price });
                   dispatch(addToCart(product));
                 }}
-                className="relative overflow-hidden flex-[0.8] py-3 lg:py-4 bg-[#0D1B15] text-white text-[8px] lg:text-[9px] uppercase tracking-[0.2em] lg:tracking-[0.4em] font-bold shadow-2xl hover:bg-[#B8975A] transition-all duration-500 rounded-full hover:scale-105 active:scale-95 group/bag"
+                disabled={product.in_stock === false}
+                className={`relative overflow-hidden flex-[0.8] py-3 lg:py-4 text-[8px] lg:text-[9px] uppercase tracking-[0.2em] lg:tracking-[0.4em] font-bold shadow-2xl transition-all duration-500 rounded-full group/bag ${
+                  product.in_stock === false 
+                    ? "bg-[#EAEAEA] text-[#999999] cursor-not-allowed" 
+                    : "bg-[#0D1B15] text-white hover:bg-[#B8975A] hover:scale-105 active:scale-95"
+                }`}
               >
-                <span className="relative z-10">+ Bag</span>
-                <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover/bag:animate-shine transition-transform duration-1000" />
+                <span className="relative z-10">{product.in_stock === false ? 'Unavailable' : '+ Bag'}</span>
+                {product.in_stock !== false && (
+                  <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover/bag:animate-shine transition-transform duration-1000" />
+                )}
               </button>
             )}
           </div>

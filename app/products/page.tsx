@@ -33,6 +33,7 @@ interface Product {
     final_price: number;
     tax_amount?: number;
   };
+  in_stock?: boolean;
 }
 
 interface Lookup {
