@@ -16,6 +16,8 @@ import {
   updateInventoryDiscount,
   getInventoryStats,
   getSettings,
+  getCashiersByBranch,
+  generateSaleInvoiceNumber,
   type InventoryItem,
   type Lookup,
   type Product,
@@ -48,18 +50,20 @@ const fmt = (n: number) => n.toLocaleString('en-IN');
 
 const STATUS_BADGE: Record<string, { wrap: string; dot: string }> = {
   available: { wrap: 'inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-600 border border-emerald-100', dot: 'bg-emerald-500' },
-  sold:      { wrap: 'inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-blue-600 border border-blue-100', dot: 'bg-blue-500' },
+  sold:      { wrap: 'inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-blue-700 border border-blue-100', dot: 'bg-blue-500' },
   reserved:  { wrap: 'inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-amber-600 border border-amber-100', dot: 'bg-amber-500' },
   damaged:   { wrap: 'inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-red-600 border border-red-100', dot: 'bg-red-500' },
   returned:  { wrap: 'inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-600 border border-slate-100', dot: 'bg-slate-500' },
+  stolen:    { wrap: 'inline-flex items-center gap-1.5 rounded-full bg-stone-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-stone-600 border border-stone-200', dot: 'bg-stone-500' },
 };
 
 const STATUS_TRANSITIONS: Record<string, string[]> = {
-  available: ['reserved', 'sold', 'damaged'],
+  available: ['reserved', 'sold', 'damaged', 'stolen'],
   reserved:  ['available', 'sold'],
   sold:      ['returned'],
   damaged:   ['available'],
   returned:  ['available'],
+  stolen:    ['available'],
 };
 
 // ─── Form Types ───────────────────────────────────────────────────────────────
@@ -132,7 +136,11 @@ export default function InventoryPage() {
     sale_channel: 'store',
     payment_mode: 'cash',
     sold_at_branch_id: '',
+    sold_by_user_id: '',
   });
+
+  // ── Cashiers for sold form ─────────────────────────────────────────────────
+  const [cashiers, setCashiers] = useState<User[]>([]);
 
   // ── Selection & Bulk Delete ───────────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -163,7 +171,7 @@ export default function InventoryPage() {
     if (!statusLabels.length) return null;
     const colorMap: Record<string, string> = {
       available: '#10b981', sold: '#3b82f6', reserved: '#f59e0b',
-      damaged: '#ef4444', returned: '#64748b',
+      damaged: '#ef4444', returned: '#64748b', stolen: '#78716c',
     };
     return {
       distribution: {
@@ -209,13 +217,14 @@ export default function InventoryPage() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    Promise.all([getProducts({ limit: '1000' }), getLookups(), getBranches().catch(() => []), getMe().catch(() => null), getSettings().catch(() => null)])
-      .then(([productResponse, lookupData, branchData, meData, settingsData]) => {
+    Promise.all([getProducts({ limit: '1000' }), getLookups(), getBranches().catch(() => []), getMe().catch(() => null), getSettings().catch(() => null), getCashiersByBranch(undefined, 200).catch(() => ({ data: [], meta: {} }))])
+      .then(([productResponse, lookupData, branchData, meData, settingsData, cashierRes]) => {
         setProducts(productResponse.data);
         setLookups(lookupData);
         setBranches(branchData);
         setUser(meData);
         setSettings(settingsData);
+        setCashiers((cashierRes as any).data || []);
       });
   }, []);
 
@@ -438,7 +447,12 @@ export default function InventoryPage() {
       <section className="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm flex flex-wrap items-center gap-4">
         <select className="px-5 py-3 rounded-xl border border-slate-100 bg-slate-50/50 text-xs font-bold uppercase tracking-widest text-slate-600 outline-none focus:ring-2 focus:ring-blue-600 appearance-none" value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}>
           <option value="">All Statuses</option>
-          {statusOptions.map(o => <option key={o._id} value={o.value}>{o.label}</option>)}
+          <option value="available">Available</option>
+          <option value="sold">Sold</option>
+          <option value="reserved">Reserved</option>
+          <option value="damaged">Damaged</option>
+          <option value="returned">Returned</option>
+          <option value="stolen">Stolen</option>
         </select>
         <select className="px-5 py-3 rounded-xl border border-slate-100 bg-slate-50/50 text-xs font-bold uppercase tracking-widest text-slate-600 outline-none focus:ring-2 focus:ring-blue-600 appearance-none" value={locationFilter} onChange={e => { setLocationFilter(e.target.value); setPage(1); }}>
           <option value="">All Locations</option>
@@ -624,7 +638,7 @@ export default function InventoryPage() {
 
                       {/* Status */}
                       <td className="px-4 py-3">
-                        <span className={`${badge.wrap} scale-90 origin-left`}><span className={`h-1 w-1 rounded-full ${badge.dot}`} />{lookups.inventory_status?.find(l => l.value === item.status)?.label || item.status}</span>
+                        <span className={`${badge.wrap} scale-90 origin-left`}><span className={`h-1 w-1 rounded-full ${badge.dot}`} />{lookups.inventory_status?.find(l => l.value === item.status)?.label || (item.status.charAt(0).toUpperCase() + item.status.slice(1))}</span>
                       </td>
 
                       {/* Actions */}
@@ -929,6 +943,32 @@ export default function InventoryPage() {
                   {branches.map(b => <option key={b._id} value={b._id}>{b.name} ({b.code})</option>)}
                 </select>
               </div>
+
+              {/* ── Cashier Attribution ── */}
+              <div className="col-span-2 p-4 rounded-2xl border-2 border-blue-100 bg-gradient-to-r from-blue-50/60 to-purple-50/40 space-y-2.5">
+                <label className="text-[10px] font-black text-blue-700 uppercase tracking-widest flex items-center gap-2">
+                  <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                  Cashier Attribution — Sale Performance Record
+                </label>
+                <select
+                  className="w-full px-4 py-3 rounded-xl border border-blue-200 bg-white outline-none text-sm font-bold appearance-none focus:ring-2 focus:ring-blue-500 text-slate-900"
+                  value={soldForm.sold_by_user_id}
+                  onChange={e => setSoldForm({ ...soldForm, sold_by_user_id: e.target.value })}
+                >
+                  <option value="">— No Cashier / Manager Direct Sale —</option>
+                  {cashiers.map(c => (
+                    <option key={c._id} value={c._id}>{c.name}{(c.branch && typeof c.branch === 'object') ? ` · ${(c.branch as any).name}` : ''}</option>
+                  ))}
+                </select>
+                {soldForm.sold_by_user_id ? (
+                  <p className="text-[10px] font-bold text-blue-600 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                    This sale will be attributed to the selected cashier's performance record
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-slate-400 font-medium">Optionally select a cashier to track sales performance</p>
+                )}
+              </div>
             </div>
           )}
 
@@ -981,9 +1021,12 @@ export default function InventoryPage() {
                 const filteredSoldForm = Object.fromEntries(
                   Object.entries(soldForm).map(([k, v]) => [k, v === '' ? undefined : v])
                 );
+                // Auto-generate invoice number for new sales
+                const invoiceRef = newStatus === 'sold' ? generateSaleInvoiceNumber() : undefined;
                 await updateInventoryStatus(statusModal!._id, { 
                   status: newStatus, 
-                  ...filteredSoldForm, 
+                  ...filteredSoldForm,
+                  ...(invoiceRef ? { sale_reference: invoiceRef } : {}),
                   selling_price: Number(newSellingPrice) || statusModal!.selling_price 
                 });
                 setStatusModal(null); showToast('Status updated', 'success'); load();

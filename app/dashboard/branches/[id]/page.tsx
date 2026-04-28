@@ -3,7 +3,7 @@
 import { useEffect, useState, use } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { getBranch, getBranchAnalytics, getUsers, type Branch } from '@/lib/api';
+import { getBranch, getBranchAnalytics, getItemAttendanceDailyStats, type Branch } from '@/lib/api';
 
 const Bar = dynamic(() => import('react-chartjs-2').then(m => m.Bar), { ssr: false });
 const Line = dynamic(() => import('react-chartjs-2').then(m => m.Line), { ssr: false });
@@ -35,18 +35,20 @@ export default function BranchDetailPage({ params }: { params: Promise<{ id: str
 
   const [branch, setBranch] = useState<Branch | null>(null);
   const [analytics, setAnalytics] = useState<any>(null);
-  const [staff, setStaff] = useState<any[]>([]);
+  const [itemStats, setItemStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
       try {
-        const [bRes, aRes] = await Promise.all([
+        const [bRes, aRes, iRes] = await Promise.all([
           getBranch(id).catch(() => null),
           getBranchAnalytics(id).catch(() => null),
+          getItemAttendanceDailyStats(id).catch(() => null),
         ]);
         setBranch(bRes);
         setAnalytics(aRes);
+        setItemStats(iRes);
       } finally {
         setLoading(false);
       }
@@ -57,7 +59,7 @@ export default function BranchDetailPage({ params }: { params: Promise<{ id: str
   if (loading) {
     return (
       <div className="flex items-center justify-center h-[70vh]">
-        <div className="w-12 h-12 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
+        <div className="w-12 h-12 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin" />
       </div>
     );
   }
@@ -66,7 +68,7 @@ export default function BranchDetailPage({ params }: { params: Promise<{ id: str
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
         <p className="text-2xl font-black text-slate-300">Branch Not Found</p>
-        <Link href="/dashboard/analytics/branches" className="text-indigo-600 font-bold text-sm underline">← Back to Branches</Link>
+        <Link href="/dashboard/analytics/branches" className="text-blue-600 font-bold text-sm underline">← Back to Branches</Link>
       </div>
     );
   }
@@ -77,6 +79,7 @@ export default function BranchDetailPage({ params }: { params: Promise<{ id: str
   const salesTrend30d = analytics?.salesTrend30d || [];
   const topProducts = analytics?.topProducts || [];
   const cashierPerformance = analytics?.cashierPerformance || [];
+  const managerPerformance = analytics?.managerPerformance || [];
   const damagedItems = analytics?.damagedItems || [];
   const lowStock = analytics?.lowStockWarnings || [];
 
@@ -149,7 +152,7 @@ export default function BranchDetailPage({ params }: { params: Promise<{ id: str
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <Link href="/dashboard/analytics/branches" className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-500 hover:underline">← All Branches</Link>
+          <Link href="/dashboard/analytics/branches" className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-500 hover:underline">← All Branches</Link>
           <h1 className="text-3xl font-black text-slate-900 tracking-tight mt-2">{branch.name}</h1>
           <div className="flex items-center gap-3 mt-1.5">
             <span className="px-2.5 py-1 bg-slate-100 rounded-lg text-[10px] font-black text-slate-500 uppercase tracking-wider">{branch.code}</span>
@@ -201,101 +204,218 @@ export default function BranchDetailPage({ params }: { params: Promise<{ id: str
       </div>
 
       {/* Charts */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
         {/* 7-Day Sales Trend */}
-        <div className="bg-white rounded-3xl border border-slate-100 p-7 shadow-sm">
-          <p className="text-base font-black text-slate-800 mb-1">7-Day Sales Trend</p>
-          <p className="text-[11px] text-slate-400 font-medium mb-6">Items sold per day</p>
-          <div className="h-[240px]">
+        <div className="bg-white rounded-[2.5rem] border border-slate-100 p-8 shadow-sm hover:shadow-md transition-all duration-300">
+          <div className="flex items-center gap-4 mb-8">
+            <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600">
+              <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
+            </div>
+            <div>
+              <p className="text-lg font-black text-slate-900 tracking-tight">7-Day Sales Trend</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-1">Items sold per day</p>
+            </div>
+          </div>
+          <div className="h-[280px]">
             {salesTrend7d.length > 0 ? (
               <Line data={trend7dData} options={chartOpts} />
             ) : (
-              <div className="flex items-center justify-center h-full text-slate-300 font-bold text-sm">No sales data yet</div>
+              <div className="flex items-center justify-center h-full text-slate-300 font-bold text-sm bg-slate-50/50 rounded-3xl border border-dashed border-slate-200">No sales data yet</div>
             )}
           </div>
         </div>
 
         {/* Top Products */}
-        <div className="bg-white rounded-3xl border border-slate-100 p-7 shadow-sm">
-          <p className="text-base font-black text-slate-800 mb-1">Top Selling Products</p>
-          <p className="text-[11px] text-slate-400 font-medium mb-6">All-time best performers at this branch</p>
-          <div className="h-[240px]">
+        <div className="bg-white rounded-[2.5rem] border border-slate-100 p-8 shadow-sm hover:shadow-md transition-all duration-300">
+          <div className="flex items-center gap-4 mb-8">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+              <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>
+            </div>
+            <div>
+              <p className="text-lg font-black text-slate-900 tracking-tight">Top Selling Products</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-1">All-time best performers</p>
+            </div>
+          </div>
+          <div className="h-[280px]">
             {topProducts.length > 0 ? (
               <Bar data={topProductsData} options={chartOpts} />
             ) : (
-              <div className="flex items-center justify-center h-full text-slate-300 font-bold text-sm">No sales recorded yet</div>
+              <div className="flex items-center justify-center h-full text-slate-300 font-bold text-sm bg-slate-50/50 rounded-3xl border border-dashed border-slate-200">No sales recorded yet</div>
             )}
           </div>
         </div>
 
-        {/* Cashier Performance */}
-        <div className="bg-white rounded-3xl border border-slate-100 p-7 shadow-sm">
-          <p className="text-base font-black text-slate-800 mb-1">Cashier Performance</p>
-          <p className="text-[11px] text-slate-400 font-medium mb-6">Sales processed by each staff member</p>
-          <div className="h-[240px]">
-            {cashierPerformance.length > 0 ? (
-              <Bar data={cashierChartData} options={chartOpts} />
-            ) : (
-              <div className="flex items-center justify-center h-full text-slate-300 font-bold text-sm">No cashier data yet</div>
-            )}
-          </div>
-        </div>
-
-        {/* Low Stock Alerts */}
-        <div className="bg-white rounded-3xl border border-slate-100 p-7 shadow-sm">
-          <p className="text-base font-black text-slate-800 mb-1">Low Stock Alerts</p>
-          <p className="text-[11px] text-slate-400 font-medium mb-6">Products with ≤2 units available</p>
-          {lowStock.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-40 gap-2">
-              <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="#10b981" strokeWidth={2}><path d="M9 12l2 2 4-4" /><circle cx="12" cy="12" r="9" /></svg>
-              <p className="text-sm font-bold text-emerald-600">All products well stocked</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {lowStock.map((item: any, i: number) => (
-                <div key={i} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-2xl">
-                  <p className="text-sm font-bold text-slate-700 truncate flex-1 mr-3">{item.product_name}</p>
-                  <span className="px-3 py-1 bg-amber-50 text-amber-600 rounded-xl text-[11px] font-black whitespace-nowrap">{item.count} left</span>
+        {/* Staff Performance Leaderboards */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 xl:col-span-2">
+          {/* Cashier Performance Leaderboard */}
+          <div className="bg-white rounded-[2.5rem] border border-slate-100 p-8 shadow-sm hover:shadow-md transition-all duration-300">
+            <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600">
+                  <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                 </div>
-              ))}
+                <div>
+                  <p className="text-lg font-black text-slate-900 tracking-tight">Cashier Performance</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-1">All-time contributions by cashiers</p>
+                </div>
+              </div>
             </div>
-          )}
+            
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    {['Staff Member', 'Total Sales', 'Revenue Generated'].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {cashierPerformance
+                    .sort((a: any, b: any) => b.sales_count - a.sales_count)
+                    .slice(0, 5)
+                    .map((staff: any, i: number) => (
+                        <tr key={`${staff.user_name}-${i}`} className="hover:bg-slate-50/50 transition-colors duration-200">
+                          <td className="px-4 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full flex items-center justify-center font-black text-white text-xs" style={{ backgroundColor: COLORS[i % COLORS.length] }}>
+                                {staff.user_name.charAt(0).toUpperCase()}
+                              </div>
+                              <div>
+                                <span className="font-bold text-slate-900 text-sm block">{staff.user_name}</span>
+                                <span className="text-[9px] font-bold text-blue-500 uppercase tracking-widest">Cashier</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-4">
+                            <span className="font-black text-slate-800">{staff.sales_count}</span>
+                          </td>
+                          <td className="px-4 py-4">
+                            <span className="font-black text-blue-600">{fmt(staff.total_revenue)}</span>
+                          </td>
+                        </tr>
+                    ))}
+                  {cashierPerformance.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="py-8 text-center text-sm font-bold text-slate-400 italic">No cashier data available yet.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Manager Performance Leaderboard */}
+          <div className="bg-white rounded-[2.5rem] border border-slate-100 p-8 shadow-sm hover:shadow-md transition-all duration-300">
+            <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center text-white">
+                  <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                </div>
+                <div>
+                  <p className="text-lg font-black text-slate-900 tracking-tight">Manager Performance</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-1">Revenue authorized by managers</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    {['Staff Member', 'Total Sales', 'Revenue Generated'].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {managerPerformance
+                    .sort((a: any, b: any) => b.sales_count - a.sales_count)
+                    .slice(0, 5)
+                    .map((staff: any, i: number) => (
+                        <tr key={`${staff.user_name}-${i}`} className="hover:bg-slate-50/50 transition-colors duration-200">
+                          <td className="px-4 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full flex items-center justify-center font-black text-white text-xs bg-slate-600">
+                                {staff.user_name.charAt(0).toUpperCase()}
+                              </div>
+                              <div>
+                                <span className="font-bold text-slate-900 text-sm block">{staff.user_name}</span>
+                                <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Manager</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-4">
+                            <span className="font-black text-slate-800">{staff.sales_count}</span>
+                          </td>
+                          <td className="px-4 py-4">
+                            <span className="font-black text-slate-600">{fmt(staff.total_revenue)}</span>
+                          </td>
+                        </tr>
+                    ))}
+                  {managerPerformance.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="py-8 text-center text-sm font-bold text-slate-400 italic">No manager data available yet.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {/* Item Attendance */}
+        <div className="bg-white rounded-[2.5rem] border border-slate-100 p-8 shadow-sm flex flex-col xl:col-span-2">
+          <div className="flex items-center gap-4 mb-8">
+            <div className="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-600">
+              <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
+            </div>
+            <div>
+              <p className="text-lg font-black text-slate-900 tracking-tight">Item Attendance</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-1">Daily physical inventory audit</p>
+            </div>
+          </div>
+          <div className="flex-1 flex flex-col justify-center max-w-3xl mx-auto w-full">
+            {itemStats ? (
+              <div className="space-y-6">
+                <div className="flex justify-between items-end">
+                  <div>
+                    <p className="text-[11px] font-black uppercase text-emerald-500 tracking-[0.2em] mb-1">Verified</p>
+                    <p className="text-5xl font-black text-emerald-600 leading-none">{itemStats.present_count || 0}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[11px] font-black uppercase text-red-500 tracking-[0.2em] mb-1">Missing</p>
+                    <p className="text-5xl font-black text-red-500 leading-none">{itemStats.missing_count || 0}</p>
+                  </div>
+                </div>
+                <div className="h-6 bg-red-100 rounded-full overflow-hidden flex shadow-inner">
+                  <div 
+                    className="h-full bg-emerald-500 transition-all duration-1000 relative" 
+                    style={{ width: `${itemStats.total_active_items > 0 ? ((itemStats.present_count || 0) / itemStats.total_active_items) * 100 : 0}%` }} 
+                  >
+                    <div className="absolute inset-0 bg-white/20" style={{ backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.15) 50%, rgba(255,255,255,.15) 75%, transparent 75%, transparent)', backgroundSize: '1rem 1rem' }} />
+                  </div>
+                </div>
+                <div className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+                    <span className="text-slate-900">{itemStats.total_active_items > 0 ? Math.round(((itemStats.present_count || 0) / itemStats.total_active_items) * 100) : 0}%</span> Completed
+                  </p>
+                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+                    <span className="text-slate-900">{itemStats.total_active_items || 0}</span> Total Active Items
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center gap-3 bg-slate-50/50 p-12 rounded-[2rem] border border-dashed border-slate-200">
+                <svg width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} className="text-slate-300">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-sm font-bold text-slate-400">No audit data available</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
-
-      {/* Cashier Table */}
-      {cashierPerformance.length > 0 && (
-        <div className="bg-white rounded-3xl border border-slate-100 p-7 shadow-sm">
-          <p className="text-base font-black text-slate-800 mb-1">Staff Performance Leaderboard</p>
-          <p className="text-[11px] text-slate-400 font-medium mb-6">All-time cashier contributions at this branch</p>
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-slate-100">
-                {['Rank', 'Cashier', 'Role', 'Total Sales', 'Revenue Generated'].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {cashierPerformance.map((c: any, i: number) => (
-                <tr key={i} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
-                  <td className="px-4 py-4">
-                    <div className="w-7 h-7 rounded-xl flex items-center justify-center text-white font-black text-xs shadow" style={{ backgroundColor: COLORS[i % COLORS.length] }}>
-                      {i + 1}
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 font-bold text-slate-800 text-sm">{c.user_name}</td>
-                  <td className="px-4 py-4">
-                    <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 text-[10px] font-black capitalize">{c.user_role}</span>
-                  </td>
-                  <td className="px-4 py-4 font-black text-slate-800">{c.sales_count}</td>
-                  <td className="px-4 py-4 font-black text-emerald-600">{fmt(c.total_revenue)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
 
       {/* Damaged Items */}
       {damagedItems.length > 0 && (

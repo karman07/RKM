@@ -107,6 +107,7 @@ interface ProductForm {
   gross_weight: string; net_weight: string; stone_weight: string;
   wastage_percentage: string;
   has_stones: boolean; stone_type: string;
+  in_stock: boolean;
   /** Multi-stone breakdown rows */
   stones: StoneRow[];
   making_charge_type: string; making_charge_rate: string; fixed_making_charge: string;
@@ -134,6 +135,7 @@ const emptyForm: ProductForm = {
   gross_weight: '', net_weight: '', stone_weight: '',
   wastage_percentage: '0',
   has_stones: false, stone_type: '',
+  in_stock: true,
   stones: [],
   making_charge_type: '', making_charge_rate: '', fixed_making_charge: '',
   tax_percentage: '3',
@@ -236,7 +238,8 @@ export default function ProductsPage() {
       price_override: '',
       purchase_price: '',
       extra_charges: [],
-      max_manager_discount: '0',
+      max_manager_discount: '',
+      in_stock: false,
     };
   }
 
@@ -337,6 +340,7 @@ export default function ProductsPage() {
       stone_weight: String(p.stone_weight ?? ''),
       wastage_percentage: String((p as any).wastage_percentage ?? '0'),
       has_stones: p.has_stones,
+      in_stock: (p as any).in_stock ?? true,
       stone_type: p.stone_type ?? '',
       stones: ((p as any).stones ?? []).map((s: any) => ({
         stone_type: s.stone_type,
@@ -424,6 +428,7 @@ export default function ProductsPage() {
         stone_weight: form.stone_weight ? Number(form.stone_weight) : undefined,
         wastage_percentage: Number(form.wastage_percentage) || 0,
         has_stones: form.has_stones,
+        in_stock: form.in_stock,
         stone_type: form.has_stones && form.stone_type ? form.stone_type : undefined,
         // Multi-stone array — send if any rows with valid type
         stones: (form.stones || [])
@@ -784,11 +789,16 @@ export default function ProductsPage() {
                       </td>
                       <td className="px-8 py-5">
                         {(() => {
-                           const b = statusBadge[p.status] ?? statusBadge.inactive;
+                           // Default to true if undefined to match the edit modal's behavior
+                           const isInStock = p.in_stock !== false;
+                           const dotColor = isInStock ? 'bg-emerald-500' : 'bg-red-500';
+                           const textColor = isInStock ? 'text-emerald-700' : 'text-red-700';
+                           const label = isInStock ? 'IN STOCK' : 'OUT OF STOCK';
+                           
                            return (
                              <div className="flex items-center gap-2">
-                               <div className={`w-2 h-2 rounded-full ${b.dot} shadow-lg shadow-current/20`} />
-                               <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest italic">{p.status}</span>
+                               <div className={`w-2 h-2 rounded-full ${dotColor} shadow-lg shadow-current/20`} />
+                               <span className={`text-[10px] font-black ${textColor} uppercase tracking-widest italic`}>{label}</span>
                              </div>
                            )
                         })()}
@@ -908,6 +918,15 @@ export default function ProductsPage() {
                     {occasionOptions.map((o) => <option key={o._id} value={o.value}>{o.label}</option>)}
                   </select>
                 </div>
+              </div>
+              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
+                <div>
+                  <p className="text-sm font-medium text-slate-900">In Stock</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{form.in_stock ? 'Item is currently available for purchase.' : 'Item is marked as out of stock/unavailable.'}</p>
+                </div>
+                <button type="button" onClick={() => set('in_stock', !form.in_stock)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${form.in_stock ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${form.in_stock ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
               </div>
             </div>
           )}

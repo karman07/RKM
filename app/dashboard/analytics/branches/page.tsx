@@ -8,7 +8,12 @@ import {
   getAllBranchAnalytics,
   getDamagedInventory,
   getInventoryStats,
+  getUsers,
+  getDailyAttendance,
+  getItemAttendanceDailyStats,
   type Branch,
+  type User,
+  type Attendance,
 } from '@/lib/api';
 
 const Bar = dynamic(() => import('react-chartjs-2').then(m => m.Bar), { ssr: false });
@@ -32,7 +37,7 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineEleme
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
 const BRANCH_COLORS = [
-  '#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
+  '#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
   '#06b6d4', '#f97316', '#84cc16', '#e879f9', '#14b8a6',
 ];
 const DAMAGED_COLOR = '#ef4444';
@@ -45,7 +50,7 @@ function fmt(n: number) {
 function KpiCard({ label, value, sub, accent }: { label: string; value: string | number; sub?: string; accent?: string }) {
   return (
     <div className="relative bg-white rounded-3xl border border-slate-100 p-6 shadow-sm overflow-hidden group hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200">
-      <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-10" style={{ backgroundColor: accent || '#6366f1' }} />
+      <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-10" style={{ backgroundColor: accent || '#2563eb' }} />
       <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-3">{label}</p>
       <p className="text-3xl font-black text-slate-900 tracking-tighter">{value}</p>
       {sub && <p className="text-[11px] font-medium text-slate-400 mt-1.5">{sub}</p>}
@@ -70,20 +75,39 @@ export default function BranchAnalyticsPage() {
   const [damagedData, setDamagedData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
+  const [users, setUsers] = useState<User[]>([]);
+  const [attendance, setAttendance] = useState<Attendance[]>([]);
+  const [itemAttendanceMap, setItemAttendanceMap] = useState<Record<string, any>>({});
 
   useEffect(() => {
     async function load() {
       try {
-        const [bRes, aRes, gRes, dRes] = await Promise.all([
+        const [bRes, aRes, gRes, dRes, uRes, attRes] = await Promise.all([
           getBranches().catch(() => []),
           getAllBranchAnalytics().catch(() => null),
           getInventoryStats().catch(() => null),
           getDamagedInventory({ limit: '50' }).catch(() => ({ data: [] })),
+          getUsers(undefined, 1, 200).catch(() => ({ data: [] })),
+          getDailyAttendance(new Date().toISOString().split('T')[0]).catch(() => [])
         ]);
+        
+        // Fetch item attendance for all active branches concurrently
+        const itemAttPromises = bRes.map((b: Branch) => 
+           getItemAttendanceDailyStats(b._id, new Date().toISOString().split('T')[0]).catch(() => null)
+        );
+        const itemAttRes = await Promise.all(itemAttPromises);
+        const itemAttMap: Record<string, any> = {};
+        bRes.forEach((b: Branch, i: number) => {
+           if (itemAttRes[i]) itemAttMap[b._id] = itemAttRes[i];
+        });
+
         setBranches(bRes);
         setAnalytics(aRes);
         setGlobalStats(gRes);
         setDamagedData((dRes as any).data || []);
+        setUsers(uRes.data || []);
+        setAttendance(attRes || []);
+        setItemAttendanceMap(itemAttMap);
       } finally {
         setLoading(false);
       }
@@ -95,7 +119,7 @@ export default function BranchAnalyticsPage() {
     return (
       <div className="flex items-center justify-center h-[70vh]">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 rounded-full border-4 border-indigo-100 border-t-indigo-600 animate-spin" />
+          <div className="w-12 h-12 rounded-full border-4 border-blue-100 border-t-blue-600 animate-spin" />
           <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Loading Analytics…</p>
         </div>
       </div>
@@ -192,19 +216,19 @@ export default function BranchAnalyticsPage() {
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-500 mb-1">Admin Command View</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-500 mb-1">Admin Command View</p>
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">Branch Intelligence</h1>
           <p className="text-sm text-slate-400 font-medium mt-1">Real-time analytics across all branches — stock, sales, staff & damage</p>
         </div>
-        <div className="flex items-center gap-2 px-4 py-2.5 bg-indigo-50 border border-indigo-100 rounded-2xl text-[11px] font-black uppercase tracking-wider text-indigo-600">
-          <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+        <div className="flex items-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-100 rounded-2xl text-[11px] font-black uppercase tracking-wider text-blue-600">
+          <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
           {branches.length} Active Branches
         </div>
       </div>
 
       {/* Global KPI Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label="Total Branch Stock" value={totalStock} sub={fmt(totalStockValue) + ' valuation'} accent="#6366f1" />
+        <KpiCard label="Total Branch Stock" value={totalStock} sub={fmt(totalStockValue) + ' valuation'} accent="#2563eb" />
         <KpiCard label="Sales Today" value={totalSalesToday} sub={fmt(totalRevenueToday) + ' revenue'} accent="#10b981" />
         <KpiCard label="Total Active Branches" value={branches.filter(b => b.is_active).length} sub={`${branches.length} total`} accent="#f59e0b" />
         <KpiCard label="Damaged Items" value={totalDamaged} sub="Across all branches" accent="#ef4444" />
@@ -245,22 +269,44 @@ export default function BranchAnalyticsPage() {
                       {branch.name.charAt(0)}
                     </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-3 mt-4">
-                    <div className="bg-white border border-slate-100 rounded-xl p-3 text-center transition-all group-hover:border-slate-200">
+                  <div className="grid grid-cols-4 gap-2 mt-4">
+                    <div className="bg-white border border-slate-100 rounded-xl p-2 text-center transition-all group-hover:border-slate-200">
                       <p className="text-[9px] font-black uppercase text-slate-400 mb-1">Stock</p>
-                      <p className="text-xl font-black text-slate-800">{stock?.count || 0}</p>
+                      <p className="text-sm font-black text-slate-800">{stock?.count || 0}</p>
                     </div>
-                    <div className="bg-white border border-slate-100 rounded-xl p-3 text-center transition-all group-hover:border-slate-200">
-                      <p className="text-[9px] font-black uppercase mb-1" style={{ color }}>Today</p>
-                      <p className="text-xl font-black" style={{ color }}>{salesToday?.count || 0}</p>
+                    <div className="bg-white border border-slate-100 rounded-xl p-2 text-center transition-all group-hover:border-slate-200">
+                      <p className="text-[9px] font-black uppercase mb-1" style={{ color }}>Sales</p>
+                      <p className="text-sm font-black" style={{ color }}>{salesToday?.count || 0}</p>
                     </div>
-                    <div className="bg-white border border-slate-100 rounded-xl p-3 text-center transition-all group-hover:border-slate-200">
-                      <p className="text-[9px] font-black uppercase text-red-400 mb-1">Damaged</p>
-                      <p className="text-xl font-black text-red-600">{damaged?.count || 0}</p>
-                    </div>
+                    
+                    {/* Staff Attendance */}
+                    {(() => {
+                      const branchUsers = users.filter(u => (typeof u.branch === 'object' ? u.branch?._id : u.branch) === branch._id && u.is_active !== false);
+                      const presentCount = attendance.filter(a => a.status === 'present' && a.user_id && branchUsers.some(u => u._id === (typeof a.user_id === 'object' ? a.user_id?._id : a.user_id))).length;
+                      const totalStaff = branchUsers.length;
+                      return (
+                        <div className="bg-white border border-slate-100 rounded-xl p-2 text-center transition-all group-hover:border-slate-200">
+                          <p className="text-[9px] font-black uppercase text-blue-400 mb-1">Staff</p>
+                          <p className="text-sm font-black text-blue-600">{presentCount}/{totalStaff}</p>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Item Audit */}
+                    {(() => {
+                      const iStat = itemAttendanceMap[branch._id];
+                      const iTotal = iStat?.total_active_items || 0;
+                      const iPresent = iStat?.present_count || 0;
+                      return (
+                        <div className="bg-white border border-slate-100 rounded-xl p-2 text-center transition-all group-hover:border-slate-200">
+                          <p className="text-[9px] font-black uppercase text-emerald-400 mb-1">Audit</p>
+                          <p className="text-sm font-black text-emerald-600">{iPresent}/{iTotal}</p>
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div className="mt-4 flex items-center justify-end">
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider group-hover:text-indigo-600 transition-colors">View Dashboard →</span>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider group-hover:text-blue-600 transition-colors">View Dashboard →</span>
                   </div>
                 </div>
               </Link>

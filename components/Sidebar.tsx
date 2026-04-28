@@ -240,6 +240,21 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Damaged Items</span>}
             </Link>
             <Link
+              href="/dashboard/inventory/stolen"
+              onClick={onNavigate}
+              title={isCollapsed ? "Stolen Items" : ""}
+              className={navClass(pathname.startsWith('/dashboard/inventory/stolen'))}
+              style={getNavStyle(pathname.startsWith('/dashboard/inventory/stolen'))}
+            >
+              {isCollapsed && pathname.startsWith('/dashboard/inventory/stolen') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname.startsWith('/dashboard/inventory/stolen')} color={pathname.startsWith('/dashboard/inventory/stolen') ? colors.activeText : colors.textMuted}>
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" />
+                <path d="M12 8v4" />
+                <path d="M12 16h.01" />
+              </NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Stolen Items</span>}
+            </Link>
+            <Link
               href="/dashboard/refunds"
               onClick={onNavigate}
               title={isCollapsed ? "Refunds" : ""}
@@ -268,6 +283,50 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
                 <line x1="3" y1="10" x2="21" y2="10" />
               </NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Personnel Attendance</span>}
+            </Link>
+            <Link
+              href="/dashboard/item-attendance"
+              onClick={onNavigate}
+              title={isCollapsed ? "Item Attendance" : ""}
+              className={navClass(pathname.startsWith('/dashboard/item-attendance'))}
+              style={getNavStyle(pathname.startsWith('/dashboard/item-attendance'))}
+            >
+              {isCollapsed && pathname.startsWith('/dashboard/item-attendance') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname.startsWith('/dashboard/item-attendance')} color={pathname.startsWith('/dashboard/item-attendance') ? colors.activeText : colors.textMuted}>
+                <path d="M12 4v16m8-8H4" />
+                <rect x="3" y="3" width="18" height="18" rx="4" />
+              </NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Item Attendance</span>}
+            </Link>
+
+            {/* Leave Management */}
+            <Link
+              href="/dashboard/leaves"
+              onClick={onNavigate}
+              title={isCollapsed ? "Leave Management" : ""}
+              className={navClass(pathname.startsWith('/dashboard/leaves'))}
+              style={getNavStyle(pathname.startsWith('/dashboard/leaves'))}
+            >
+              {isCollapsed && pathname.startsWith('/dashboard/leaves') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname.startsWith('/dashboard/leaves')} color={pathname.startsWith('/dashboard/leaves') ? colors.activeText : colors.textMuted}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+              </NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Leave Requests</span>}
+            </Link>
+
+            {/* Reimbursements */}
+            <Link
+              href="/dashboard/reimbursements"
+              onClick={onNavigate}
+              title={isCollapsed ? "Reimbursements" : ""}
+              className={navClass(pathname.startsWith('/dashboard/reimbursements'))}
+              style={getNavStyle(pathname.startsWith('/dashboard/reimbursements'))}
+            >
+              {isCollapsed && pathname.startsWith('/dashboard/reimbursements') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname.startsWith('/dashboard/reimbursements')} color={pathname.startsWith('/dashboard/reimbursements') ? colors.activeText : colors.textMuted}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+              </NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Reimbursements</span>}
             </Link>
           </div>
         </section>

@@ -535,6 +535,7 @@ export default function DashboardPage() {
                   <tr className="border-b border-slate-100 b-slate-50/50">
                     <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Masterpiece</th>
                     <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Customer</th>
+                    <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Cashier</th>
                     <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Shipping</th>
                     <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Valuations</th>
                     <th className="px-8 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Actions</th>
@@ -565,6 +566,24 @@ export default function DashboardPage() {
                         <td className="px-8 py-6">
                           <p className="text-sm font-bold text-slate-900">{item.sold_customer_name || 'Guest Client'}</p>
                           <p className="text-[11px] font-medium text-slate-500">{item.sold_customer_phone || 'Unrecorded'}</p>
+                        </td>
+                        <td className="px-8 py-6">
+                          {(() => {
+                            const cashierObj = item.sold_by_user_id && typeof item.sold_by_user_id === 'object' ? item.sold_by_user_id : null;
+                            return cashierObj ? (
+                              <div className="flex items-center gap-2">
+                                <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white text-[9px] font-black flex-shrink-0">
+                                  {cashierObj.name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                                </div>
+                                <div>
+                                  <p className="text-[11px] font-black text-slate-900">{cashierObj.name}</p>
+                                  <p className="text-[9px] font-bold text-indigo-500 uppercase tracking-widest">Cashier</p>
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] font-bold text-slate-300 italic uppercase tracking-widest">Manager Direct</span>
+                            );
+                          })()}
                         </td>
                         <td className="px-8 py-6">
                           <p className="text-[11px] font-medium text-slate-600 max-w-[200px] line-clamp-2 italic">
@@ -602,7 +621,7 @@ export default function DashboardPage() {
                     );
                   }) : (
                     <tr>
-                      <td colSpan={5} className="py-20 text-center">
+                      <td colSpan={6} className="py-20 text-center">
                         <p className="text-sm font-medium text-slate-400">No transactions recorded in this ledger.</p>
                       </td>
                     </tr>
@@ -614,105 +633,72 @@ export default function DashboardPage() {
         </div>
 
         <div className="space-y-8">
-          {/* Presence Distribution */}
-          <div className="p-8 rounded-[2.5rem] border bg-white shadow-sm shadow-slate-200/40 relative overflow-hidden group" style={{ borderColor: colors.border }}>
-             <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50/10 rounded-full -mr-16 -mt-16 blur-3xl group-hover:bg-blue-100/20 transition-all duration-700" />
-            <div className="flex items-center justify-between mb-8 relative z-10">
+          {/* Presence Audit Card */}
+          <div className="p-8 rounded-[2.5rem] border bg-white shadow-sm hover:shadow-md transition-all" style={{ borderColor: colors.border }}>
+            <div className="flex items-center justify-between mb-8">
               <div className="flex items-center gap-3">
-                <Activity className="w-5 h-5 text-blue-600" />
+                <div className="w-10 h-10 rounded-2xl bg-[#5A0F1A]/5 flex items-center justify-center text-[#5A0F1A]">
+                  <Activity className="w-5 h-5" />
+                </div>
                 <h3 className="text-xl font-black tracking-tight" style={{ color: colors.textMain }}>Presence Audit</h3>
               </div>
               <select 
                 value={reportDays}
                 onChange={(e) => setReportDays(Number(e.target.value))}
-                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-widest focus:outline-none focus:border-blue-500 cursor-pointer"
+                className="bg-slate-50 border border-slate-100 rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-widest focus:outline-none focus:border-[#5A0F1A] cursor-pointer"
               >
                 <option value={7}>Weekly</option>
                 <option value={30}>Monthly</option>
               </select>
             </div>
             
-            <div className="space-y-8 relative z-10">
-              {/* Role Breakdown: Managers */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 px-2">
-                   <Shield className="w-3.5 h-3.5 text-violet-600" />
-                   <span className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-600">Administrative (Managers)</span>
+            <div className="space-y-8">
+              {/* Executive Management */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 px-1">
+                   <Shield className="w-3.5 h-3.5 text-[#5A0F1A]/40" />
+                   <span className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">Executive Management</span>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                   <div className="bg-white p-4 rounded-2xl border border-emerald-100 shadow-sm transition-all hover:shadow-md">
-                      <p className="text-[10px] font-bold text-emerald-600 uppercase mb-1">Present</p>
-                      <p className="text-xl font-black text-emerald-700">{stats?.attendanceSummary.roles?.manager?.present ?? 0}</p>
+                   <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center">
+                      <p className="text-[9px] font-black text-[#5A0F1A] uppercase tracking-widest mb-1">Present</p>
+                      <p className="text-2xl font-black text-slate-900">{stats?.attendanceSummary.roles?.manager?.present ?? 0}</p>
                    </div>
-                   <div className="bg-white p-4 rounded-2xl border border-red-100 shadow-sm transition-all hover:shadow-md">
-                      <p className="text-[10px] font-bold text-red-600 uppercase mb-1">Absent</p>
-                      <p className="text-xl font-black text-red-700">{stats?.attendanceSummary.roles?.manager?.absent ?? 0}</p>
+                   <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center opacity-50">
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Absent</p>
+                      <p className="text-2xl font-black text-slate-900">{stats?.attendanceSummary.roles?.manager?.absent ?? 0}</p>
                    </div>
                 </div>
               </div>
 
-              {/* Role Breakdown: Cashiers / Others */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 px-2 border-t border-slate-50 pt-6">
-                   <UsersIcon className="w-3.5 h-3.5 text-blue-600" />
-                   <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600">Operational Personnel</span>
+              {/* Operational Force */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 px-1">
+                   <UsersIcon className="w-3.5 h-3.5 text-[#5A0F1A]/40" />
+                   <span className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">Operational Force</span>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                   <div className="bg-white p-4 rounded-2xl border border-emerald-100 shadow-sm">
-                      <p className="text-[10px] font-bold text-emerald-600 uppercase mb-1">Present</p>
-                      <p className="text-xl font-black text-emerald-700">{stats?.attendanceSummary.roles?.cashier?.present ?? 0}</p>
+                   <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center">
+                      <p className="text-[9px] font-black text-[#5A0F1A] uppercase tracking-widest mb-1">Present</p>
+                      <p className="text-2xl font-black text-slate-900">{stats?.attendanceSummary.roles?.cashier?.present ?? 0}</p>
                    </div>
-                   <div className="bg-white p-4 rounded-2xl border border-red-100 shadow-sm">
-                      <p className="text-[10px] font-bold text-red-600 uppercase mb-1">Absent</p>
-                      <p className="text-xl font-black text-red-700">{stats?.attendanceSummary.roles?.cashier?.absent ?? 0}</p>
+                   <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center opacity-50">
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Absent</p>
+                      <p className="text-2xl font-black text-slate-900">{stats?.attendanceSummary.roles?.cashier?.absent ?? 0}</p>
                    </div>
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-slate-50">
-                 <div className="flex items-center justify-between px-2">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic">Global Operational Velocity</span>
-                    <span className="text-[10px] font-black text-slate-900">{( (stats?.attendanceSummary.total?.present || 0) / ( (stats?.attendanceSummary.total?.present || 0) + (stats?.attendanceSummary.total?.absent || 0) || 1 ) * 100 ).toFixed(0)}% ROI</span>
-                 </div>
+              <div className="pt-6 border-t border-slate-50 flex items-center justify-between px-1">
+                <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Global Efficiency</span>
+                <span className="text-[11px] font-black text-slate-900 bg-slate-50 px-3 py-1 rounded-full border border-slate-100">
+                  {(( (stats?.attendanceSummary.total?.present || 0) / ( (stats?.attendanceSummary.total?.present || 0) + (stats?.attendanceSummary.total?.absent || 0) || 1 ) * 100 ).toFixed(0))}%
+                </span>
               </div>
             </div>
           </div>
 
-          {/* Top Operatives Leaderboard */}
-          <div className="p-8 rounded-[2.5rem] border bg-white shadow-sm shadow-slate-200/40 relative overflow-hidden group" style={{ borderColor: colors.border }}>
-             <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-50/10 rounded-full -mr-16 -mt-16 blur-3xl group-hover:bg-emerald-100/20 transition-all duration-700" />
-            <div className="flex items-center gap-3 mb-8 relative z-10">
-              <Award className="w-5 h-5 text-emerald-600" />
-              <h3 className="text-xl font-black tracking-tight" style={{ color: colors.textMain }}>Performance Hub</h3>
-            </div>
-            <div className="space-y-4 relative z-10">
-              {stats?.topOperatives?.length ? stats.topOperatives.map((op: any, i: number) => (
-                <Link 
-                  href={`/dashboard/users?profile=${op.user._id}`} 
-                  key={i} 
-                  className="flex items-center justify-between p-3 rounded-2xl hover:bg-slate-50 transition-all group/item cursor-pointer border border-transparent hover:border-slate-100"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 group-hover/item:bg-emerald-600 group-hover/item:text-white transition-all">
-                       <UserIcon className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <p className="text-[13px] font-black tracking-tight" style={{ color: colors.textMain }}>{op.user.name}</p>
-                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none mt-1">{op.user.role}</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[13px] font-black text-emerald-600 tracking-tight">{op.present}D</p>
-                    <p className="text-[9px] font-bold text-slate-300 uppercase tracking-tighter leading-none">Present</p>
-                  </div>
-                </Link>
-              )) : (
-                 <div className="py-10 text-center">
-                    <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em]">No performance metrics resolved</p>
-                 </div>
-              )}
-            </div>
-          </div>
+
         </div>
       </div>
 

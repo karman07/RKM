@@ -355,8 +355,10 @@ ${billEl.outerHTML}
   const totalTaxable = itemRows.reduce((a, r) => a + r.taxable, 0);
 
   const customer = items[0];
-  const saleRef  = customer?.sale_reference ?? customer?.unique_item_code ?? '—';
-  const billNo   = `DOC/SAL/${saleRef}`;
+  // Invoice number: prefer sale_reference (the generated INV-... number), fallback to unique_item_code
+  const invoiceNumber = customer?.sale_reference ?? null;
+  const saleRef  = invoiceNumber ?? customer?.unique_item_code ?? '—';
+  const billNo   = invoiceNumber ?? `DOC/SAL/${saleRef}`;
 
   // ── Branch details (actual data from sold_at_branch_id) ─────────────────────
   const branchData = customer?.sold_at_branch_id && typeof customer.sold_at_branch_id === 'object'
@@ -366,7 +368,7 @@ ${billEl.outerHTML}
   const shopName    = 'RKM JEWELLERS';
   const shopTagline = 'FINE JEWELLERY • EST. 2005';
 
-  // Build full address from actual branch fields — no hardcoded fallback
+  // Build full address from actual branch fields
   const shopBranchName = branchData?.name ?? '';
   const shopAddressParts = [
     branchData?.address,
@@ -375,12 +377,9 @@ ${billEl.outerHTML}
     branchData?.pincode ? `- ${branchData.pincode}` : null,
   ].filter(Boolean);
   const shopAddress = shopAddressParts.join(', ') || '';
-
-  // Phone from branch record directly
-  const shopPhone = branchData?.phone ?? '';
-
-  // GSTIN — stored in branch schema as a future field; fall back gracefully
+  const shopPhone   = branchData?.phone ?? '';
   const shopGstin: string = branchData?.gstin ?? '';
+  const shopEmail: string = branchData?.email ?? '';
 
   const cellR: React.CSSProperties = { padding: '6px 5px', textAlign: 'right', fontSize: '9px' };
   const headCell: React.CSSProperties = { padding: '7px 5px', textAlign: 'right', fontSize: '8px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px', background: '#f0f0f0', borderBottom: '1.5px solid #000', whiteSpace: 'nowrap' };
@@ -439,10 +438,12 @@ ${billEl.outerHTML}
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: '20px', fontWeight: 900, letterSpacing: '2px' }}>TAX INVOICE</div>
             <div style={{ fontSize: '9px', lineHeight: 1.7, color: '#333', marginTop: '4px' }}>
-              <div><b>Doc/Ref:</b> {billNo}</div>
+              {/* Prominent Invoice Number box */}
+              <div style={{ background: '#000', color: '#fff', padding: '3px 10px', display: 'inline-block', marginBottom: '4px', letterSpacing: '1.5px', fontWeight: 900, fontSize: '10px' }}>
+                {invoiceNumber ? `INVOICE NO: ${invoiceNumber}` : `REF: ${saleRef}`}
+              </div>
               <div><b>Date:</b> {date}</div>
               <div><b>Mode:</b> {customer?.payment_mode?.toUpperCase() ?? 'CASH'}</div>
-              {customer?.sale_reference && <div><b>Sale Ref:</b> {customer.sale_reference}</div>}
             </div>
             <div style={{ marginTop: '6px', padding: '2px 10px', background: '#fff', color: '#000', border: '1px solid #000', fontSize: '8px', fontWeight: 700, display: 'inline-block', letterSpacing: '1.5px' }}>
               CUSTOMER COPY
@@ -466,6 +467,7 @@ ${billEl.outerHTML}
           <div style={{ padding: '8px 16px' }}>
             <div style={{ fontSize: '8px', fontWeight: 700, color: '#555', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '3px' }}>Sale Info</div>
             <div style={{ fontSize: '9px', lineHeight: 1.65, color: '#333' }}>
+              <div><b>Invoice No:</b> <span style={{ fontWeight: 900, color: '#000' }}>{saleRef}</span></div>
               <div><b>Items:</b> {items.length}N &nbsp;|&nbsp; <b>Channel:</b> {customer?.sale_channel ?? 'store'}</div>
               {customer?.is_emi && <div><b>EMI:</b> {customer.emi_tenure_months}m via {customer.emi_provider} (Down: ₹{fmt(customer.emi_down_payment ?? 0)})</div>}
               {branchData && (
@@ -473,6 +475,9 @@ ${billEl.outerHTML}
               )}
               {!branchData && customer?.sold_at_branch_id && typeof customer.sold_at_branch_id === 'object' && (
                 <div><b>Branch:</b> {(customer.sold_at_branch_id as any).name}</div>
+              )}
+              {customer?.sold_by_user_id && typeof customer.sold_by_user_id === 'object' && (
+                <div><b>Cashier:</b> {(customer.sold_by_user_id as any).name}</div>
               )}
               {customer?.sold_by_user_id && typeof customer.sold_by_user_id === 'object' && (
                 <div><b>Staff:</b> {(customer.sold_by_user_id as any).name}</div>
@@ -590,7 +595,7 @@ ${billEl.outerHTML}
               <tbody>
                 <tr>
                   <td style={{ padding: '4px 0', fontWeight: 700 }}>{customer?.payment_mode?.toUpperCase() ?? 'CASH'}</td>
-                  <td style={{ padding: '4px 0', color: '#555' }}>{customer?.sale_reference ?? '—'}</td>
+                  <td style={{ padding: '4px 0', color: '#555', fontFamily: 'monospace', fontSize: '9px' }}>{saleRef}</td>
                   <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: 700 }}>₹{fmt(totalFinal)}</td>
                 </tr>
               </tbody>
@@ -648,9 +653,15 @@ ${billEl.outerHTML}
         </div>
 
         {/* ── FOOTER ──────────────────────────────────────────────── */}
-        <div style={{ padding: '7px 16px 12px', borderTop: '1.5px solid #000', display: 'flex', justifyContent: 'flex-end', alignItems: 'flex-end', fontSize: '8.5px', color: '#555' }}>
+        <div style={{ padding: '7px 16px 12px', borderTop: '1.5px solid #000', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', fontSize: '8.5px', color: '#555' }}>
+          <div style={{ fontSize: '8px', color: '#444', lineHeight: 1.7 }}>
+            {shopAddress && <div>{shopAddress}</div>}
+            {shopPhone && <div>Ph: {shopPhone}</div>}
+            {shopEmail && <div>Email: {shopEmail}</div>}
+            {shopGstin && <div>GSTIN: {shopGstin}</div>}
+          </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontWeight: 700, fontSize: '9.5px', color: '#000' }}>RKM JEWELLERS</div>
+            <div style={{ fontWeight: 700, fontSize: '9.5px', color: '#000' }}>RKM JEWELLERS{shopBranchName ? ` — ${shopBranchName}` : ''}</div>
             <div style={{ marginTop: '24px', borderTop: '1px solid #999', paddingTop: '2px' }}>Authorised Signatory</div>
             <div style={{ marginTop: '3px', color: '#aaa' }}>E&amp;OE | See Overleaf</div>
           </div>

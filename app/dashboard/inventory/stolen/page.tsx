@@ -1,15 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getDamagedInventory, getBranches, updateInventoryStatus, type InventoryItem, type Branch } from '@/lib/api';
+import { getInventory, getBranches, updateInventoryStatus, type InventoryItem, type Branch } from '@/lib/api';
 import { staticUrl } from '@/lib/api';
-import { AlertTriangle, RefreshCw, Box, AlertCircle, PackageX } from 'lucide-react';
+import { AlertTriangle, RefreshCw, Box, AlertCircle, PackageX, ShieldAlert } from 'lucide-react';
 
 function fmt(n: number) {
   return `₹${n.toLocaleString('en-IN')}`;
 }
 
-export default function DamagedItemsPage() {
+export default function StolenItemsPage() {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [selectedBranch, setSelectedBranch] = useState('');
@@ -25,9 +25,9 @@ export default function DamagedItemsPage() {
 
   useEffect(() => {
     setLoading(true);
-    const params: Record<string, string> = { page: String(page), limit: '20' };
+    const params: Record<string, string> = { page: String(page), limit: '20', status: 'stolen' };
     if (selectedBranch) params.branch_id = selectedBranch;
-    getDamagedInventory(params)
+    getInventory(params)
       .then(res => {
         setItems(res.data);
         setMeta(res.meta);
@@ -59,12 +59,12 @@ export default function DamagedItemsPage() {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
           <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 rounded-2xl bg-red-100 flex items-center justify-center border border-red-200">
-              <AlertTriangle className="w-5 h-5 text-red-600" />
+            <div className="w-10 h-10 rounded-2xl bg-stone-100 flex items-center justify-center border border-stone-200">
+              <ShieldAlert className="w-5 h-5 text-stone-600" />
             </div>
-            <h1 className="text-3xl font-black text-slate-900 tracking-tight">Damaged Inventory Log</h1>
+            <h1 className="text-3xl font-black text-slate-900 tracking-tight">Stolen Inventory Log</h1>
           </div>
-          <p className="text-sm text-slate-500 font-medium ml-1">Complete record of all damaged, lost, or expired items across branches</p>
+          <p className="text-sm text-slate-500 font-medium ml-1">Complete record of all stolen or missing items across branches</p>
         </div>
         {/* Branch filter */}
         <select
@@ -79,17 +79,17 @@ export default function DamagedItemsPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white border border-slate-200 rounded-[2rem] p-8 shadow-sm relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-8 opacity-5 text-red-600 group-hover:scale-110 transition-transform">
+          <div className="absolute top-0 right-0 p-8 opacity-5 text-stone-600 group-hover:scale-110 transition-transform">
             <PackageX className="w-24 h-24" />
           </div>
-          <p className="text-[10px] font-black uppercase text-red-600 tracking-[0.2em] mb-2">Total Damaged</p>
+          <p className="text-[10px] font-black uppercase text-stone-600 tracking-[0.2em] mb-2">Total Stolen</p>
           <p className="text-4xl font-black text-slate-900">{meta?.total || 0}</p>
         </div>
         <div className="bg-white border border-slate-200 rounded-[2rem] p-8 shadow-sm relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-8 opacity-5 text-amber-500 group-hover:scale-110 transition-transform">
-            <AlertCircle className="w-24 h-24" />
+          <div className="absolute top-0 right-0 p-8 opacity-5 text-stone-500 group-hover:scale-110 transition-transform">
+            <ShieldAlert className="w-24 h-24" />
           </div>
-          <p className="text-[10px] font-black uppercase text-amber-600 tracking-[0.2em] mb-2">Damaged Value</p>
+          <p className="text-[10px] font-black uppercase text-stone-600 tracking-[0.2em] mb-2">Stolen Value</p>
           <p className="text-4xl font-black text-slate-900">{fmt(totalValue)}</p>
         </div>
         <div className="bg-white border border-slate-200 rounded-[2rem] p-8 shadow-sm relative overflow-hidden group">
@@ -113,8 +113,8 @@ export default function DamagedItemsPage() {
               <Box className="w-10 h-10" />
             </div>
             <div className="text-center">
-              <p className="font-black text-slate-800 text-lg">No damaged items found</p>
-              <p className="text-sm text-slate-500 mt-1">All inventory is in good condition.</p>
+              <p className="font-black text-slate-800 text-lg">No stolen items found</p>
+              <p className="text-sm text-slate-500 mt-1">All inventory is accounted for.</p>
             </div>
           </div>
         ) : (
@@ -122,7 +122,7 @@ export default function DamagedItemsPage() {
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-slate-50/50 border-b border-slate-100">
-                  {['Item', 'Branch', 'Status', 'Selling Price', 'Damage Reason', 'Reported By', 'Date', 'Action'].map(h => (
+                  {['Item', 'Branch', 'Status', 'Selling Price', 'Stolen Reason', 'Reported By', 'Date', 'Action'].map(h => (
                     <th key={h} className="px-8 py-5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{h}</th>
                   ))}
                 </tr>
@@ -157,9 +157,9 @@ export default function DamagedItemsPage() {
                         )}
                       </td>
                       <td className="px-8 py-4">
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-red-50 text-red-600 rounded-lg text-[10px] font-black tracking-wider uppercase border border-red-100">
-                          <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                          Damaged
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-stone-50 text-stone-600 rounded-lg text-[10px] font-black tracking-wider uppercase border border-stone-200">
+                          <span className="w-1.5 h-1.5 rounded-full bg-stone-500" />
+                          Stolen
                         </span>
                       </td>
                       <td className="px-8 py-4 font-black text-slate-900 text-sm">{fmt(item.selling_price || 0)}</td>

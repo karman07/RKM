@@ -71,9 +71,6 @@ export interface User {
   role: 'admin' | 'manager' | 'cashier';
   branch?: Branch | string;
   is_active: boolean;
-  base_salary: number;
-  salary_type: 'monthly' | 'daily';
-  joining_date?: string;
   created_at: string;
 }
 
@@ -164,6 +161,8 @@ export interface Product {
   description?: string;
   gender?: string;
   occasion?: string;
+  status: string;
+  in_stock?: boolean;
   metal_type: string;
   purity: string;
   metal_color?: string;
@@ -195,7 +194,6 @@ export interface Product {
   /** Max % discount a Manager is allowed to apply on this product’s inventory items */
   max_manager_discount: number;
   images: string[];
-  status: string;
   deleted_at?: string;
   pricing_breakdown?: PricingBreakdown;
 }
@@ -228,7 +226,6 @@ export interface InventoryItem {
   sold_at_branch_id?: Branch | string | null;
   sold_by_user_id?: User | string | null;
   sold_by_manager_id?: User | string | null;
-  sold_by_cashier_id?: User | string | null;
   sale_reference?: string;
   // ─── Damage Tracking ───────────────────────────────────────────
   damaged_by_user_id?: User | string | null;
@@ -256,6 +253,13 @@ export interface InventoryItem {
   sold_at?: string;
   reserved_at?: string;
   returned_at?: string;
+  // ─── Return / Refund Valuation fields ───────────────────────────────────────────────
+  return_proposed_value?: number | null;
+  return_manager_notes?: string;
+  return_admin_approved_value?: number | null;
+  return_admin_notes?: string;
+  return_refund_status?: 'pending' | 'proposed' | 'approved' | 'rejected';
+  return_approved_at?: string | null;
   createdAt: string;
 }
 
@@ -315,6 +319,18 @@ export const updateUser = (id: string, data: object) =>
 
 export const deleteUser = (id: string) =>
   request<void>(`/users/${id}`, { method: 'DELETE' });
+
+
+/** Fetch cashiers filtered by branch — used in sell modal */
+export const getCashiersByBranch = (branchId?: string, limit = 100) => {
+  const qs = branchId
+    ? `?branch_id=${branchId}&page=1&limit=${limit}`
+    : `?page=1&limit=${limit}`;
+  return request<PaginatedResponse<UserApiResponse>>(`/users/cashiers${qs}`).then((res) => ({
+    data: res.data.map(normalizeUser),
+    meta: res.meta,
+  }));
+};
 
 // ─── Categories ───────────────────────────────────────────────────────────────
 
@@ -480,6 +496,11 @@ export const getDamagedInventory = (params?: Record<string, string>) =>
     '/inventory/damaged' + (params ? '?' + new URLSearchParams(params).toString() : '')
   );
 
+export const getStolenInventory = (params?: Record<string, string>) =>
+  request<{ data: InventoryItem[]; meta: { total: number; page: number; limit: number; total_pages: number } }>(
+    '/inventory/stolen' + (params ? '?' + new URLSearchParams(params).toString() : '')
+  );
+
 export const addInventoryItem = (data: {
   product_id: string;
   location: string;
@@ -527,8 +548,17 @@ export const getDeletedInventory = (params?: Record<string, string>) =>
 
 export const getReturnedInventory = (params?: Record<string, string>) =>
   request<{ data: InventoryItem[]; meta: { total: number; page: number; limit: number; total_pages: number } }>(
-    '/inventory' + '?' + new URLSearchParams({ status: 'returned', limit: '200', page: '1', ...(params ?? {}) }).toString()
+    '/inventory/returned' + (params ? '?' + new URLSearchParams(params).toString() : '')
   );
+
+export const approveReturnValuation = (
+  id: string,
+  payload: { approved_value: number; notes?: string; action: 'approved' | 'rejected' }
+) =>
+  request<InventoryItem>(`/inventory/${id}/return-approval`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
 
 export const updateInventoryStatus = (
   id: string,
@@ -545,6 +575,8 @@ export const updateInventoryStatus = (
     shipping_country?: string;
     sale_channel?: string;
     payment_mode?: string;
+    sold_at_branch_id?: string;
+    sold_by_user_id?: string;
     is_emi?: boolean;
     emi_tenure_months?: number;
     emi_provider?: string;
@@ -652,6 +684,16 @@ export const publishPurchaseOrder = (id: string) =>
 export const generatePoInvoiceNumber = () =>
   request<{ invoice_number: string }>('/purchase-orders/generate-invoice-number');
 
+/** Generate a unique sale invoice number: INV-YYYYMMDD-<random 4-char> */
+export function generateSaleInvoiceNumber(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
+  return `INV-${y}${m}${d}-${rand}`;
+}
+
 // ─── Branches ─────────────────────────────────────────────────────────────────
 
 export const getBranches = () => request<Branch[]>('/branches');
@@ -745,17 +787,17 @@ export const getBlogBySlug = (slug: string) =>
   request<Blog>(`/blogs/slug/${slug}`);
 
 export const createBlog = (data: FormData) =>
-  request<Blog>('/blogs', { 
-    method: 'POST', 
-    headers: authHeadersMultipart(), 
-    body: data 
+  request<Blog>('/blogs', {
+    method: 'POST',
+    headers: authHeadersMultipart(),
+    body: data
   });
 
 export const updateBlog = (id: string, data: FormData) =>
-  request<Blog>(`/blogs/${id}`, { 
-    method: 'PATCH', 
-    headers: authHeadersMultipart(), 
-    body: data 
+  request<Blog>(`/blogs/${id}`, {
+    method: 'PATCH',
+    headers: authHeadersMultipart(),
+    body: data
   });
 
 export const deleteBlog = (id: string) =>
@@ -809,7 +851,7 @@ export const checkOut = () => request<Attendance>('/attendance/check-out', { met
 
 // ─── Customers ────────────────────────────────────────────────────────────────
 
-export const getCustomers = (page: number = 1, limit: number = 20) => 
+export const getCustomers = (page: number = 1, limit: number = 20) =>
   request<PaginatedResponse<Customer>>(`/customers?page=${page}&limit=${limit}`);
 export const getCustomerById = (id: string) => request<Customer>(`/customers/${id}`);
 
@@ -1143,3 +1185,135 @@ export async function updateSubscription(id: string, data: { adminNotes?: string
 export async function getGoldStats(): Promise<GoldStats> {
   return request<GoldStats>('/gold-investment/stats');
 }
+
+// ─── Item Attendance ────────────────────────────────────────────
+
+export interface ItemAttendanceRecord {
+  _id: string;
+  item_id: any;
+  branch_id: string;
+  scanned_by: any;
+  date: string;
+  createdAt: string;
+}
+
+export interface ItemAttendanceDailyStats {
+  date: string;
+  total_active_items: number;
+  present_count: number;
+  missing_count: number;
+  present_items: ItemAttendanceRecord[];
+  missing_items: any[];
+}
+
+export const getItemAttendanceDailyStats = (branchId: string, dateStr?: string) =>
+  request<ItemAttendanceDailyStats>(
+    `/item-attendance/daily-stats?branch_id=${branchId}${dateStr ? `&date=${dateStr}` : ''}`
+  );
+
+export interface AttendanceTrendPoint {
+  date: string;
+  present: number;
+  missing: number;
+  total: number;
+}
+
+export const getAttendanceTrends = (branchId: string, days = 14) =>
+  request<AttendanceTrendPoint[]>(
+    `/item-attendance/trends?branch_id=${branchId}&days=${days}`
+  );
+
+// ─── HR: Leave Requests ───────────────────────────────────────────────────────
+
+export interface LeaveRequest {
+  _id: string;
+  manager_id: any;
+  branch_id: any;
+  leave_type: 'sick' | 'casual' | 'earned' | 'other';
+  from_date: string;
+  to_date: string;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected';
+  admin_note?: string;
+  reviewed_at?: string;
+  reviewed_by?: any;
+  createdAt: string;
+}
+
+export const getAllLeaves = (params?: { status?: string; branch_id?: string; limit?: number }) => {
+  const qs = params ? '?' + new URLSearchParams(Object.fromEntries(
+    Object.entries(params).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])
+  )).toString() : '';
+  return request<LeaveRequest[]>(`/hr/leaves${qs}`);
+};
+
+export const reviewLeave = (id: string, status: string, admin_note?: string) =>
+  request<LeaveRequest>(`/hr/leaves/${id}/review`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status, admin_note }),
+  });
+
+// ─── HR: Reimbursements ────────────────────────────────────────────────────────
+
+export interface ReimbursementRequest {
+  _id: string;
+  manager_id: any;
+  branch_id: any;
+  category: 'travel' | 'food' | 'supplies' | 'maintenance' | 'other';
+  amount: number;
+  description: string;
+  receipt_url?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  admin_note?: string;
+  reviewed_at?: string;
+  reviewed_by?: any;
+  createdAt: string;
+}
+
+export const getAllReimbursements = (params?: { status?: string; branch_id?: string; limit?: number }) => {
+  const qs = params ? '?' + new URLSearchParams(Object.fromEntries(
+    Object.entries(params).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])
+  )).toString() : '';
+  return request<ReimbursementRequest[]>(`/hr/reimbursements${qs}`);
+};
+
+export const reviewReimbursement = (id: string, status: string, admin_note?: string) =>
+  request<ReimbursementRequest>(`/hr/reimbursements/${id}/review`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status, admin_note }),
+  });
+
+// Fetch leaves for a specific user (admin view)
+export const getUserLeaves = (userId: string) =>
+  getAllLeaves({ limit: 100 }).then((leaves) =>
+    leaves.filter((l) => {
+      const id = typeof l.manager_id === 'object' ? l.manager_id?._id : l.manager_id;
+      return id === userId;
+    })
+  );
+
+// Fetch reimbursements for a specific user (admin view)
+export const getUserReimbursements = (userId: string) =>
+  getAllReimbursements({ limit: 100 }).then((items) =>
+    items.filter((r) => {
+      const id = typeof r.manager_id === 'object' ? r.manager_id?._id : r.manager_id;
+      return id === userId;
+    })
+  );
+
+export const getHrSummary = () =>
+  request<{ pendingLeaves: number; pendingReimbursements: number; totalApprovedReimbursementAmount: number }>('/hr/summary');
+
+// ─── Attendance by Branch (for admin analytics) ────────────────────────────────
+
+export const getAttendanceByBranch = (branchId: string, dateStr?: string) =>
+  request<Attendance[]>(
+    `/attendance/daily?date=${dateStr || new Date().toISOString().split('T')[0]}`
+  ).then((records) =>
+    records.filter(a => {
+      const u = typeof a.user_id === 'object' ? a.user_id as any : null;
+      if (!u) return false;
+      const uBranch = typeof u.branch === 'object' ? u.branch?._id : u.branch;
+      return uBranch === branchId;
+    })
+  );

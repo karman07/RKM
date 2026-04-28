@@ -1,30 +1,9 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { getBranches, getUsers, createUser, updateUser, deleteUser, getAttendanceStats, type User, type Branch, type AttendanceStats } from '@/lib/api';
+import { getBranches, getUsers, createUser, updateUser, deleteUser, getAttendanceStats, getAllLeaves, getAllReimbursements, type User, type Branch, type AttendanceStats, type LeaveRequest, type ReimbursementRequest } from '@/lib/api';
 import Modal from '@/components/Modal';
-import { 
-  Plus, 
-  Search, 
-  Filter, 
-  Edit2, 
-  Trash2, 
-  ChevronLeft, 
-  ChevronRight,
-  Shield,
-  UserCheck,
-  Building2,
-  Mail,
-  Loader2,
-  MoreVertical,
-  Key,
-  User as UserIcon,
-  Calendar,
-  DollarSign,
-  Briefcase,
-  TrendingUp,
-  Award
-} from 'lucide-react';
+import { Plus, Edit2, Trash2, ChevronLeft, ChevronRight, Shield, UserCheck, Building2, Mail, Loader2, Key, User as UserIcon, Calendar, X, FileText, CreditCard } from 'lucide-react';
 
 const roleBadge: Record<string, { wrap: string; dot: string; icon: any }> = {
   admin:   { wrap: 'bg-blue-50 text-blue-700 border-blue-100',     dot: 'bg-blue-600', icon: Shield },
@@ -39,21 +18,9 @@ interface UserForm {
   role: string;
   branch?: string;
   is_active: boolean;
-  base_salary: number;
-  salary_type: string;
-  joining_date: string;
 }
 
-const emptyForm: UserForm = { 
-  name: '', 
-  email: '', 
-  password: '', 
-  role: 'cashier', 
-  is_active: true,
-  base_salary: 0,
-  salary_type: 'monthly',
-  joining_date: ''
-};
+const emptyForm: UserForm = { name: '', email: '', password: '', role: 'cashier', is_active: true };
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
@@ -74,6 +41,12 @@ export default function UsersPage() {
   const [profileTarget, setProfileTarget] = useState<User | null>(null);
   const [profileStats, setProfileStats] = useState<AttendanceStats | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
+
+  // Detail panel state
+  const [detailUser, setDetailUser] = useState<User | null>(null);
+  const [detailLeaves, setDetailLeaves] = useState<LeaveRequest[]>([]);
+  const [detailReimbs, setDetailReimbs] = useState<ReimbursementRequest[]>([]);
+  const [loadingDetail, setLoadingDetail] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -118,17 +91,7 @@ export default function UsersPage() {
 
   function openEdit(u: User) {
     setEditTarget(u);
-    setForm({ 
-      name: u.name, 
-      email: u.email, 
-      password: '', 
-      role: u.role, 
-      branch: (u.branch as any)?._id || (u.branch as string),
-      is_active: u.is_active,
-      base_salary: u.base_salary || 0,
-      salary_type: u.salary_type || 'monthly',
-      joining_date: u.joining_date || ''
-    });
+    setForm({ name: u.name, email: u.email, password: '', role: u.role, branch: (u.branch as any)?._id || (u.branch as string), is_active: u.is_active });
     setError('');
     setModalOpen(true);
   }
@@ -147,36 +110,43 @@ export default function UsersPage() {
     }
   }
 
+  async function openDetail(u: User) {
+    setDetailUser(u);
+    setLoadingDetail(true);
+    setDetailLeaves([]);
+    setDetailReimbs([]);
+    try {
+      const now = new Date();
+      const [stats, allLeaves, allReimbs] = await Promise.all([
+        getAttendanceStats(u._id, now.getMonth(), now.getFullYear()).catch(() => null),
+        getAllLeaves({ limit: 200 }).catch(() => []),
+        getAllReimbursements({ limit: 200 }).catch(() => []),
+      ]);
+      setProfileStats(stats);
+      setDetailLeaves(allLeaves.filter((l: any) => {
+        const id = typeof l.manager_id === 'object' ? l.manager_id?._id : l.manager_id;
+        return id === u._id;
+      }));
+      setDetailReimbs(allReimbs.filter((r: any) => {
+        const id = typeof r.manager_id === 'object' ? r.manager_id?._id : r.manager_id;
+        return id === u._id;
+      }));
+    } finally {
+      setLoadingDetail(false);
+    }
+  }
+
   async function handleSave() {
     setSaving(true);
     setError('');
     try {
-      const payload: any = { 
-        name: form.name, 
-        email: form.email, 
-        role: form.role, 
-        isActive: form.is_active,
-        branch: form.branch || null,
-        base_salary: form.base_salary,
-        salary_type: form.salary_type,
-        joining_date: form.joining_date
-      };
+      const payload: any = { name: form.name, email: form.email, role: form.role, isActive: form.is_active, branch: form.branch || null };
       if (!editTarget || form.password) payload.password = form.password;
-      
-      if (editTarget) {
-        await updateUser(editTarget._id, payload);
-        showToast('User registry updated', 'success');
-      } else {
-        await createUser(payload);
-        showToast('New operative created', 'success');
-      }
-      setModalOpen(false);
-      load();
-    } catch (e: any) {
-      setError(e.message || 'Transmission failed');
-    } finally {
-      setSaving(false);
-    }
+      if (editTarget) { await updateUser(editTarget._id, payload); showToast('User updated', 'success'); }
+      else { await createUser(payload); showToast('User created', 'success'); }
+      setModalOpen(false); load();
+    } catch (e: any) { setError(e.message || 'Failed'); }
+    finally { setSaving(false); }
   }
 
   async function handleDelete() {
@@ -250,7 +220,7 @@ export default function UsersPage() {
               <tr className="bg-slate-50/50 border-b border-slate-100">
                 <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Personnel Status</th>
                 <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Secure Identity</th>
-                <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Strategic Branch</th>
+                <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Strategic Hub</th>
                 <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 text-right">Registry Operations</th>
               </tr>
             </thead>
@@ -309,19 +279,11 @@ export default function UsersPage() {
                           <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">Unassigned Hub</span>
                         )}
                       </td>
-                      <td className="px-8 py-6">
+                       <td className="px-8 py-6">
                         <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button 
-                            onClick={() => openProfile(u)}
-                            className="p-2.5 rounded-xl bg-slate-50 text-slate-400 hover:bg-blue-600 hover:text-white transition-all transform active:scale-95"
-                            title="Audit Operative Performance"
-                          ><UserIcon className="w-4 h-4" /></button>
-                          <button onClick={() => openEdit(u)} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm">
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => setDeleteTarget(u)} className="p-2.5 bg-red-50 text-red-600 rounded-xl hover:bg-red-600 hover:text-white transition-all shadow-sm">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); openDetail(u); }} className="p-2.5 rounded-xl bg-slate-50 text-slate-400 hover:bg-blue-600 hover:text-white transition-all active:scale-95" title="View Report"><UserIcon className="w-4 h-4" /></button>
+                          <button onClick={(e) => { e.stopPropagation(); openEdit(u); }} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"><Edit2 className="w-4 h-4" /></button>
+                          <button onClick={(e) => { e.stopPropagation(); setDeleteTarget(u); }} className="p-2.5 bg-red-50 text-red-600 rounded-xl hover:bg-red-600 hover:text-white transition-all shadow-sm"><Trash2 className="w-4 h-4" /></button>
                         </div>
                       </td>
                     </tr>
@@ -332,106 +294,136 @@ export default function UsersPage() {
           </table>
         </div>
 
-        {/* Profile Modal */}
-        <Modal open={!!profileTarget} onClose={() => { setProfileTarget(null); setProfileStats(null); }} title="Operative Intelligence Audit">
-          {profileTarget && (
-            <div className="space-y-8">
-              {/* Profile Bar */}
-              <div className="flex items-center gap-6 p-6 bg-slate-50 rounded-[2.5rem] border border-slate-100">
-                <div className="w-20 h-20 bg-blue-600 rounded-3xl flex items-center justify-center text-white shadow-lg shadow-blue-600/20">
-                  <UserIcon className="w-10 h-10" />
-                </div>
-                <div>
-                  <h3 className="text-2xl font-black text-slate-900 leading-tight">{profileTarget.name}</h3>
-                  <div className="flex items-center gap-3 mt-1">
-                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">{profileTarget.role}</span>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic">{profileTarget.email}</span>
+        {/* Detail Slide-over Panel */}
+        {detailUser && (
+          <div className="fixed inset-0 z-50 flex">
+            <div className="flex-1 bg-black/30 backdrop-blur-sm" onClick={() => setDetailUser(null)} />
+            <div className="w-full max-w-lg bg-white h-full overflow-y-auto shadow-2xl flex flex-col">
+              {/* Header */}
+              <div className="sticky top-0 bg-white border-b border-slate-100 px-8 py-6 flex items-center justify-between z-10">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white font-black text-lg">
+                    {detailUser.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-slate-900">{detailUser.name}</h3>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] font-black uppercase tracking-widest bg-blue-50 text-blue-600 px-2 py-0.5 rounded">{detailUser.role}</span>
+                      <span className="text-[10px] text-slate-400">{detailUser.email}</span>
+                    </div>
                   </div>
                 </div>
+                <button onClick={() => setDetailUser(null)} className="p-2 hover:bg-slate-50 rounded-xl text-slate-400">
+                  <X className="w-5 h-5" />
+                </button>
               </div>
 
-              {/* Stats Grid */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-6 bg-white border border-slate-100 rounded-[2rem] shadow-sm hover:shadow-md transition-all">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Maison Salary</p>
-                  <div className="flex items-end gap-2">
-                    <span className="text-3xl font-black text-slate-900 leading-none">₹{profileTarget.base_salary?.toLocaleString()}</span>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase pb-1">/ {profileTarget.salary_type}</span>
-                  </div>
-                </div>
-                <div className="p-6 bg-white border border-slate-100 rounded-[2rem] shadow-sm hover:shadow-md transition-all">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Strategic Hub</p>
-                  <div className="flex items-center gap-3 text-slate-900">
-                    <Building2 className="w-5 h-5 text-blue-600" />
-                    <span className="text-sm font-black uppercase tracking-tight">{typeof profileTarget.branch === 'object' ? (profileTarget.branch as any).name : 'Central Command'}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Attendance Performance */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between px-2">
-                  <h4 className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400 italic">Temporal Performance (Current Month)</h4>
-                  <Calendar className="w-4 h-4 text-slate-300" />
-                </div>
-                {loadingProfile ? (
-                   <div className="h-40 bg-slate-50 rounded-[2rem] animate-pulse flex items-center justify-center">
-                     <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
-                   </div>
-                ) : profileStats ? (
-                  <div className="grid grid-cols-4 gap-3">
-                    <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 text-center">
-                      <p className="text-[10px] font-bold text-emerald-600 uppercase mb-1">Present</p>
-                      <p className="text-xl font-black text-emerald-700">{profileStats.present}</p>
-                    </div>
-                    <div className="bg-red-50 p-4 rounded-2xl border border-red-100 text-center">
-                      <p className="text-[10px] font-bold text-red-600 uppercase mb-1">Absent</p>
-                      <p className="text-xl font-black text-red-700">{profileStats.absent}</p>
-                    </div>
-                    <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 text-center">
-                      <p className="text-[10px] font-bold text-amber-600 uppercase mb-1">Half Day</p>
-                      <p className="text-xl font-black text-amber-700">{profileStats.halfDay}</p>
-                    </div>
-                    <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 text-center">
-                      <p className="text-[10px] font-bold text-blue-600 uppercase mb-1">Leave</p>
-                      <p className="text-xl font-black text-blue-700">{profileStats.onLeave}</p>
-                    </div>
-                  </div>
+              <div className="flex-1 px-8 py-6 space-y-8">
+                {loadingDetail ? (
+                  <div className="flex items-center justify-center h-40"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
                 ) : (
-                  <div className="p-10 bg-slate-50 rounded-[2rem] text-center border border-dashed border-slate-200">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No temporal data available for period.</p>
-                  </div>
+                  <>
+                    {/* Branch Info */}
+                    <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                      <Building2 className="w-5 h-5 text-blue-600" />
+                      <div>
+                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Branch</p>
+                        <p className="text-sm font-black text-slate-900">{typeof detailUser.branch === 'object' ? (detailUser.branch as any)?.name : detailUser.branch || 'Unassigned'}</p>
+                      </div>
+                    </div>
+
+                    {/* Attendance This Month */}
+                    <div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <Calendar className="w-4 h-4 text-slate-400" />
+                        <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Attendance — Current Month</h4>
+                      </div>
+                      {profileStats ? (
+                        <div className="grid grid-cols-4 gap-2">
+                          {[{label:'Present',val:profileStats.present,cls:'emerald'},{label:'Absent',val:profileStats.absent,cls:'red'},{label:'Half Day',val:profileStats.halfDay,cls:'amber'},{label:'On Leave',val:profileStats.onLeave,cls:'blue'}].map(s => (
+                            <div key={s.label} className={`bg-${s.cls}-50 border border-${s.cls}-100 p-3 rounded-2xl text-center`}>
+                              <p className={`text-[9px] font-black uppercase text-${s.cls}-600 mb-1`}>{s.label}</p>
+                              <p className={`text-xl font-black text-${s.cls}-700`}>{s.val ?? 0}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="p-6 bg-slate-50 rounded-2xl text-center border border-dashed border-slate-200">
+                          <p className="text-[10px] text-slate-400 font-black uppercase">No attendance data</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Leaves */}
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <FileText className="w-4 h-4 text-slate-400" />
+                          <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Leave Requests</h4>
+                        </div>
+                        <span className="text-[10px] font-black bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{detailLeaves.length}</span>
+                      </div>
+                      {detailLeaves.length === 0 ? (
+                        <div className="p-6 bg-slate-50 rounded-2xl text-center border border-dashed border-slate-200">
+                          <p className="text-[10px] text-slate-400 font-black uppercase">No leave requests</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {detailLeaves.map(l => (
+                            <div key={l._id} className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl">
+                              <div>
+                                <p className="text-xs font-black text-slate-900 capitalize">{l.leave_type} Leave</p>
+                                <p className="text-[10px] text-slate-400">{new Date(l.from_date).toLocaleDateString('en-IN',{day:'numeric',month:'short'})} – {new Date(l.to_date).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</p>
+                              </div>
+                              <span className={`text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full border ${
+                                l.status==='approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                                l.status==='rejected' ? 'bg-red-50 text-red-700 border-red-100' :
+                                'bg-amber-50 text-amber-700 border-amber-100'
+                              }`}>{l.status}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Reimbursements */}
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <CreditCard className="w-4 h-4 text-slate-400" />
+                          <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Reimbursements</h4>
+                        </div>
+                        <span className="text-[10px] font-black bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{detailReimbs.length}</span>
+                      </div>
+                      {detailReimbs.length === 0 ? (
+                        <div className="p-6 bg-slate-50 rounded-2xl text-center border border-dashed border-slate-200">
+                          <p className="text-[10px] text-slate-400 font-black uppercase">No reimbursements</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {detailReimbs.map(r => (
+                            <div key={r._id} className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl">
+                              <div>
+                                <p className="text-xs font-black text-slate-900 capitalize">{r.category}</p>
+                                <p className="text-[10px] text-slate-400">{new Date(r.createdAt).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-sm font-black text-slate-900">₹{r.amount?.toLocaleString('en-IN')}</p>
+                                <span className={`text-[9px] font-black uppercase tracking-wider ${
+                                  r.status==='approved' ? 'text-emerald-600' : r.status==='rejected' ? 'text-red-600' : 'text-amber-600'
+                                }`}>{r.status}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
                 )}
               </div>
-
-              {/* Fiscal Projection */}
-              <div className="p-8 bg-slate-900 rounded-[2.5rem] text-white relative overflow-hidden group">
-                <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
-                   <TrendingUp className="w-20 h-20" />
-                </div>
-                <div className="relative z-10">
-                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-400 mb-2">Projected Monthly Settlement</p>
-                  <div className="flex items-baseline gap-3">
-                    <h5 className="text-4xl font-black tracking-tighter">₹{profileStats ? (profileTarget.base_salary * (profileStats.present / (profileStats.totalWorkingDays || 30))).toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—'}</h5>
-                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Calculated ROI</span>
-                  </div>
-                  <p className="text-[9px] text-slate-500 mt-4 leading-relaxed font-medium italic">
-                    Fiscal indexing based on current temporal deployment velocity. Final payout subject to artisan compliance and discretionary performance bonuses.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex gap-4 pt-2">
-                 <button onClick={() => { setProfileTarget(null); setProfileStats(null); }} className="flex-1 py-4 border border-slate-200 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 hover:bg-slate-50 transition-all">
-                   Deactivate Audit
-                 </button>
-                 <button className="flex-1 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] shadow-lg shadow-blue-600/20 active:scale-95 transition-all">
-                   Enlist Report
-                 </button>
-              </div>
             </div>
-          )}
-        </Modal>
+          </div>
+        )}
 
         {/* Improved Pagination */}
         <div className="px-8 py-6 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between">
@@ -522,46 +514,12 @@ export default function UsersPage() {
                 value={form.branch || ''}
                 onChange={(e) => setForm({...form, branch: e.target.value || undefined})}
               >
-                <option value="">Standard Access</option>
+                <option value="">STANDARD ACCESS</option>
                 {branches.map(b => (
                   <option key={b._id} value={b._id}>{b.name}</option>
                 ))}
               </select>
             </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-5">
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Maison Salary (Payout)</label>
-              <input
-                type="number"
-                className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
-                value={form.base_salary}
-                onChange={(e) => setForm({...form, base_salary: Number(e.target.value)})}
-                placeholder="0.00"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Salary Trajectory</label>
-              <select
-                className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-black uppercase tracking-widest focus:outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer"
-                value={form.salary_type}
-                onChange={(e) => setForm({...form, salary_type: e.target.value})}
-              >
-                <option value="monthly">Monthly Payout</option>
-                <option value="daily">Daily Wage</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Enlistment Date (Joining Date)</label>
-            <input
-              type="date"
-              className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
-              value={form.joining_date}
-              onChange={(e) => setForm({...form, joining_date: e.target.value})}
-            />
           </div>
 
           <div className="flex items-center justify-between p-5 bg-slate-50 rounded-[2rem] border border-slate-100">

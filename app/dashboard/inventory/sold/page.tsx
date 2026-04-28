@@ -73,7 +73,7 @@ function EditRecordModal({ item, onClose, onSave }: { item: InventoryItem; onClo
           <button onClick={onClose} className="p-3 rounded-2xl hover:bg-white hover:shadow-md transition-all text-slate-400"><svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M18 6L6 18M6 6l12 12" /></svg></button>
         </div>
         <form onSubmit={handleSubmit} className="p-10 space-y-6">
-          {status && (<div className={`p-4 rounded-2xl text-[11px] font-bold uppercase tracking-widest text-center animate-[fadeRise_300ms_ease-out] ${status.type === 'success' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-red-50 text-red-600 border border-red-100'}`}>{status.msg}</div>)}
+          {status && (<div className={`p-4 rounded-2xl text-[11px] font-bold uppercase tracking-widest text-center animate-[fadeRise_300ms_ease-out] ${status.type === 'success' ? 'bg-sky-50 text-sky-600 border border-sky-100' : 'bg-red-50 text-red-600 border border-red-100'}`}>{status.msg}</div>)}
           <div className="grid grid-cols-2 gap-6">
             <div className="space-y-2"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Client Name</label><input type="text" value={formData.sold_customer_name} onChange={e => setFormData({...formData, sold_customer_name: e.target.value})} className="w-full px-5 py-3 rounded-xl border border-slate-200 outline-none transition-all text-sm font-medium" /></div>
             <div className="space-y-2"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Mobile Number</label><input type="text" value={formData.sold_customer_phone} onChange={e => setFormData({...formData, sold_customer_phone: e.target.value})} className="w-full px-5 py-3 rounded-xl border border-slate-200 outline-none transition-all text-sm font-medium" /></div>
@@ -120,12 +120,46 @@ export default function SoldInventoryPage() {
     load();
   }, []);
 
+  // Global Barcode Scanner Listener
+  useEffect(() => {
+    let barcodeBuffer = '';
+    let lastKeyTime = Date.now();
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // If typing in any input/textarea, let the input handle it naturally
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      
+      const currentTime = Date.now();
+      // If the delay is more than 50ms, it's likely a human typing, reset buffer
+      if (currentTime - lastKeyTime > 50) {
+        barcodeBuffer = '';
+      }
+
+      if (e.key === 'Enter') {
+        if (barcodeBuffer.length > 3) {
+          // Barcode scan completed
+          setSearch(barcodeBuffer);
+          barcodeBuffer = '';
+        }
+      } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        barcodeBuffer += e.key;
+      }
+
+      lastKeyTime = currentTime;
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return items;
     return items.filter((item) => {
       const productName = typeof item.product_id === 'object' ? item.product_id.name : '';
-      const haystack = [item.unique_item_code, item.barcode, productName, item.sold_customer_name, item.sold_customer_phone, item.sale_channel, item.payment_mode].filter(Boolean).join(' ').toLowerCase();
+      const haystack = [item.unique_item_code, item.barcode, item.sale_reference, productName, item.sold_customer_name, item.sold_customer_phone, item.sale_channel, item.payment_mode].filter(Boolean).join(' ').toLowerCase();
       return haystack.includes(q);
     });
   }, [items, search]);
@@ -190,7 +224,7 @@ export default function SoldInventoryPage() {
         </div>
         <div className="relative group">
           <input
-            className="w-full md:w-80 pl-10 pr-4 py-3 border border-slate-200 rounded-2xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all shadow-sm group-hover:shadow-md"
+            className="w-full md:w-80 pl-10 pr-4 py-3 border border-slate-200 rounded-2xl text-sm bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all shadow-sm group-hover:shadow-md"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search master records..."
@@ -198,6 +232,124 @@ export default function SoldInventoryPage() {
           <svg className="absolute left-3.5 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
         </div>
       </div>
+
+      {/* Staff Performance Leaderboards */}
+      {!loading && items.length > 0 && showCharts && (() => {
+        const cashierMap: Record<string, { name: string; branch: string; count: number; revenue: number }> = {};
+        const managerMap: Record<string, { name: string; branch: string; count: number; revenue: number }> = {};
+
+        items.forEach(item => {
+          const branchName = (item as any).sold_at_branch_id?.name || 'Direct Sale';
+          
+          const cashier = (item as any).sold_by_user_id;
+          if (cashier && typeof cashier === 'object' && cashier.name) {
+            const id = cashier._id || cashier.name;
+            if (!cashierMap[id]) cashierMap[id] = { name: cashier.name, branch: branchName, count: 0, revenue: 0 };
+            cashierMap[id].count += 1;
+            cashierMap[id].revenue += item.selling_price || 0;
+          }
+
+          const manager = (item as any).sold_by_manager_id;
+          if (manager && typeof manager === 'object' && manager.name) {
+            const id = manager._id || manager.name;
+            if (!managerMap[id]) managerMap[id] = { name: manager.name, branch: branchName, count: 0, revenue: 0 };
+            managerMap[id].count += 1;
+            managerMap[id].revenue += item.selling_price || 0;
+          }
+        });
+
+        const cashierList = Object.values(cashierMap).sort((a, b) => b.revenue - a.revenue);
+        const managerList = Object.values(managerMap).sort((a, b) => b.revenue - a.revenue);
+        
+        if (!cashierList.length && !managerList.length) return null;
+        
+        const maxCashierRev = Math.max(...cashierList.map(c => c.revenue), 1);
+        const maxManagerRev = Math.max(...managerList.map(c => c.revenue), 1);
+        const rankColors = ['#4f46e5','#6366f1','#818cf8','#a5b4fc','#c7d2fe'];
+
+        return (
+          <div className="mb-10 grid grid-cols-1 xl:grid-cols-2 gap-8">
+            {/* Cashier Leaderboard */}
+            {cashierList.length > 0 && (
+              <div className="bg-white rounded-[2.5rem] border border-blue-100 shadow-sm overflow-hidden">
+                <div className="px-8 py-6 border-b border-blue-50 flex items-center gap-3 bg-gradient-to-r from-blue-50/60 to-slate-50">
+                  <div className="w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center flex-shrink-0">
+                    <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900">Cashier Leaderboard</h3>
+                    <p className="text-[11px] text-slate-500 font-medium">Revenue attributed to cashiers</p>
+                  </div>
+                </div>
+                <div className="p-8 grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  {cashierList.slice(0, 5).map((c, i) => (
+                    <div key={c.name} className="relative flex flex-col gap-2 p-4 rounded-2xl border border-slate-100 bg-white hover:shadow-md transition-all hover:-translate-y-0.5">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-[11px] font-black shadow-sm" style={{ background: rankColors[i] ?? '#e0e7ff' }}>
+                          {c.name.split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[12px] font-black text-slate-900 truncate">{c.name}</p>
+                          <p className="text-[9px] font-bold text-blue-500 uppercase tracking-widest">Cashier • {c.branch}</p>
+                        </div>
+                      </div>
+                      <div className="mt-1">
+                        <p className="text-lg font-black text-blue-700">₹{c.revenue.toLocaleString('en-IN')}</p>
+                        <p className="text-[10px] text-slate-400 font-bold">{c.count} sale{c.count !== 1 ? 's' : ''}</p>
+                      </div>
+                      <div className="h-1 bg-slate-100 rounded-full overflow-hidden mt-1">
+                        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.round((c.revenue / maxCashierRev) * 100)}%`, background: rankColors[i] ?? '#e0e7ff' }} />
+                      </div>
+                      {i === 0 && (
+                        <div className="absolute top-3 right-3 w-5 h-5 bg-amber-400 rounded-full flex items-center justify-center shadow-sm">
+                          <svg width="10" height="10" fill="white" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Manager Leaderboard */}
+            {managerList.length > 0 && (
+              <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden">
+                <div className="px-8 py-6 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-slate-50 to-white">
+                  <div className="w-10 h-10 rounded-2xl bg-slate-800 flex items-center justify-center flex-shrink-0">
+                    <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900">Manager Leaderboard</h3>
+                    <p className="text-[11px] text-slate-500 font-medium">Revenue authorized by managers</p>
+                  </div>
+                </div>
+                <div className="p-8 grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  {managerList.slice(0, 5).map((c, i) => (
+                    <div key={c.name} className="relative flex flex-col gap-2 p-4 rounded-2xl border border-slate-100 bg-white hover:shadow-md transition-all hover:-translate-y-0.5">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-[11px] font-black shadow-sm" style={{ background: '#334155' }}>
+                          {c.name.split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[12px] font-black text-slate-900 truncate">{c.name}</p>
+                          <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Manager • {c.branch}</p>
+                        </div>
+                      </div>
+                      <div className="mt-1">
+                        <p className="text-lg font-black text-slate-800">₹{c.revenue.toLocaleString('en-IN')}</p>
+                        <p className="text-[10px] text-slate-400 font-bold">{c.count} sale{c.count !== 1 ? 's' : ''}</p>
+                      </div>
+                      <div className="h-1 bg-slate-100 rounded-full overflow-hidden mt-1">
+                        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.round((c.revenue / maxManagerRev) * 100)}%`, background: '#64748b' }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Intelligence Dashboard Section */}
       {!loading && chartData && showCharts && (
@@ -233,7 +385,7 @@ export default function SoldInventoryPage() {
                 <h3 className="text-lg font-bold text-slate-900">Strategic Profitability</h3>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Realized Net ROI index</p>
               </div>
-              <div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+              <div className="w-12 h-12 rounded-2xl bg-sky-50 flex items-center justify-center text-sky-600">
                 <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
               </div>
             </div>
@@ -306,19 +458,30 @@ export default function SoldInventoryPage() {
                       </td>
                       <td className="px-8 py-6">
                         <div className="flex items-center gap-2 mb-1.5">
-                          <span className="w-2 h-2 rounded-full bg-indigo-500" />
+                          <span className="w-2 h-2 rounded-full bg-blue-500" />
                           <p className="text-[11px] font-black text-slate-900 uppercase tracking-widest leading-none">
                             {(item.sold_at_branch_id as any)?.name || 'Direct Sale'}
                           </p>
                         </div>
-                        <div className="space-y-1">
+                        <div className="space-y-1.5">
                           <div className="flex items-center gap-1.5">
                             <span className="text-[9px] font-bold text-slate-400 uppercase w-10">MGR:</span>
                             <span className="text-[10px] font-bold text-slate-700">{(item.sold_by_manager_id as any)?.name || '—'}</span>
                           </div>
                           <div className="flex items-center gap-1.5">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase w-10">CSH:</span>
-                            <span className="text-[10px] font-bold text-slate-600">{(item.sold_by_cashier_id as any)?.name || 'System'}</span>
+                            {(item.sold_by_user_id as any)?.name ? (
+                              <>
+                                <div className="w-4 h-4 rounded bg-blue-600 flex items-center justify-center text-white text-[7px] font-black flex-shrink-0">
+                                  {(item.sold_by_user_id as any).name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                                </div>
+                                <span className="text-[10px] font-black text-blue-700">{(item.sold_by_user_id as any).name}</span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="text-[9px] font-bold text-slate-400 uppercase w-10">CSH:</span>
+                                <span className="text-[10px] font-bold text-slate-400 italic">No cashier</span>
+                              </>
+                            )}
                           </div>
                         </div>
                       </td>
