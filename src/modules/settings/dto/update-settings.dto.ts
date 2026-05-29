@@ -1,4 +1,4 @@
-import { IsNumber, IsObject, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsBoolean, IsNumber, IsObject, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class UpdateSettingsDto {
   /** Per-metal rates in ₹/g — e.g. { gold: 6800, silver: 90, platinum: 3200 } */
@@ -40,4 +40,19 @@ export class UpdateSettingsDto {
   @Min(0)
   @Max(100)
   stone_refund_percentage?: number;
+
+  /** Enable or disable WhatsApp notifications for automated sale events */
+  @IsOptional()
+  @IsBoolean()
+  whatsapp_notifications_enabled?: boolean;
+
+  /** Enable or disable email notifications for automated sale events */
+  @IsOptional()
+  @IsBoolean()
+  email_notifications_enabled?: boolean;
+
+  /** Toggle individual email event triggers */
+  @IsOptional()
+  @IsObject()
+  email_triggers?: Record<string, boolean>;
 }

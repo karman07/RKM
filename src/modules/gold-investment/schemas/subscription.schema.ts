@@ -26,9 +26,25 @@ export class Subscription {
   @Prop({ trim: true })
   customerPhone: string;
 
+  /** Payment rail used to initialize this plan */
+  @Prop({ enum: ['autopay', 'bank_emi'], default: 'autopay' })
+  paymentMode: 'autopay' | 'bank_emi';
+
+  /** EMI tenure selected by customer (for bank EMI mode) */
+  @Prop({ default: 0 })
+  emiTenureMonths: number;
+
+  /** Principal financed upfront through bank EMI (INR) */
+  @Prop({ default: 0 })
+  financedAmount: number;
+
   /** The Razorpay subscription id */
   @Prop({ required: true })
   razorpaySubscriptionId: string;
+
+  /** Razorpay order id for bank EMI upfront flow */
+  @Prop()
+  razorpayOrderId: string;
 
   /** Razorpay customer id (if created) */
   @Prop()

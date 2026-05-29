@@ -19,10 +19,12 @@ import { WhatsAppWebhookController } from './whatsapp-webhook.controller';
 
 import { CustomersModule } from '../customers/customers.module';
 import { Customer, CustomerSchema } from '../customers/schemas/customer.schema';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
   imports: [
     ConfigModule,
+    SettingsModule,
 
     MongooseModule.forFeature([
       { name: WhatsAppMessage.name,  schema: WhatsAppMessageSchema },

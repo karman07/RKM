@@ -5,6 +5,8 @@ import * as admin from 'firebase-admin';
 import { JwtService } from '@nestjs/jwt';
 import { Customer, CustomerDocument } from './schemas/customer.schema';
 import { RegisterCustomerDto, LoginCustomerDto } from './dto/register-customer.dto';
+import { InventoryItem, InventoryItemDocument } from '../inventory/schemas/inventory-item.schema';
+import { OnlineOrder, OnlineOrderDocument } from '../online-orders/schemas/online-order.schema';
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -60,6 +62,8 @@ if (!admin.apps.length) {
 export class CustomersService {
   constructor(
     @InjectModel(Customer.name) private customerModel: Model<CustomerDocument>,
+    @InjectModel(InventoryItem.name) private inventoryModel: Model<InventoryItemDocument>,
+    @InjectModel(OnlineOrder.name) private onlineOrderModel: Model<OnlineOrderDocument>,
     private jwtService: JwtService,
   ) {}
 
@@ -200,6 +204,59 @@ export class CustomersService {
 
   async verifyEmail(id: string) {
     return this.customerModel.findByIdAndUpdate(id, { $set: { isEmailVerified: true } }, { new: true }).exec();
+  }
+
+  async getPurchaseHistory(phone: string) {
+    // Normalize phone: strip any leading + so we can do a flexible match
+    const phoneVariants = [phone, phone.replace(/^\+/, ''), `+${phone.replace(/^\+/, '')}`];
+    const phoneRegex = new RegExp(phoneVariants.map(p => p.replace(/[+]/g, '\\+')).join('|'));
+
+    const [storePurchases, onlineOrders] = await Promise.all([
+      this.inventoryModel
+        .find({ sold_customer_phone: { $in: phoneVariants }, status: 'sold' })
+        .populate('product_id', 'name images category metal purity')
+        .sort({ sold_at: -1 })
+        .lean()
+        .exec(),
+      this.onlineOrderModel
+        .find({ customer_phone: { $in: phoneVariants } })
+        .sort({ createdAt: -1 })
+        .lean()
+        .exec(),
+    ]);
+
+    return {
+      store_purchases: storePurchases.map((item: any) => ({
+        _id: item._id,
+        type: 'store',
+        product_name: item.product_id?.name || item.unique_item_code,
+        product_image: item.product_id?.images?.[0] || null,
+        category: item.product_id?.category || null,
+        metal: item.product_id?.metal || null,
+        purity: item.product_id?.purity || null,
+        unique_item_code: item.unique_item_code,
+        selling_price: item.sold_price ?? item.selling_price,
+        discount_amount: item.discount_amount ?? 0,
+        gross_weight: item.gross_weight,
+        net_weight: item.net_weight,
+        sold_at: item.sold_at,
+        payment_mode: item.payment_mode || null,
+      })),
+      online_orders: onlineOrders.map((order: any) => ({
+        _id: order._id,
+        type: 'online',
+        order_number: order.order_number,
+        items: order.items,
+        subtotal: order.subtotal,
+        delivery_charge: order.delivery_charge,
+        total: order.total,
+        status: order.status,
+        payment_status: order.payment_status,
+        delivery_address: order.delivery_address,
+        delivery_city: order.delivery_city,
+        createdAt: order.createdAt,
+      })),
+    };
   }
 
   async ensureCustomerExists(details: {

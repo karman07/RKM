@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ConflictException,
   BadRequestException,
@@ -7,6 +8,8 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import Razorpay from 'razorpay';
+import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   InventoryItem,
@@ -29,6 +32,7 @@ import {
   SALE_RETURNED_EVENT,
   SALE_RESERVED_EVENT,
 } from '../whatsapp/events/whatsapp.events.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 
 // Allowed status transitions
 const STATUS_TRANSITIONS: Record<InventoryStatus, InventoryStatus[]> = {
@@ -42,6 +46,9 @@ const STATUS_TRANSITIONS: Record<InventoryStatus, InventoryStatus[]> = {
 
 @Injectable()
 export class InventoryService {
+  private readonly logger = new Logger(InventoryService.name);
+  private readonly razorpay: Razorpay;
+
   constructor(
     @InjectModel(InventoryItem.name)
     private readonly inventoryModel: Model<InventoryItemDocument>,
@@ -52,7 +59,14 @@ export class InventoryService {
     private readonly branchesService: BranchesService,
     private readonly customersService: CustomersService,
     private readonly eventEmitter: EventEmitter2,
-  ) {}
+    private readonly configService: ConfigService,
+    private readonly notificationsService: NotificationsService,
+  ) {
+    this.razorpay = new Razorpay({
+      key_id: this.configService.get<string>('RAZORPAY_ID'),
+      key_secret: this.configService.get<string>('RAZORPAY_SECRET'),
+    });
+  }
 
 
   /**
@@ -68,7 +82,7 @@ export class InventoryService {
    *   - Gold rate changes propagate immediately via findAll recomputation
    *   - Item-level discounts don't compound with product-level discount_percentage
    */
-  private buildPricingInput(product: any, settings: any) {
+  private buildPricingInput(product: any, settings: any, item?: any) {
     const metalRates: Record<string, number> = settings.metal_rates ?? {};
     const purityRates = this.normalizePurityRates(settings.purity_rates);
     const stoneRates: Record<string, number> = settings.stone_rates ?? {};
@@ -98,7 +112,7 @@ export class InventoryService {
       making_charge_rate: product.making_charge_rate ?? 0,
       fixed_making_charge: product.fixed_making_charge ?? 0,
       tax_percentage: product.tax_percentage ?? 0,
-      discount_percentage: product.discount_percentage ?? 0,
+      discount_percentage: (item && item.admin_discount > 0) ? item.admin_discount : (product.discount_percentage ?? 0),
       price_override: product.price_override ?? null,
       extra_charges: Array.isArray(product.extra_charges)
         ? product.extra_charges.filter((e: any) => e?.reason && e?.charge > 0)
@@ -106,10 +120,14 @@ export class InventoryService {
     };
   }
 
-  private computeLiveSellingPrice(product: any, _item: any, settings: any): number {
+  private computeLiveSellingPrice(product: any, item: any, settings: any): number {
     if (!product) return 0;
-    const breakdown = this.pricingService.calculate(this.buildPricingInput(product, settings));
-    return parseFloat(breakdown.final_price.toFixed(2));
+    const breakdown = this.pricingService.calculate(this.buildPricingInput(product, settings, item));
+    const formulaPrice = breakdown.final_price;
+    // Apply manager discount if present
+    const managerDiscount = item?.manager_discount || 0;
+    const discountedPrice = formulaPrice * (1 - managerDiscount / 100);
+    return parseFloat(discountedPrice.toFixed(2));
   }
 
   async enrichItemsWithPricing(items: any[]) {
@@ -119,16 +137,24 @@ export class InventoryService {
       const product = plainItem.product_id as any;
       if (!product) return plainItem;
 
-      const breakdown = this.pricingService.calculate(this.buildPricingInput(product, settings));
+      const breakdown = this.pricingService.calculate(this.buildPricingInput(product, settings, plainItem));
       const formulaPrice = parseFloat(breakdown.final_price.toFixed(2));
+      const managerDiscount = plainItem.manager_discount || 0;
+      const liveSellingPrice = Math.round(formulaPrice * (1 - managerDiscount / 100));
+
+      // Compute live is_new_stock: true only if within the 48h window
+      const isNewStock = plainItem.new_stock_expires_at
+        ? new Date(plainItem.new_stock_expires_at) > new Date()
+        : (plainItem.is_new_stock ?? false);
 
       return {
         ...plainItem,
         selling_price: (plainItem.status === InventoryStatus.SOLD || plainItem.status === InventoryStatus.RETURNED)
           ? plainItem.selling_price
           : formulaPrice,
-        live_selling_price: formulaPrice,
+        live_selling_price: liveSellingPrice,
         pricing_breakdown: breakdown,
+        is_new_stock: isNewStock,
       };
     });
   }
@@ -244,7 +270,31 @@ export class InventoryService {
       results.push(saved);
     }
 
+    // Notify branch managers about new stock (fire-and-forget)
+    void this._notifyStockAdded(results, dto);
+
     return { inserted: results.length, items: results };
+  }
+
+  private async _notifyStockAdded(items: InventoryItemDocument[], dto: CreateInventoryItemDto) {
+    try {
+      const branchId = dto.branch_id?.toString();
+      const count = items.length;
+      const productName = (items[0] as any)?.product_id?.name || 'New Item';
+      const title = 'New Stock Added';
+      const body = `${count} unit${count > 1 ? 's' : ''} of "${productName}" added to your branch inventory.`;
+      const data = { type: 'stock_added', branch_id: branchId || '', count: String(count) };
+
+      if (branchId) {
+        this.logger.log(`[Notify] Stock added to branch ${branchId} — notifying managers`);
+        await this.notificationsService.notifyManagersOfBranch(branchId, title, body, data);
+      } else {
+        this.logger.warn('[Notify] Stock added without branch_id — notifying all managers as fallback');
+        await this.notificationsService.notifyAllManagers(title, body, data);
+      }
+    } catch (err: any) {
+      this.logger.error('[Notify] _notifyStockAdded failed', err?.message);
+    }
   }
 
   // ─── Assign / Reallocate Branch ────────────────────────────────────────────
@@ -427,7 +477,7 @@ export class InventoryService {
         .populate({ path: 'damaged_by_user_id', select: 'name email role' })
         .skip(skip)
         .limit(limit)
-        .sort({ createdAt: -1 })
+        .sort({ admin_discount: -1, manager_discount: -1, createdAt: -1 })
         .lean(),
       this.inventoryModel.countDocuments(filter as any),
     ]);
@@ -1207,14 +1257,19 @@ export class InventoryService {
         this.eventEmitter.emit(SALE_COMPLETED_EVENT, {
           customerId: undefined, // resolved by listener via phone
           customerPhone: savedItem.sold_customer_phone,
+          customerEmail: savedItem.sold_customer_email,
           customerName: savedItem.sold_customer_name,
           itemId: savedItem._id?.toString(),
+          itemName: (savedItem as any).product_id?.name || savedItem.unique_item_code,
+          itemCode: savedItem.unique_item_code,
           saleReference: savedItem.sale_reference,
           amount: savedItem.selling_price,
+          branchName: (savedItem as any).sold_at_branch_id?.name || (savedItem as any).branch_id?.name,
         });
       } else if (dto.status === InventoryStatus.RETURNED) {
         this.eventEmitter.emit(SALE_RETURNED_EVENT, {
           customerPhone: savedItem.sold_customer_phone,
+          customerEmail: savedItem.sold_customer_email,
           customerName: savedItem.sold_customer_name,
           itemId: savedItem._id?.toString(),
           saleReference: savedItem.sale_reference,
@@ -1229,6 +1284,36 @@ export class InventoryService {
     } catch (evtErr) {
       // Event emission should never fail the main transaction
       console.error('[InventoryService] Event emit error:', evtErr?.message);
+    }
+
+    // ─── Push Notifications ───────────────────────────────────────────────────
+    try {
+      const branchName = (savedItem as any).sold_at_branch_id?.name
+        || (savedItem as any).branch_id?.name
+        || 'Branch';
+      const itemName = (savedItem as any).product_id?.name || savedItem.unique_item_code || 'Item';
+
+      if (dto.status === InventoryStatus.SOLD) {
+        void this.notificationsService.notifyAdmins(
+          '💰 Item Sold',
+          `${itemName} sold to ${savedItem.sold_customer_name} at ${branchName} for ₹${savedItem.selling_price?.toLocaleString('en-IN')}.`,
+          { type: 'item_sold', item_id: savedItem._id?.toString() ?? '', url: '/dashboard/inventory/sold' },
+        );
+      } else if (dto.status === InventoryStatus.DAMAGED) {
+        void this.notificationsService.notifyAdmins(
+          '⚠️ Item Damaged',
+          `${itemName} reported damaged at ${branchName}. Reason: ${savedItem.damage_reason || 'Not provided'}.`,
+          { type: 'item_damaged', item_id: savedItem._id?.toString() ?? '', url: '/dashboard/inventory/damaged' },
+        );
+      } else if (dto.status === InventoryStatus.STOLEN) {
+        void this.notificationsService.notifyAdmins(
+          '🚨 Item Stolen',
+          `${itemName} reported stolen at ${branchName}. Reason: ${savedItem.damage_reason || 'Not provided'}.`,
+          { type: 'item_stolen', item_id: savedItem._id?.toString() ?? '', url: '/dashboard/inventory/stolen' },
+        );
+      }
+    } catch (pushErr) {
+      console.error('[InventoryService] Push notification error:', (pushErr as Error)?.message);
     }
 
     return savedItem;
@@ -1380,6 +1465,31 @@ export class InventoryService {
   private validateObjectId(id: string): void {
     if (!Types.ObjectId.isValid(id)) {
       throw new BadRequestException(`'${id}' is not a valid id`);
+    }
+  }
+  async createPaymentOrder(id: string) {
+    const item = await this.inventoryModel.findById(id).lean() as any;
+    if (!item) throw new NotFoundException('Inventory item not found');
+
+    const amount = (item.live_selling_price || item.selling_price) * 100; // in paise
+
+    try {
+      const orderPayload: any = {
+        amount: Math.round(amount),
+        currency: 'INR',
+        receipt: `receipt_${item.barcode}`,
+      };
+
+      const order: any = await this.razorpay.orders.create(orderPayload);
+
+      return {
+        orderId: order.id,
+        amount: order.amount,
+        currency: order.currency,
+        razorpayKey: this.configService.get<string>('RAZORPAY_ID'),
+      };
+    } catch (err) {
+      throw new BadRequestException(`Razorpay Order creation failed: ${err.message}`);
     }
   }
 }

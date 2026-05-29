@@ -11,6 +11,7 @@ import {
   HttpCode,
   HttpStatus,
   Request,
+  Post as PostMethod,
 } from '@nestjs/common';
 import { InventoryService } from './inventory.service';
 import { CreateInventoryItemDto } from './dto/create-inventory-item.dto';
@@ -187,6 +188,12 @@ export class InventoryController {
   @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER)
   findByBarcode(@Param('code') code: string) {
     return this.inventoryService.findByBarcode(code);
+  }
+
+  @PostMethod(':id/payment-order')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER)
+  createPaymentOrder(@Param('id') id: string) {
+    return this.inventoryService.createPaymentOrder(id);
   }
 
   /**

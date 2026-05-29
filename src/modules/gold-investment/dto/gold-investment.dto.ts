@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsBoolean, Min, Max } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsBoolean, Min, Max, IsIn } from 'class-validator';
 
 export class CreateInvestmentPlanDto {
   @IsString()
@@ -79,6 +79,16 @@ export class CreateSubscriptionDto {
   @IsString()
   @IsOptional()
   customerPhone?: string;
+
+  @IsString()
+  @IsOptional()
+  @IsIn(['autopay', 'bank_emi'])
+  paymentMode?: 'autopay' | 'bank_emi';
+
+  @IsNumber()
+  @IsOptional()
+  @Min(1)
+  emiTenureMonths?: number;
 }
 
 export class UpdateSubscriptionDto {

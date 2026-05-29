@@ -24,6 +24,9 @@ import { FeedbackModule } from './modules/feedback/feedback.module';
 import { GoldInvestmentModule } from './modules/gold-investment/gold-investment.module';
 import { ItemAttendanceModule } from './modules/item-attendance/item-attendance.module';
 import { HrModule } from './modules/hr/hr.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { OnlineOrdersModule } from './modules/online-orders/online-orders.module';
+import { EmailModule } from './modules/email/email.module';
 
 @Module({
   imports: [
@@ -56,6 +59,9 @@ import { HrModule } from './modules/hr/hr.module';
     GoldInvestmentModule,
     ItemAttendanceModule,
     HrModule,
+    NotificationsModule,
+    OnlineOrdersModule,
+    EmailModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -8,10 +8,16 @@ import { Customer, CustomerSchema } from './schemas/customer.schema';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PassportModule } from '@nestjs/passport';
 import { CustomerJwtStrategy } from './customer-jwt.strategy';
+import { InventoryItem, InventoryItemSchema } from '../inventory/schemas/inventory-item.schema';
+import { OnlineOrder, OnlineOrderSchema } from '../online-orders/schemas/online-order.schema';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: Customer.name, schema: CustomerSchema }]),
+    MongooseModule.forFeature([
+      { name: Customer.name, schema: CustomerSchema },
+      { name: InventoryItem.name, schema: InventoryItemSchema },
+      { name: OnlineOrder.name, schema: OnlineOrderSchema },
+    ]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({

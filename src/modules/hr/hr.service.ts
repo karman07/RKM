@@ -3,12 +3,14 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { LeaveRequest, LeaveRequestDocument, LeaveStatus } from './schemas/leave-request.schema';
 import { Reimbursement, ReimbursementDocument, ReimbursementStatus } from './schemas/reimbursement.schema';
+import { AttendanceService } from '../attendance/attendance.service';
 
 @Injectable()
 export class HrService {
   constructor(
     @InjectModel(LeaveRequest.name) private leaveModel: Model<LeaveRequestDocument>,
     @InjectModel(Reimbursement.name) private reimbursementModel: Model<ReimbursementDocument>,
+    private attendanceService: AttendanceService,
   ) {}
 
   // ─── Leave Requests ──────────────────────────────────────────────────────────
@@ -56,7 +58,30 @@ export class HrService {
     if (note) leave.admin_note = note;
     leave.reviewed_at = new Date();
     leave.reviewed_by = new Types.ObjectId(adminId);
-    return leave.save();
+    const savedLeave = await leave.save();
+
+    // Mark attendance as 'on-leave' if approved
+    if (status === 'approved') {
+      const from = new Date(leave.from_date);
+      const to = new Date(leave.to_date);
+      // Ensure to is at the end of the day or compare correctly
+      
+      const current = new Date(from);
+      while (current <= to) {
+        await this.attendanceService.markAttendance(
+          {
+            user_id: leave.manager_id.toString(),
+            date: new Date(current),
+            status: 'on-leave',
+            notes: `Leave Approved: ${leave.leave_type}`,
+          },
+          adminId,
+        );
+        current.setDate(current.getDate() + 1);
+      }
+    }
+
+    return savedLeave;
   }
 
   // ─── Reimbursements ──────────────────────────────────────────────────────────

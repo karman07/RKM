@@ -73,6 +73,21 @@ export class Settings {
    */
   @Prop({ type: Number, min: 0, max: 100, default: 50 })
   stone_refund_percentage: number;
+
+  /** Whether WhatsApp notifications are enabled for automated sale events */
+  @Prop({ type: Boolean, default: true })
+  whatsapp_notifications_enabled: boolean;
+
+  /** Whether email notifications are enabled for automated sale events */
+  @Prop({ type: Boolean, default: true })
+  email_notifications_enabled: boolean;
+
+  /** Toggle individual email triggers */
+  @Prop({
+    type: Object,
+    default: { sale_completed: true, sale_returned: true, sale_reserved: false },
+  })
+  email_triggers: Record<string, boolean>;
 }
 
 export const SettingsSchema = SchemaFactory.createForClass(Settings);

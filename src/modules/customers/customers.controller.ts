@@ -47,4 +47,10 @@ export class CustomersController {
     // For now, we just mark it verified or return success.
     return this.customersService.verifyEmail(req.user._id);
   }
+
+  @UseGuards(CustomerJwtAuthGuard)
+  @Get('purchase-history')
+  async getPurchaseHistory(@Request() req: any) {
+    return this.customersService.getPurchaseHistory(req.user.phone);
+  }
 }

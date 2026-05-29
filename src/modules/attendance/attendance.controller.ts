@@ -60,11 +60,18 @@ export class AttendanceController {
   @Post('check-in')
   checkIn(@Req() req: any) {
     const uid = req.user?.userId || req.user?.sub || req.user?._id;
+    const now = new Date();
+    
+    // Check if it's past 12:00 PM local time (IST typically)
+    const formatter = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', hour: 'numeric', hour12: false });
+    const hour = parseInt(formatter.format(now), 10);
+    const status = hour >= 12 ? 'half-day' : 'present';
+
     return this.attendanceService.markAttendance({
       user_id: uid,
-      date: new Date(),
-      status: 'present',
-      check_in: new Date(),
+      date: now,
+      status: status,
+      check_in: now,
     }, uid);
   }
 

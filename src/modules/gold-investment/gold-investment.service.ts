@@ -87,10 +87,11 @@ export class GoldInvestmentService {
   // SUBSCRIPTIONS
   // ─────────────────────────────────────────────────────────────────
 
-  async createSubscription(dto: CreateSubscriptionDto): Promise<{ subscription: SubscriptionDocument; shortUrl: string; razorpayKey?: string }> {
+  async createSubscription(dto: CreateSubscriptionDto): Promise<any> {
     const plan = await this.planModel.findById(dto.planId).exec();
     if (!plan) throw new NotFoundException('Investment plan not found');
     if (!plan.isActive) throw new BadRequestException('This plan is no longer active');
+    const paymentMode = dto.paymentMode || 'autopay';
 
     // Restrict one active subscription per user. PENDING means they haven't finished checkout.
     const existingActive = await this.subModel.findOne({
@@ -127,7 +128,62 @@ export class GoldInvestmentService {
       this.logger.warn('Razorpay customer create failed; proceeding without customer id');
     }
 
-    // Create Razorpay subscription
+    // BANK EMI FLOW (upfront financed payment; admin receives full amount, customer repays bank in EMIs)
+    if (paymentMode === 'bank_emi') {
+      const financedAmount = Math.round(plan.monthlyAmount * plan.durationMonths);
+      let rzpOrder: any;
+      try {
+        rzpOrder = await this.razorpay.orders.create({
+          amount: financedAmount * 100,
+          currency: 'INR',
+          receipt: `GOLD-${Date.now()}`,
+          notes: {
+            kind: 'gold_investment_bank_emi',
+            plan_id: String(plan._id),
+            customer_phone: dto.customerPhone || '',
+            customer_email: dto.customerEmail || '',
+          },
+        } as any);
+      } catch (err) {
+        this.logger.error('Razorpay order creation failed (bank EMI)', err);
+        throw new BadRequestException(`Razorpay error: ${err.error?.description || err.message}`);
+      }
+
+      const startedAt = new Date();
+      const maturesAt = new Date(startedAt);
+      maturesAt.setMonth(maturesAt.getMonth() + plan.durationMonths);
+
+      const sub = await this.subModel.create({
+        plan: plan._id,
+        customerName: dto.customerName,
+        customerEmail: dto.customerEmail,
+        customerPhone: dto.customerPhone,
+        paymentMode: 'bank_emi',
+        emiTenureMonths: dto.emiTenureMonths || plan.durationMonths,
+        financedAmount,
+        razorpayOrderId: rzpOrder.id,
+        // keep mandatory field populated for schema compatibility
+        razorpaySubscriptionId: `bank-emi-${rzpOrder.id}`,
+        razorpayCustomerId: rzpCustomer?.id,
+        status: SubscriptionStatus.PENDING,
+        amountAccumulated: 0,
+        interestAccumulated: 0,
+        startedAt,
+        maturesAt,
+        installmentsPaid: 0,
+      });
+
+      return {
+        checkoutType: 'bank_emi',
+        subscription: sub,
+        orderId: rzpOrder.id,
+        amount: financedAmount,
+        currency: 'INR',
+        razorpayKey: this.configService.get<string>('RAZORPAY_ID'),
+      };
+    }
+
+    // Create Razorpay subscription (autopay flow)
     let rzpSub: any;
     try {
       const totalCount = plan.durationMonths;
@@ -170,6 +226,9 @@ export class GoldInvestmentService {
       customerName: dto.customerName,
       customerEmail: dto.customerEmail,
       customerPhone: dto.customerPhone,
+      paymentMode: 'autopay',
+      emiTenureMonths: 0,
+      financedAmount: 0,
       razorpaySubscriptionId: rzpSub.id,
       razorpayCustomerId: rzpCustomer?.id,
       status: SubscriptionStatus.PENDING,
@@ -187,7 +246,42 @@ export class GoldInvestmentService {
     };
   }
 
-  async verifyCustomerSubscription(dto: { razorpay_payment_id: string; razorpay_subscription_id: string; razorpay_signature: string }) {
+  async verifyCustomerSubscription(dto: any) {
+    // Bank EMI upfront verification
+    if (dto?.payment_mode === 'bank_emi' || dto?.razorpay_order_id) {
+      const keySecret = this.configService.get<string>('RAZORPAY_SECRET') || '';
+      const generated = crypto
+        .createHmac('sha256', keySecret)
+        .update(`${dto.razorpay_order_id}|${dto.razorpay_payment_id}`)
+        .digest('hex');
+
+      if (generated !== dto.razorpay_signature) {
+        throw new BadRequestException('Payment verification failed');
+      }
+
+      const sub = await this.subModel
+        .findOne({ _id: dto.subscription_id, razorpayOrderId: dto.razorpay_order_id })
+        .populate('plan')
+        .exec();
+
+      if (!sub) throw new NotFoundException('Subscription not found');
+
+      const plan = sub.plan as any;
+      sub.status = SubscriptionStatus.ACTIVE;
+      sub.installmentsPaid = plan?.durationMonths || sub.installmentsPaid || 0;
+      sub.amountAccumulated = (plan?.monthlyAmount || 0) * (plan?.durationMonths || 0);
+      sub.interestAccumulated = 0;
+      if (!sub.startedAt) sub.startedAt = new Date();
+      if (!sub.maturesAt) {
+        const maturesAt = new Date(sub.startedAt || new Date());
+        maturesAt.setMonth(maturesAt.getMonth() + (plan?.durationMonths || 0));
+        sub.maturesAt = maturesAt;
+      }
+
+      await sub.save();
+      return sub;
+    }
+
     try {
       // Actively pull truth from Razorpay to avoid relying strictly on webhooks for UI state updates
       const rzpSub = await (this.razorpay.subscriptions as any).fetch(dto.razorpay_subscription_id);

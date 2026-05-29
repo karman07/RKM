@@ -72,18 +72,20 @@ export class GoldInvestmentController {
 
   @UseGuards(CustomerJwtAuthGuard)
   @Post('my-subscriptions')
-  subscribeToPlan(@Req() req: any, @Body() dto: { planId: string }) {
+  subscribeToPlan(@Req() req: any, @Body() dto: { planId: string; paymentMode?: 'autopay' | 'bank_emi'; emiTenureMonths?: number }) {
     return this.svc.createSubscription({
       planId: dto.planId,
       customerName: req.user.name,
       customerEmail: req.user.email,
-      customerPhone: req.user.phone
+      customerPhone: req.user.phone,
+      paymentMode: dto.paymentMode,
+      emiTenureMonths: dto.emiTenureMonths,
     });
   }
 
   @UseGuards(CustomerJwtAuthGuard)
   @Post('my-subscriptions/verify')
-  verifySubscription(@Body() dto: { razorpay_payment_id: string; razorpay_subscription_id: string; razorpay_signature: string }) {
+  verifySubscription(@Body() dto: any) {
     return this.svc.verifyCustomerSubscription(dto);
   }
 

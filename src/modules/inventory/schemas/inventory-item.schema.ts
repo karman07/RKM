@@ -47,6 +47,14 @@ export class InventoryItem {
   @Prop({ type: String, enum: InventoryStatus, default: InventoryStatus.AVAILABLE })
   status: InventoryStatus;
 
+  /** True for 48h after the item is first added to inventory — used for "NEW" badge in UI */
+  @Prop({ type: Boolean, default: true })
+  is_new_stock: boolean;
+
+  /** Auto-expiry timestamp for the is_new_stock flag */
+  @Prop({ type: Date, default: () => new Date(Date.now() + 48 * 60 * 60 * 1000) })
+  new_stock_expires_at: Date;
+
   // Actual Weights
   @Prop({ type: Number, min: 0, default: 0 })
   gross_weight: number;
@@ -160,6 +168,12 @@ export class InventoryItem {
 
   @Prop({ type: Number, min: 0, default: 0 })
   emi_down_payment: number;
+
+  @Prop({ type: String, trim: true, default: null })
+  razorpay_order_id: string | null;
+
+  @Prop({ type: String, trim: true, default: null })
+  razorpay_payment_id: string | null;
 
   @Prop({ type: Date, default: null })
   reserved_at: Date | null;

@@ -26,6 +26,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       userId: payload.sub,
       email: payload.email,
       role: payload.role,
+      branch: user.branch,                                         // populated Branch document or ObjectId
+      branch_id: (user.branch as any)?._id?.toString() || (user.branch as any)?.toString() || null,
     };
   }
 }
