@@ -7,6 +7,7 @@ import {
   CheckCircle2, ShieldCheck, Gem, FileText, ArrowRight, Loader2, AlertCircle, 
   Zap, Clock, CreditCard, Store, TrendingUp, Wallet, Info
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface Plan {
   _id: string;
@@ -106,12 +107,12 @@ export default function GoldInvestmentPage() {
 
   const handleSubscribe = async (planId: string) => {
     if (!authState.token) {
-      alert("Please login or register to subscribe to a plan.");
+      toast.error("Please login or register to subscribe to a plan.");
       return;
     }
     
     if (!authState.customer || !authState.customer.name || !authState.customer.phone) {
-      alert("Please ensure your profile is complete (Name and Phone) before subscribing.");
+      toast.error("Please ensure your profile is complete (Name and Phone) before subscribing.");
       router.push('/profile');
       return;
     }
@@ -126,7 +127,7 @@ export default function GoldInvestmentPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${authState.token}`
         },
-        body: JSON.stringify({ planId })
+        body: JSON.stringify({ planId, paymentMode: 'bank_emi' })
       });
       const data = await res.json();
       
@@ -139,52 +140,102 @@ export default function GoldInvestmentPage() {
         throw new Error('Razorpay SDK failed to load. Are you online?');
       }
 
-      const options = {
-        key: data.razorpayKey,
-        subscription_id: data.subscription.razorpaySubscriptionId,
-        name: "RKM Jewellers",
-        description: "Systematic Gold Investment Plan",
-        image: "https://via.placeholder.com/150/064E3B/FFFFFF?text=RKM", // Replace with actual logo URL if available
-        handler: async function (response: any) {
-          try {
-            await fetch(`${process.env.NEXT_PUBLIC_API_URL}/gold-investment/my-subscriptions/verify`, {
-               method: 'POST',
-               headers: {
-                 'Content-Type': 'application/json',
-                 'Authorization': `Bearer ${authState.token}`
-               },
-               body: JSON.stringify({
-                  razorpay_payment_id: response.razorpay_payment_id,
-                  razorpay_subscription_id: response.razorpay_subscription_id,
-                  razorpay_signature: response.razorpay_signature
-               })
-            });
-            setShowSuccessDialog(true);
-          } catch (e) {
-             alert("Subscription processed, but we could not immediately sync your profile. Please check back in a few minutes.");
-             router.push('/profile');
+      const isBankEmiFlow = data.checkoutType === 'bank_emi' && data.orderId;
+
+      const options = isBankEmiFlow
+        ? {
+            key: data.razorpayKey,
+            order_id: data.orderId,
+            amount: Math.round((data.amount || 0) * 100),
+            currency: data.currency || 'INR',
+            name: 'RKM Jewellers',
+            description: 'Gold Plan via Bank EMI (Merchant receives full payment upfront)',
+            image: 'https://via.placeholder.com/150/064E3B/FFFFFF?text=RKM',
+            handler: async function (response: any) {
+              try {
+                const verifyRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/gold-investment/my-subscriptions/verify`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${authState.token}`
+                  },
+                  body: JSON.stringify({
+                    payment_mode: 'bank_emi',
+                    subscription_id: data.subscription._id,
+                    razorpay_payment_id: response.razorpay_payment_id,
+                    razorpay_order_id: response.razorpay_order_id,
+                    razorpay_signature: response.razorpay_signature
+                  })
+                });
+                if (!verifyRes.ok) throw new Error('Verification failed');
+                setShowSuccessDialog(true);
+              } catch (e) {
+                toast.info('Payment was processed, but plan verification is pending. Please check your profile in a few minutes.');
+                router.push('/profile');
+              }
+            },
+            method: {
+              emi: true,
+              card: true,
+              netbanking: true,
+              upi: false,
+              wallet: false,
+            },
+            prefill: {
+              name: authState.customer.name || '',
+              email: authState.customer.email || '',
+              contact: authState.customer.phone || ''
+            },
+            theme: {
+              color: '#064E3B'
+            }
           }
-        },
-        prefill: {
-          name: authState.customer.name || '',
-          email: authState.customer.email || '',
-          contact: authState.customer.phone || ''
-        },
-        theme: {
-          color: "#064E3B"
-        }
-      };
+        : {
+            key: data.razorpayKey,
+            subscription_id: data.subscription.razorpaySubscriptionId,
+            name: 'RKM Jewellers',
+            description: 'Systematic Gold Investment Plan',
+            image: 'https://via.placeholder.com/150/064E3B/FFFFFF?text=RKM',
+            handler: async function (response: any) {
+              try {
+                await fetch(`${process.env.NEXT_PUBLIC_API_URL}/gold-investment/my-subscriptions/verify`, {
+                   method: 'POST',
+                   headers: {
+                     'Content-Type': 'application/json',
+                     'Authorization': `Bearer ${authState.token}`
+                   },
+                   body: JSON.stringify({
+                      razorpay_payment_id: response.razorpay_payment_id,
+                      razorpay_subscription_id: response.razorpay_subscription_id,
+                      razorpay_signature: response.razorpay_signature
+                   })
+                });
+                setShowSuccessDialog(true);
+              } catch (e) {
+                 toast.info('Subscription processed, but we could not immediately sync your profile. Please check back in a few minutes.');
+                 router.push('/profile');
+              }
+            },
+            prefill: {
+              name: authState.customer.name || '',
+              email: authState.customer.email || '',
+              contact: authState.customer.phone || ''
+            },
+            theme: {
+              color: '#064E3B'
+            }
+          };
 
       const rzp = new (window as any).Razorpay(options);
       rzp.on('payment.failed', function (response: any) {
-        alert(`Payment Failed: ${response.error.description}`);
+        toast.error(`Payment Failed: ${response.error.description}`);
       });
       
       rzp.open();
       
     } catch (err: any) {
       setError(err.message);
-      alert(err.message);
+      toast.error(err.message);
     } finally {
       setSubscribeLoading(null);
     }
@@ -239,7 +290,7 @@ export default function GoldInvestmentPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
             {[
               { icon: <Clock />, title: "Select Duration", desc: "Choose a 6, 10 or 12-month period as per your convenience." },
-              { icon: <CreditCard />, title: "Set Autopay", desc: "One-time secure mandate via Razorpay. Your monthly investment stays on track automatically." },
+              { icon: <CreditCard />, title: "Bank EMI Checkout", desc: "Pay securely with bank EMI at checkout. You repay the bank monthly while RKM receives the full settlement upfront." },
               { icon: <TrendingUp />, title: "Earn Returns", desc: "Your principal earns fixed monthly interest, growing your value every single day." },
               { icon: <Store />, title: "Shop Jewellery", desc: "At maturity, redeem your total plus a special RKM discount on making charges." }
             ].map((step, i) => (
@@ -344,6 +395,10 @@ export default function GoldInvestmentPage() {
                     </div>
 
                     <div className="space-y-6 mb-10 pt-6 border-t border-slate-50">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Payment Mode</span>
+                        <span className="bg-emerald-50 text-[#064E3B] px-3 py-1 rounded-lg text-sm font-bold">Bank EMI</span>
+                      </div>
                       <div className="flex items-center justify-between">
                         <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Monthly Commitment</span>
                         <span className="text-xl font-bold text-slate-900">{fmt(p.monthlyAmount)}</span>

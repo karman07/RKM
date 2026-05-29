@@ -147,27 +147,6 @@ export default function AuthDialog() {
     return countryCode?.toUpperCase() || '-';
   };
 
-  const setupRecaptcha = () => {
-    if (!recaptchaContainerRef.current) return;
-    
-    // Clear existing if any to avoid "element removed" issues
-    if ((window as any).recaptchaVerifier) {
-      try {
-        (window as any).recaptchaVerifier.clear();
-      } catch (e) {}
-    }
-
-    try {
-      (window as any).recaptchaVerifier = new RecaptchaVerifier(auth, recaptchaContainerRef.current, {
-        size: 'invisible',
-        callback: () => {
-          // reCAPTCHA solved
-        }
-      });
-    } catch (e) {
-      console.log("Recaptcha init failed", e);
-    }
-  };
 
   useEffect(() => {
     return () => {
@@ -183,50 +162,56 @@ export default function AuthDialog() {
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    
-    // Check if test mode or no firebase config
-    if (!process.env.NEXT_PUBLIC_FIREBASE_API_KEY || process.env.NEXT_PUBLIC_FIREBASE_API_KEY === 'dummy') {
-      console.log('Dummy Firebase: Skipping OTP, going to details directly for testing');
-      setFirebaseToken('TEST_TOKEN_123');
-      await verifyBackend('TEST_TOKEN_123');
-      return;
-    }
-
     setLoading(true);
-    setupRecaptcha();
-    const appVerifier = (window as any).recaptchaVerifier;
 
     try {
-      const formattedPhone = phoneNumber.startsWith('+') ? phoneNumber : `${selectedDialCode.dial_code}${phoneNumber}`;
-      const result = await signInWithPhoneNumber(auth, formattedPhone, appVerifier);
+      if ((window as any).recaptchaVerifier) {
+        try { (window as any).recaptchaVerifier.clear(); } catch (_) {}
+        (window as any).recaptchaVerifier = null;
+      }
+
+      if (!recaptchaContainerRef.current) throw new Error('reCAPTCHA container not ready');
+
+      const verifier = new RecaptchaVerifier(auth, recaptchaContainerRef.current, {
+        size: 'invisible',
+        callback: () => {},
+      });
+      (window as any).recaptchaVerifier = verifier;
+
+      const formattedPhone = phoneNumber.startsWith('+')
+        ? phoneNumber
+        : `${selectedDialCode.dial_code}${phoneNumber}`;
+
+      const result = await signInWithPhoneNumber(auth, formattedPhone, verifier);
       setConfirmationResult(result);
       setStep('otp');
     } catch (err: any) {
       setError(err.message || 'Failed to send OTP');
-      if (appVerifier) appVerifier.clear();
-      (window as any).recaptchaVerifier = null;
+      if ((window as any).recaptchaVerifier) {
+        try { (window as any).recaptchaVerifier.clear(); } catch (_) {}
+        (window as any).recaptchaVerifier = null;
+      }
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!confirmationResult && firebaseToken !== 'TEST_TOKEN_123') return;
+    if (!confirmationResult) return;
     setError('');
     setLoading(true);
     try {
-      let token = firebaseToken;
-      if (confirmationResult && firebaseToken !== 'TEST_TOKEN_123') {
-        const result = await confirmationResult.confirm(otp);
-        token = await result.user.getIdToken();
-        setFirebaseToken(token);
-        setFirebaseEmail(result.user.email || '');
-      }
+      const result = await confirmationResult.confirm(otp);
+      const token = await result.user.getIdToken();
+      setFirebaseToken(token);
+      setFirebaseEmail(result.user.email || '');
       await verifyBackend(token);
     } catch (err: any) {
       setError('Invalid OTP or Verification Failed');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const verifyBackend = async (token: string) => {
@@ -652,7 +637,7 @@ export default function AuthDialog() {
             </div>
           )}
         </div>
-        <div ref={recaptchaContainerRef} className="hidden"></div>
+        <div ref={recaptchaContainerRef} id="recaptcha-container" style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}></div>
       </div>
     </div>
   );

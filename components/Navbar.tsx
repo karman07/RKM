@@ -590,6 +590,13 @@ export default function Navbar() {
                       <Heart size={14} className="opacity-50" /> Saved Items
                     </Link>
 
+                    <Link
+                      href="/orders"
+                      className="flex items-center gap-3 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 hover:text-[#1A6B3A] hover:bg-emerald-50 transition-all"
+                    >
+                      <ShoppingBag size={14} className="opacity-50" /> My Orders
+                    </Link>
+
                     <div className="mx-5 my-1 border-t border-slate-50"></div>
 
                     <button

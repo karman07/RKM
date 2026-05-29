@@ -39,6 +39,7 @@ export const metadata: Metadata = {
 import ChatAssistant from "../components/ChatAssistant";
 import AnalyticsTracker from "../components/AnalyticsTracker";
 import AuthDialog from "../components/AuthDialog";
+import { Toaster } from "sonner";
 
 export default function RootLayout({
   children,
@@ -108,6 +109,7 @@ export default function RootLayout({
           <Footer />
           <AuthDialog />
           <ChatAssistant />
+          <Toaster position="top-center" richColors />
         </StoreProvider>
       </body>
     </html>
