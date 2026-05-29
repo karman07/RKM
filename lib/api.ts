@@ -1435,3 +1435,25 @@ export const deleteEmailTemplate = (id: string) =>
   request<{ deleted: boolean }>(`/email/templates/${id}`, { method: 'DELETE' });
 export const activateEmailTemplate = (id: string) =>
   request<EmailTemplate>(`/email/templates/${id}/activate`, { method: 'POST' });
+
+// ─── Holidays ─────────────────────────────────────────────────────────────────
+
+export interface Holiday {
+  _id: string;
+  name: string;
+  /** "MM-DD" for yearly recurring, "YYYY-MM-DD" for one-time */
+  date: string;
+  is_yearly: boolean;
+  description?: string;
+  color?: string;
+  createdAt: string;
+}
+
+export const getHolidays = (year?: number) =>
+  request<Holiday[]>(`/holidays${year ? `?year=${year}` : ''}`);
+
+export const createHoliday = (data: Omit<Holiday, '_id' | 'createdAt'>) =>
+  request<Holiday>('/holidays', { method: 'POST', body: JSON.stringify(data) });
+
+export const deleteHoliday = (id: string) =>
+  request<{ deleted: boolean }>(`/holidays/${id}`, { method: 'DELETE' });

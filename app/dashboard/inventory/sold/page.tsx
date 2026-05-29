@@ -6,7 +6,7 @@ import BillModal from '@/components/BillModal';
 import UserHistoryDrawer from '@/components/UserHistoryDrawer';
 import dynamic from 'next/dynamic';
 import { 
-  Store, User, ShieldCheck, CreditCard, 
+  Store, User as UserIcon, ShieldCheck, CreditCard,
   Globe, LayoutDashboard, Search, Printer, 
   FileEdit, ChevronRight, TrendingUp, BarChart3
 } from 'lucide-react';
@@ -590,7 +590,7 @@ export default function SoldInventoryPage() {
                                   ) : (
                                     <>
                                       <div className="w-6 h-6 rounded-lg bg-slate-50 flex items-center justify-center border border-dashed border-slate-300 flex-shrink-0">
-                                        <User size={11} className="text-slate-300" />
+                                        <UserIcon size={11} className="text-slate-300" />
                                       </div>
                                       <div className="flex flex-col">
                                         <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest leading-none mb-0.5">Staff</span>

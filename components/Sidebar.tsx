@@ -327,6 +327,21 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Leave Requests</span>}
             </Link>
 
+            {/* Holidays */}
+            <Link
+              href="/dashboard/holidays"
+              onClick={onNavigate}
+              title={isCollapsed ? "Holidays" : ""}
+              className={navClass(pathname.startsWith('/dashboard/holidays'))}
+              style={getNavStyle(pathname.startsWith('/dashboard/holidays'))}
+            >
+              {isCollapsed && pathname.startsWith('/dashboard/holidays') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname.startsWith('/dashboard/holidays')} color={pathname.startsWith('/dashboard/holidays') ? colors.activeText : colors.textMuted}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Holidays</span>}
+            </Link>
+
             {/* Reimbursements */}
             <Link
               href="/dashboard/reimbursements"
