@@ -113,6 +113,19 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
               </NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Business Intelligence</span>}
             </Link>
+            <Link
+              href="/dashboard/notifications"
+              onClick={onNavigate}
+              title={isCollapsed ? "Notifications" : ""}
+              className={navClass(pathname === '/dashboard/notifications')}
+              style={getNavStyle(pathname === '/dashboard/notifications')}
+            >
+              {isCollapsed && pathname === '/dashboard/notifications' && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname === '/dashboard/notifications'} color={pathname === '/dashboard/notifications' ? colors.activeText : colors.textMuted}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+              </NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Notification Center</span>}
+            </Link>
           </div>
         </section>
 
@@ -328,6 +341,23 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
               </NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Reimbursements</span>}
             </Link>
+
+            {/* Online Orders */}
+            <Link
+              href="/dashboard/online-orders"
+              onClick={onNavigate}
+              title={isCollapsed ? "Online Orders" : ""}
+              className={navClass(pathname.startsWith('/dashboard/online-orders') && !pathname.includes('/settings'))}
+              style={getNavStyle(pathname.startsWith('/dashboard/online-orders') && !pathname.includes('/settings'))}
+            >
+              {isCollapsed && pathname.startsWith('/dashboard/online-orders') && !pathname.includes('/settings') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname.startsWith('/dashboard/online-orders') && !pathname.includes('/settings')} color={pathname.startsWith('/dashboard/online-orders') && !pathname.includes('/settings') ? colors.activeText : colors.textMuted}>
+                <path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
+              </NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Online Orders</span>}
+            </Link>
+
+
           </div>
         </section>
 
@@ -479,6 +509,19 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
                 <path d="M8 10h.01M12 10h.01M16 10h.01" />
               </NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">WhatsApp Control</span>}
+            </Link>
+            <Link
+              href="/dashboard/mail"
+              onClick={onNavigate}
+              title={isCollapsed ? "Mail Centre" : ""}
+              className={navClass(pathname.startsWith('/dashboard/mail'))}
+              style={getNavStyle(pathname.startsWith('/dashboard/mail'))}
+            >
+              {isCollapsed && pathname.startsWith('/dashboard/mail') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname.startsWith('/dashboard/mail')} color={pathname.startsWith('/dashboard/mail') ? colors.activeText : colors.textMuted}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Mail Centre</span>}
             </Link>
             <Link
               href="/dashboard/blogs"

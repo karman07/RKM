@@ -1,9 +1,15 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { getInventory, getMe, updateInventoryStatus, staticUrl, type InventoryItem, type User } from '@/lib/api';
+import { getInventory, getMe, getUsers, updateInventoryStatus, staticUrl, type InventoryItem, type User } from '@/lib/api';
 import BillModal from '@/components/BillModal';
+import UserHistoryDrawer from '@/components/UserHistoryDrawer';
 import dynamic from 'next/dynamic';
+import { 
+  Store, User, ShieldCheck, CreditCard, 
+  Globe, LayoutDashboard, Search, Printer, 
+  FileEdit, ChevronRight, TrendingUp, BarChart3
+} from 'lucide-react';
 
 
 const Line = dynamic(() => import('react-chartjs-2').then(mod => mod.Line), { ssr: false });
@@ -94,23 +100,38 @@ function EditRecordModal({ item, onClose, onSave }: { item: InventoryItem; onClo
 export default function SoldInventoryPage() {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [user, setUser] = useState<User | null>(null);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [selectedBillItems, setSelectedBillItems] = useState<InventoryItem[] | null>(null);
   const [selectedBillDate, setSelectedBillDate] = useState<string>('');
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
+  const [historyUser, setHistoryUser] = useState<User | null>(null);
+
+  // Helper: find full User object from a populated sold_by field
+  function resolveUser(populated: any): User | null {
+    if (!populated || typeof populated !== 'object') return null;
+    // Try to find the full user in allUsers by _id
+    const full = allUsers.find(u => u._id === (populated._id || populated));
+    if (full) return full;
+    // Fall back to a synthesized User-like object from populated data
+    if (populated.name) return { ...populated } as User;
+    return null;
+  }
 
   useEffect(() => {
     async function load() {
       setLoading(true);
       try {
-        const [meRes, invRes] = await Promise.all([
+        const [meRes, invRes, usersRes] = await Promise.all([
           getMe().catch(() => null),
-          getInventory({ status: 'sold', limit: '200', page: '1' })
+          getInventory({ status: 'sold', limit: '200', page: '1' }),
+          getUsers(undefined, 1, 300).catch(() => ({ data: [] })),
         ]);
         setUser(meRes);
         setItems(invRes.data);
+        setAllUsers((usersRes as any).data || []);
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : 'Failed to load artisan records');
       } finally {
@@ -235,8 +256,8 @@ export default function SoldInventoryPage() {
 
       {/* Staff Performance Leaderboards */}
       {!loading && items.length > 0 && showCharts && (() => {
-        const cashierMap: Record<string, { name: string; branch: string; count: number; revenue: number }> = {};
-        const managerMap: Record<string, { name: string; branch: string; count: number; revenue: number }> = {};
+        const cashierMap: Record<string, { id: string; name: string; branch: string; count: number; revenue: number }> = {};
+        const managerMap: Record<string, { id: string; name: string; branch: string; count: number; revenue: number }> = {};
 
         items.forEach(item => {
           const branchName = (item as any).sold_at_branch_id?.name || 'Direct Sale';
@@ -244,7 +265,7 @@ export default function SoldInventoryPage() {
           const cashier = (item as any).sold_by_user_id;
           if (cashier && typeof cashier === 'object' && cashier.name) {
             const id = cashier._id || cashier.name;
-            if (!cashierMap[id]) cashierMap[id] = { name: cashier.name, branch: branchName, count: 0, revenue: 0 };
+            if (!cashierMap[id]) cashierMap[id] = { id: cashier._id || '', name: cashier.name, branch: branchName, count: 0, revenue: 0 };
             cashierMap[id].count += 1;
             cashierMap[id].revenue += item.selling_price || 0;
           }
@@ -252,7 +273,7 @@ export default function SoldInventoryPage() {
           const manager = (item as any).sold_by_manager_id;
           if (manager && typeof manager === 'object' && manager.name) {
             const id = manager._id || manager.name;
-            if (!managerMap[id]) managerMap[id] = { name: manager.name, branch: branchName, count: 0, revenue: 0 };
+            if (!managerMap[id]) managerMap[id] = { id: manager._id || '', name: manager.name, branch: branchName, count: 0, revenue: 0 };
             managerMap[id].count += 1;
             managerMap[id].revenue += item.selling_price || 0;
           }
@@ -282,11 +303,21 @@ export default function SoldInventoryPage() {
                   </div>
                 </div>
                 <div className="p-8 grid grid-cols-1 sm:grid-cols-2 gap-5">
-                  {cashierList.slice(0, 5).map((c, i) => (
-                    <div key={c.name} className="relative flex flex-col gap-2 p-4 rounded-2xl border border-slate-100 bg-white hover:shadow-md transition-all hover:-translate-y-0.5">
+                  {cashierList.slice(0, 5).map((c, i) => {
+                    const fullUser = allUsers.find(u => u._id === c.id) || ({ name: c.name, _id: c.id, role: 'cashier', email: '', is_active: true, created_at: '' } as User);
+                    return (
+                    <button
+                      key={c.name}
+                      onClick={() => setHistoryUser(fullUser)}
+                      className="relative flex flex-col gap-2 p-4 rounded-2xl border border-slate-100 bg-white hover:shadow-md hover:border-blue-200 transition-all hover:-translate-y-0.5 text-left w-full"
+                    >
                       <div className="flex items-center gap-2.5">
-                        <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-[11px] font-black shadow-sm" style={{ background: rankColors[i] ?? '#e0e7ff' }}>
-                          {c.name.split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase()}
+                        <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-[11px] font-black shadow-sm overflow-hidden" style={{ background: (fullUser as any).avatar ? 'transparent' : (rankColors[i] ?? '#e0e7ff') }}>
+                          {(fullUser as any).avatar ? (
+                            <img src={staticUrl((fullUser as any).avatar)} className="w-full h-full object-cover" />
+                          ) : (
+                            c.name.split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase()
+                          )}
                         </div>
                         <div className="min-w-0">
                           <p className="text-[12px] font-black text-slate-900 truncate">{c.name}</p>
@@ -305,8 +336,9 @@ export default function SoldInventoryPage() {
                           <svg width="10" height="10" fill="white" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
                         </div>
                       )}
-                    </div>
-                  ))}
+                    </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -324,11 +356,21 @@ export default function SoldInventoryPage() {
                   </div>
                 </div>
                 <div className="p-8 grid grid-cols-1 sm:grid-cols-2 gap-5">
-                  {managerList.slice(0, 5).map((c, i) => (
-                    <div key={c.name} className="relative flex flex-col gap-2 p-4 rounded-2xl border border-slate-100 bg-white hover:shadow-md transition-all hover:-translate-y-0.5">
+                  {managerList.slice(0, 5).map((c, i) => {
+                    const fullUser = allUsers.find(u => u._id === c.id) || ({ name: c.name, _id: c.id, role: 'manager', email: '', is_active: true, created_at: '' } as User);
+                    return (
+                    <button
+                      key={c.name}
+                      onClick={() => setHistoryUser(fullUser)}
+                      className="relative flex flex-col gap-2 p-4 rounded-2xl border border-slate-100 bg-white hover:shadow-md hover:border-violet-200 transition-all hover:-translate-y-0.5 text-left w-full"
+                    >
                       <div className="flex items-center gap-2.5">
-                        <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-[11px] font-black shadow-sm" style={{ background: '#334155' }}>
-                          {c.name.split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase()}
+                        <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-[11px] font-black shadow-sm overflow-hidden" style={{ background: (fullUser as any).avatar ? 'transparent' : '#334155' }}>
+                          {(fullUser as any).avatar ? (
+                            <img src={staticUrl((fullUser as any).avatar)} className="w-full h-full object-cover" />
+                          ) : (
+                            c.name.split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase()
+                          )}
                         </div>
                         <div className="min-w-0">
                           <p className="text-[12px] font-black text-slate-900 truncate">{c.name}</p>
@@ -342,8 +384,9 @@ export default function SoldInventoryPage() {
                       <div className="h-1 bg-slate-100 rounded-full overflow-hidden mt-1">
                         <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.round((c.revenue / maxManagerRev) * 100)}%`, background: '#64748b' }} />
                       </div>
-                    </div>
-                  ))}
+                    </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -424,10 +467,10 @@ export default function SoldInventoryPage() {
                 <tr className="bg-slate-50/50 border-b border-slate-100">
                   <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Masterpiece</th>
                   <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Customer</th>
-                  <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Shipping</th>
+                  <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Shipping & Fulfillment</th>
                   <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Store & Authority</th>
-                  <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Settlement</th>
-                  <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Valuation</th>
+                  <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Payment</th>
+                  <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Financials</th>
                   <th className="px-8 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Actions</th>
                 </tr>
               </thead>
@@ -437,19 +480,44 @@ export default function SoldInventoryPage() {
                   return (
                     <tr key={item._id} className="group hover:bg-slate-50/30 transition-colors duration-200">
                       <td className="px-8 py-6">
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-xl bg-slate-100 overflow-hidden border border-slate-200 shadow-sm flex-shrink-0">
-                            {product?.images?.[0] ? <img src={staticUrl(product.images[0])} alt="" className="w-full h-full object-cover" /> : <div className="h-full flex items-center justify-center text-slate-400 italic">Gem</div>}
+                        <div className="flex items-center gap-5">
+                          <div className="relative group/img">
+                            <div className="absolute -inset-1 bg-gradient-to-tr from-blue-500 to-indigo-500 rounded-xl blur opacity-20 group-hover/img:opacity-40 transition-opacity" />
+                            <div className="relative w-14 h-14 rounded-xl bg-slate-100 overflow-hidden border border-slate-200 shadow-sm flex-shrink-0">
+                              {product?.images?.[0] ? (
+                                <img src={staticUrl(product.images[0])} alt="" className="w-full h-full object-cover group-hover/img:scale-110 transition-transform duration-500" />
+                              ) : (
+                                <div className="h-full flex items-center justify-center bg-slate-50 text-slate-300">
+                                  <LayoutDashboard size={20} />
+                                </div>
+                              )}
+                            </div>
                           </div>
                           <div>
-                            <p className="text-sm font-black text-slate-900">{product?.name || 'Artisan Work'}</p>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5 tracking-tight">VAULT: {item.unique_item_code}</p>
+                            <p className="text-sm font-black text-slate-900 tracking-tight group-hover:text-blue-600 transition-colors">{product?.name || 'Artisan Work'}</p>
+                            <div className="flex items-center gap-1.5 mt-1.5">
+                              <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[9px] font-black uppercase rounded-lg tracking-wider border border-slate-200">
+                                {item.unique_item_code}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </td>
                       <td className="px-8 py-6">
-                        <p className="text-sm font-bold text-slate-800">{item.sold_customer_name || '—'}</p>
-                        <p className="text-[11px] font-medium text-slate-500 mt-1">{item.sold_customer_phone || item.sold_customer_email || 'No contact recorded'}</p>
+                        <div className="flex flex-col">
+                          <p className="text-sm font-black text-slate-800">{item.sold_customer_name || '—'}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[11px] font-medium text-slate-500">{item.sold_customer_phone || item.sold_customer_email || 'No contact'}</span>
+                            {item.sold_at && (
+                              <>
+                                <span className="w-1 h-1 rounded-full bg-slate-300" />
+                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                                  {new Date(item.sold_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        </div>
                       </td>
                       <td className="px-8 py-6">
                         <p className="text-[11px] font-medium text-slate-600 max-w-[200px] line-clamp-2 italic leading-relaxed">
@@ -457,41 +525,112 @@ export default function SoldInventoryPage() {
                         </p>
                       </td>
                       <td className="px-8 py-6">
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <span className="w-2 h-2 rounded-full bg-blue-500" />
-                          <p className="text-[11px] font-black text-slate-900 uppercase tracking-widest leading-none">
-                            {(item.sold_at_branch_id as any)?.name || 'Direct Sale'}
-                          </p>
-                        </div>
-                        <div className="space-y-1.5">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase w-10">MGR:</span>
-                            <span className="text-[10px] font-bold text-slate-700">{(item.sold_by_manager_id as any)?.name || '—'}</span>
+                        <div className="space-y-4">
+                          {/* Branch / Channel Badge */}
+                          <div className="flex items-center gap-2.5">
+                            <div className={`w-2 h-2 rounded-full ${(item.sold_at_branch_id as any)?.name ? 'bg-blue-600 shadow-[0_0_8px_rgba(37,99,235,0.4)]' : 'bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.4)]'}`} />
+                            <span className="text-[10px] font-black text-slate-900 uppercase tracking-[0.15em] antialiased">
+                              {(item.sold_at_branch_id as any)?.name || 'Direct Sale'}
+                            </span>
                           </div>
-                          <div className="flex items-center gap-1.5">
-                            {(item.sold_by_user_id as any)?.name ? (
-                              <>
-                                <div className="w-4 h-4 rounded bg-blue-600 flex items-center justify-center text-white text-[7px] font-black flex-shrink-0">
-                                  {(item.sold_by_user_id as any).name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+
+                          {/* Personnel Stack */}
+                          <div className="space-y-2.5 pl-0.5">
+                            {/* Manager Row */}
+                            {(() => {
+                              const mgr = (item as any).sold_by_manager_id;
+                              const mgrUser = resolveUser(mgr);
+                              return (
+                                <div className="flex items-center gap-3">
+                                  <div className="w-6 h-6 rounded-lg bg-slate-100 flex items-center justify-center border border-slate-200 flex-shrink-0 overflow-hidden">
+                                    {mgrUser && (mgrUser as any).avatar ? (
+                                      <img src={staticUrl((mgrUser as any).avatar)} className="w-full h-full object-cover" />
+                                    ) : (
+                                      <ShieldCheck size={11} className="text-slate-500" />
+                                    )}
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">Manager</span>
+                                    {mgrUser ? (
+                                      <button onClick={() => setHistoryUser(mgrUser)} className="text-[11px] font-bold text-slate-700 leading-none hover:text-blue-600 transition-colors text-left">
+                                        {mgrUser.name}
+                                      </button>
+                                    ) : (
+                                      <span className="text-[11px] font-medium text-slate-400 leading-none">—</span>
+                                    )}
+                                  </div>
                                 </div>
-                                <span className="text-[10px] font-black text-blue-700">{(item.sold_by_user_id as any).name}</span>
-                              </>
-                            ) : (
-                              <>
-                                <span className="text-[9px] font-bold text-slate-400 uppercase w-10">CSH:</span>
-                                <span className="text-[10px] font-bold text-slate-400 italic">No cashier</span>
-                              </>
-                            )}
+                              );
+                            })()}
+
+                            {/* Cashier Row */}
+                            {(() => {
+                              const csh = (item as any).sold_by_user_id;
+                              const cshUser = resolveUser(csh);
+                              return (
+                                <div className="flex items-center gap-3">
+                                  {cshUser ? (
+                                    <>
+                                      <div className="w-6 h-6 rounded-lg bg-blue-600 flex items-center justify-center shadow-sm flex-shrink-0 overflow-hidden">
+                                        {(cshUser as any).avatar ? (
+                                          <img src={staticUrl((cshUser as any).avatar)} className="w-full h-full object-cover" />
+                                        ) : (
+                                          <span className="text-[9px] font-black text-white">
+                                            {cshUser.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="flex flex-col">
+                                        <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest leading-none mb-0.5">Staff</span>
+                                        <button onClick={() => setHistoryUser(cshUser)} className="text-[11px] font-black text-blue-700 uppercase tracking-tight leading-none hover:text-blue-500 transition-colors text-left">
+                                          {cshUser.name}
+                                        </button>
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <div className="w-6 h-6 rounded-lg bg-slate-50 flex items-center justify-center border border-dashed border-slate-300 flex-shrink-0">
+                                        <User size={11} className="text-slate-300" />
+                                      </div>
+                                      <div className="flex flex-col">
+                                        <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest leading-none mb-0.5">Staff</span>
+                                        <span className="text-[10px] font-medium text-slate-400 italic leading-none">Not assigned</span>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </div>
                         </div>
                       </td>
                       <td className="px-8 py-6">
-                        <p className="text-[11px] font-black text-slate-900 uppercase tracking-widest">{item.sale_channel || 'DIRECT'}</p>
-                        <p className="text-[10px] font-bold text-blue-500 uppercase mt-1">{item.payment_mode || 'TRANSFER'}</p>
+                        <div className="flex flex-col gap-1.5">
+                          <div className="flex items-center gap-2">
+                            <CreditCard size={12} className="text-slate-400" />
+                            <span className="text-[11px] font-black text-slate-900 uppercase tracking-widest">{item.payment_mode || 'TRANSFER'}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Globe size={12} className="text-blue-400" />
+                            <span className="text-[10px] font-bold text-blue-600 uppercase tracking-tight">{item.sale_channel || 'DIRECT'}</span>
+                          </div>
+                        </div>
                       </td>
                       <td className="px-8 py-6">
-                        <p className="text-sm font-black text-slate-900 tracking-tight">₹{Number(item.selling_price || 0).toLocaleString('en-IN')}</p>
-                        <p className="text-[10px] font-medium text-slate-400 mt-1">ROI: ₹{(item.selling_price - item.purchase_price).toLocaleString()}</p>
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-[10px] font-bold text-slate-400">₹</span>
+                            <span className="text-base font-black text-slate-900 tracking-tight">
+                              {Number(item.selling_price || 0).toLocaleString('en-IN')}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <TrendingUp size={10} className="text-emerald-500" />
+                            <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-tighter">
+                              ROI: ₹{(item.selling_price - item.purchase_price).toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
                       </td>
                       <td className="px-8 py-6 text-right">
                         <div className="flex items-center justify-end gap-2">
@@ -528,6 +667,9 @@ export default function SoldInventoryPage() {
           onClose={() => setEditingItem(null)} 
           onSave={() => { setEditingItem(null); window.location.reload(); }} 
         />
+      )}
+      {historyUser && (
+        <UserHistoryDrawer user={historyUser} onClose={() => setHistoryUser(null)} />
       )}
     </div>
   );

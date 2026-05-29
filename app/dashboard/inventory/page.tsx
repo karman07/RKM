@@ -546,8 +546,13 @@ export default function InventoryPage() {
                           </div>
                           <div>
                             <p className="text-[13px] font-black text-slate-900 leading-tight mb-0.5">{product?.name || '—'}</p>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">#{item.unique_item_code}</span>
+                               {(item as any).is_new_stock && (
+                                 <span className="inline-flex items-center gap-1 px-2 py-[2px] bg-emerald-500 text-white rounded-full text-[8px] font-black uppercase tracking-wider shadow-[0_2px_6px_rgba(16,185,129,0.4)] animate-pulse">
+                                   <span className="w-1 h-1 rounded-full bg-white" />NEW
+                                 </span>
+                               )}
                                <div 
                                 onClick={() => setBarcodeModal(item.barcode)}
                                 className="p-0.5 px-1 bg-white border border-slate-200 inline-block rounded shadow-sm hover:scale-[1.1] transition-transform duration-300 cursor-pointer"

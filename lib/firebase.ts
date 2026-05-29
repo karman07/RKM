@@ -1,0 +1,66 @@
+// Firebase client config for Admin panel
+// Set these in your .env.local file
+import { initializeApp, getApps } from 'firebase/app';
+import { getMessaging, getToken, onMessage, Messaging } from 'firebase/messaging';
+
+const firebaseConfig = {
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+};
+
+// Public VAPID key (from Firebase Console → Project Settings → Cloud Messaging → Web Push Certificates)
+export const VAPID_KEY = 'BKqq3YgM04DffJri7Xxr6WJVujCDnQomMYLFjhurfKPn-p-32noPi9nxEGNCItICNDj3-YxJ510I7mhzui-CgHM';
+
+let messaging: Messaging | null = null;
+
+export function getFirebaseMessaging(): Messaging | null {
+  if (typeof window === 'undefined') return null;
+  if (messaging) return messaging;
+  const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+  try {
+    messaging = getMessaging(app);
+  } catch {
+    // Messaging not supported (e.g. Safari without push support)
+    messaging = null;
+  }
+  return messaging;
+}
+
+/** Request permission & get FCM token */
+export async function requestNotificationToken(): Promise<string | null> {
+  try {
+    // Skip entirely if Firebase is not configured
+    if (!process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID) return null;
+    if (!('serviceWorker' in navigator)) return null;
+
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') return null;
+
+    const m = getFirebaseMessaging();
+    if (!m) return null;
+
+    // Register the SW first, then wait for it to become active before getToken
+    await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+    const swReg = await navigator.serviceWorker.ready;
+
+    const token = await getToken(m, {
+      vapidKey: VAPID_KEY,
+      serviceWorkerRegistration: swReg,
+    });
+    return token || null;
+  } catch (err) {
+    console.error('[FCM] Failed to get token', err);
+    return null;
+  }
+}
+
+/** Subscribe to foreground messages */
+export function onForegroundMessage(callback: (payload: any) => void) {
+  const m = getFirebaseMessaging();
+  if (!m) return () => {};
+  return onMessage(m, callback);
+}

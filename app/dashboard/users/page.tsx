@@ -1,14 +1,15 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { getBranches, getUsers, createUser, updateUser, deleteUser, getAttendanceStats, getAllLeaves, getAllReimbursements, type User, type Branch, type AttendanceStats, type LeaveRequest, type ReimbursementRequest } from '@/lib/api';
+import { getBranches, getUsers, createUser, updateUser, deleteUser, staticUrl, type User, type Branch } from '@/lib/api';
 import Modal from '@/components/Modal';
-import { Plus, Edit2, Trash2, ChevronLeft, ChevronRight, Shield, UserCheck, Building2, Mail, Loader2, Key, User as UserIcon, Calendar, X, FileText, CreditCard } from 'lucide-react';
+import UserHistoryDrawer from '@/components/UserHistoryDrawer';
+import { Plus, Edit2, Trash2, ChevronLeft, ChevronRight, Shield, UserCheck, Building2, Mail, Loader2, User as UserIcon } from 'lucide-react';
 
 const roleBadge: Record<string, { wrap: string; dot: string; icon: any }> = {
-  admin:   { wrap: 'bg-blue-50 text-blue-700 border-blue-100',     dot: 'bg-blue-600', icon: Shield },
+  admin:   { wrap: 'bg-blue-50 text-blue-700 border-blue-100',     dot: 'bg-blue-600',   icon: Shield },
   manager: { wrap: 'bg-violet-50 text-violet-700 border-violet-100', dot: 'bg-violet-600', icon: UserCheck },
-  cashier: { wrap: 'bg-slate-50 text-slate-600 border-slate-100',   dot: 'bg-slate-400', icon: Key },
+  cashier: { wrap: 'bg-slate-50 text-slate-600 border-slate-100',   dot: 'bg-slate-400',  icon: UserIcon },
 };
 
 interface UserForm {
@@ -21,6 +22,17 @@ interface UserForm {
 }
 
 const emptyForm: UserForm = { name: '', email: '', password: '', role: 'cashier', is_active: true };
+
+function UserAvatar({ user, size = 'sm' }: { user: User; size?: 'sm' | 'md' }) {
+  const dim = size === 'sm' ? 'w-9 h-9 text-xs' : 'w-12 h-12 text-sm';
+  const initials = user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+  const src = (user as any).avatar ? staticUrl((user as any).avatar) : null;
+  return (
+    <div className={`${dim} rounded-xl bg-blue-600 flex items-center justify-center text-white font-black flex-shrink-0 overflow-hidden`}>
+      {src ? <img src={src} alt={user.name} className="w-full h-full object-cover" /> : initials}
+    </div>
+  );
+}
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
@@ -38,15 +50,8 @@ export default function UsersPage() {
   const [error, setError] = useState('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'danger' } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
-  const [profileTarget, setProfileTarget] = useState<User | null>(null);
-  const [profileStats, setProfileStats] = useState<AttendanceStats | null>(null);
-  const [loadingProfile, setLoadingProfile] = useState(false);
-
-  // Detail panel state
-  const [detailUser, setDetailUser] = useState<User | null>(null);
-  const [detailLeaves, setDetailLeaves] = useState<LeaveRequest[]>([]);
-  const [detailReimbs, setDetailReimbs] = useState<ReimbursementRequest[]>([]);
-  const [loadingDetail, setLoadingDetail] = useState(false);
+  // Unified history drawer
+  const [historyUser, setHistoryUser] = useState<User | null>(null);
 
   async function load() {
     setLoading(true);
@@ -73,7 +78,7 @@ export default function UsersPage() {
     const profileId = searchParams.get('profile');
     if (profileId && users.length > 0) {
       const u = users.find(u => u._id === profileId);
-      if (u) openProfile(u);
+      if (u) setHistoryUser(u);
     }
   }, [searchParams, users]);
 
@@ -94,46 +99,6 @@ export default function UsersPage() {
     setForm({ name: u.name, email: u.email, password: '', role: u.role, branch: (u.branch as any)?._id || (u.branch as string), is_active: u.is_active });
     setError('');
     setModalOpen(true);
-  }
-
-  async function openProfile(u: User) {
-    setProfileTarget(u);
-    setLoadingProfile(true);
-    try {
-      const now = new Date();
-      const stats = await getAttendanceStats(u._id, now.getMonth(), now.getFullYear());
-      setProfileStats(stats);
-    } catch (e) {
-      setProfileStats(null);
-    } finally {
-      setLoadingProfile(false);
-    }
-  }
-
-  async function openDetail(u: User) {
-    setDetailUser(u);
-    setLoadingDetail(true);
-    setDetailLeaves([]);
-    setDetailReimbs([]);
-    try {
-      const now = new Date();
-      const [stats, allLeaves, allReimbs] = await Promise.all([
-        getAttendanceStats(u._id, now.getMonth(), now.getFullYear()).catch(() => null),
-        getAllLeaves({ limit: 200 }).catch(() => []),
-        getAllReimbursements({ limit: 200 }).catch(() => []),
-      ]);
-      setProfileStats(stats);
-      setDetailLeaves(allLeaves.filter((l: any) => {
-        const id = typeof l.manager_id === 'object' ? l.manager_id?._id : l.manager_id;
-        return id === u._id;
-      }));
-      setDetailReimbs(allReimbs.filter((r: any) => {
-        const id = typeof r.manager_id === 'object' ? r.manager_id?._id : r.manager_id;
-        return id === u._id;
-      }));
-    } finally {
-      setLoadingDetail(false);
-    }
   }
 
   async function handleSave() {
@@ -238,21 +203,22 @@ export default function UsersPage() {
               ) : (
                 users.map((u) => {
                   const badge = roleBadge[u.role] || roleBadge.cashier;
-                  const Icon = badge.icon;
                   return (
-                    <tr key={u._id} className="group hover:bg-slate-50/50 transition-colors">
-                      <td className="px-8 py-6">
-                        <div className="flex items-center gap-4">
-                          <div className={`p-2.5 rounded-xl border ${badge.wrap}`}>
-                            <Icon className="w-4 h-4" />
-                          </div>
+                    <tr
+                      key={u._id}
+                      className="group hover:bg-slate-50/50 transition-colors cursor-pointer"
+                      onClick={() => setHistoryUser(u)}
+                    >
+                      <td className="px-8 py-5">
+                        <div className="flex items-center gap-3">
+                          <UserAvatar user={u} size="sm" />
                           <div>
                             <p className="text-sm font-black text-slate-900 leading-tight">{u.name}</p>
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{u.role}</span>
+                            <span className={`text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border ${badge.wrap}`}>{u.role}</span>
                           </div>
                         </div>
                       </td>
-                      <td className="px-8 py-6">
+                      <td className="px-8 py-5">
                         <div className="flex items-center gap-2 mb-1">
                           <Mail className="w-3 h-3 text-slate-300" />
                           <span className="text-sm font-semibold text-slate-600 tracking-tight">{u.email}</span>
@@ -260,30 +226,29 @@ export default function UsersPage() {
                         <div className="flex items-center gap-2">
                           <div className={`w-1.5 h-1.5 rounded-full ${u.is_active ? 'bg-emerald-500' : 'bg-red-400'}`} />
                           <span className={`text-[10px] font-black uppercase tracking-widest ${u.is_active ? 'text-emerald-600' : 'text-red-400'}`}>
-                            {u.is_active ? 'Authorized' : 'Suspended'}
+                            {u.is_active ? 'Active' : 'Suspended'}
                           </span>
                         </div>
                       </td>
-                      <td className="px-8 py-6">
+                      <td className="px-8 py-5">
                         {u.branch ? (
-                          <div className="flex items-center gap-3">
-                            <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
+                          <div className="flex items-center gap-2">
+                            <div className="p-1.5 bg-blue-50 rounded-lg text-blue-600">
                               <Building2 className="w-3.5 h-3.5" />
                             </div>
                             <div>
-                               <p className="text-xs font-black text-slate-800 tracking-tight">{(u.branch as any).name}</p>
-                               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{(u.branch as any).code}</span>
+                               <p className="text-xs font-black text-slate-800">{(u.branch as any).name}</p>
+                               <span className="text-[10px] font-bold text-slate-400 uppercase">{(u.branch as any).code}</span>
                             </div>
                           </div>
                         ) : (
-                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">Unassigned Hub</span>
+                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">Unassigned</span>
                         )}
                       </td>
-                       <td className="px-8 py-6">
-                        <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={(e) => { e.stopPropagation(); openDetail(u); }} className="p-2.5 rounded-xl bg-slate-50 text-slate-400 hover:bg-blue-600 hover:text-white transition-all active:scale-95" title="View Report"><UserIcon className="w-4 h-4" /></button>
-                          <button onClick={(e) => { e.stopPropagation(); openEdit(u); }} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"><Edit2 className="w-4 h-4" /></button>
-                          <button onClick={(e) => { e.stopPropagation(); setDeleteTarget(u); }} className="p-2.5 bg-red-50 text-red-600 rounded-xl hover:bg-red-600 hover:text-white transition-all shadow-sm"><Trash2 className="w-4 h-4" /></button>
+                       <td className="px-8 py-5">
+                        <div className="flex items-center justify-end gap-2">
+                          <button onClick={(e) => { e.stopPropagation(); openEdit(u); }} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><Edit2 className="w-4 h-4" /></button>
+                          <button onClick={(e) => { e.stopPropagation(); setDeleteTarget(u); }} className="p-2 bg-red-50 text-red-600 rounded-xl hover:bg-red-600 hover:text-white transition-all"><Trash2 className="w-4 h-4" /></button>
                         </div>
                       </td>
                     </tr>
@@ -294,135 +259,9 @@ export default function UsersPage() {
           </table>
         </div>
 
-        {/* Detail Slide-over Panel */}
-        {detailUser && (
-          <div className="fixed inset-0 z-50 flex">
-            <div className="flex-1 bg-black/30 backdrop-blur-sm" onClick={() => setDetailUser(null)} />
-            <div className="w-full max-w-lg bg-white h-full overflow-y-auto shadow-2xl flex flex-col">
-              {/* Header */}
-              <div className="sticky top-0 bg-white border-b border-slate-100 px-8 py-6 flex items-center justify-between z-10">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white font-black text-lg">
-                    {detailUser.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-black text-slate-900">{detailUser.name}</h3>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[9px] font-black uppercase tracking-widest bg-blue-50 text-blue-600 px-2 py-0.5 rounded">{detailUser.role}</span>
-                      <span className="text-[10px] text-slate-400">{detailUser.email}</span>
-                    </div>
-                  </div>
-                </div>
-                <button onClick={() => setDetailUser(null)} className="p-2 hover:bg-slate-50 rounded-xl text-slate-400">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="flex-1 px-8 py-6 space-y-8">
-                {loadingDetail ? (
-                  <div className="flex items-center justify-center h-40"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
-                ) : (
-                  <>
-                    {/* Branch Info */}
-                    <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                      <Building2 className="w-5 h-5 text-blue-600" />
-                      <div>
-                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Branch</p>
-                        <p className="text-sm font-black text-slate-900">{typeof detailUser.branch === 'object' ? (detailUser.branch as any)?.name : detailUser.branch || 'Unassigned'}</p>
-                      </div>
-                    </div>
-
-                    {/* Attendance This Month */}
-                    <div>
-                      <div className="flex items-center gap-2 mb-3">
-                        <Calendar className="w-4 h-4 text-slate-400" />
-                        <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Attendance — Current Month</h4>
-                      </div>
-                      {profileStats ? (
-                        <div className="grid grid-cols-4 gap-2">
-                          {[{label:'Present',val:profileStats.present,cls:'emerald'},{label:'Absent',val:profileStats.absent,cls:'red'},{label:'Half Day',val:profileStats.halfDay,cls:'amber'},{label:'On Leave',val:profileStats.onLeave,cls:'blue'}].map(s => (
-                            <div key={s.label} className={`bg-${s.cls}-50 border border-${s.cls}-100 p-3 rounded-2xl text-center`}>
-                              <p className={`text-[9px] font-black uppercase text-${s.cls}-600 mb-1`}>{s.label}</p>
-                              <p className={`text-xl font-black text-${s.cls}-700`}>{s.val ?? 0}</p>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="p-6 bg-slate-50 rounded-2xl text-center border border-dashed border-slate-200">
-                          <p className="text-[10px] text-slate-400 font-black uppercase">No attendance data</p>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Leaves */}
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <FileText className="w-4 h-4 text-slate-400" />
-                          <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Leave Requests</h4>
-                        </div>
-                        <span className="text-[10px] font-black bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{detailLeaves.length}</span>
-                      </div>
-                      {detailLeaves.length === 0 ? (
-                        <div className="p-6 bg-slate-50 rounded-2xl text-center border border-dashed border-slate-200">
-                          <p className="text-[10px] text-slate-400 font-black uppercase">No leave requests</p>
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          {detailLeaves.map(l => (
-                            <div key={l._id} className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl">
-                              <div>
-                                <p className="text-xs font-black text-slate-900 capitalize">{l.leave_type} Leave</p>
-                                <p className="text-[10px] text-slate-400">{new Date(l.from_date).toLocaleDateString('en-IN',{day:'numeric',month:'short'})} – {new Date(l.to_date).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</p>
-                              </div>
-                              <span className={`text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full border ${
-                                l.status==='approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                                l.status==='rejected' ? 'bg-red-50 text-red-700 border-red-100' :
-                                'bg-amber-50 text-amber-700 border-amber-100'
-                              }`}>{l.status}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Reimbursements */}
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <CreditCard className="w-4 h-4 text-slate-400" />
-                          <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Reimbursements</h4>
-                        </div>
-                        <span className="text-[10px] font-black bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{detailReimbs.length}</span>
-                      </div>
-                      {detailReimbs.length === 0 ? (
-                        <div className="p-6 bg-slate-50 rounded-2xl text-center border border-dashed border-slate-200">
-                          <p className="text-[10px] text-slate-400 font-black uppercase">No reimbursements</p>
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          {detailReimbs.map(r => (
-                            <div key={r._id} className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl">
-                              <div>
-                                <p className="text-xs font-black text-slate-900 capitalize">{r.category}</p>
-                                <p className="text-[10px] text-slate-400">{new Date(r.createdAt).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</p>
-                              </div>
-                              <div className="text-right">
-                                <p className="text-sm font-black text-slate-900">₹{r.amount?.toLocaleString('en-IN')}</p>
-                                <span className={`text-[9px] font-black uppercase tracking-wider ${
-                                  r.status==='approved' ? 'text-emerald-600' : r.status==='rejected' ? 'text-red-600' : 'text-amber-600'
-                                }`}>{r.status}</span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
+        {/* History Drawer */}
+        {historyUser && (
+          <UserHistoryDrawer user={historyUser} onClose={() => setHistoryUser(null)} />
         )}
 
         {/* Improved Pagination */}

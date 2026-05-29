@@ -25,6 +25,9 @@ export const metadata: Metadata = {
   },
 };
 
+import { Toaster } from "sonner";
+import NotificationsProvider from '@/components/NotificationsProvider';
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -33,7 +36,11 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full" suppressHydrationWarning>
       <body className={`${jakarta.variable} ${inter.variable} h-full app-theme`} suppressHydrationWarning>
-        <AppThemeProvider>{children}</AppThemeProvider>
+        <AppThemeProvider>
+          <NotificationsProvider />
+          {children}
+          <Toaster position="top-center" richColors />
+        </AppThemeProvider>
       </body>
     </html>
   );

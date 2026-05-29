@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { getInventory, getBranches, updateInventoryStatus, type InventoryItem, type Branch } from '@/lib/api';
 import { staticUrl } from '@/lib/api';
 import { AlertTriangle, RefreshCw, Box, AlertCircle, PackageX, ShieldAlert } from 'lucide-react';
+import { toast } from 'sonner';
 
 function fmt(n: number) {
   return `₹${n.toLocaleString('en-IN')}`;
@@ -45,7 +46,7 @@ export default function StolenItemsPage() {
       if (meta) setMeta({ ...meta, total: meta.total - 1 });
       setRecoverModal(null);
     } catch (err: any) {
-      alert(err.message || 'Failed to recover item');
+      toast.error(err.message || 'Failed to recover item');
     } finally {
       setIsRecovering(false);
     }
@@ -169,8 +170,12 @@ export default function StolenItemsPage() {
                       <td className="px-8 py-4">
                         {reporter ? (
                           <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 text-xs font-bold">
-                              {reporter.name?.charAt(0) || '?'}
+                            <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 text-xs font-bold overflow-hidden">
+                              {(reporter as any)?.avatar ? (
+                                <img src={staticUrl((reporter as any).avatar)} className="w-full h-full object-cover" />
+                              ) : (
+                                reporter.name?.charAt(0) || '?'
+                              )}
                             </div>
                             <div>
                               <p className="text-sm font-bold text-slate-900">{reporter.name}</p>

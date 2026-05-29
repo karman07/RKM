@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
-import { getAllReimbursements, reviewReimbursement, getBranches, type ReimbursementRequest, type Branch } from '@/lib/api';
+import { getAllReimbursements, reviewReimbursement, getBranches, staticUrl, type ReimbursementRequest, type Branch } from '@/lib/api';
 import Modal from '@/components/Modal';
 import { CheckCircle2, XCircle, Clock, Search, Building2, IndianRupee } from 'lucide-react';
 
@@ -198,8 +198,12 @@ export default function AdminReimbursementsPage() {
                     <tr key={item._id} className="group hover:bg-slate-50/50 transition-colors">
                       <td className="px-6 py-5">
                         <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center text-white text-xs font-black">
-                            {(item.manager_id?.name || item.manager_id?.email || 'M').charAt(0).toUpperCase()}
+                          <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center text-white text-xs font-black overflow-hidden">
+                            {(item.manager_id as any)?.avatar ? (
+                              <img src={staticUrl((item.manager_id as any).avatar)} className="w-full h-full object-cover" />
+                            ) : (
+                              (item.manager_id?.name || item.manager_id?.email || 'M').charAt(0).toUpperCase()
+                            )}
                           </div>
                           <div>
                             <p className="text-sm font-black text-slate-900">{item.manager_id?.name || item.manager_id?.email?.split('@')[0] || 'Unknown'}</p>

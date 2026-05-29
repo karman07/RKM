@@ -1,11 +1,12 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import {
-  getUsers, getDailyAttendance, getBranches, getAttendanceStats, getAllLeaves,
+  getUsers, getDailyAttendance, getBranches, getAttendanceStats, getAllLeaves, getUserAttendance, staticUrl,
   type User, type Attendance, type Branch, type AttendanceStats,
 } from '@/lib/api';
 import { ChevronLeft, ChevronRight, Calendar, CheckCircle2, XCircle, Clock, Building2, Loader2, Info } from 'lucide-react';
 import Modal from '@/components/Modal';
+import UserHistoryDrawer from '@/components/UserHistoryDrawer';
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 function getUserId(a: Attendance): string | null {
@@ -33,8 +34,10 @@ export default function AttendancePage() {
   const [activeBranch, setActiveBranch] = useState<string>('all');
   const [profileTarget, setProfileTarget] = useState<User | null>(null);
   const [profileStats, setProfileStats]   = useState<AttendanceStats | null>(null);
+  const [profileHistory, setProfileHistory] = useState<Attendance[]>([]);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'danger' } | null>(null);
+  const [historyUser, setHistoryUser] = useState<User | null>(null);
 
   function showToast(msg: string, type: 'success' | 'danger') {
     setToast({ msg, type });
@@ -74,9 +77,16 @@ export default function AttendancePage() {
     setLoadingProfile(true);
     try {
       const now   = new Date();
-      const stats = await getAttendanceStats(u._id, now.getMonth(), now.getFullYear());
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
+      
+      const [stats, history] = await Promise.all([
+        getAttendanceStats(u._id, now.getMonth(), now.getFullYear()),
+        getUserAttendance(u._id, firstDay, lastDay)
+      ]);
       setProfileStats(stats);
-    } catch { setProfileStats(null); }
+      setProfileHistory(history);
+    } catch { setProfileStats(null); setProfileHistory([]); }
     finally { setLoadingProfile(false); }
   }
 
@@ -269,9 +279,13 @@ export default function AttendancePage() {
                         <tr key={u._id} className="hover:bg-slate-50/40 transition-colors">
                           {/* Name */}
                           <td className="px-7 py-4">
-                            <button onClick={() => openProfile(u)} className="flex items-center gap-3 group/name text-left">
-                              <div className="w-8 h-8 bg-slate-100 rounded-xl flex items-center justify-center text-xs font-black text-slate-500 group-hover/name:bg-blue-600 group-hover/name:text-white transition-all flex-shrink-0">
-                                {u.name.charAt(0).toUpperCase()}
+                            <button onClick={() => setHistoryUser(u)} className="flex items-center gap-3 group/name text-left">
+                              <div className="w-8 h-8 bg-slate-100 rounded-xl flex items-center justify-center text-xs font-black text-slate-500 group-hover/name:bg-blue-600 group-hover/name:text-white transition-all flex-shrink-0 overflow-hidden">
+                                {(u as any).avatar ? (
+                                  <img src={staticUrl((u as any).avatar)} className="w-full h-full object-cover" alt={u.name} />
+                                ) : (
+                                  u.name.charAt(0).toUpperCase()
+                                )}
                               </div>
                               <div>
                                 <p className="text-sm font-black text-slate-900 group-hover/name:text-blue-600 transition-colors leading-none">{u.name}</p>
@@ -447,8 +461,59 @@ export default function AttendancePage() {
               )}
             </div>
 
+            {/* Attendance Ledger */}
+            {!loadingProfile && profileHistory.length > 0 && (
+              <div className="mt-6 border border-slate-200 rounded-2xl overflow-hidden">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="px-5 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Date</th>
+                      <th className="px-5 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Status</th>
+                      <th className="px-5 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Check-In</th>
+                      <th className="px-5 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Check-Out</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 max-h-64 overflow-y-auto block w-full table-fixed">
+                    {profileHistory.map(record => {
+                      const status = record.status as StatusKey;
+                      const cfg = STATUS[status];
+                      return (
+                        <tr key={record._id} className="hover:bg-slate-50/50 transition-colors w-full table table-fixed">
+                          <td className="px-5 py-3 w-1/4">
+                            <span className="text-xs font-bold text-slate-700">
+                              {new Date(record.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3 w-1/4">
+                            {cfg ? (
+                              <span className={`inline-flex items-center gap-1.5 text-[10px] font-black border px-2 py-1 rounded-md bg-white ${cfg.text} ${cfg.border}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+                                {cfg.label}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-slate-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-5 py-3 w-1/4">
+                            <span className="text-xs font-bold text-slate-700">
+                              {record.check_in ? new Date(record.check_in).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3 w-1/4">
+                            <span className="text-xs font-bold text-slate-700">
+                              {record.check_out ? new Date(record.check_out).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
             <button
-              onClick={() => { setProfileTarget(null); setProfileStats(null); }}
+              onClick={() => { setProfileTarget(null); setProfileStats(null); setProfileHistory([]); }}
               className="w-full py-3.5 border border-slate-200 rounded-2xl text-[11px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50 transition-all"
             >
               Close
@@ -456,6 +521,11 @@ export default function AttendancePage() {
           </div>
         )}
       </Modal>
+
+      {/* Full History Drawer — opened when clicking a staff name */}
+      {historyUser && (
+        <UserHistoryDrawer user={historyUser} onClose={() => setHistoryUser(null)} />
+      )}
     </div>
   );
 }

@@ -733,6 +733,9 @@ export interface AppSettings {
    * Admin-configurable. Default: 50%.
    */
   stone_refund_percentage?: number;
+  whatsapp_notifications_enabled?: boolean;
+  email_notifications_enabled?: boolean;
+  email_triggers?: Record<string, boolean>;
   updatedAt?: string;
 }
 
@@ -1317,3 +1320,118 @@ export const getAttendanceByBranch = (branchId: string, dateStr?: string) =>
       return uBranch === branchId;
     })
   );
+
+// ─── Notifications (Admin) ────────────────────────────────────────────────────
+
+export interface SentNotification {
+  _id: string;
+  title: string;
+  body: string;
+  type: string;
+  target: string;
+  recipients: number;
+  delivered: number;
+  branch_id?: string | null;
+  createdAt: string;
+}
+
+export interface PushTokenRecord {
+  _id: string;
+  user_id: { _id: string; name: string; email: string; role: string } | string;
+  token: string;
+  role: string;
+  branch_id: { _id: string; name: string; code: string } | null;
+  createdAt: string;
+}
+
+export const getNotificationHistory = (limit = 100) =>
+  request<SentNotification[]>(`/notifications/sent?limit=${limit}`);
+
+export const getRegisteredTokens = () =>
+  request<PushTokenRecord[]>('/notifications/tokens');
+
+export const sendTestNotification = (userId: string, title: string, body: string, type = 'test') =>
+  request<{ success: boolean }>('/notifications/send-test', {
+    method: 'POST',
+    body: JSON.stringify({ userId, title, body, type }),
+  });
+
+export const broadcastToManagers = (title: string, body: string, type = 'test') =>
+  request<{ success: boolean }>('/notifications/broadcast-managers', {
+    method: 'POST',
+    body: JSON.stringify({ title, body, type }),
+  });
+
+// ─── Email ────────────────────────────────────────────────────────────────────
+
+export interface EmailLog {
+  _id: string;
+  to: string;
+  to_name: string;
+  subject: string;
+  html: string;
+  status: 'sent' | 'failed' | 'pending';
+  error?: string;
+  mailgun_id?: string;
+  trigger: 'sale_completed' | 'sale_returned' | 'sale_reserved' | 'manual';
+  sale_reference?: string;
+  item_id?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EmailStats { sent: number; failed: number; pending: number; total: number; }
+export interface EmailStatus { configured: boolean; from_name: string; from_email: string; }
+
+export const getEmailLogs = (page = 1, limit = 30, trigger?: string, status?: string) => {
+  const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (trigger) qs.set('trigger', trigger);
+  if (status) qs.set('status', status);
+  return request<{ data: EmailLog[]; total: number; page: number; total_pages: number }>(`/email/logs?${qs}`);
+};
+
+export const getEmailStats = () => request<EmailStats>('/email/stats');
+
+export const getEmailStatus = () => request<EmailStatus>('/email/status');
+
+export const sendEmail = (data: { to: string; to_name: string; subject: string; body: string }) =>
+  request<{ success: boolean; id?: string; error?: string }>('/email/send', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+export const sendTestEmail = (to: string) =>
+  request<{ success: boolean; id?: string; error?: string }>('/email/test', {
+    method: 'POST',
+    body: JSON.stringify({ to }),
+  });
+
+// ─── Email Templates ──────────────────────────────────────────────────────────
+
+export interface EmailTemplate {
+  _id: string;
+  name: string;
+  type: 'sale_completed' | 'sale_returned' | 'sale_reserved' | 'feedback' | 'custom';
+  subject: string;
+  html_body: string;
+  variables: string[];
+  is_active: boolean;
+  description: string;
+  template_config: Record<string, any> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const listEmailTemplates = (type?: string) => {
+  const qs = type ? `?type=${type}` : '';
+  return request<EmailTemplate[]>(`/email/templates${qs}`);
+};
+export const getEmailTemplate = (id: string) => request<EmailTemplate>(`/email/templates/${id}`);
+export const createEmailTemplate = (data: Partial<EmailTemplate>) =>
+  request<EmailTemplate>('/email/templates', { method: 'POST', body: JSON.stringify(data) });
+export const updateEmailTemplate = (id: string, data: Partial<EmailTemplate>) =>
+  request<EmailTemplate>(`/email/templates/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+export const deleteEmailTemplate = (id: string) =>
+  request<{ deleted: boolean }>(`/email/templates/${id}`, { method: 'DELETE' });
+export const activateEmailTemplate = (id: string) =>
+  request<EmailTemplate>(`/email/templates/${id}/activate`, { method: 'POST' });

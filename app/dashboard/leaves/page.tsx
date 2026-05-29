@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
-import { getAllLeaves, reviewLeave, getBranches, type LeaveRequest, type Branch } from '@/lib/api';
+import { getAllLeaves, reviewLeave, getBranches, staticUrl, type LeaveRequest, type Branch } from '@/lib/api';
 import Modal from '@/components/Modal';
 import { CheckCircle2, XCircle, Clock, Filter, Search, Calendar, Building2, User, FileText } from 'lucide-react';
 
@@ -192,8 +192,12 @@ export default function AdminLeavesPage() {
                     <tr key={leave._id} className="group hover:bg-slate-50/50 transition-colors">
                       <td className="px-6 py-5">
                         <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center text-white text-xs font-black flex-shrink-0">
-                            {(leave.manager_id?.name || leave.manager_id?.email || 'M').charAt(0).toUpperCase()}
+                          <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center text-white text-xs font-black flex-shrink-0 overflow-hidden">
+                            {(leave.manager_id as any)?.avatar ? (
+                              <img src={staticUrl((leave.manager_id as any).avatar)} className="w-full h-full object-cover" />
+                            ) : (
+                              (leave.manager_id?.name || leave.manager_id?.email || 'M').charAt(0).toUpperCase()
+                            )}
                           </div>
                           <div>
                             <p className="text-sm font-black text-slate-900">{leave.manager_id?.name || leave.manager_id?.email?.split('@')[0] || 'Unknown Manager'}</p>

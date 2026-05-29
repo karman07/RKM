@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { getDamagedInventory, getBranches, updateInventoryStatus, type InventoryItem, type Branch } from '@/lib/api';
 import { staticUrl } from '@/lib/api';
 import { AlertTriangle, RefreshCw, Box, AlertCircle, PackageX } from 'lucide-react';
+import { toast } from 'sonner';
 
 function fmt(n: number) {
   return `₹${n.toLocaleString('en-IN')}`;
@@ -45,7 +46,7 @@ export default function DamagedItemsPage() {
       if (meta) setMeta({ ...meta, total: meta.total - 1 });
       setRecoverModal(null);
     } catch (err: any) {
-      alert(err.message || 'Failed to recover item');
+      toast.error(err.message || 'Failed to recover item');
     } finally {
       setIsRecovering(false);
     }
