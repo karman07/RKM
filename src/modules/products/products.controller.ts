@@ -33,8 +33,10 @@ export class ProductsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   @HttpCode(HttpStatus.CREATED)
-  create(@Body() dto: CreateProductDto, @Request() req: any) {
-    return this.productsService.create(dto, req.user._id ?? req.user.sub);
+  async create(@Body() dto: CreateProductDto, @Request() req: any) {
+    const product = await this.productsService.create(dto, req.user._id ?? req.user.sub);
+    this.triggerAiSync((product as any)._id?.toString()).catch(() => {});
+    return product;
   }
 
   @Get()
@@ -57,12 +59,30 @@ export class ProductsController {
   async update(@Param('id') id: string, @Body() dto: UpdateProductDto, @Request() req: any) {
     const updated = await this.productsService.update(id, dto, req.user._id ?? req.user.sub);
 
-    // Fire-and-forget: sync inventory prices for this product in the background
+    // Fire-and-forget: sync inventory prices and AI embedding in background
     this.triggerProductInventorySync(id).catch((err) =>
       console.error(`[ProductsController] Inventory sync failed for product ${id}:`, err?.message),
     );
+    this.triggerAiSync(id).catch(() => {});
 
     return updated;
+  }
+
+  /** Fire-and-forget: tell the AI backend to regenerate the embedding for this product. */
+  private async triggerAiSync(productId: string): Promise<void> {
+    if (!productId) return;
+    const aiUrl = process.env.AI_BACKEND_URL;
+    if (!aiUrl) return;
+    try {
+      const res = await fetch(`${aiUrl}/api/sync/product/${productId}`, { method: 'POST' });
+      if (res.ok) {
+        console.log(`[ProductsController] AI sync OK for product ${productId}`);
+      } else {
+        console.warn(`[ProductsController] AI sync returned ${res.status} for product ${productId}`);
+      }
+    } catch (err: any) {
+      console.warn(`[ProductsController] AI sync unreachable for product ${productId}: ${err?.message}`);
+    }
   }
 
   /** Lazily resolves InventoryService to avoid circular dependency. */
@@ -85,8 +105,11 @@ export class ProductsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   @HttpCode(HttpStatus.OK)
-  remove(@Param('id') id: string, @Request() req: any) {
-    return this.productsService.softDelete(id, req.user._id ?? req.user.sub);
+  async remove(@Param('id') id: string, @Request() req: any) {
+    const result = await this.productsService.softDelete(id, req.user._id ?? req.user.sub);
+    // Re-sync so the AI backend sees deleted_at and excludes this product from search
+    this.triggerAiSync(id).catch(() => {});
+    return result;
   }
 
   @Post(':id/regenerate-barcode')
