@@ -621,13 +621,13 @@ export default function SoldInventoryPage() {
                           <div className="flex items-baseline gap-1">
                             <span className="text-[10px] font-bold text-slate-400">₹</span>
                             <span className="text-base font-black text-slate-900 tracking-tight">
-                              {Number(item.selling_price || 0).toLocaleString('en-IN')}
+                              {Math.round(Number(item.selling_price || 0)).toLocaleString('en-IN')}
                             </span>
                           </div>
                           <div className="flex items-center gap-1.5 mt-0.5">
                             <TrendingUp size={10} className="text-emerald-500" />
                             <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-tighter">
-                              ROI: ₹{(item.selling_price - item.purchase_price).toLocaleString()}
+                              ROI: ₹{Math.round(item.selling_price - item.purchase_price).toLocaleString('en-IN')}
                             </span>
                           </div>
                         </div>

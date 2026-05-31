@@ -398,7 +398,7 @@ export default function BranchAllocationPage() {
 
                       <td className="px-5 py-4 text-right">
                         <p className="text-sm font-black text-slate-800">
-                          {item.selling_price != null ? `Rs. ${Number(item.selling_price).toLocaleString('en-IN')}` : '-'}
+                          {item.selling_price != null ? `Rs. ${Math.round(Number(item.selling_price)).toLocaleString('en-IN')}` : '-'}
                         </p>
                       </td>
                     </tr>

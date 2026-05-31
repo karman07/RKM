@@ -83,6 +83,11 @@ export default function SettingsPage() {
   const [waEnabled, setWaEnabled] = useState(true);
   const [emailEnabled, setEmailEnabled] = useState(true);
 
+  // Work schedule
+  const [shiftStart, setShiftStart]   = useState('09:00');
+  const [shiftEnd, setShiftEnd]       = useState('18:00');
+  const [graceMinutes, setGraceMinutes] = useState('5');
+
   // Fetch purity lookups from database
   useEffect(() => {
     getLookups()
@@ -156,6 +161,9 @@ export default function SettingsPage() {
     setStoneRefundPct(settings.stone_refund_percentage != null ? String(settings.stone_refund_percentage) : '50');
     setWaEnabled((settings as any).whatsapp_notifications_enabled !== false);
     setEmailEnabled((settings as any).email_notifications_enabled !== false);
+    setShiftStart(settings.shift_start_time ?? '09:00');
+    setShiftEnd(settings.shift_end_time ?? '18:00');
+    setGraceMinutes(String(settings.late_grace_minutes ?? 5));
   }, [loading, lookupsLoading, settings, purityLookups, metalConfig]);
 
   function showToast(message: string, type: 'success' | 'danger' | 'info' = 'info') {
@@ -209,6 +217,9 @@ export default function SettingsPage() {
         stone_refund_percentage: Number(stoneRefundPct) || 50,
         whatsapp_notifications_enabled: waEnabled,
         email_notifications_enabled: emailEnabled,
+        shift_start_time: shiftStart,
+        shift_end_time: shiftEnd,
+        late_grace_minutes: Number(graceMinutes) || 5,
       });
 
       await fetch(`${API_BASE}/online-orders/delivery-settings`, {
@@ -647,6 +658,86 @@ return (
               <p className="text-[10px] font-medium" style={{ color: theme === 'light' ? '#92400e' : '#fbbf24' }}>Tip: Set Charge to 0 for free zones. Orders above the free delivery threshold get free delivery regardless of zone.</p>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* ── Work Schedule ── */}
+      <section className="border rounded-2xl p-6 space-y-5 shadow-sm" style={{ borderColor: colors.border }}>
+        <div>
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: '#0ea5e910' }}>
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#0ea5e9" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h2 className="text-[15px] font-bold" style={{ color: colors.textMain }}>Work Schedule</h2>
+          </div>
+          <p className="text-xs mt-0.5 opacity-60" style={{ color: colors.textMain }}>
+            Set the daily shift times used to flag late arrivals and early departures in attendance reports.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* Shift Start */}
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-widest" style={{ color: colors.textHeader }}>
+              Shift Start Time
+            </label>
+            <input
+              type="time"
+              value={shiftStart}
+              onChange={e => setShiftStart(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl border text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+              style={{ borderColor: colors.border, background: theme === 'dark' ? '#1e293b' : '#f8fafc', color: colors.textMain }}
+            />
+            <p className="text-[10px] opacity-50" style={{ color: colors.textMain }}>24-hr IST format</p>
+          </div>
+
+          {/* Shift End */}
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-widest" style={{ color: colors.textHeader }}>
+              Shift End Time
+            </label>
+            <input
+              type="time"
+              value={shiftEnd}
+              onChange={e => setShiftEnd(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl border text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+              style={{ borderColor: colors.border, background: theme === 'dark' ? '#1e293b' : '#f8fafc', color: colors.textMain }}
+            />
+            <p className="text-[10px] opacity-50" style={{ color: colors.textMain }}>24-hr IST format</p>
+          </div>
+
+          {/* Grace Period */}
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-widest" style={{ color: colors.textHeader }}>
+              Late Grace Period
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                min={0}
+                max={60}
+                value={graceMinutes}
+                onChange={e => setGraceMinutes(e.target.value)}
+                className="w-full px-4 py-3 pr-16 rounded-xl border text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                style={{ borderColor: colors.border, background: theme === 'dark' ? '#1e293b' : '#f8fafc', color: colors.textMain }}
+              />
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black uppercase tracking-wider opacity-40" style={{ color: colors.textMain }}>MIN</span>
+            </div>
+            <p className="text-[10px] opacity-50" style={{ color: colors.textMain }}>Allowed delay after start</p>
+          </div>
+        </div>
+
+        {/* Preview */}
+        <div className="flex flex-wrap items-center gap-3 p-4 rounded-xl" style={{ background: '#0ea5e908', border: '1px solid #0ea5e920' }}>
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#0ea5e9" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <p className="text-[11px] font-bold" style={{ color: '#0369a1' }}>
+            Staff signing in after <strong>{shiftStart}</strong> + {graceMinutes}min grace will be marked <span className="text-red-600">Late</span>.
+            Signing out before <strong>{shiftEnd}</strong> will be flagged as <span className="text-amber-600">Early Departure</span>.
+          </p>
         </div>
       </section>
 

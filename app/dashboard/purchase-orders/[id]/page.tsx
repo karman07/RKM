@@ -287,7 +287,7 @@ export default function PurchaseOrderDetailPage() {
 
   const isPublished = po?.status === 'published';
   const totalItems = (poForm.items || []).length;
-  const fmt = (n: number) => n.toLocaleString('en-IN');
+  const fmt = (n: number) => Math.round(n).toLocaleString('en-IN');
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">

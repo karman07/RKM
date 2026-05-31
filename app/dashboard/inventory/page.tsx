@@ -46,7 +46,7 @@ ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarEle
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const fmt = (n: number) => n.toLocaleString('en-IN');
+const fmt = (n: number) => Math.round(n).toLocaleString('en-IN');
 
 const STATUS_BADGE: Record<string, { wrap: string; dot: string }> = {
   available: { wrap: 'inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-600 border border-emerald-100', dot: 'bg-emerald-500' },

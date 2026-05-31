@@ -7,7 +7,7 @@ import { AlertTriangle, RefreshCw, Box, AlertCircle, PackageX, ShieldAlert } fro
 import { toast } from 'sonner';
 
 function fmt(n: number) {
-  return `₹${n.toLocaleString('en-IN')}`;
+  return `₹${Math.round(n).toLocaleString('en-IN')}`;
 }
 
 export default function StolenItemsPage() {

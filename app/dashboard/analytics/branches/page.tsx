@@ -44,7 +44,7 @@ const DAMAGED_COLOR = '#ef4444';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function fmt(n: number) {
-  return `₹${n.toLocaleString('en-IN')}`;
+  return `₹${Math.round(n).toLocaleString('en-IN')}`;
 }
 
 function KpiCard({ label, value, sub, accent }: { label: string; value: string | number; sub?: string; accent?: string }) {

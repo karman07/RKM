@@ -1,15 +1,86 @@
 'use client';
-import { useState, Suspense } from 'react';
+import { useState, Suspense, useEffect } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
 import { SettingsProvider } from '@/components/SettingsContext';
 import { useAppTheme } from '@/components/AppThemeContext';
 import { APP_THEME } from '@/lib/theme-constants';
+
+// Map route prefixes to their sidebar permission key
+const ROUTE_PERMISSION: Record<string, string> = {
+  '/dashboard/analytics/branches': 'analytics.branches',
+  '/dashboard/analytics':          'analytics',
+  '/dashboard/notifications':      'notifications',
+  '/dashboard/inventory/sold':     'inventory.sold',
+  '/dashboard/inventory/allocate': 'inventory.allocate',
+  '/dashboard/inventory/damaged':  'inventory.damaged',
+  '/dashboard/inventory/stolen':   'inventory.stolen',
+  '/dashboard/inventory':          'inventory',
+  '/dashboard/purchase-orders':    'purchase-orders',
+  '/dashboard/suppliers':          'suppliers',
+  '/dashboard/branches':           'branches',
+  '/dashboard/refunds':            'refunds',
+  '/dashboard/attendance':         'attendance',
+  '/dashboard/item-attendance':    'item-attendance',
+  '/dashboard/leaves':             'leaves',
+  '/dashboard/holidays':           'holidays',
+  '/dashboard/location-violations':'location-violations',
+  '/dashboard/reimbursements':     'reimbursements',
+  '/dashboard/online-orders':      'online-orders',
+  '/dashboard/products':           'products',
+  '/dashboard/categories':         'categories',
+  '/dashboard/lookups':            'lookups',
+  '/dashboard/users':              'users',
+  '/dashboard/customers':          'customers',
+  '/dashboard/feedback':           'feedback',
+  '/dashboard/gold-investment':    'gold-investment',
+  '/dashboard/whatsapp':           'whatsapp',
+  '/dashboard/mail':               'mail',
+  '/dashboard/blogs':              'blogs',
+  '/dashboard/settings':           'settings',
+  // roles page — full admin only (no custom role can ever access it)
+  '/dashboard/roles':              '__admin_only__',
+  // Old Gold — page access gated by 'old-gold'; action visibility is
+  // handled inside the page itself using the finer-grained keys below.
+  '/dashboard/old-gold':           'old-gold',
+};
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
   const { theme } = useAppTheme();
   const colors = APP_THEME[theme];
+  const pathname = usePathname();
+  const router = useRouter();
+
+  type AdminUser = { name: string; role: string; customRole: { name: string; sidebar_permissions: string[] } | null };
+  const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
+
+  useEffect(() => {
+    const stored = localStorage.getItem('admin_user');
+    let user: AdminUser | null = null;
+    if (stored) {
+      try { user = JSON.parse(stored); setAdminUser(user); } catch (_) {}
+    }
+
+    // ── Route permission guard ──────────────────────────────────────────────
+    const permissions: string[] | null = user?.customRole?.sidebar_permissions ?? null;
+    if (permissions === null) return; // full admin — all routes allowed
+
+    // Find the most specific matching route key
+    const matchedKey = Object.keys(ROUTE_PERMISSION)
+      .filter(prefix => pathname.startsWith(prefix))
+      .sort((a, b) => b.length - a.length)[0]; // longest match wins
+
+    if (!matchedKey) return; // no restriction on this route
+
+    const requiredPerm = ROUTE_PERMISSION[matchedKey];
+
+    // __admin_only__ routes (e.g. /dashboard/roles) are never accessible to custom roles
+    if (requiredPerm === '__admin_only__' || !permissions.includes(requiredPerm)) {
+      router.replace('/dashboard');
+    }
+  }, [pathname, router]);
 
   function handleNavigate() {
     setMobileSidebarOpen(false);
@@ -34,6 +105,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           onClose={() => setMobileSidebarOpen(false)}
           onToggleDesktop={() => setDesktopSidebarCollapsed(prev => !prev)}
           onNavigate={handleNavigate}
+          permissions={adminUser?.customRole?.sidebar_permissions ?? null}
         />
       </Suspense>
 
@@ -76,8 +148,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
               <div className="flex items-center gap-3 pl-3 border-l border-slate-200 dark:border-slate-700">
                 <div className="hidden sm:block text-right">
-                  <p className="text-[12px] font-bold leading-none" style={{ color: 'var(--text-main)' }}>Admin</p>
-                  <p className="text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>Principal Concierge</p>
+                  <p className="text-[12px] font-bold leading-none" style={{ color: 'var(--text-main)' }}>
+                    {adminUser?.name ?? 'Admin'}
+                  </p>
+                  <p className="text-[10px] font-medium capitalize" style={{ color: 'var(--text-muted)' }}>
+                    {adminUser?.customRole?.name ?? (adminUser?.role === 'admin' ? 'Principal Concierge' : adminUser?.role ?? 'Admin')}
+                  </p>
                 </div>
                 <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-600/20">
                   <svg width="18" height="18" fill="white" viewBox="0 0 24 24">

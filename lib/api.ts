@@ -60,16 +60,61 @@ export interface Branch {
   pincode?: string;
   /** GSTIN for invoicing — shown on tax invoice header */
   gstin?: string;
+  latitude?: number;
+  longitude?: number;
+  /** Allowed login radius from branch coordinates, in metres */
+  geofence_radius?: number;
   createdAt: string;
   updatedAt: string;
 }
+
+// ─── Custom Roles ─────────────────────────────────────────────────────────────
+
+export interface CustomRole {
+  _id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  sidebar_permissions: string[];
+  is_active: boolean;
+  createdAt: string;
+}
+
+export const getCustomRoles = () => request<CustomRole[]>('/custom-roles');
+export const createCustomRole = (data: Partial<CustomRole>) =>
+  request<CustomRole>('/custom-roles', { method: 'POST', body: JSON.stringify(data) });
+export const updateCustomRole = (id: string, data: Partial<CustomRole>) =>
+  request<CustomRole>(`/custom-roles/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+export const deleteCustomRole = (id: string) =>
+  request<{ deleted: boolean }>(`/custom-roles/${id}`, { method: 'DELETE' });
+
+export interface LocationViolation {
+  _id: string;
+  user_id: User | string;
+  user_name: string;
+  user_email: string;
+  user_role: string;
+  branch_id?: Branch | string;
+  branch_name?: string;
+  attempted_lat: number;
+  attempted_lng: number;
+  branch_lat?: number;
+  branch_lng?: number;
+  distance_meters?: number;
+  geofence_radius?: number;
+  createdAt: string;
+}
+
+export const getLocationViolations = (limit = 100) =>
+  request<LocationViolation[]>(`/location-violations?limit=${limit}`);
 
 export interface User {
   _id: string;
   name: string;
   email: string;
-  role: 'admin' | 'manager' | 'cashier';
+  role: 'admin' | 'manager' | 'cashier' | 'custom';
   branch?: Branch | string;
+  custom_role?: CustomRole | string | null;
   is_active: boolean;
   created_at: string;
 }
@@ -81,8 +126,16 @@ export interface Attendance {
   status: 'present' | 'absent' | 'half-day' | 'on-leave';
   check_in?: string;
   check_out?: string;
+  check_in_lat?: number;
+  check_in_lng?: number;
   notes?: string;
   marked_by?: string | User;
+  is_late?: boolean;
+  late_by_minutes?: number;
+  is_early_checkout?: boolean;
+  early_by_minutes?: number;
+  /** System automatically checked out this user at shift end because they never signed out */
+  auto_checked_out?: boolean;
 }
 
 export interface AttendanceStats {
@@ -91,7 +144,22 @@ export interface AttendanceStats {
   halfDay: number;
   onLeave: number;
   totalWorkingDays: number;
+  lateCount?: number;
+  earlyCheckouts?: number;
 }
+
+export interface ShiftReport {
+  shift_start_time: string;
+  shift_end_time: string;
+  late_grace_minutes: number;
+  summary: { total: number; on_time: number; late: number; early_checkout: number };
+  late_arrivals: Attendance[];
+  early_departures: Attendance[];
+  all_records: Attendance[];
+}
+
+export const getShiftReport = (date?: string) =>
+  request<ShiftReport>(`/attendance/shift-report${date ? `?date=${date}` : ''}`);
 
 type UserApiResponse = Omit<User, 'is_active'> & {
   is_active?: boolean;
@@ -292,11 +360,28 @@ export interface PaginatedResponse<T> {
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
-export const login = (email: string, password: string) =>
-  request<{ access_token: string }>('/auth/login', {
+export const login = async (email: string, password: string) => {
+  const res = await fetch(`${API_BASE}/auth/login`, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
   });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const msg: string = typeof data.message === 'string'
+      ? data.message
+      : (Array.isArray(data.message) ? data.message[0] : null) ?? 'Invalid email or password.';
+    throw new Error(msg);
+  }
+  return res.json() as Promise<{
+    access_token: string;
+    user: {
+      id: string; email: string; name: string; role: string;
+      branch_id?: string;
+      custom_role?: { _id: string; name: string; slug: string; sidebar_permissions: string[] } | null;
+    };
+  }>;
+};
 
 export const getMe = async () => normalizeUser(await request<UserApiResponse>('/auth/profile'));
 
@@ -733,6 +818,12 @@ export interface AppSettings {
    * Admin-configurable. Default: 50%.
    */
   stone_refund_percentage?: number;
+  /** Shift start time "HH:MM" IST e.g. "09:00" */
+  shift_start_time?: string;
+  /** Shift end time "HH:MM" IST e.g. "18:00" */
+  shift_end_time?: string;
+  /** Grace period in minutes after shift start before marking late */
+  late_grace_minutes?: number;
   whatsapp_notifications_enabled?: boolean;
   email_notifications_enabled?: boolean;
   email_triggers?: Record<string, boolean>;
@@ -851,6 +942,12 @@ export const getAttendanceSummary = (days: number = 30) =>
 
 export const checkIn = () => request<Attendance>('/attendance/check-in', { method: 'POST' });
 export const checkOut = () => request<Attendance>('/attendance/check-out', { method: 'POST' });
+
+export const triggerAutoCheckout = (date?: string) =>
+  request<{ date: string; shift_end_time: string; auto_checked_out_count: number; records: Attendance[] }>(
+    `/attendance/auto-checkout${date ? `?date=${date}` : ''}`,
+    { method: 'POST' },
+  );
 
 // ─── Customers ────────────────────────────────────────────────────────────────
 
@@ -1256,6 +1353,16 @@ export const reviewLeave = (id: string, status: string, admin_note?: string) =>
     body: JSON.stringify({ status, admin_note }),
   });
 
+export const getMyLeaves = () => request<LeaveRequest[]>('/hr/leaves/mine');
+
+export const createLeaveRequest = (data: {
+  leave_type: string;
+  from_date: string;
+  to_date: string;
+  reason: string;
+  branch_id?: string;
+}) => request<LeaveRequest>('/hr/leaves', { method: 'POST', body: JSON.stringify(data) });
+
 // ─── HR: Reimbursements ────────────────────────────────────────────────────────
 
 export interface ReimbursementRequest {
@@ -1285,6 +1392,15 @@ export const reviewReimbursement = (id: string, status: string, admin_note?: str
     method: 'PATCH',
     body: JSON.stringify({ status, admin_note }),
   });
+
+export const getMyReimbursements = () => request<ReimbursementRequest[]>('/hr/reimbursements/mine');
+
+export const createReimbursementRequest = (data: {
+  category: string;
+  amount: number;
+  description: string;
+  branch_id?: string;
+}) => request<ReimbursementRequest>('/hr/reimbursements', { method: 'POST', body: JSON.stringify(data) });
 
 // Fetch leaves for a specific user (admin view)
 export const getUserLeaves = (userId: string) =>
@@ -1457,3 +1573,111 @@ export const createHoliday = (data: Omit<Holiday, '_id' | 'createdAt'>) =>
 
 export const deleteHoliday = (id: string) =>
   request<{ deleted: boolean }>(`/holidays/${id}`, { method: 'DELETE' });
+
+// ─── Old Gold ──────────────────────────────────────────────────────────────────
+
+export type OGStatus =
+  | 'draft' | 'submitted' | 'approved' | 'rejected'
+  | 'melting_authorized' | 'settled' | 'reversed';
+
+export type OGClientRequirement =
+  | 'cash_payout' | 'exchange' | 'partial_exchange' | 'store_credit' | '';
+
+export interface OGStone {
+  stone_type: string;
+  description: string;
+  count: number;
+  weight: number;
+  weight_unit: string;
+  quality: string;
+  estimated_value: number;
+  override_value: number | null;
+}
+
+export interface OGLineItem {
+  description: string;
+  weight_grams: number;
+  purity: string;
+  estimated_value: number;
+  override_value: number | null;
+  stones: OGStone[];
+  stones_value: number;
+}
+
+export interface OldGoldTransaction {
+  _id: string;
+  transaction_number: string;
+  customer_id: string | { _id: string; name: string; phone?: string };
+  branch_id: string | { _id: string; name: string };
+  items: OGLineItem[];
+  total_weight_grams: number;
+  total_value: number;
+  status: OGStatus;
+  notes: string;
+  rejection_reason: string;
+  melting_notes: string;
+  settlement_amount: number | null;
+  settlement_method: string;
+  /** What the customer wants in return */
+  client_requirement: OGClientRequirement;
+  client_requirement_notes: string;
+  exchange_metal_preference: string;
+  exchange_purity_preference: string;
+  exchange_budget: number | null;
+  exchange_item_description: string;
+  created_by: string | { _id: string; name: string; role: string };
+  submitted_by?: string | { _id: string; name: string } | null;
+  approved_by?: string | { _id: string; name: string } | null;
+  rejected_by?: string | { _id: string; name: string } | null;
+  melt_authorized_by?: string | { _id: string; name: string } | null;
+  settled_by?: string | { _id: string; name: string } | null;
+  reversed_by?: string | { _id: string; name: string } | null;
+  submitted_at?: string | null;
+  approved_at?: string | null;
+  rejected_at?: string | null;
+  melt_authorized_at?: string | null;
+  settled_at?: string | null;
+  reversed_at?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const getOldGoldTransactions = () =>
+  request<OldGoldTransaction[]>('/old-gold');
+
+export const getOldGoldTransaction = (id: string) =>
+  request<OldGoldTransaction>(`/old-gold/${id}`);
+
+export const createOldGoldTransaction = (data: {
+  customer_id: string;
+  branch_id?: string;
+  items: Array<Omit<OGLineItem, 'override_value'> & { stones?: Array<Omit<OGStone, 'override_value'>> }>;
+  notes?: string;
+  client_requirement?: OGClientRequirement;
+  client_requirement_notes?: string;
+  exchange_metal_preference?: string;
+  exchange_purity_preference?: string;
+  exchange_budget?: number;
+  exchange_item_description?: string;
+}) => request<OldGoldTransaction>('/old-gold', { method: 'POST', body: JSON.stringify(data) });
+
+export const editOldGoldTransaction = (id: string, data: { items?: OGLineItem[]; notes?: string }) =>
+  request<OldGoldTransaction>(`/old-gold/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+
+export const submitOldGoldTransaction = (id: string) =>
+  request<OldGoldTransaction>(`/old-gold/${id}/submit`, { method: 'POST' });
+
+export const approveOldGoldTransaction = (id: string) =>
+  request<OldGoldTransaction>(`/old-gold/${id}/approve`, { method: 'POST' });
+
+export const rejectOldGoldTransaction = (id: string, reason: string) =>
+  request<OldGoldTransaction>(`/old-gold/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) });
+
+export const authorizeMeltOldGold = (id: string, notes?: string) =>
+  request<OldGoldTransaction>(`/old-gold/${id}/authorize-melt`, { method: 'POST', body: JSON.stringify({ notes }) });
+
+export const settleOldGoldTransaction = (id: string, data: { settlement_amount: number; settlement_method: string }) =>
+  request<OldGoldTransaction>(`/old-gold/${id}/settle`, { method: 'POST', body: JSON.stringify(data) });
+
+export const reverseOldGoldTransaction = (id: string) =>
+  request<OldGoldTransaction>(`/old-gold/${id}/reverse`, { method: 'POST' });

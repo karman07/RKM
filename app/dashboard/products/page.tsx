@@ -173,6 +173,7 @@ export default function ProductsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Product | null>(null);
   const [form, setForm] = useState<ProductForm>(emptyForm);
+  const [netWeightManual, setNetWeightManual] = useState(false);
   const [pendingImages, setPendingImages] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
@@ -321,12 +322,14 @@ export default function ProductsPage() {
     setProductImages([]);
     setPendingImages([]);
     setForm(getDefaultForm());
+    setNetWeightManual(false);
     setFormError('');
     setActiveTab(0);
     setModalOpen(true);
   }
 
   function openEdit(p: Product) {
+    setNetWeightManual(true); // loaded from DB — treat as manually set
     setEditTarget(p);
     setProductImages(p.images ?? []);
     setForm({
@@ -386,7 +389,7 @@ export default function ProductsPage() {
     if (!form.dimensions.trim()) return 'Dimensions are required.';
     if (!form.gross_weight || Number(form.gross_weight) <= 0) return 'Gross weight is required.';
     if (!form.net_weight || Number(form.net_weight) <= 0) return 'Net weight is required.';
-    if (!form.stone_weight || Number(form.stone_weight) < 0) return 'Stone weight is required.';
+    if (form.stone_weight && Number(form.stone_weight) < 0) return 'Stone weight cannot be negative.';
     if (form.has_stones) {
       if (!form.stone_type && (!form.stones || form.stones.filter(s => s.stone_type && Number(s.weight) > 0).length === 0)) {
         return 'Please provide at least one stone entry or stone type when stones are enabled.';
@@ -608,7 +611,16 @@ export default function ProductsPage() {
   }
 
   function set(field: keyof ProductForm, value: unknown) {
-    setForm((f) => ({ ...f, [field]: value }));
+    setForm((f) => {
+      const next = { ...f, [field]: value };
+      // Auto-compute net weight = gross − stone whenever either changes (unless manually overridden)
+      if (!netWeightManual && (field === 'gross_weight' || field === 'stone_weight')) {
+        const g = parseFloat(field === 'gross_weight' ? (value as string) : f.gross_weight) || 0;
+        const s = parseFloat(field === 'stone_weight' ? (value as string) : f.stone_weight) || 0;
+        next.net_weight = String(Math.max(0, Math.round((g - s) * 1000) / 1000));
+      }
+      return next;
+    });
   }
 
   const totalPages = Math.ceil(total / 10);
@@ -972,15 +984,47 @@ export default function ProductsPage() {
               <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Gross Weight (g)</label>
-                  <input type="number" step="0.01" min="0" required className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.gross_weight} onChange={(e) => set('gross_weight', e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Net Weight (g)</label>
-                  <input type="number" step="0.01" min="0" required className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.net_weight} onChange={(e) => set('net_weight', e.target.value)} />
+                  <input type="number" step="0.001" min="0" required
+                    className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={form.gross_weight}
+                    onChange={(e) => set('gross_weight', e.target.value)} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Stone Weight (g)</label>
-                  <input type="number" step="0.01" min="0" required className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.stone_weight} onChange={(e) => set('stone_weight', e.target.value)} />
+                  <input type="number" step="0.001" min="0"
+                    className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={form.stone_weight}
+                    onChange={(e) => set('stone_weight', e.target.value)} />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-medium text-slate-700">
+                      Net Weight (g)
+                    </label>
+                    {netWeightManual ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNetWeightManual(false);
+                          const g = parseFloat(form.gross_weight) || 0;
+                          const s = parseFloat(form.stone_weight) || 0;
+                          set('net_weight', String(Math.max(0, Math.round((g - s) * 1000) / 1000)));
+                        }}
+                        className="text-[10px] font-bold text-blue-600 hover:text-blue-800 transition-colors"
+                      >
+                        ↺ Reset to auto
+                      </button>
+                    ) : (
+                      <span className="text-[10px] font-bold text-emerald-600">Auto-computed</span>
+                    )}
+                  </div>
+                  <input type="number" step="0.001" min="0" required
+                    className={`w-full px-3.5 py-2.5 border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${netWeightManual ? 'border-slate-300' : 'border-emerald-300 bg-emerald-50/40'}`}
+                    value={form.net_weight}
+                    onChange={(e) => {
+                      setNetWeightManual(true);
+                      set('net_weight', e.target.value);
+                    }} />
                 </div>
               </div>
               <div>

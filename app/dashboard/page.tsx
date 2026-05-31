@@ -70,18 +70,34 @@ export default function AdminHome() {
   const [user, setUser] = useState<User | null>(null);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [permissions, setPermissions] = useState<string[] | null>(null);
+
+  function can(key: string): boolean {
+    if (permissions === null) return true;
+    return permissions.includes(key);
+  }
+
+  useEffect(() => {
+    const stored = localStorage.getItem('admin_user');
+    if (stored) {
+      try {
+        const u = JSON.parse(stored);
+        setPermissions(u?.customRole?.sidebar_permissions ?? null);
+      } catch (_) {}
+    }
+  }, []);
 
   useEffect(() => {
     async function load() {
       try {
-        const now = new Date();
+        const isAdmin = permissions === null;
         const [me, users, invStats, attSummary, leaves, reimbs] = await Promise.all([
           getMe().catch(() => null),
-          getUsers(undefined, 1, 1).catch(() => ({ data: [], meta: { total: 0 } })),
-          getInventoryStats().catch(() => null),
-          getAttendanceSummary(1).catch(() => ({ total: {}, roles: {} })),
-          getAllLeaves({ status: 'pending', limit: 100 }).catch(() => []),
-          getAllReimbursements({ status: 'pending', limit: 100 }).catch(() => []),
+          isAdmin ? getUsers(undefined, 1, 1).catch(() => ({ data: [], meta: { total: 0 } })) : Promise.resolve({ data: [], meta: { total: 0 } }),
+          isAdmin ? getInventoryStats().catch(() => null) : Promise.resolve(null),
+          isAdmin ? getAttendanceSummary(1).catch(() => ({ total: {}, roles: {} })) : Promise.resolve({ total: {}, roles: {} }),
+          isAdmin ? getAllLeaves({ status: 'pending', limit: 100 }).catch(() => []) : Promise.resolve([]),
+          isAdmin ? getAllReimbursements({ status: 'pending', limit: 100 }).catch(() => []) : Promise.resolve([]),
         ]);
         setUser(me);
         setStats({
@@ -103,7 +119,7 @@ export default function AdminHome() {
       }
     }
     load();
-  }, []);
+  }, [permissions]);
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
@@ -116,14 +132,15 @@ export default function AdminHome() {
     );
   }
 
+  const isAdmin = permissions === null;
   const alerts: { icon: any; text: string; sub?: string; href: string; color: string }[] = [];
-  if (stats?.pendingLeaves > 0) {
+  if (isAdmin && stats?.pendingLeaves > 0) {
     alerts.push({ icon: FileText, text: `${stats.pendingLeaves} Leave Request${stats.pendingLeaves > 1 ? 's' : ''} Pending`, sub: 'Requires your approval', href: '/dashboard/leaves', color: 'bg-amber-50 border-amber-200 text-amber-800' });
   }
-  if (stats?.pendingReimbs > 0) {
+  if (isAdmin && stats?.pendingReimbs > 0) {
     alerts.push({ icon: CreditCard, text: `${stats.pendingReimbs} Reimbursement${stats.pendingReimbs > 1 ? 's' : ''} Pending`, sub: 'Requires your approval', href: '/dashboard/reimbursements', color: 'bg-blue-50 border-blue-200 text-blue-800' });
   }
-  if (stats?.absentToday > 0) {
+  if (isAdmin && stats?.absentToday > 0) {
     alerts.push({ icon: AlertTriangle, text: `${stats.absentToday} Staff Absent Today`, sub: 'Check attendance log', href: '/dashboard/attendance', color: 'bg-red-50 border-red-200 text-red-800' });
   }
 
@@ -166,19 +183,21 @@ export default function AdminHome() {
       )}
 
       {/* ── Stats Row ── */}
-      <div>
-        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3 flex items-center gap-2">
-          <BarChart3 className="w-3.5 h-3.5" /> Business Overview
-        </p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <StatPill label="Total Staff" value={stats?.totalUsers ?? 0} sub="System users" color="text-blue-600" />
-          <StatPill label="Items in Vault" value={stats?.totalInventory ?? 0} sub="Total inventory" color="text-slate-900" />
-          <StatPill label="Available" value={stats?.available ?? 0} sub="Ready for sale" color="text-emerald-600" />
-          <StatPill label="Sold Items" value={stats?.sold ?? 0} sub="All time" color="text-violet-600" />
-          <StatPill label="Portfolio Value" value={`₹${((stats?.totalValue ?? 0) / 100000).toFixed(1)}L`} sub="Purchase value" color="text-blue-600" />
-          <StatPill label="Net Profit" value={`₹${((stats?.totalProfit ?? 0) / 100000).toFixed(1)}L`} sub="Realized" color={(stats?.totalProfit ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600'} />
+      {isAdmin && (
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3 flex items-center gap-2">
+            <BarChart3 className="w-3.5 h-3.5" /> Business Overview
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <StatPill label="Total Staff" value={stats?.totalUsers ?? 0} sub="System users" color="text-blue-600" />
+            <StatPill label="Items in Vault" value={stats?.totalInventory ?? 0} sub="Total inventory" color="text-slate-900" />
+            <StatPill label="Available" value={stats?.available ?? 0} sub="Ready for sale" color="text-emerald-600" />
+            <StatPill label="Sold Items" value={stats?.sold ?? 0} sub="All time" color="text-violet-600" />
+            <StatPill label="Portfolio Value" value={`₹${((stats?.totalValue ?? 0) / 100000).toFixed(1)}L`} sub="Purchase value" color="text-blue-600" />
+            <StatPill label="Net Profit" value={`₹${((stats?.totalProfit ?? 0) / 100000).toFixed(1)}L`} sub="Realized" color={(stats?.totalProfit ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600'} />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ── Quick Navigation ── */}
       <div>
@@ -186,25 +205,26 @@ export default function AdminHome() {
           <Zap className="w-3.5 h-3.5" /> Quick Navigation
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-          <NavTile href="/dashboard/users" icon={Users} label="Staff Registry" sub="Managers & Cashiers" color="bg-blue-50 text-blue-600" />
-          <NavTile href="/dashboard/attendance" icon={Calendar} label="Attendance" sub="Daily log & history" color="bg-emerald-50 text-emerald-600" />
-          <NavTile href="/dashboard/inventory" icon={Package} label="Inventory" sub="Stock management" color="bg-violet-50 text-violet-600" />
-          <NavTile href="/dashboard/inventory/sold" icon={ShoppingBag} label="Sales Ledger" sub="All transactions" color="bg-indigo-50 text-indigo-600" />
-          <NavTile href="/dashboard/leaves" icon={FileText} label="Leave Requests" sub="Review & approve" badge={stats?.pendingLeaves} color="bg-amber-50 text-amber-600" />
-          <NavTile href="/dashboard/reimbursements" icon={CreditCard} label="Reimbursements" sub="Expense claims" badge={stats?.pendingReimbs} color="bg-rose-50 text-rose-600" />
-          <NavTile href="/dashboard/branches" icon={Building2} label="Branches" sub="Location management" color="bg-sky-50 text-sky-600" />
-          <NavTile href="/dashboard/products" icon={Layers} label="Products" sub="Product catalog" color="bg-teal-50 text-teal-600" />
-          <NavTile href="/dashboard/analytics" icon={BarChart3} label="Analytics" sub="Sales & performance" color="bg-purple-50 text-purple-600" />
-          <NavTile href="/dashboard/purchase-orders" icon={TrendingUp} label="Purchase Orders" sub="PO management" color="bg-orange-50 text-orange-600" />
-          <NavTile href="/dashboard/customers" icon={Star} label="Customers" sub="Customer CRM" color="bg-pink-50 text-pink-600" />
-          <NavTile href="/dashboard/notifications" icon={Bell} label="Notifications" sub="System alerts" color="bg-yellow-50 text-yellow-600" />
-          <NavTile href="/dashboard/item-attendance" icon={Activity} label="Item Attendance" sub="Stock scanning" color="bg-cyan-50 text-cyan-600" />
-          <NavTile href="/dashboard/settings" icon={Settings} label="Settings" sub="Rates & config" color="bg-slate-100 text-slate-600" />
-          <NavTile href="/dashboard/gold-investment" icon={Clock} label="Gold Investment" sub="Savings plans" color="bg-yellow-50 text-yellow-700" />
+          {can('users') && <NavTile href="/dashboard/users" icon={Users} label="Staff Registry" sub="Managers & Cashiers" color="bg-blue-50 text-blue-600" />}
+          {can('attendance') && <NavTile href="/dashboard/attendance" icon={Calendar} label="Attendance" sub="Daily log & history" color="bg-emerald-50 text-emerald-600" />}
+          {can('inventory') && <NavTile href="/dashboard/inventory" icon={Package} label="Inventory" sub="Stock management" color="bg-violet-50 text-violet-600" />}
+          {can('inventory.sold') && <NavTile href="/dashboard/inventory/sold" icon={ShoppingBag} label="Sales Ledger" sub="All transactions" color="bg-indigo-50 text-indigo-600" />}
+          {can('leaves') && <NavTile href="/dashboard/leaves" icon={FileText} label="Leave Requests" sub={isAdmin ? 'Review & approve' : 'Apply & track'} badge={isAdmin ? stats?.pendingLeaves : undefined} color="bg-amber-50 text-amber-600" />}
+          {can('reimbursements') && <NavTile href="/dashboard/reimbursements" icon={CreditCard} label="Reimbursements" sub={isAdmin ? 'Expense claims' : 'Submit & track'} badge={isAdmin ? stats?.pendingReimbs : undefined} color="bg-rose-50 text-rose-600" />}
+          {can('branches') && <NavTile href="/dashboard/branches" icon={Building2} label="Branches" sub="Location management" color="bg-sky-50 text-sky-600" />}
+          {can('products') && <NavTile href="/dashboard/products" icon={Layers} label="Products" sub="Product catalog" color="bg-teal-50 text-teal-600" />}
+          {can('analytics') && <NavTile href="/dashboard/analytics" icon={BarChart3} label="Analytics" sub="Sales & performance" color="bg-purple-50 text-purple-600" />}
+          {can('purchase-orders') && <NavTile href="/dashboard/purchase-orders" icon={TrendingUp} label="Purchase Orders" sub="PO management" color="bg-orange-50 text-orange-600" />}
+          {can('customers') && <NavTile href="/dashboard/customers" icon={Star} label="Customers" sub="Customer CRM" color="bg-pink-50 text-pink-600" />}
+          {can('notifications') && <NavTile href="/dashboard/notifications" icon={Bell} label="Notifications" sub="System alerts" color="bg-yellow-50 text-yellow-600" />}
+          {can('item-attendance') && <NavTile href="/dashboard/item-attendance" icon={Activity} label="Item Attendance" sub="Stock scanning" color="bg-cyan-50 text-cyan-600" />}
+          {can('settings') && <NavTile href="/dashboard/settings" icon={Settings} label="Settings" sub="Rates & config" color="bg-slate-100 text-slate-600" />}
+          {can('gold-investment') && <NavTile href="/dashboard/gold-investment" icon={Clock} label="Gold Investment" sub="Savings plans" color="bg-yellow-50 text-yellow-700" />}
         </div>
       </div>
 
       {/* ── Secondary Row: Attendance + Inventory ── */}
+      {isAdmin && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
         {/* Today's Presence */}
@@ -317,6 +337,7 @@ export default function AdminHome() {
         </div>
 
       </div>
+      )}
     </div>
   );
 }

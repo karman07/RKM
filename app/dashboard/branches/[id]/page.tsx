@@ -15,7 +15,7 @@ import {
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
 function fmt(n: number) {
-  return `₹${n.toLocaleString('en-IN')}`;
+  return `₹${Math.round(n).toLocaleString('en-IN')}`;
 }
 
 function KpiCard({ label, value, sub, color = '#6366f1' }: { label: string; value: string | number; sub?: string; color?: string }) {

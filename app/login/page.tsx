@@ -1,8 +1,8 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { login } from '@/lib/api';
-import { motion, AnimatePresence } from 'framer-motion';
+import { login, checkIn } from '@/lib/api';
+import { motion } from 'framer-motion';
 import { Lock, Mail, Loader2, Star, ShieldCheck } from 'lucide-react';
 
 export default function LoginPage() {
@@ -17,8 +17,26 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
     try {
-      const { access_token } = await login(email, password);
+      const res = await login(email, password) as any;
+      const { access_token, user } = res;
+
+      // Block manager/cashier from admin portal
+      if (user?.role === 'manager' || user?.role === 'cashier') {
+        throw new Error('Access Denied: Use the Manager or Cashier portal instead.');
+      }
+
       localStorage.setItem('admin_token', access_token);
+
+      // Store user identity for header display
+      localStorage.setItem('admin_user', JSON.stringify({
+        name: user?.name ?? 'Admin',
+        role: user?.role ?? 'admin',
+        customRole: user?.custom_role ?? null,
+      }));
+
+      // Record attendance check-in based on login time
+      checkIn().catch(() => {});
+
       router.push('/dashboard');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Authentication failed');
@@ -73,19 +91,14 @@ export default function LoginPage() {
         {/* Login Card */}
         <div className="bg-white border border-slate-200 rounded-[24px] p-8 md:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] relative">
           <form onSubmit={handleSubmit} className="space-y-6">
-            <AnimatePresence mode="wait">
-              {error && (
-                <motion.div 
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="bg-red-50 border border-red-100 text-red-600 text-xs font-semibold rounded-xl px-4 py-3 flex items-center gap-2"
-                >
-                  <div className="w-1.5 h-1.5 bg-red-500 rounded-full" />
-                  {error}
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 text-sm font-semibold rounded-2xl px-5 py-4 flex items-center gap-3">
+                <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} className="shrink-0 text-red-500">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                </svg>
+                {error}
+              </div>
+            )}
 
             <div className="space-y-5">
               <div className="group/field relative">

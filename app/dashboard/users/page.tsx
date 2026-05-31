@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { getBranches, getUsers, createUser, updateUser, deleteUser, staticUrl, type User, type Branch } from '@/lib/api';
+import { getBranches, getUsers, createUser, updateUser, deleteUser, getCustomRoles, staticUrl, type User, type Branch, type CustomRole } from '@/lib/api';
 import Modal from '@/components/Modal';
 import UserHistoryDrawer from '@/components/UserHistoryDrawer';
 import { Plus, Edit2, Trash2, ChevronLeft, ChevronRight, Shield, UserCheck, Building2, Mail, Loader2, User as UserIcon } from 'lucide-react';
@@ -19,6 +19,7 @@ interface UserForm {
   role: string;
   branch?: string;
   is_active: boolean;
+  custom_role?: string; // custom role _id when role === 'custom'
 }
 
 const emptyForm: UserForm = { name: '', email: '', password: '', role: 'cashier', is_active: true };
@@ -37,6 +38,7 @@ function UserAvatar({ user, size = 'sm' }: { user: User; size?: 'sm' | 'md' }) {
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [customRoles, setCustomRoles] = useState<CustomRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [roleFilter, setRoleFilter] = useState('');
   const [page, setPage] = useState(1);
@@ -56,13 +58,15 @@ export default function UsersPage() {
   async function load() {
     setLoading(true);
     try {
-      const [userData, branchData] = await Promise.all([
+      const [userData, branchData, roleData] = await Promise.all([
         getUsers(roleFilter || undefined, page, limit),
-        getBranches()
+        getBranches(),
+        getCustomRoles().catch(() => [] as CustomRole[]),
       ]);
       setUsers(userData.data);
       setTotal(userData.meta.total);
       setBranches(branchData);
+      setCustomRoles(roleData);
     } catch (e: any) {
       showToast(e.message || 'Failed to load data', 'danger');
     } finally {
@@ -96,7 +100,11 @@ export default function UsersPage() {
 
   function openEdit(u: User) {
     setEditTarget(u);
-    setForm({ name: u.name, email: u.email, password: '', role: u.role, branch: (u.branch as any)?._id || (u.branch as string), is_active: u.is_active });
+    // For custom role users, encode as "custom:<_id>" for the dropdown
+    const roleValue = u.role === 'custom' && u.custom_role
+      ? `custom:${typeof u.custom_role === 'object' ? (u.custom_role as any)._id : u.custom_role}`
+      : u.role;
+    setForm({ name: u.name, email: u.email, password: '', role: roleValue, branch: (u.branch as any)?._id || (u.branch as string), is_active: u.is_active });
     setError('');
     setModalOpen(true);
   }
@@ -105,7 +113,18 @@ export default function UsersPage() {
     setSaving(true);
     setError('');
     try {
-      const payload: any = { name: form.name, email: form.email, role: form.role, isActive: form.is_active, branch: form.branch || null };
+      // Handle custom role: form.role is "custom:<_id>"
+      let roleValue = form.role;
+      let customRoleId: string | undefined;
+      if (form.role.startsWith('custom:')) {
+        roleValue = 'custom';
+        customRoleId = form.role.replace('custom:', '');
+      }
+      const payload: any = {
+        name: form.name, email: form.email, role: roleValue,
+        isActive: form.is_active, branch: form.branch || null,
+        ...(customRoleId ? { custom_role: customRoleId } : {}),
+      };
       if (!editTarget || form.password) payload.password = form.password;
       if (editTarget) { await updateUser(editTarget._id, payload); showToast('User updated', 'success'); }
       else { await createUser(payload); showToast('User created', 'success'); }
@@ -338,12 +357,24 @@ export default function UsersPage() {
               <select
                 className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-black uppercase tracking-widest focus:outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer"
                 value={form.role}
-                onChange={(e) => setForm({...form, role: e.target.value})}
+                onChange={(e) => setForm({...form, role: e.target.value, custom_role: undefined})}
               >
                 <option value="cashier">Cashier</option>
                 <option value="manager">Manager</option>
                 <option value="admin">Admin</option>
+                {customRoles.length > 0 && (
+                  <optgroup label="── Custom Roles ──">
+                    {customRoles.map(cr => (
+                      <option key={cr._id} value={`custom:${cr._id}`}>{cr.name}</option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
+              {form.role.startsWith('custom:') && (
+                <p className="text-[10px] text-blue-600 font-bold ml-1">
+                  ✓ This user will access the Admin Portal with limited permissions
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">

@@ -39,8 +39,12 @@ export default function BranchesPage() {
     state: '',
     pincode: '',
     gstin: '',
-    is_active: true
+    is_active: true,
+    latitude: undefined,
+    longitude: undefined,
+    geofence_radius: 200,
   });
+  const [locating, setLocating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'danger' } | null>(null);
@@ -69,9 +73,23 @@ export default function BranchesPage() {
     setTimeout(() => setToast(null), 3000);
   }
 
+  async function detectLocation() {
+    if (!navigator.geolocation) { showToast('Geolocation not supported by this browser', 'danger'); return; }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        setForm(f => ({ ...f, latitude: pos.coords.latitude, longitude: pos.coords.longitude }));
+        setLocating(false);
+        showToast('Location detected successfully', 'success');
+      },
+      () => { showToast('Could not detect location. Enter coordinates manually.', 'danger'); setLocating(false); },
+      { timeout: 10000, enableHighAccuracy: true },
+    );
+  }
+
   function openCreate() {
     setEditTarget(null);
-    setForm({ name: '', code: '', address: '', phone: '', email: '', manager: '', city: '', state: '', pincode: '', gstin: '', is_active: true });
+    setForm({ name: '', code: '', address: '', phone: '', email: '', manager: '', city: '', state: '', pincode: '', gstin: '', is_active: true, latitude: undefined, longitude: undefined, geofence_radius: 200 });
     setError('');
     setModalOpen(true);
   }
@@ -248,12 +266,27 @@ export default function BranchesPage() {
                 )}
               </div>
 
-              <div className="pt-6 border-t border-slate-100 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Globe className="w-3.5 h-3.5 text-slate-400" />
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{b.state || 'Regional Office'} / {b.pincode || 'N/A'}</span>
+              <div className="pt-4 border-t border-slate-100 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Globe className="w-3.5 h-3.5 text-slate-400" />
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{b.state || 'Regional Office'} / {b.pincode || 'N/A'}</span>
+                  </div>
+                  {b.email && <Mail className="w-4 h-4 text-blue-500/40" />}
                 </div>
-                {b.email && <Mail className="w-4 h-4 text-blue-500/40" />}
+                {b.latitude != null && b.longitude != null ? (
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-100 rounded-xl">
+                    <MapPin className="w-3 h-3 text-emerald-600 flex-shrink-0" />
+                    <span className="text-[10px] font-bold text-emerald-700">
+                      Geofenced · {b.geofence_radius ?? 200}m · {b.latitude.toFixed(4)}, {b.longitude.toFixed(4)}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-100 rounded-xl">
+                    <MapPin className="w-3 h-3 text-amber-500 flex-shrink-0" />
+                    <span className="text-[10px] font-bold text-amber-600">No geofence — all locations allowed</span>
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -393,6 +426,81 @@ export default function BranchesPage() {
               placeholder="e.g. 03AABCR1234F1Z5"
               maxLength={15}
             />
+          </div>
+
+          {/* ── Geofence / Location ── */}
+          <div className="rounded-[2rem] border border-blue-100 bg-blue-50/40 p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-widest text-slate-900">Branch Location (Geofence)</p>
+                <p className="text-[10px] text-slate-500 font-medium mt-0.5">Staff can only sign in from within this radius. Leave blank to disable.</p>
+              </div>
+              <button
+                type="button"
+                onClick={detectLocation}
+                disabled={locating}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-[11px] font-black hover:bg-blue-700 transition-colors disabled:opacity-50 whitespace-nowrap shadow-lg shadow-blue-600/20"
+              >
+                {locating ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <MapPin className="w-3.5 h-3.5" />
+                )}
+                {locating ? 'Detecting...' : 'Use My Location'}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] uppercase tracking-widest font-black text-slate-400">Latitude</label>
+                <input
+                  type="number"
+                  step="any"
+                  min={-90}
+                  max={90}
+                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-mono focus:outline-none focus:border-blue-500 transition-all"
+                  value={form.latitude ?? ''}
+                  onChange={(e) => setForm({ ...form, latitude: e.target.value ? Number(e.target.value) : undefined })}
+                  placeholder="e.g. 30.7046"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] uppercase tracking-widest font-black text-slate-400">Longitude</label>
+                <input
+                  type="number"
+                  step="any"
+                  min={-180}
+                  max={180}
+                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-mono focus:outline-none focus:border-blue-500 transition-all"
+                  value={form.longitude ?? ''}
+                  onChange={(e) => setForm({ ...form, longitude: e.target.value ? Number(e.target.value) : undefined })}
+                  placeholder="e.g. 76.7179"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] uppercase tracking-widest font-black text-slate-400">
+                Allowed Radius (metres) — default 200m
+              </label>
+              <input
+                type="number"
+                min={50}
+                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-mono focus:outline-none focus:border-blue-500 transition-all"
+                value={form.geofence_radius ?? 200}
+                onChange={(e) => setForm({ ...form, geofence_radius: Number(e.target.value) })}
+                placeholder="200"
+              />
+            </div>
+
+            {form.latitude != null && form.longitude != null && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                <p className="text-[10px] font-bold text-emerald-700">
+                  Geofence set: {form.latitude.toFixed(5)}, {form.longitude.toFixed(5)} · {form.geofence_radius ?? 200}m radius
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-between p-5 bg-slate-50 rounded-[2rem] border border-slate-100">

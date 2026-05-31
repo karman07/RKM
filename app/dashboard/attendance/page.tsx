@@ -1,10 +1,10 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import {
-  getUsers, getDailyAttendance, getBranches, getAttendanceStats, getAllLeaves, getUserAttendance, staticUrl,
-  type User, type Attendance, type Branch, type AttendanceStats,
+  getUsers, getDailyAttendance, getBranches, getAttendanceStats, getAllLeaves, getUserAttendance, getShiftReport, triggerAutoCheckout, staticUrl,
+  type User, type Attendance, type Branch, type AttendanceStats, type ShiftReport,
 } from '@/lib/api';
-import { ChevronLeft, ChevronRight, Calendar, CheckCircle2, XCircle, Clock, Building2, Loader2, Info } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar, CheckCircle2, XCircle, Clock, Building2, Loader2, Info, AlertTriangle, Timer } from 'lucide-react';
 import Modal from '@/components/Modal';
 import UserHistoryDrawer from '@/components/UserHistoryDrawer';
 
@@ -38,6 +38,39 @@ export default function AttendancePage() {
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'danger' } | null>(null);
   const [historyUser, setHistoryUser] = useState<User | null>(null);
+  const [shiftReport, setShiftReport] = useState<ShiftReport | null>(null);
+  const [isFullAdmin, setIsFullAdmin] = useState(true);
+
+  useEffect(() => {
+    const stored = localStorage.getItem('admin_user');
+    if (stored) {
+      try {
+        const u = JSON.parse(stored);
+        setIsFullAdmin(u?.customRole === null || u?.customRole === undefined);
+      } catch (_) {}
+    }
+  }, []);
+  const [showShiftPanel, setShowShiftPanel] = useState(false);
+  const [autoCheckoutLoading, setAutoCheckoutLoading] = useState(false);
+
+  async function handleAutoCheckout() {
+    setAutoCheckoutLoading(true);
+    try {
+      const dateStr = selectedDate.toISOString().split('T')[0];
+      const result = await triggerAutoCheckout(dateStr);
+      showToast(
+        result.auto_checked_out_count === 0
+          ? 'All checked-in staff already have a checkout recorded.'
+          : `Auto-checked out ${result.auto_checked_out_count} staff at ${result.shift_end_time} shift end.`,
+        result.auto_checked_out_count === 0 ? 'success' : 'success',
+      );
+      await load();
+    } catch (e: any) {
+      showToast(e.message || 'Auto-checkout failed', 'danger');
+    } finally {
+      setAutoCheckoutLoading(false);
+    }
+  }
 
   function showToast(msg: string, type: 'success' | 'danger') {
     setToast({ msg, type });
@@ -48,15 +81,17 @@ export default function AttendancePage() {
     setLoading(true);
     try {
       const dateStr = selectedDate.toISOString().split('T')[0];
-      const [uRes, aRes, bRes, lRes] = await Promise.all([
+      const [uRes, aRes, bRes, lRes, sRep] = await Promise.all([
         getUsers(undefined, 1, 200),
         getDailyAttendance(dateStr),
         getBranches(),
         getAllLeaves({ status: 'approved' }),
+        getShiftReport(dateStr).catch(() => null),
       ]);
       setUsers(uRes.data);
       setAttendance(aRes);
       setBranches(bRes);
+      setShiftReport(sRep);
       setOnLeaveList(lRes.filter((l: any) => {
         const from = new Date(l.from_date);
         const to   = new Date(l.to_date);
@@ -95,9 +130,12 @@ export default function AttendancePage() {
 
   // branch-wise grouping
   const branchGroups = useMemo(() => {
+    // Custom-role users must not see full admin accounts
+    const visibleUsers = isFullAdmin ? users : users.filter(u => u.role !== 'admin');
+
     const sourceUsers = activeBranch === 'all'
-      ? users
-      : users.filter(u => {
+      ? visibleUsers
+      : visibleUsers.filter(u => {
           const bid = typeof u.branch === 'object' ? (u.branch as any)?._id : u.branch;
           return bid === activeBranch;
         });
@@ -115,13 +153,18 @@ export default function AttendancePage() {
     return groups;
   }, [users, branches, activeBranch]);
 
+  const visibleUserIds = useMemo(() => {
+    const base = isFullAdmin ? users : users.filter(u => u.role !== 'admin');
+    return new Set(base.map(u => u._id));
+  }, [users, isFullAdmin]);
+
   const summary = useMemo(() => ({
-    total:   users.length,
-    present: attendance.filter(a => a.status === 'present').length,
-    absent:  attendance.filter(a => a.status === 'absent').length,
-    halfDay: attendance.filter(a => a.status === 'half-day').length,
+    total:   isFullAdmin ? users.length : users.filter(u => u.role !== 'admin').length,
+    present: attendance.filter(a => a.status === 'present' && visibleUserIds.has(getUserId(a) ?? '')).length,
+    absent:  attendance.filter(a => a.status === 'absent'  && visibleUserIds.has(getUserId(a) ?? '')).length,
+    halfDay: attendance.filter(a => a.status === 'half-day'&& visibleUserIds.has(getUserId(a) ?? '')).length,
     onLeave: onLeaveList.length,
-  }), [attendance, onLeaveList, users]);
+  }), [attendance, onLeaveList, users, visibleUserIds, isFullAdmin]);
 
   const dateLabel = selectedDate.toLocaleDateString('en-IN', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
@@ -147,36 +190,163 @@ export default function AttendancePage() {
           <p className="text-slate-400 text-sm font-medium ml-4">{dateLabel}</p>
         </div>
 
-        {/* Date picker */}
-        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl p-1.5 shadow-sm">
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Auto-checkout button */}
           <button
-            onClick={() => { const d = new Date(selectedDate); d.setDate(d.getDate() - 1); setSelectedDate(d); }}
-            className="p-2 rounded-xl hover:bg-slate-50 text-slate-400 hover:text-blue-600 transition-colors"
+            onClick={handleAutoCheckout}
+            disabled={autoCheckoutLoading}
+            title="Check out all staff who are still logged in — sets their checkout to the shift end time and flags them for admin review"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl border border-orange-200 bg-orange-50 text-orange-700 text-[11px] font-black uppercase tracking-widest hover:bg-orange-100 hover:border-orange-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
           >
-            <ChevronLeft className="w-4 h-4" />
+            {autoCheckoutLoading ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Clock className="w-3.5 h-3.5" />
+            )}
+            Auto Checkout
           </button>
-          <input
-            type="date"
-            value={selectedDate.toISOString().split('T')[0]}
-            max={new Date().toISOString().split('T')[0]}
-            onChange={e => { if (e.target.value) setSelectedDate(new Date(e.target.value + 'T00:00:00')); }}
-            className="text-sm font-black text-slate-900 bg-transparent focus:outline-none px-2 cursor-pointer"
-          />
-          <button
-            onClick={() => { const d = new Date(selectedDate); d.setDate(d.getDate() + 1); setSelectedDate(d); }}
-            disabled={selectedDate.toDateString() === new Date().toDateString()}
-            className="p-2 rounded-xl hover:bg-slate-50 text-slate-400 hover:text-blue-600 transition-colors disabled:opacity-30"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
+
+          {/* Date picker */}
+          <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl p-1.5 shadow-sm">
+            <button
+              onClick={() => { const d = new Date(selectedDate); d.setDate(d.getDate() - 1); setSelectedDate(d); }}
+              className="p-2 rounded-xl hover:bg-slate-50 text-slate-400 hover:text-blue-600 transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <input
+              type="date"
+              value={selectedDate.toISOString().split('T')[0]}
+              max={new Date().toISOString().split('T')[0]}
+              onChange={e => { if (e.target.value) setSelectedDate(new Date(e.target.value + 'T00:00:00')); }}
+              className="text-sm font-black text-slate-900 bg-transparent focus:outline-none px-2 cursor-pointer"
+            />
+            <button
+              onClick={() => { const d = new Date(selectedDate); d.setDate(d.getDate() + 1); setSelectedDate(d); }}
+              disabled={selectedDate.toDateString() === new Date().toDateString()}
+              className="p-2 rounded-xl hover:bg-slate-50 text-slate-400 hover:text-blue-600 transition-colors disabled:opacity-30"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
 
       {/* ── Info Note ── */}
-      <div className="flex items-center gap-3 px-5 py-3 bg-blue-50 border border-blue-100 rounded-2xl mb-8 text-[11px] font-bold text-blue-600">
+      <div className="flex items-center gap-3 px-5 py-3 bg-blue-50 border border-blue-100 rounded-2xl mb-6 text-[11px] font-bold text-blue-600">
         <Info className="w-4 h-4 flex-shrink-0" />
         Attendance is recorded automatically when managers and cashiers sign in or sign out. Admins view only.
       </div>
+
+      {/* ── Shift Timing Report Banner ── */}
+      {shiftReport && (
+        <div className="mb-8">
+          {/* Shift header bar */}
+          <div
+            className="flex flex-wrap items-center justify-between gap-4 px-6 py-4 bg-white border border-slate-200 rounded-[1.5rem] shadow-sm cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => setShowShiftPanel(s => !s)}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-slate-900 flex items-center justify-center flex-shrink-0">
+                <Timer className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-black text-slate-900">Shift Timing Report</p>
+                <p className="text-[10px] text-slate-400 font-medium">
+                  Shift {shiftReport.shift_start_time} – {shiftReport.shift_end_time} &nbsp;·&nbsp; {shiftReport.late_grace_minutes}min grace
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-6 flex-shrink-0">
+              <Pill color="bg-emerald-50 text-emerald-700 border-emerald-200" label="On Time" value={shiftReport.summary.on_time} />
+              <Pill color="bg-red-50 text-red-700 border-red-200"     label="Late"    value={shiftReport.summary.late}    dot />
+              <Pill color="bg-amber-50 text-amber-700 border-amber-200" label="Early Out" value={shiftReport.summary.early_checkout} dot />
+              <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform ${showShiftPanel ? 'rotate-90' : ''}`} />
+            </div>
+          </div>
+
+          {/* Expandable details */}
+          {showShiftPanel && (
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+
+              {/* Late arrivals */}
+              <div className="bg-white border border-red-200 rounded-[1.5rem] overflow-hidden shadow-sm">
+                <div className="flex items-center gap-3 px-6 py-4 border-b border-red-50 bg-red-50/30">
+                  <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                  <p className="text-sm font-black text-slate-900">Late Arrivals</p>
+                  <span className="ml-auto text-[10px] font-black text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">
+                    {shiftReport.late_arrivals.length}
+                  </span>
+                </div>
+                {shiftReport.late_arrivals.length === 0 ? (
+                  <p className="px-6 py-5 text-[11px] text-slate-400 font-medium italic">All staff arrived on time.</p>
+                ) : (
+                  <div className="divide-y divide-slate-50">
+                    {shiftReport.late_arrivals.map((rec: any) => {
+                      const u = rec.user_id;
+                      const name = u?.name || 'Unknown';
+                      const checkIn = rec.check_in ? new Date(rec.check_in).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—';
+                      return (
+                        <div key={rec._id} className="flex items-center gap-3 px-6 py-3">
+                          <div className="w-8 h-8 rounded-xl bg-red-100 flex items-center justify-center text-red-700 text-xs font-black flex-shrink-0">
+                            {name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-black text-slate-900 truncate">{name}</p>
+                            <p className="text-[10px] text-slate-400 capitalize">{u?.role}</p>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-xs font-black text-red-600">{checkIn}</p>
+                            <p className="text-[10px] text-red-400 font-bold">+{rec.late_by_minutes}min late</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Early departures */}
+              <div className="bg-white border border-amber-200 rounded-[1.5rem] overflow-hidden shadow-sm">
+                <div className="flex items-center gap-3 px-6 py-4 border-b border-amber-50 bg-amber-50/30">
+                  <Clock className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                  <p className="text-sm font-black text-slate-900">Early Departures</p>
+                  <span className="ml-auto text-[10px] font-black text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                    {shiftReport.early_departures.length}
+                  </span>
+                </div>
+                {shiftReport.early_departures.length === 0 ? (
+                  <p className="px-6 py-5 text-[11px] text-slate-400 font-medium italic">No early departures recorded.</p>
+                ) : (
+                  <div className="divide-y divide-slate-50">
+                    {shiftReport.early_departures.map((rec: any) => {
+                      const u = rec.user_id;
+                      const name = u?.name || 'Unknown';
+                      const checkOut = rec.check_out ? new Date(rec.check_out).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—';
+                      return (
+                        <div key={rec._id} className="flex items-center gap-3 px-6 py-3">
+                          <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center text-amber-700 text-xs font-black flex-shrink-0">
+                            {name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-black text-slate-900 truncate">{name}</p>
+                            <p className="text-[10px] text-slate-400 capitalize">{u?.role}</p>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-xs font-black text-amber-600">{checkOut}</p>
+                            <p className="text-[10px] text-amber-400 font-bold">-{rec.early_by_minutes}min early</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Summary Cards ── */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-8">
@@ -322,9 +492,21 @@ export default function AttendancePage() {
                           {/* Check-In */}
                           <td className="px-7 py-4">
                             {rec?.check_in ? (
-                              <span className="text-sm font-black text-slate-700">
-                                {new Date(rec.check_in).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                              </span>
+                              <div className="space-y-1">
+                                <p className="text-sm font-black text-slate-700">
+                                  {new Date(rec.check_in).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                </p>
+                                {(rec as any).is_late ? (
+                                  <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wide text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">
+                                    <AlertTriangle className="w-2.5 h-2.5" />
+                                    Late +{(rec as any).late_by_minutes}min
+                                  </span>
+                                ) : rec.check_in ? (
+                                  <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wide text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                    On Time
+                                  </span>
+                                ) : null}
+                              </div>
                             ) : (
                               <span className="text-[11px] text-slate-300">—</span>
                             )}
@@ -333,8 +515,30 @@ export default function AttendancePage() {
                           {/* Check-Out */}
                           <td className="px-7 py-4">
                             {rec?.check_out ? (
-                              <span className="text-sm font-black text-slate-700">
-                                {new Date(rec.check_out).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                              <div className="space-y-1">
+                                <p className="text-sm font-black text-slate-700">
+                                  {new Date(rec.check_out).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                </p>
+                                {rec.auto_checked_out ? (
+                                  <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wide text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full" title="System auto-checked out at shift end — user never signed out">
+                                    <Clock className="w-2.5 h-2.5" />
+                                    Auto — never signed out
+                                  </span>
+                                ) : (rec as any).is_early_checkout ? (
+                                  <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wide text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                                    <Clock className="w-2.5 h-2.5" />
+                                    Early -{(rec as any).early_by_minutes}min
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wide text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                    On Time
+                                  </span>
+                                )}
+                              </div>
+                            ) : rec?.check_in ? (
+                              <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wide text-slate-400 border border-slate-100 px-2 py-0.5 rounded-full">
+                                <Clock className="w-2.5 h-2.5" />
+                                Not signed out
                               </span>
                             ) : (
                               <span className="text-[11px] text-slate-300">—</span>
@@ -535,6 +739,15 @@ function StatPill({ label, value, color }: { label: string; value: number; color
     <div className="text-center min-w-[48px]">
       <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-0.5">{label}</p>
       <p className={`text-base font-black ${color}`}>{value}</p>
+    </div>
+  );
+}
+
+function Pill({ label, value, color, dot }: { label: string; value: number; color: string; dot?: boolean }) {
+  return (
+    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-[10px] font-black ${color}`}>
+      {dot && value > 0 && <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />}
+      <span>{value} {label}</span>
     </div>
   );
 }

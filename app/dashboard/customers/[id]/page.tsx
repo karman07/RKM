@@ -133,7 +133,7 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
             <div className="bg-white border border-slate-100 rounded-[32px] p-6 shadow-sm flex-[1.4] min-w-[200px] relative overflow-hidden group">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 relative z-10">Total Spent</p>
               <h4 className="text-2xl sm:text-xl lg:text-2xl xl:text-3xl font-serif font-bold text-slate-900 relative z-10 break-words leading-tight">
-                ₹{totalSpent.toLocaleString('en-IN')}
+                ₹{Math.round(totalSpent).toLocaleString('en-IN')}
               </h4>
               <div className="mt-4 flex items-center gap-1.5 text-[10px] font-bold text-blue-600 relative z-10">
                 <TrendingUp size={12} /> Lifetime Value
@@ -250,7 +250,7 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
                       <div className="flex items-center gap-6 shrink-0">
                         <div className="text-right hidden sm:block">
                           <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Selling Price</p>
-                          <p className="text-lg font-serif font-bold text-slate-900">₹{(item.selling_price || 0).toLocaleString('en-IN')}</p>
+                          <p className="text-lg font-serif font-bold text-slate-900">₹{Math.round(item.selling_price || 0).toLocaleString('en-IN')}</p>
                         </div>
                         <button
                           onClick={() => setSelectedBill(item)}

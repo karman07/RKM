@@ -16,7 +16,7 @@ export default function DeletedInventoryPage() {
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'danger' } | null>(null);
 
-  const fmt = (v: number) => Number(v || 0).toLocaleString('en-IN');
+  const fmt = (v: number) => Math.round(Number(v || 0)).toLocaleString('en-IN');
 
   function showToast(message: string, type: 'success' | 'danger' = 'success') {
     setToast({ message, type });
