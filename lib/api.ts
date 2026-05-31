@@ -1,0 +1,600 @@
+// lib/api.ts — Central API client using fetch + env base URL
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+const STATIC_URL = process.env.NEXT_PUBLIC_STATIC_URL ?? 'http://localhost:3000';
+
+export function staticUrl(path: string): string {
+  if (!path) return '';
+  if (path.startsWith('http') || path.startsWith('data:')) return path;
+  return `${STATIC_URL}${path.startsWith('/') ? '' : '/'}${path}`;
+}
+
+function getSession() {
+  if (typeof window === 'undefined') return null;
+  const str = localStorage.getItem('manager_session');
+  if (!str) return null;
+  try { return JSON.parse(str); } catch { return null; }
+}
+
+export function getToken(): string {
+  return getSession()?.token ?? '';
+}
+
+/** Returns true if session is expired (past 9AM expiry) */
+export function isSessionExpired(): boolean {
+  const session = getSession();
+  if (!session) return true;
+  if (!session.expiresAt) return false; // legacy sessions without expiry
+  return Date.now() > session.expiresAt;
+}
+
+/** Checks session validity, clears if expired, and redirects to login */
+export function checkSessionExpiry(): boolean {
+  if (isSessionExpired()) {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('manager_session');
+      window.location.href = '/login';
+    }
+    return true;
+  }
+  return false;
+}
+
+async function request<T>(
+  path: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const token = getToken();
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...((options.headers as Record<string, string>) ?? {}),
+    },
+  });
+
+  if (res.status === 401) {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('manager_session');
+      window.location.href = '/login';
+    }
+    throw new Error('Unauthorized');
+  }
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error((err as { message?: string }).message ?? res.statusText);
+  }
+
+  if (res.status === 204) return undefined as T;
+  return res.json() as Promise<T>;
+}
+
+// ── Types ──────────────────────────────────────────────────────
+export interface Branch {
+  _id: string;
+  name: string;
+  code: string;
+  address: string;
+  phone: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  gstin?: string;
+  email?: string;
+}
+
+export interface UserProfile {
+  _id: string;
+  name: string;
+  email: string;
+  role: string;
+  branch?: Branch;
+  isActive: boolean;
+  avatar?: string;
+  createdAt?: string;
+}
+
+export interface Category {
+  _id: string;
+  name: string;
+}
+
+export interface Product {
+  _id: string;
+  name: string;
+  sku: string;
+  barcode?: string;
+  category_id?: Category | string;
+  metal_type: string;
+  purity: string;
+  gross_weight: number;
+  net_weight: number;
+  stone_weight?: number;
+  images?: string[];
+  tax_percentage?: number;
+  taxes?: { name: string; percentage: number }[];
+  pricing_breakdown?: { final_price: number };
+  has_stones?: boolean;
+  wastage_percentage?: number;
+  making_charge_type?: string;
+  making_charge_rate?: number;
+  fixed_making_charge?: number;
+}
+
+export interface InventoryItem {
+  _id: string;
+  product_id: Product;
+  unique_item_code: string;
+  barcode: string;
+  barcode_url?: string;
+  status: 'available' | 'sold' | 'reserved' | 'damaged' | 'returned';
+  selling_price: number;
+  live_selling_price?: number;
+  admin_discount: number;
+  manager_discount: number;
+  max_manager_discount: number;
+  purchase_price: number;
+  location: string;
+  branch_id?: Branch | string;
+  sold_at_branch_id?: Branch | string;
+  sold_by_user_id?: { _id: string; name: string } | string;
+  sold_by_manager_id?: { _id: string; name: string } | string;
+  sold_at?: string;
+  returned_at?: string;
+  sold_customer_name?: string;
+  sold_customer_phone?: string;
+  sold_customer_email?: string;
+  shipping_address?: string;
+  shipping_city?: string;
+  shipping_state?: string;
+  shipping_pincode?: string;
+  shipping_country?: string;
+  sale_reference?: string;
+  sale_channel?: string;
+  payment_mode?: string;
+  is_emi?: boolean;
+  emi_tenure_months?: number;
+  emi_provider?: string;
+  emi_down_payment?: number;
+  image_url?: string;
+  pricing_breakdown?: Record<string, number>;
+  // Return / Refund Valuation
+  return_proposed_value?: number | null;
+  return_manager_notes?: string;
+  return_admin_approved_value?: number | null;
+  return_admin_notes?: string;
+  return_refund_status?: 'pending' | 'proposed' | 'approved' | 'rejected';
+  return_approved_at?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Cashier {
+  _id: string;
+  name: string;
+  email: string;
+  role: string;
+  isActive: boolean;
+  branch?: Branch | string;
+  createdAt?: string;
+}
+
+export interface BranchAnalytics {
+  stock: {
+    byStatus: Record<string, { count: number; value: number }>;
+    total: number;
+    totalValue: number;
+  };
+  salesToday: { count: number; revenue: number; profit: number };
+  salesLifetime: { count: number; revenue: number; profit: number };
+  salesTrend7d: { _id: string; count: number; revenue: number }[];
+  salesTrend30d: { _id: string; count: number; revenue: number }[];
+  salesTrendYearly: { _id: string; count: number; revenue: number }[];
+  topProducts: { product_name: string; product_sku: string; count: number; revenue: number }[];
+  cashierPerformance: { user_name: string; user_role: string; sales_count: number; total_revenue: number }[];
+  managerPerformance: { user_name: string; user_role: string; sales_count: number; total_revenue: number }[];
+  damagedItems: InventoryItem[];
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  meta: { total: number; page: number; limit: number; total_pages: number };
+}
+
+export interface AppSettings {
+  _id?: string;
+  singleton_key?: string;
+  metal_rates: Record<string, number>;
+  purity_rates: Record<string, Record<string, number>>;
+  stone_rates: Record<string, number>;
+  making_charge_type: string;
+  making_charge_rate: number;
+  fixed_making_charge: number;
+  note?: string;
+  stone_refund_percentage?: number;
+  updatedAt?: string;
+}
+export const getSettings = () => request<AppSettings>('/settings');
+
+// ── Auth ───────────────────────────────────────────────────────
+export const getProfile = () => request<UserProfile>('/auth/profile');
+
+// ── Users ──────────────────────────────────────────────────────
+export const updateUserProfile = (id: string, data: Partial<UserProfile>) =>
+  request<UserProfile>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+
+export const uploadUserAvatar = async (file: File): Promise<{ url: string }> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const token = getToken();
+  const res = await fetch(`${API_BASE}/uploads/users`, {
+    method: 'POST',
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: formData,
+  });
+  if (!res.ok) throw new Error('Failed to upload image');
+  return res.json();
+};
+
+export const getCashiers = (branchId: string, page = 1, limit = 50) =>
+  request<PaginatedResponse<Cashier>>(
+    `/users/cashiers?branch_id=${branchId}&page=${page}&limit=${limit}`
+  );
+
+export const createCashier = (data: object) =>
+  request<Cashier>('/users', { method: 'POST', body: JSON.stringify(data) });
+
+export const updateCashier = (id: string, data: object) =>
+  request<Cashier>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+
+export const deleteCashier = (id: string) =>
+  request<void>(`/users/${id}`, { method: 'DELETE' });
+
+// ── Inventory ──────────────────────────────────────────────────
+export const getInventory = (params: Record<string, string>) =>
+  request<PaginatedResponse<InventoryItem>>(
+    `/inventory?${new URLSearchParams(params).toString()}`
+  );
+
+export const getReturnedInventory = (params?: Record<string, string>) =>
+  request<PaginatedResponse<InventoryItem>>(
+    '/inventory/returned' + (params ? '?' + new URLSearchParams(params).toString() : '')
+  );
+
+export const getInventoryItem = (id: string) =>
+  request<InventoryItem>(`/inventory/${id}`);
+
+export const getInventoryByBarcode = (barcode: string) =>
+  request<InventoryItem>(`/inventory/barcode/${barcode}`);
+
+export const updateInventoryStatus = (id: string, payload: {
+  status: string;
+  sold_customer_name?: string;
+  sold_customer_phone?: string;
+  sold_customer_email?: string;
+  shipping_address?: string;
+  shipping_city?: string;
+  shipping_state?: string;
+  shipping_pincode?: string;
+  shipping_country?: string;
+  payment_mode?: string;
+  sale_channel?: string;
+  sale_reference?: string;
+  sold_by_user_id?: string;
+  sold_at_branch_id?: string;
+  damage_reason?: string;
+  selling_price?: number;
+}) =>
+  request<InventoryItem>(`/inventory/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+
+/** Generate a unique sale invoice number: INV-YYYYMMDD-<random 4-char> */
+export function generateSaleInvoiceNumber(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
+  return `INV-${y}${m}${d}-${rand}`;
+}
+
+export const updateManagerDiscount = (id: string, discount: number) =>
+  request<InventoryItem>(`/inventory/${id}/discount`, {
+    method: 'PATCH',
+    body: JSON.stringify({ manager_discount: discount }),
+  });
+
+export const createPaymentOrder = (id: string) =>
+  request<{ orderId: string; amount: number; currency: string; razorpayKey: string }>(`/inventory/${id}/payment-order`, {
+    method: 'POST'
+  });
+
+export const proposeReturnValuation = (
+  id: string,
+  proposedValue: number,
+  managerNotes?: string
+) =>
+  request<InventoryItem>(`/inventory/${id}/return-proposal`, {
+    method: 'PATCH',
+    body: JSON.stringify({ proposed_value: proposedValue, manager_notes: managerNotes ?? '' }),
+  });
+
+// ── Analytics ──────────────────────────────────────────────────
+export const getBranchAnalytics = (branchId: string) =>
+  request<BranchAnalytics>(`/inventory/stats/branch/${branchId}`);
+
+// ── Branches ───────────────────────────────────────────────────
+export const getBranch = (id: string) =>
+  request<Branch>(`/branches/${id}`);
+
+// ── Item Attendance ────────────────────────────────────────────
+export interface ItemAttendanceRecord {
+  _id: string;
+  item_id: any;
+  branch_id: string;
+  scanned_by: any;
+  date: string;
+  createdAt: string;
+}
+
+export interface ItemAttendanceDailyStats {
+  date: string;
+  total_active_items: number;
+  present_count: number;
+  missing_count: number;
+  present_items: ItemAttendanceRecord[];
+  missing_items: any[];
+}
+
+export const markItemPresent = (barcode: string) =>
+  request<ItemAttendanceRecord>('/item-attendance/scan', {
+    method: 'POST',
+    body: JSON.stringify({ barcode }),
+  });
+
+export const getItemAttendanceDailyStats = (branchId: string, dateStr?: string) =>
+  request<ItemAttendanceDailyStats>(
+    `/item-attendance/daily-stats?branch_id=${branchId}${dateStr ? `&date=${dateStr}` : ''}`
+  );
+
+export interface AttendanceTrendPoint {
+  date: string;
+  present: number;
+  missing: number;
+  total: number;
+}
+
+export const getAttendanceTrends = (branchId: string, days = 14) =>
+  request<AttendanceTrendPoint[]>(
+    `/item-attendance/trends?branch_id=${branchId}&days=${days}`
+  );
+
+// ── Staff Personal Attendance ──────────────────────────────────────────────
+export interface StaffAttendanceRecord {
+  _id: string;
+  user_id: any;
+  date: string;
+  status: 'present' | 'absent' | 'half-day' | 'on-leave';
+  check_in?: string;
+  check_out?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export const getMyAttendance = (userId: string, start?: string, end?: string) =>
+  request<StaffAttendanceRecord[]>(
+    `/attendance/user/${userId}${start ? `?start=${start}` : ''}${end ? `${start ? '&' : '?'}end=${end}` : ''}`
+  );
+
+export const getMyAttendanceStats = (userId: string, month: number, year: number) =>
+  request<{ present: number; absent: number; halfDay: number; onLeave: number; totalWorkingDays: number }>(
+    `/attendance/stats/${userId}?month=${month}&year=${year}`
+  );
+
+// ── HR: Leave Requests ────────────────────────────────────────────────────
+export interface LeaveRequest {
+  _id: string;
+  manager_id: any;
+  branch_id: any;
+  leave_type: 'sick' | 'casual' | 'earned' | 'other';
+  from_date: string;
+  to_date: string;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected';
+  admin_note?: string;
+  reviewed_at?: string;
+  reviewed_by?: any;
+  createdAt: string;
+}
+
+export const submitLeaveRequest = (data: {
+  leave_type: string;
+  from_date: string;
+  to_date: string;
+  reason: string;
+  branch_id?: string;
+}) => request<LeaveRequest>('/hr/leaves', { method: 'POST', body: JSON.stringify(data) });
+
+export const getMyLeaves = () => request<LeaveRequest[]>('/hr/leaves/mine');
+
+// ── HR: Reimbursements ────────────────────────────────────────────────────
+export interface ReimbursementRequest {
+  _id: string;
+  manager_id: any;
+  branch_id: any;
+  category: 'travel' | 'food' | 'supplies' | 'maintenance' | 'other';
+  amount: number;
+  description: string;
+  receipt_url?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  admin_note?: string;
+  reviewed_at?: string;
+  reviewed_by?: any;
+  createdAt: string;
+}
+
+export const submitReimbursement = (data: {
+  category: string;
+  amount: number;
+  description: string;
+  branch_id?: string;
+}) => request<ReimbursementRequest>('/hr/reimbursements', { method: 'POST', body: JSON.stringify(data) });
+
+export const getMyReimbursements = () => request<ReimbursementRequest[]>('/hr/reimbursements/mine');
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+export interface SentNotification {
+  _id: string;
+  title: string;
+  body: string;
+  type: string;
+  target: string;
+  recipients: number;
+  delivered: number;
+  branch_id?: string | null;
+  isRead?: boolean;
+  createdAt: string;
+}
+
+export const getMyNotifications = () => request<SentNotification[]>('/notifications/my');
+
+export const markNotificationRead = (id: string) => request(`/notifications/${id}/read`, { method: 'POST' });
+export const markAllNotificationsRead = () => request('/notifications/read-all', { method: 'POST' });
+
+// ─── Holidays ─────────────────────────────────────────────────────────────────
+
+export interface Holiday {
+  _id: string;
+  name: string;
+  /** "MM-DD" for yearly recurring, "YYYY-MM-DD" for one-time */
+  date: string;
+  is_yearly: boolean;
+  description?: string;
+  color?: string;
+  createdAt: string;
+}
+
+export const getHolidays = (year?: number) =>
+  request<Holiday[]>(`/holidays${year ? `?year=${year}` : ''}`);
+
+// ─── Old Gold ──────────────────────────────────────────────────────────────────
+
+export interface OGStone {
+  stone_type: string;
+  description: string;
+  count: number;
+  weight: number;
+  weight_unit: string;
+  quality: string;
+  estimated_value: number;
+  override_value: number | null;
+}
+
+export interface OGLineItem {
+  description: string;
+  weight_grams: number;
+  purity: string;
+  estimated_value: number;
+  override_value: number | null;
+  stones: OGStone[];
+  stones_value: number;
+}
+
+export type OGStatus =
+  | 'draft' | 'submitted' | 'approved' | 'rejected'
+  | 'melting_authorized' | 'settled' | 'reversed';
+
+export type OGClientRequirement =
+  | 'cash_payout' | 'exchange' | 'partial_exchange' | 'store_credit' | '';
+
+export interface OldGoldTransaction {
+  _id: string;
+  transaction_number: string;
+  customer_id: string | { _id: string; name: string; phone?: string };
+  branch_id: string | { _id: string; name: string };
+  items: OGLineItem[];
+  total_weight_grams: number;
+  total_value: number;
+  status: OGStatus;
+  notes: string;
+  rejection_reason: string;
+  settlement_amount: number | null;
+  settlement_method: string;
+  client_requirement: OGClientRequirement;
+  client_requirement_notes: string;
+  exchange_metal_preference: string;
+  exchange_purity_preference: string;
+  exchange_budget: number | null;
+  exchange_item_description: string;
+  created_by: string | { _id: string; name: string };
+  submitted_by?: string | { _id: string; name: string } | null;
+  approved_by?: string | { _id: string; name: string } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OGCustomer { _id: string; name: string; phone?: string; email?: string }
+
+export const getOldGoldTransactions = () =>
+  request<OldGoldTransaction[]>('/old-gold');
+
+export const createOldGoldTransaction = (data: {
+  customer_id: string;
+  branch_id?: string;
+  items: Array<Omit<OGLineItem, 'override_value'> & { stones?: Array<Omit<OGStone, 'override_value'>> }>;
+  notes?: string;
+  client_requirement?: OGClientRequirement;
+  client_requirement_notes?: string;
+  exchange_metal_preference?: string;
+  exchange_purity_preference?: string;
+  exchange_budget?: number;
+  exchange_item_description?: string;
+}) => request<OldGoldTransaction>('/old-gold', { method: 'POST', body: JSON.stringify(data) });
+
+export const submitOldGoldTransaction = (id: string) =>
+  request<OldGoldTransaction>(`/old-gold/${id}/submit`, { method: 'POST' });
+
+export const getOldGoldCustomers = () =>
+  request<{ data: OGCustomer[] }>('/customers?page=1&limit=500');
+
+// ── Customer Management ───────────────────────────────────────────────────────
+
+export interface FullCustomer {
+  _id: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  gender?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  country?: string;
+  isPhoneVerified: boolean;
+  isEmailVerified: boolean;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export const getCustomers = (page = 1, limit = 20) =>
+  request<{ data: FullCustomer[]; meta: { total: number; page: number; limit: number; total_pages: number } }>(
+    `/customers?page=${page}&limit=${limit}`
+  );
+
+export const searchCustomerByPhone = (phone: string) =>
+  request<{ data: FullCustomer[] }>(`/customers/search?phone=${encodeURIComponent(phone)}`);
+
+export const sendCustomerOtp = (phone: string) =>
+  request<{ otp: string; message: string }>('/customers/otp/send', { method: 'POST', body: JSON.stringify({ phone }) });
+
+export const verifyCustomerOtp = (phone: string, otp: string) =>
+  request<{ verified: boolean }>('/customers/otp/verify', { method: 'POST', body: JSON.stringify({ phone, otp }) });
+
+export const createCustomer = (data: {
+  name: string; phone: string; email?: string; gender?: string;
+  address?: string; city?: string; state?: string; pincode?: string; country?: string;
+}) => request<FullCustomer>('/customers', { method: 'POST', body: JSON.stringify(data) });
