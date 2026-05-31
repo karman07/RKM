@@ -166,6 +166,7 @@ export interface InventoryItem {
   return_admin_notes?: string;
   return_refund_status?: 'pending' | 'proposed' | 'approved' | 'rejected';
   return_approved_at?: string | null;
+  is_new_stock?: boolean;
   createdAt: string;
   updatedAt: string;
 }

@@ -402,7 +402,7 @@ export function InventoryPageContent() {
   const filteredItems = items;
 
   const effectivePrice = (item: InventoryItem) => {
-    const base = item.selling_price || item.live_selling_price;
+    const base = item.selling_price || item.live_selling_price || 0;
     const managerDisc = sellForm.discount > 0 && sellItem?._id === item._id ? sellForm.discount : item.manager_discount;
     return Math.round(base * (1 - managerDisc / 100));
   };
@@ -775,7 +775,7 @@ export function InventoryPageContent() {
                 <div>
                   <label className="block text-[10px] font-black uppercase tracking-widest text-[#7A1C2A] mb-2">Final Sale Price (₹) <span className="text-red-500">*</span></label>
                   <div className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-4 text-sm font-black text-[#5A0F1A] flex justify-between items-center shadow-sm">
-                    <span>{(Math.round((sellItem.selling_price || sellItem.live_selling_price) * (1 - sellForm.discount / 100))).toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
+                    <span>{(Math.round((sellItem.selling_price || sellItem.live_selling_price || 0) * (1 - sellForm.discount / 100))).toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
                     {sellForm.discount > 0 && <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-md">-{sellForm.discount}% MS</span>}
                   </div>
                 </div>
