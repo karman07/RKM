@@ -38,6 +38,16 @@ export class Branch {
   /** GSTIN for this branch — displayed on tax invoices */
   @Prop({ trim: true, uppercase: true })
   gstin?: string;
+
+  @Prop({ type: Number })
+  latitude?: number;
+
+  @Prop({ type: Number })
+  longitude?: number;
+
+  /** Allowed login radius from branch coordinates, in metres (default 200) */
+  @Prop({ type: Number, default: 200 })
+  geofence_radius?: number;
 }
 
 export const BranchSchema = SchemaFactory.createForClass(Branch);

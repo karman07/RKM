@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException, ConflictException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import * as admin from 'firebase-admin';
@@ -60,6 +60,9 @@ if (!admin.apps.length) {
 
 @Injectable()
 export class CustomersService {
+  // In-memory OTP store: phone -> { otp, expiresAt }
+  private readonly otpStore = new Map<string, { otp: string; expiresAt: number }>();
+
   constructor(
     @InjectModel(Customer.name) private customerModel: Model<CustomerDocument>,
     @InjectModel(InventoryItem.name) private inventoryModel: Model<InventoryItemDocument>,
@@ -257,6 +260,53 @@ export class CustomersService {
         createdAt: order.createdAt,
       })),
     };
+  }
+
+  async sendOtp(phone: string): Promise<{ otp: string; message: string }> {
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    this.otpStore.set(phone, { otp, expiresAt: Date.now() + 5 * 60 * 1000 });
+    console.log(`[OTP] Phone: ${phone} → ${otp}`); // Replace with SMS service in production
+    // TODO: integrate Twilio/MSG91 here to send actual SMS
+    return { otp, message: 'OTP sent' };
+  }
+
+  async verifyOtp(phone: string, otp: string): Promise<boolean> {
+    const stored = this.otpStore.get(phone);
+    if (!stored || Date.now() > stored.expiresAt) {
+      this.otpStore.delete(phone);
+      return false;
+    }
+    if (stored.otp !== otp) return false;
+    this.otpStore.delete(phone);
+    return true;
+  }
+
+  async searchByPhone(phone: string) {
+    if (!phone) return [];
+    const regex = new RegExp(phone.replace(/[+]/g, '\\+'), 'i');
+    return this.customerModel.find({ phone: regex }).limit(10).exec();
+  }
+
+  async createByManager(data: {
+    name: string;
+    phone: string;
+    email?: string;
+    gender?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
+    country?: string;
+  }) {
+    const existing = await this.customerModel.findOne({ phone: data.phone });
+    if (existing) throw new ConflictException('A customer with this phone number already exists');
+    const customer = new this.customerModel({
+      ...data,
+      isPhoneVerified: true,
+      isEmailVerified: !!data.email,
+      isActive: true,
+    });
+    return customer.save();
   }
 
   async ensureCustomerExists(details: {

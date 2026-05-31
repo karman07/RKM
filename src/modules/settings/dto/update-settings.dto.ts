@@ -41,6 +41,25 @@ export class UpdateSettingsDto {
   @Max(100)
   stone_refund_percentage?: number;
 
+  // ─── Work Schedule ────────────────────────────────────────────────────────
+
+  /** Shift start time — "HH:MM" 24-hr IST format, e.g. "09:00" */
+  @IsOptional()
+  @IsString()
+  shift_start_time?: string;
+
+  /** Shift end time — "HH:MM" 24-hr IST format, e.g. "18:00" */
+  @IsOptional()
+  @IsString()
+  shift_end_time?: string;
+
+  /** Grace period in minutes after shift start before marking late */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(60)
+  late_grace_minutes?: number;
+
   /** Enable or disable WhatsApp notifications for automated sale events */
   @IsOptional()
   @IsBoolean()

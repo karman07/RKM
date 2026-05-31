@@ -74,6 +74,22 @@ export class Settings {
   @Prop({ type: Number, min: 0, max: 100, default: 50 })
   stone_refund_percentage: number;
 
+  // ─── Work Schedule ──────────────────────────────────────────────────────────
+
+  /** Shift start time in "HH:MM" 24-hr format (IST). E.g. "09:00" */
+  @Prop({ type: String, default: '09:00' })
+  shift_start_time: string;
+
+  /** Shift end time in "HH:MM" 24-hr format (IST). E.g. "18:00" */
+  @Prop({ type: String, default: '18:00' })
+  shift_end_time: string;
+
+  /** Minutes of grace after shift start before marking late. Default: 5 */
+  @Prop({ type: Number, min: 0, max: 60, default: 5 })
+  late_grace_minutes: number;
+
+  // ─── Notifications ───────────────────────────────────────────────────────────
+
   /** Whether WhatsApp notifications are enabled for automated sale events */
   @Prop({ type: Boolean, default: true })
   whatsapp_notifications_enabled: boolean;

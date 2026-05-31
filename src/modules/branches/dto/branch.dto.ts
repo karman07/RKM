@@ -1,4 +1,5 @@
-import { IsString, IsNotEmpty, IsEmail, IsOptional, IsBoolean } from 'class-validator';
+import { IsString, IsNotEmpty, IsEmail, IsOptional, IsBoolean, IsNumber, Min, Max } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateBranchDto {
   @IsString()
@@ -45,6 +46,27 @@ export class CreateBranchDto {
   @IsOptional()
   @IsString()
   gstin?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  @Type(() => Number)
+  latitude?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  @Type(() => Number)
+  longitude?: number;
+
+  /** Geofence radius in metres — employees must be within this range to log in */
+  @IsOptional()
+  @IsNumber()
+  @Min(50)
+  @Type(() => Number)
+  geofence_radius?: number;
 }
 
 export class UpdateBranchDto extends CreateBranchDto {}

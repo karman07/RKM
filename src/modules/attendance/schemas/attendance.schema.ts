@@ -27,11 +27,43 @@ export class Attendance {
   @Prop({ type: Date })
   check_out?: Date;
 
+  @Prop({ type: Number })
+  check_in_lat?: number;
+
+  @Prop({ type: Number })
+  check_in_lng?: number;
+
+  @Prop({ type: Number })
+  check_out_lat?: number;
+
+  @Prop({ type: Number })
+  check_out_lng?: number;
+
   @Prop({ trim: true })
   notes?: string;
 
+  /** Whether the check-in was after the grace period */
+  @Prop({ type: Boolean, default: false })
+  is_late: boolean;
+
+  /** Minutes late (0 if on time) */
+  @Prop({ type: Number, default: 0 })
+  late_by_minutes: number;
+
+  /** Whether the check-out was before shift end time */
+  @Prop({ type: Boolean, default: false })
+  is_early_checkout: boolean;
+
+  /** Minutes early (0 if on time or not checked out yet) */
+  @Prop({ type: Number, default: 0 })
+  early_by_minutes: number;
+
   @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'User' })
   marked_by: mongoose.Types.ObjectId;
+
+  /** True when the system auto-checked-out this user at shift end (they never signed out) */
+  @Prop({ type: Boolean, default: false })
+  auto_checked_out: boolean;
 }
 
 export const AttendanceSchema = SchemaFactory.createForClass(Attendance);

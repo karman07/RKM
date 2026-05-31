@@ -27,6 +27,10 @@ import { HrModule } from './modules/hr/hr.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { OnlineOrdersModule } from './modules/online-orders/online-orders.module';
 import { EmailModule } from './modules/email/email.module';
+import { HolidaysModule } from './modules/holidays/holidays.module';
+import { LocationViolationsModule } from './modules/location-violations/location-violations.module';
+import { CustomRolesModule } from './modules/custom-roles/custom-roles.module';
+import { OldGoldModule } from './modules/old-gold/old-gold.module';
 
 @Module({
   imports: [
@@ -62,6 +66,10 @@ import { EmailModule } from './modules/email/email.module';
     NotificationsModule,
     OnlineOrdersModule,
     EmailModule,
+    HolidaysModule,
+    LocationViolationsModule,
+    CustomRolesModule,
+    OldGoldModule,
   ],
   controllers: [AppController],
   providers: [AppService],

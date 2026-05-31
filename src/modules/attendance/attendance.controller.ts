@@ -56,13 +56,13 @@ export class AttendanceController {
     return this.attendanceService.getStats(userId, Number(month), Number(year));
   }
 
-  // Self check-in/out for loyalty (Optional but good)
+  // Self check-in (called automatically on login; body may carry lat/lng)
   @Post('check-in')
-  checkIn(@Req() req: any) {
+  checkIn(@Req() req: any, @Body() body: any) {
     const uid = req.user?.userId || req.user?.sub || req.user?._id;
     const now = new Date();
-    
-    // Check if it's past 12:00 PM local time (IST typically)
+
+    // Determine present vs half-day using IST hour
     const formatter = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', hour: 'numeric', hour12: false });
     const hour = parseInt(formatter.format(now), 10);
     const status = hour >= 12 ? 'half-day' : 'present';
@@ -70,18 +70,23 @@ export class AttendanceController {
     return this.attendanceService.markAttendance({
       user_id: uid,
       date: now,
-      status: status,
+      status,
       check_in: now,
+      check_in_lat: body?.latitude ?? null,
+      check_in_lng: body?.longitude ?? null,
     }, uid);
   }
 
   @Post('check-out')
-  checkOut(@Req() req: any) {
+  checkOut(@Req() req: any, @Body() body: any) {
     const uid = req.user?.userId || req.user?.sub || req.user?._id;
+    const now = new Date();
     return this.attendanceService.markAttendance({
       user_id: uid,
-      date: new Date(),
-      check_out: new Date(),
+      date: now,
+      check_out: now,
+      check_out_lat: body?.latitude ?? null,
+      check_out_lng: body?.longitude ?? null,
     }, uid);
   }
 
@@ -98,5 +103,21 @@ export class AttendanceController {
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   getSummary(@Query('days') days?: number) {
     return this.attendanceService.getRecentSummary(days ? Number(days) : 30);
+  }
+
+  @Get('shift-report')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  getShiftReport(@Query('date') date?: string) {
+    return this.attendanceService.getShiftReport(date ? new Date(date) : new Date());
+  }
+
+  /**
+   * Auto-checkout users who forgot to sign out.
+   * Sets their check_out to the admin-configured shift end time and flags them as auto_checked_out.
+   */
+  @Post('auto-checkout')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  autoCheckout(@Query('date') date?: string) {
+    return this.attendanceService.autoCheckoutMissedUsers(date ? new Date(date) : new Date());
   }
 }

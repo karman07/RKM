@@ -45,4 +45,9 @@ export class CreateUserDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  /** Set when role === 'custom' — must be the ObjectId of a CustomRole document */
+  @IsString()
+  @IsOptional()
+  custom_role?: string;
 }
