@@ -285,6 +285,8 @@ export const updateInventoryStatus = (id: string, payload: {
   sold_at_branch_id?: string;
   damage_reason?: string;
   selling_price?: number;
+  razorpay_order_id?: string;
+  razorpay_payment_id?: string;
 }) =>
   request<InventoryItem>(`/inventory/${id}/status`, {
     method: 'PATCH',
