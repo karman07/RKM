@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from app.core.database import connect_to_mongo, close_mongo_connection
 from app.api.chat import router as chat_router
+from app.api.sync import router as sync_router
+from app.api.analytics import router as analytics_router
 from contextlib import asynccontextmanager
 
 @asynccontextmanager
@@ -30,6 +32,8 @@ app.add_middleware(
 )
 
 app.include_router(chat_router, prefix="/api")
+app.include_router(sync_router, prefix="/api")
+app.include_router(analytics_router, prefix="/api")
 
 @app.get("/")
 async def root():
