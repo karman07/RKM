@@ -1681,3 +1681,66 @@ export const settleOldGoldTransaction = (id: string, data: { settlement_amount: 
 
 export const reverseOldGoldTransaction = (id: string) =>
   request<OldGoldTransaction>(`/old-gold/${id}/reverse`, { method: 'POST' });
+
+// ── Analytics AI ──────────────────────────────────────────────────────────────
+
+const AI_BASE = process.env.NEXT_PUBLIC_AI_URL ?? 'http://localhost:8000';
+
+async function aiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${AI_BASE}${path}`, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...((options.headers as Record<string, string>) ?? {}) },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).detail || `AI request failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export interface AnalyticsSession {
+  _id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  messages?: Array<{ role: 'user' | 'assistant'; content: string; ts: string }>;
+}
+
+export interface ChartDataPoint {
+  label: string;
+  value: number;
+  value2?: number;
+  prefix?: string;
+  color?: string;
+}
+
+export interface ChartConfig {
+  type: 'bar' | 'line' | 'donut' | 'stat';
+  title: string;
+  data: ChartDataPoint[];
+  x_label?: string;
+  y_label?: string;
+  unit?: string;
+}
+
+export interface AnalyticsChatResponse {
+  session_id: string;
+  answer: string;
+  title: string;
+  charts: ChartConfig[];
+}
+
+export const analyticsChat = (message: string, session_id?: string) =>
+  aiRequest<AnalyticsChatResponse>('/api/analytics/chat', {
+    method: 'POST',
+    body: JSON.stringify({ message, session_id }),
+  });
+
+export const listAnalyticsSessions = (limit = 30) =>
+  aiRequest<AnalyticsSession[]>(`/api/analytics/sessions?limit=${limit}`);
+
+export const getAnalyticsSession = (id: string) =>
+  aiRequest<AnalyticsSession>(`/api/analytics/sessions/${id}`);
+
+export const deleteAnalyticsSession = (id: string) =>
+  aiRequest<{ deleted: boolean }>(`/api/analytics/sessions/${id}`, { method: 'DELETE' });
