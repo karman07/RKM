@@ -149,15 +149,35 @@ export default function AuthDialog() {
 
 
   useEffect(() => {
+    if (!isOpen) {
+      if ((window as any).recaptchaVerifier) {
+        try { (window as any).recaptchaVerifier.clear(); } catch (_) {}
+        (window as any).recaptchaVerifier = null;
+      }
+      if (recaptchaContainerRef.current) {
+        recaptchaContainerRef.current.innerHTML = '';
+      }
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
     return () => {
       if ((window as any).recaptchaVerifier) {
-        try {
-          (window as any).recaptchaVerifier.clear();
-        } catch (e) {}
+        try { (window as any).recaptchaVerifier.clear(); } catch (_) {}
         (window as any).recaptchaVerifier = null;
       }
     };
   }, []);
+
+  const clearRecaptcha = () => {
+    if ((window as any).recaptchaVerifier) {
+      try { (window as any).recaptchaVerifier.clear(); } catch (_) {}
+      (window as any).recaptchaVerifier = null;
+    }
+    if (recaptchaContainerRef.current) {
+      recaptchaContainerRef.current.innerHTML = '';
+    }
+  };
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -165,10 +185,7 @@ export default function AuthDialog() {
     setLoading(true);
 
     try {
-      if ((window as any).recaptchaVerifier) {
-        try { (window as any).recaptchaVerifier.clear(); } catch (_) {}
-        (window as any).recaptchaVerifier = null;
-      }
+      clearRecaptcha();
 
       if (!recaptchaContainerRef.current) throw new Error('reCAPTCHA container not ready');
 
@@ -186,11 +203,12 @@ export default function AuthDialog() {
       setConfirmationResult(result);
       setStep('otp');
     } catch (err: any) {
-      setError(err.message || 'Failed to send OTP');
-      if ((window as any).recaptchaVerifier) {
-        try { (window as any).recaptchaVerifier.clear(); } catch (_) {}
-        (window as any).recaptchaVerifier = null;
-      }
+      const msg = (err.message || 'Failed to send OTP')
+        .replace(/Firebase: /gi, '')
+        .split('(')[0]
+        .trim();
+      setError(msg || 'Failed to send OTP. Please try again.');
+      clearRecaptcha();
     } finally {
       setLoading(false);
     }
@@ -308,7 +326,7 @@ export default function AuthDialog() {
           `}} />
           {error && (
             <div className="mb-6 p-4 rounded-xl bg-red-50 text-red-600 text-xs font-bold border border-red-100 flex items-start">
-              {error.replace(/Firebase: /gi, '').split('(')[0].trim().replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase())}
+              {error}
             </div>
           )}
 
