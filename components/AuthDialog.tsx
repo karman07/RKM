@@ -150,33 +150,43 @@ export default function AuthDialog() {
 
   useEffect(() => {
     if (!isOpen) {
-      if ((window as any).recaptchaVerifier) {
-        try { (window as any).recaptchaVerifier.clear(); } catch (_) {}
-        (window as any).recaptchaVerifier = null;
-      }
-      if (recaptchaContainerRef.current) {
-        recaptchaContainerRef.current.innerHTML = '';
-      }
+      destroyRecaptcha();
+      resetRecaptchaContainer();
     }
   }, [isOpen]);
 
   useEffect(() => {
-    return () => {
-      if ((window as any).recaptchaVerifier) {
-        try { (window as any).recaptchaVerifier.clear(); } catch (_) {}
-        (window as any).recaptchaVerifier = null;
-      }
-    };
+    return () => { destroyRecaptcha(); };
   }, []);
 
-  const clearRecaptcha = () => {
+  const destroyRecaptcha = () => {
     if ((window as any).recaptchaVerifier) {
       try { (window as any).recaptchaVerifier.clear(); } catch (_) {}
       (window as any).recaptchaVerifier = null;
     }
+  };
+
+  const resetRecaptchaContainer = () => {
+    // Only wipe the container BEFORE mounting a new widget, never while one is alive.
     if (recaptchaContainerRef.current) {
       recaptchaContainerRef.current.innerHTML = '';
     }
+  };
+
+  const friendlyFirebaseError = (err: any): string => {
+    const raw: string = err?.message || err?.code || '';
+    console.error('[AuthDialog] Firebase phone auth error:', raw, err);
+    if (raw.includes('app-not-authorized') || raw.includes('APP_NOT_AUTHORIZED'))
+      return 'This domain is not authorised for phone sign-in. Ask the admin to add it in Firebase → Authentication → Authorised Domains.';
+    if (raw.includes('captcha-check-failed') || raw.includes('CAPTCHA_CHECK_FAILED'))
+      return 'reCAPTCHA verification failed. Please refresh the page and try again.';
+    if (raw.includes('invalid-phone-number') || raw.includes('INVALID_PHONE_NUMBER'))
+      return 'Invalid phone number. Please include the country code (e.g. +91 98765 43210).';
+    if (raw.includes('too-many-requests') || raw.includes('QUOTA_EXCEEDED'))
+      return 'Too many attempts. Please wait a few minutes and try again.';
+    if (raw.includes('already-rendered') || raw.includes('Already Been Rendered'))
+      return 'reCAPTCHA error. Please refresh the page and try again.';
+    return raw.replace(/Firebase: /gi, '').split('(')[0].trim() || 'Failed to send OTP. Please try again.';
   };
 
   const handleSendOtp = async (e: React.FormEvent) => {
@@ -185,13 +195,20 @@ export default function AuthDialog() {
     setLoading(true);
 
     try {
-      clearRecaptcha();
+      // Destroy any existing verifier first, then wipe the container so the
+      // new widget has a clean mount point.
+      destroyRecaptcha();
+      resetRecaptchaContainer();
 
       if (!recaptchaContainerRef.current) throw new Error('reCAPTCHA container not ready');
 
       const verifier = new RecaptchaVerifier(auth, recaptchaContainerRef.current, {
         size: 'invisible',
         callback: () => {},
+        'expired-callback': () => {
+          console.warn('[AuthDialog] reCAPTCHA token expired');
+          destroyRecaptcha();
+        },
       });
       (window as any).recaptchaVerifier = verifier;
 
@@ -203,12 +220,12 @@ export default function AuthDialog() {
       setConfirmationResult(result);
       setStep('otp');
     } catch (err: any) {
-      const msg = (err.message || 'Failed to send OTP')
-        .replace(/Firebase: /gi, '')
-        .split('(')[0]
-        .trim();
-      setError(msg || 'Failed to send OTP. Please try again.');
-      clearRecaptcha();
+      // Do NOT wipe innerHTML here — the reCAPTCHA widget may still have live
+      // async callbacks referencing its internal DOM nodes. Wiping now causes
+      // "Cannot read properties of null (reading 'style')". Only destroy the
+      // verifier reference; the container is cleaned on the next Send OTP click.
+      destroyRecaptcha();
+      setError(friendlyFirebaseError(err));
     } finally {
       setLoading(false);
     }
