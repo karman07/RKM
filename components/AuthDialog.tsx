@@ -5,7 +5,7 @@ import { useAppDispatch, useAppSelector } from '../store/store';
 import { closeAuthDialog, setAuth } from '../store/authSlice';
 import { auth } from '../lib/firebase';
 import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult, updateEmail, sendEmailVerification, reload } from 'firebase/auth';
-import { X, CheckCircle2, ChevronRight, MapPin, User as UserIcon, Phone, Search, ChevronDown, Mail, Loader2 } from 'lucide-react';
+import { X, CheckCircle2, ChevronRight, MapPin, User as UserIcon, Phone, Search, ChevronDown, Mail, Loader2, AlertCircle } from 'lucide-react';
 
 export default function AuthDialog() {
   const dispatch = useAppDispatch();
@@ -45,6 +45,7 @@ export default function AuthDialog() {
 
   const recaptchaContainerRef = useRef<HTMLDivElement>(null);
   const dialCodeRef = useRef<HTMLDivElement>(null);
+  const isSendingOtp = useRef(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -178,6 +179,8 @@ export default function AuthDialog() {
     console.error('[AuthDialog] Firebase phone auth error:', raw, err);
     if (raw.includes('app-not-authorized') || raw.includes('APP_NOT_AUTHORIZED'))
       return 'This domain is not authorised for phone sign-in. Ask the admin to add it in Firebase → Authentication → Authorised Domains.';
+    if (raw.includes('hostname') || raw.includes('Hostname') || raw.includes('HOSTNAME') || raw.includes('hostname_mismatch') || raw.includes('unauthorized-domain') || raw.includes('UNAUTHORIZED_DOMAIN'))
+      return 'This website domain is not authorised for Firebase sign-in. Please ask the admin to add this hostname in Firebase Console → Authentication → Settings → Authorised Domains.';
     if (raw.includes('captcha-check-failed') || raw.includes('CAPTCHA_CHECK_FAILED'))
       return 'reCAPTCHA verification failed. Please refresh the page and try again.';
     if (raw.includes('invalid-phone-number') || raw.includes('INVALID_PHONE_NUMBER'))
@@ -186,11 +189,15 @@ export default function AuthDialog() {
       return 'Too many attempts. Please wait a few minutes and try again.';
     if (raw.includes('already-rendered') || raw.includes('Already Been Rendered'))
       return 'reCAPTCHA error. Please refresh the page and try again.';
+    if (raw.includes('network-request-failed') || raw.includes('NETWORK_REQUEST_FAILED'))
+      return 'Network error. Please check your internet connection and try again.';
     return raw.replace(/Firebase: /gi, '').split('(')[0].trim() || 'Failed to send OTP. Please try again.';
   };
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSendingOtp.current) return;
+    isSendingOtp.current = true;
     setError('');
     setLoading(true);
 
@@ -227,6 +234,7 @@ export default function AuthDialog() {
       destroyRecaptcha();
       setError(friendlyFirebaseError(err));
     } finally {
+      isSendingOtp.current = false;
       setLoading(false);
     }
   };
@@ -342,8 +350,17 @@ export default function AuthDialog() {
             .custom-scrollbar::-webkit-scrollbar-thumb { background: #E2E8F0; border-radius: 10px; }
           `}} />
           {error && (
-            <div className="mb-6 p-4 rounded-xl bg-red-50 text-red-600 text-xs font-bold border border-red-100 flex items-start">
-              {error}
+            <div className="mb-6 p-4 rounded-2xl bg-red-50 text-red-700 text-xs font-semibold border border-red-200 flex items-start gap-3 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+              <AlertCircle size={16} className="shrink-0 mt-0.5 text-red-500" />
+              <div className="flex-1 leading-relaxed">{error}</div>
+              <button
+                type="button"
+                onClick={() => setError('')}
+                className="shrink-0 text-red-400 hover:text-red-600 transition-colors"
+                aria-label="Dismiss error"
+              >
+                <X size={14} />
+              </button>
             </div>
           )}
 
