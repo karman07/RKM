@@ -2,8 +2,9 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
-  getMe, getUsers, getInventoryStats, getAttendanceSummary, getAllLeaves, getAllReimbursements, staticUrl,
-  type User,
+  getMe, getUsers, getInventoryStats, getDailyAttendance, getHolidays,
+  getAllLeaves, getAllReimbursements, staticUrl,
+  type User, type LeaveRequest,
 } from '@/lib/api';
 import {
   Users, Package, TrendingUp, Calendar, FileText, CreditCard,
@@ -37,15 +38,23 @@ function NavTile({
   );
 }
 
+// ── Number formatter ─────────────────────────────────────────────────────────
+function fmtINR(n: number): string {
+  const abs = Math.abs(n);
+  const sign = n < 0 ? '-' : '';
+  if (abs >= 1e7)  return `${sign}₹${(abs / 1e7).toFixed(2)}Cr`;
+  if (abs >= 1e5)  return `${sign}₹${(abs / 1e5).toFixed(1)}L`;
+  if (abs >= 1000) return `${sign}₹${(abs / 1000).toFixed(1)}K`;
+  return `${sign}₹${Math.round(abs).toLocaleString('en-IN')}`;
+}
+
 // ── Stat pill ─────────────────────────────────────────────────────────────────
 function StatPill({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color: string }) {
   return (
-    <div className="flex flex-col justify-between p-5 bg-white border border-slate-100 rounded-2xl hover:shadow-lg hover:shadow-slate-100 hover:-translate-y-0.5 transition-all duration-300">
-      <p className={`text-[10px] font-semibold uppercase tracking-widest text-slate-400 mb-3`}>{sub}</p>
-      <div>
-        <p className={`text-3xl font-black ${color} leading-none tabular-nums`}>{value}</p>
-        <p className="text-xs font-semibold text-slate-500 mt-1.5 leading-tight">{label}</p>
-      </div>
+    <div className="flex flex-col gap-1 py-4 px-1">
+      <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">{sub}</p>
+      <p className={`text-2xl font-black ${color} leading-none tabular-nums`}>{value}</p>
+      <p className="text-[11px] font-semibold text-slate-500 leading-tight">{label}</p>
     </div>
   );
 }
@@ -91,26 +100,77 @@ export default function AdminHome() {
     async function load() {
       try {
         const isAdmin = permissions === null;
-        const [me, users, invStats, attSummary, leaves, reimbs] = await Promise.all([
+        const todayStr = new Date().toISOString().split('T')[0];
+        const [me, allUsersRes, invStats, dailyAtt, holidays, allLeaves, pendingLeaves, reimbs] = await Promise.all([
           getMe().catch(() => null),
-          isAdmin ? getUsers(undefined, 1, 1).catch(() => ({ data: [], meta: { total: 0 } })) : Promise.resolve({ data: [], meta: { total: 0 } }),
+          // Fetch real user list so we can check each person's status
+          isAdmin ? getUsers(undefined, 1, 200).catch(() => ({ data: [], meta: { total: 0 } })) : Promise.resolve({ data: [], meta: { total: 0 } }),
           isAdmin ? getInventoryStats().catch(() => null) : Promise.resolve(null),
-          isAdmin ? getAttendanceSummary(1).catch(() => ({ total: {}, roles: {} })) : Promise.resolve({ total: {}, roles: {} }),
+          isAdmin ? getDailyAttendance(todayStr).catch(() => []) : Promise.resolve([]),
+          isAdmin ? getHolidays(new Date().getFullYear()).catch(() => []) : Promise.resolve([]),
+          // Approved leaves — needed to correctly classify "on leave" vs "absent"
+          isAdmin ? getAllLeaves({ status: 'approved', limit: 200 }).catch(() => []) : Promise.resolve([]),
           isAdmin ? getAllLeaves({ status: 'pending', limit: 100 }).catch(() => []) : Promise.resolve([]),
           isAdmin ? getAllReimbursements({ status: 'pending', limit: 100 }).catch(() => []) : Promise.resolve([]),
         ]);
+
+        const activeUsers: User[] = ((allUsersRes as any).data || []).filter((u: User) => u.is_active !== false);
+        const totalUsers = activeUsers.length;
+
+        // Is today a holiday?
+        const mmdd = todayStr.slice(5);
+        const isHoliday = (holidays as any[]).some((h: any) => h.is_yearly ? h.date === mmdd : h.date === todayStr);
+
+        // Build a set of user IDs who are on approved leave today
+        const onLeaveTodayIds = new Set<string>();
+        (allLeaves as LeaveRequest[]).forEach(leave => {
+          const from = leave.from_date?.split('T')[0] ?? '';
+          const to   = leave.to_date?.split('T')[0] ?? '';
+          if (todayStr >= from && todayStr <= to) {
+            const uid = typeof leave.manager_id === 'object' ? leave.manager_id?._id : leave.manager_id;
+            if (uid) onLeaveTodayIds.add(uid);
+          }
+        });
+
+        // For each active user, classify their today status
+        let presentCount = 0;
+        let onLeaveCount = 0;
+        let absentCount  = 0;
+
+        activeUsers.forEach(user => {
+          const record = (dailyAtt as any[]).find((a: any) => {
+            const uid = typeof a.user_id === 'object' ? a.user_id?._id : a.user_id;
+            return uid === user._id;
+          });
+
+          if (record?.status === 'present' || record?.status === 'half-day') {
+            presentCount++;
+          } else if (isHoliday) {
+            // Holiday — no one is absent on a holiday
+          } else if (onLeaveTodayIds.has(user._id) || record?.status === 'on-leave') {
+            onLeaveCount++;
+          } else {
+            // No check-in, no approved leave, not a holiday → absent
+            absentCount++;
+          }
+        });
+
         setUser(me);
         setStats({
-          totalUsers: (users as any).meta?.total || 0,
+          totalUsers,
           totalInventory: invStats?.totalCount || 0,
           totalValue: invStats?.totalPurchaseValue || 0,
           totalProfit: invStats?.totalProfit || 0,
           sold: invStats?.byStatus?.sold?.count || 0,
           available: invStats?.byStatus?.available?.count || 0,
-          presentToday: (attSummary as any).total?.present || 0,
-          absentToday: (attSummary as any).total?.absent || 0,
-          pendingLeaves: leaves.length,
-          pendingReimbs: reimbs.length,
+          reserved: invStats?.byStatus?.reserved?.count || 0,
+          damaged: invStats?.byStatus?.damaged?.count || 0,
+          presentToday: presentCount,
+          onLeaveToday: onLeaveCount,
+          absentToday: absentCount,
+          isHoliday,
+          pendingLeaves: (pendingLeaves as any[]).length,
+          pendingReimbs: (reimbs as any[]).length,
         });
       } catch (e) {
         console.error(e);
@@ -140,8 +200,8 @@ export default function AdminHome() {
   if (isAdmin && stats?.pendingReimbs > 0) {
     alerts.push({ icon: CreditCard, text: `${stats.pendingReimbs} Reimbursement${stats.pendingReimbs > 1 ? 's' : ''} Pending`, sub: 'Requires your approval', href: '/dashboard/reimbursements', color: 'bg-blue-50 border-blue-200 text-blue-800' });
   }
-  if (isAdmin && stats?.absentToday > 0) {
-    alerts.push({ icon: AlertTriangle, text: `${stats.absentToday} Staff Absent Today`, sub: 'Check attendance log', href: '/dashboard/attendance', color: 'bg-red-50 border-red-200 text-red-800' });
+  if (isAdmin && !stats?.isHoliday && stats?.absentToday > 0) {
+    alerts.push({ icon: AlertTriangle, text: `${stats.absentToday} Staff Absent Today`, sub: `${stats.onLeaveToday ?? 0} on approved leave · ${stats.presentToday ?? 0} present`, href: '/dashboard/attendance', color: 'bg-red-50 border-red-200 text-red-800' });
   }
 
   return (
@@ -164,10 +224,11 @@ export default function AdminHome() {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2 text-[11px] font-bold px-4 py-2 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-700">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          {stats?.presentToday ?? 0} Staff On Duty Today
-        </div>
+        {isAdmin && (
+          <div className="hidden sm:flex items-center gap-4 text-[11px] font-medium text-slate-400">
+            <span>{new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })}</span>
+          </div>
+        )}
       </div>
 
       {/* ── Alerts / Action Items ── */}
@@ -188,13 +249,13 @@ export default function AdminHome() {
           <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3 flex items-center gap-2">
             <BarChart3 className="w-3.5 h-3.5" /> Business Overview
           </p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="border border-slate-100 rounded-2xl divide-x divide-slate-100 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 overflow-hidden">
             <StatPill label="Total Staff" value={stats?.totalUsers ?? 0} sub="System users" color="text-blue-600" />
             <StatPill label="Items in Vault" value={stats?.totalInventory ?? 0} sub="Total inventory" color="text-slate-900" />
             <StatPill label="Available" value={stats?.available ?? 0} sub="Ready for sale" color="text-emerald-600" />
             <StatPill label="Sold Items" value={stats?.sold ?? 0} sub="All time" color="text-violet-600" />
-            <StatPill label="Portfolio Value" value={`₹${((stats?.totalValue ?? 0) / 100000).toFixed(1)}L`} sub="Purchase value" color="text-blue-600" />
-            <StatPill label="Net Profit" value={`₹${((stats?.totalProfit ?? 0) / 100000).toFixed(1)}L`} sub="Realized" color={(stats?.totalProfit ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600'} />
+            <StatPill label="Portfolio Value" value={fmtINR(stats?.totalValue ?? 0)} sub="Purchase value" color="text-blue-600" />
+            <StatPill label="Net Profit" value={fmtINR(stats?.totalProfit ?? 0)} sub="Realized" color={(stats?.totalProfit ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600'} />
           </div>
         </div>
       )}
@@ -223,120 +284,155 @@ export default function AdminHome() {
         </div>
       </div>
 
-      {/* ── Secondary Row: Attendance + Inventory ── */}
+      {/* ── Insights Row ── */}
       {isAdmin && (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
-        {/* Today's Presence */}
-        <div className="bg-white border border-slate-100 rounded-2xl p-6 hover:shadow-lg hover:shadow-slate-100 transition-all duration-300">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center text-white shadow-md shadow-emerald-500/25">
-                <Activity className="w-4 h-4" />
-              </div>
+          {/* Inventory Breakdown */}
+          <div className="lg:col-span-2 border border-slate-100 rounded-2xl p-6">
+            <div className="flex items-center justify-between mb-5">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Today's Presence</h3>
-                <p className="text-[10px] text-slate-400 font-medium">Staff attendance overview</p>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-0.5 flex items-center gap-1.5"><Package className="w-3 h-3" /> Inventory Breakdown</p>
+                <p className="text-sm font-black text-slate-900">{stats?.totalInventory ?? 0} items total</p>
               </div>
+              <Link href="/dashboard/inventory" className="text-[11px] font-semibold text-blue-600 hover:underline flex items-center gap-1">
+                Manage <ChevronRight className="w-3 h-3" />
+              </Link>
             </div>
-            <Link href="/dashboard/attendance" className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-700 transition-colors">
-              View All <ChevronRight className="w-3 h-3" />
-            </Link>
-          </div>
 
-          {/* Attendance rate bar */}
-          {(() => {
-            const total = stats?.totalUsers || 1;
-            const present = stats?.presentToday ?? 0;
-            const pct = Math.round((present / total) * 100);
-            return (
-              <div className="mb-5">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] font-semibold text-slate-500">Attendance Rate</span>
-                  <span className="text-[11px] font-bold text-slate-800">{pct}%</span>
-                </div>
-                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500 transition-all duration-1000"
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-              </div>
-            );
-          })()}
-
-          <div className="grid grid-cols-3 gap-3">
-            <div className="relative flex flex-col items-center justify-center p-4 border border-slate-100 rounded-xl overflow-hidden">
-              <div className="absolute top-0 left-0 right-0 h-0.5 bg-emerald-400 rounded-t-xl" />
-              <p className="text-2xl font-black text-emerald-600 tabular-nums">{stats?.presentToday ?? 0}</p>
-              <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-400 mt-1">Present</p>
-            </div>
-            <div className="relative flex flex-col items-center justify-center p-4 border border-slate-100 rounded-xl overflow-hidden">
-              <div className="absolute top-0 left-0 right-0 h-0.5 bg-red-400 rounded-t-xl" />
-              <p className="text-2xl font-black text-red-500 tabular-nums">{stats?.absentToday ?? 0}</p>
-              <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-400 mt-1">Absent</p>
-            </div>
-            <div className="relative flex flex-col items-center justify-center p-4 border border-slate-100 rounded-xl overflow-hidden">
-              <div className="absolute top-0 left-0 right-0 h-0.5 bg-slate-300 rounded-t-xl" />
-              <p className="text-2xl font-black text-slate-700 tabular-nums">{stats?.totalUsers ?? 0}</p>
-              <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-400 mt-1">Total</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Inventory Snapshot */}
-        <div className="bg-white border border-slate-100 rounded-2xl p-6 hover:shadow-lg hover:shadow-slate-100 transition-all duration-300">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 bg-gradient-to-br from-violet-500 to-violet-600 rounded-xl flex items-center justify-center text-white shadow-md shadow-violet-500/25">
-                <Package className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">Inventory Snapshot</h3>
-                <p className="text-[10px] text-slate-400 font-medium">{stats?.totalInventory ?? 0} total items in vault</p>
-              </div>
-            </div>
-            <Link href="/dashboard/inventory" className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-700 transition-colors">
-              Manage <ChevronRight className="w-3 h-3" />
-            </Link>
-          </div>
-
-          <div className="space-y-4">
-            {[
-              { label: 'Available', value: stats?.available ?? 0, total: stats?.totalInventory || 1, from: 'from-emerald-400', to: 'to-emerald-500', dot: 'bg-emerald-500', textColor: 'text-emerald-700' },
-              { label: 'Sold', value: stats?.sold ?? 0, total: stats?.totalInventory || 1, from: 'from-violet-400', to: 'to-violet-500', dot: 'bg-violet-500', textColor: 'text-violet-700' },
-            ].map(row => {
-              const pct = Math.round((row.value / row.total) * 100);
+            {/* Stacked bar */}
+            {(() => {
+              const total = stats?.totalInventory || 1;
+              const rows = [
+                { label: 'Available', value: stats?.available ?? 0, color: 'bg-blue-500', text: 'text-blue-700' },
+                { label: 'Sold', value: stats?.sold ?? 0, color: 'bg-violet-500', text: 'text-violet-700' },
+                { label: 'Reserved', value: stats?.reserved ?? 0, color: 'bg-amber-400', text: 'text-amber-700' },
+                { label: 'Damaged', value: stats?.damaged ?? 0, color: 'bg-red-400', text: 'text-red-600' },
+              ];
               return (
-                <div key={row.label}>
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full ${row.dot}`} />
-                      <span className="text-xs font-semibold text-slate-600">{row.label}</span>
+                <>
+                  <div className="flex h-3 rounded-full overflow-hidden mb-5 gap-px">
+                    {rows.map(r => r.value > 0 && (
+                      <div key={r.label} className={`${r.color} transition-all duration-700`} style={{ width: `${(r.value / total) * 100}%` }} />
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {rows.map(r => (
+                      <div key={r.label} className="flex flex-col gap-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className={`w-2 h-2 rounded-full ${r.color}`} />
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{r.label}</span>
+                        </div>
+                        <p className={`text-xl font-black ${r.text} tabular-nums`}>{r.value}</p>
+                        <p className="text-[10px] text-slate-400">{Math.round((r.value / total) * 100)}% of vault</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-5 pt-4 border-t border-slate-50 grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">Purchase Value</p>
+                      <p className="text-base font-black text-blue-700">{fmtINR(stats?.totalValue ?? 0)}</p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className={`text-sm font-bold ${row.textColor} tabular-nums`}>{row.value}</span>
-                      <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md">{pct}%</span>
+                    <div>
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">Net Profit</p>
+                      <p className={`text-base font-black ${(stats?.totalProfit ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{fmtINR(stats?.totalProfit ?? 0)}</p>
                     </div>
                   </div>
-                  <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full bg-gradient-to-r ${row.from} ${row.to} transition-all duration-1000`}
-                      style={{ width: `${pct}%` }}
-                    />
+                </>
+              );
+            })()}
+          </div>
+
+          {/* Attendance ring */}
+          <div className="border border-slate-100 rounded-2xl p-6">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-0.5 flex items-center gap-1.5"><Activity className="w-3 h-3" /> Staff Today</p>
+                <p className="text-sm font-black text-slate-900">
+                  {stats?.isHoliday ? 'Holiday' : `${stats?.presentToday ?? 0} on duty`}
+                </p>
+              </div>
+              <Link href="/dashboard/attendance" className="text-[11px] font-semibold text-blue-600 hover:underline flex items-center gap-1">
+                Log <ChevronRight className="w-3 h-3" />
+              </Link>
+            </div>
+
+            {(() => {
+              const total   = Math.max(stats?.totalUsers ?? 0, 1);
+              const present = stats?.presentToday  ?? 0;
+              const onLeave = stats?.onLeaveToday  ?? 0;
+              const absent  = stats?.absentToday   ?? 0;
+              const holiday = stats?.isHoliday     ?? false;
+              const presentPct = Math.round((present / total) * 100);
+
+              // Multi-segment SVG donut
+              const R = 36; const CX = 50; const CY = 50;
+              const circ = 2 * Math.PI * R;
+              function arc(startFrac: number, endFrac: number, color: string) {
+                if (endFrac <= startFrac) return null;
+                const start = startFrac * circ;
+                const len   = (endFrac - startFrac) * circ;
+                return (
+                  <circle key={color} cx={CX} cy={CY} r={R} fill="none" stroke={color}
+                    strokeWidth="11"
+                    strokeDasharray={`${len} ${circ}`}
+                    strokeDashoffset={-start}
+                    transform="rotate(-90 50 50)"
+                    style={{ transition: 'all 0.8s ease' }}
+                  />
+                );
+              }
+              const pF = present / total;
+              const lF = onLeave / total;
+
+              return (
+                <div className="flex flex-col items-center">
+                  <svg viewBox="0 0 100 100" className="w-32 h-32">
+                    {/* Track */}
+                    <circle cx={CX} cy={CY} r={R} fill="none" stroke="#f1f5f9" strokeWidth="11" />
+                    {holiday ? (
+                      <circle cx={CX} cy={CY} r={R} fill="none" stroke="#fbbf24" strokeWidth="11"
+                        strokeDasharray={`${circ} 0`} transform="rotate(-90 50 50)" />
+                    ) : (
+                      <>
+                        {arc(0, pF, '#10b981')}
+                        {arc(pF, pF + lF, '#3b82f6')}
+                        {arc(pF + lF, 1, absent > 0 ? '#ef4444' : '#f1f5f9')}
+                      </>
+                    )}
+                    <text x="50" y="46" textAnchor="middle" fontSize="13" fontWeight="900" fill="#0f172a">
+                      {holiday ? '—' : `${presentPct}%`}
+                    </text>
+                    <text x="50" y="58" textAnchor="middle" fontSize="7" fill="#94a3b8">
+                      {holiday ? 'Holiday' : 'present'}
+                    </text>
+                  </svg>
+
+                  <div className="w-full space-y-2 mt-3">
+                    {[
+                      { label: 'Present',  value: present, color: 'bg-emerald-500', text: 'text-emerald-700' },
+                      { label: 'On Leave', value: onLeave, color: 'bg-blue-500',    text: 'text-blue-700'   },
+                      { label: 'Absent',   value: holiday ? '—' : absent, color: 'bg-red-400', text: absent > 0 && !holiday ? 'text-red-600' : 'text-slate-400' },
+                    ].map(row => (
+                      <div key={row.label} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-2 h-2 rounded-full ${row.color}`} />
+                          <span className="text-[11px] font-medium text-slate-500">{row.label}</span>
+                        </div>
+                        <span className={`text-[13px] font-black tabular-nums ${row.text}`}>{row.value}</span>
+                      </div>
+                    ))}
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                      <span className="text-[11px] font-medium text-slate-400">Total staff</span>
+                      <span className="text-[13px] font-black text-slate-700">{stats?.totalUsers ?? 0}</span>
+                    </div>
                   </div>
                 </div>
               );
-            })}
-
-            <div className="pt-2 mt-1 border-t border-slate-100 flex items-center justify-between">
-              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Total Vault Value</span>
-              <span className="text-sm font-black text-slate-900">₹{(stats?.totalValue ?? 0).toLocaleString('en-IN')}</span>
-            </div>
+            })()}
           </div>
-        </div>
 
-      </div>
+        </div>
       )}
     </div>
   );

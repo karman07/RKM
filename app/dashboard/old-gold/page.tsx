@@ -230,7 +230,13 @@ function CreatePanel({
     setItems(prev => {
       const next = [...prev];
       const stones = [...next[itemIdx].stones];
-      stones[stoneIdx] = { ...stones[stoneIdx], [field]: value };
+      const updated = { ...stones[stoneIdx], [field]: value };
+      if ((field === 'weight' || field === 'stone_type') && settings) {
+        const w = parseFloat(updated.weight);
+        const rate = settings.stone_rates?.[updated.stone_type] ?? 0;
+        if (w > 0 && rate > 0) updated.estimated_value = String(Math.round(w * rate));
+      }
+      stones[stoneIdx] = updated;
       next[itemIdx] = { ...next[itemIdx], stones };
       return next;
     });
@@ -447,7 +453,12 @@ function CreatePanel({
                                   className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-purple-200" />
                               </div>
                               <div>
-                                <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 block mb-0.5">Est. Value (₹)</label>
+                                <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 block mb-0.5">
+                                  Est. Value (₹)
+                                  {(settings?.stone_rates?.[stone.stone_type] ?? 0) > 0 && (
+                                    <span className="normal-case font-medium text-slate-400 ml-1">— auto from rates</span>
+                                  )}
+                                </label>
                                 <input type="number" placeholder="0"
                                   value={stone.estimated_value} onChange={e => updateStone(i, si, 'estimated_value', e.target.value)}
                                   className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-purple-200" />
@@ -803,7 +814,7 @@ export default function OldGoldPage() {
   );
 
   return (
-    <div className="max-w-[1400px] mx-auto pb-20 bg-white min-h-full">
+    <div className="max-w-[1400px] mx-auto pb-20">
 
       {/* Toast */}
       {toast && (
@@ -876,14 +887,14 @@ export default function OldGoldPage() {
       {/* ── Stats ── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
         {[
-          { label: 'Total',          value: stats.total,     icon: <Layers className="w-5 h-5" />,      color: 'text-slate-900',    bg: 'bg-slate-50',    iconBg: 'bg-slate-100 text-slate-600' },
-          { label: 'Draft',          value: stats.draft,     icon: <Clock className="w-5 h-5" />,       color: 'text-slate-600',    bg: 'bg-white',       iconBg: 'bg-slate-100 text-slate-500' },
-          { label: 'Awaiting Approval', value: stats.submitted, icon: <Send className="w-5 h-5" />,   color: 'text-blue-700',     bg: 'bg-blue-50',     iconBg: 'bg-blue-100 text-blue-600' },
-          { label: 'Melt Auth.',     value: stats.melting,   icon: <Flame className="w-5 h-5" />,      color: 'text-orange-700',   bg: 'bg-orange-50',   iconBg: 'bg-orange-100 text-orange-600' },
-          { label: 'Settled',        value: stats.settled,   icon: <CheckCircle2 className="w-5 h-5" />, color: 'text-violet-700', bg: 'bg-violet-50',   iconBg: 'bg-violet-100 text-violet-600' },
-          { label: 'Total Value',    value: fmt(stats.totalValue), icon: <TrendingUp className="w-5 h-5" />, color: 'text-blue-700', bg: 'bg-blue-50', iconBg: 'bg-blue-100 text-blue-600', wide: true },
+          { label: 'Total',          value: stats.total,     icon: <Layers className="w-5 h-5" />,      color: 'text-slate-900',    iconBg: 'bg-slate-100 text-slate-600' },
+          { label: 'Draft',          value: stats.draft,     icon: <Clock className="w-5 h-5" />,       color: 'text-slate-600',    iconBg: 'bg-slate-100 text-slate-500' },
+          { label: 'Awaiting Approval', value: stats.submitted, icon: <Send className="w-5 h-5" />,   color: 'text-blue-700',     iconBg: 'bg-blue-50 text-blue-600' },
+          { label: 'Melt Auth.',     value: stats.melting,   icon: <Flame className="w-5 h-5" />,      color: 'text-orange-700',   iconBg: 'bg-orange-50 text-orange-600' },
+          { label: 'Settled',        value: stats.settled,   icon: <CheckCircle2 className="w-5 h-5" />, color: 'text-violet-700', iconBg: 'bg-violet-50 text-violet-600' },
+          { label: 'Total Value',    value: fmt(stats.totalValue), icon: <TrendingUp className="w-5 h-5" />, color: 'text-blue-700', iconBg: 'bg-blue-50 text-blue-600' },
         ].map(s => (
-          <div key={s.label} className={`border border-slate-100 rounded-2xl p-4 shadow-sm ${s.bg}`}>
+          <div key={s.label} className="border border-slate-100 rounded-2xl p-4">
             <div className="flex items-start justify-between gap-2 mb-3">
               <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${s.iconBg}`}>
                 {s.icon}
@@ -927,8 +938,8 @@ export default function OldGoldPage() {
           <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="border border-slate-100 rounded-[2rem] p-16 text-center shadow-sm bg-white">
-          <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center mx-auto mb-4">
+        <div className="py-24 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center mx-auto mb-4">
             <Scale className="w-8 h-8 text-blue-400" />
           </div>
           <p className="text-slate-900 font-black text-lg mb-1">

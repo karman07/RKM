@@ -109,7 +109,14 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
               <NavIcon active={pathname.startsWith('/dashboard/analytics-ai')} color={pathname.startsWith('/dashboard/analytics-ai') ? colors.activeText : colors.textMuted}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1 1 .03 2.611-1.31 2.232l-3.714-1.03M5 14.5l-1.402 1.402c-1 1-.03 2.611 1.31 2.232l3.714-1.03" />
               </NavIcon>
-              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">AI Insights</span>}
+              {!isCollapsed && (
+                <span className="animate-[fadeRise_400ms_ease-out] font-bold flex-1 flex items-center justify-between">
+                  AI Insights
+                  <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-700 border border-amber-200 leading-none">
+                    Beta
+                  </span>
+                </span>
+              )}
             </Link>
             {can('notifications') && <Link href="/dashboard/notifications" onClick={onNavigate} title={isCollapsed ? "Notifications" : ""} className={navClass(pathname === '/dashboard/notifications')} style={getNavStyle(pathname === '/dashboard/notifications')}>
               {isCollapsed && pathname === '/dashboard/notifications' && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}

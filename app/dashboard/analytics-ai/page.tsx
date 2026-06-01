@@ -158,7 +158,7 @@ function DonutChart({ cfg }: { cfg: ChartConfig }) {
 
 function StatCards({ cfg }: { cfg: ChartConfig }) {
   return (
-    <div className="grid grid-cols-3 gap-2">
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
       {cfg.data.map((d, i) => (
         <div key={i} className="bg-white border border-slate-100 rounded-2xl p-3 shadow-sm text-center">
           <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">{d.label}</p>
@@ -318,8 +318,8 @@ function Bubble({ msg }: { msg: Message }) {
       {/* Content */}
       <div className={`rounded-2xl shadow-sm ${
         isUser
-          ? 'max-w-[78%] bg-blue-600 text-white rounded-tr-sm px-4 py-3'
-          : 'flex-1 min-w-0 max-w-[85%]'
+          ? 'max-w-[85%] sm:max-w-[78%] bg-blue-600 text-white rounded-tr-sm px-3 sm:px-4 py-2.5 sm:py-3'
+          : 'flex-1 min-w-0 max-w-[92%] sm:max-w-[85%]'
       }`}>
         {isUser ? (
           <p className="text-[14px] leading-relaxed">{msg.content}</p>
@@ -461,10 +461,25 @@ export default function AnalyticsAIPage() {
   const isEmpty = messages.length === 0 && !thinking;
 
   return (
-    <div className="flex h-full bg-slate-50 overflow-hidden">
+    <div className="flex h-full bg-slate-50 overflow-hidden relative">
+
+      {/* ── Mobile backdrop ── */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/30 z-20 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
 
       {/* ── Sidebar ── */}
-      <aside className={`flex flex-col flex-shrink-0 bg-white border-r border-slate-100 transition-all duration-300 ${sidebarOpen ? 'w-72' : 'w-0 overflow-hidden'}`}>
+      <aside className={[
+        'flex flex-col flex-shrink-0 bg-white border-r border-slate-100 transition-all duration-300',
+        'absolute inset-y-0 left-0 z-30 w-[280px]',
+        'md:relative md:z-auto md:inset-auto',
+        sidebarOpen
+          ? 'translate-x-0 md:w-[280px]'
+          : '-translate-x-full md:translate-x-0 md:w-0 md:overflow-hidden',
+      ].join(' ')}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 flex-shrink-0">
           <div>
             <h2 className="text-sm font-black text-slate-900">Chat History</h2>
@@ -538,7 +553,7 @@ export default function AnalyticsAIPage() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
         {/* Header */}
-        <div className="flex items-center gap-3 px-6 py-4 bg-white border-b border-slate-100 flex-shrink-0">
+        <div className="flex items-center gap-3 px-4 sm:px-6 py-3 sm:py-4 bg-white border-b border-slate-100 flex-shrink-0">
           <button onClick={() => setSidebarOpen(o => !o)}
             className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 transition-colors flex-shrink-0">
             <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -557,10 +572,10 @@ export default function AnalyticsAIPage() {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-6 py-6">
+        <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-4 sm:py-6">
           {isEmpty ? (
-            <div className="flex flex-col items-center justify-center h-full text-center max-w-xl mx-auto">
-              <div className="w-16 h-16 rounded-3xl bg-blue-600 flex items-center justify-center mb-5 shadow-lg shadow-blue-200">
+            <div className="flex flex-col items-center justify-center h-full text-center max-w-xl mx-auto px-2">
+              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-3xl bg-blue-600 flex items-center justify-center mb-4 sm:mb-5 shadow-lg shadow-blue-200">
                 <svg width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={1.8}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1 1 .03 2.611-1.31 2.232l-3.714-1.03M5 14.5l-1.402 1.402c-1 1-.03 2.611 1.31 2.232l3.714-1.03" />
                 </svg>
@@ -569,10 +584,10 @@ export default function AnalyticsAIPage() {
               <p className="text-slate-500 text-sm mb-8 leading-relaxed">
                 Ask anything about RKM Jewellers — sales performance, top staff, branch analytics, customer trends, inventory status, and more.
               </p>
-              <div className="grid grid-cols-2 gap-2 w-full">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full">
                 {SUGGESTIONS.map(s => (
                   <button key={s} onClick={() => send(s)}
-                    className="text-left px-4 py-3 bg-white border border-slate-200 rounded-2xl text-[12px] font-medium text-slate-600 hover:border-blue-300 hover:text-blue-700 hover:bg-blue-50 transition-all text-wrap">
+                    className="text-left px-4 py-3 bg-white border border-slate-200 rounded-2xl text-[12px] font-medium text-slate-600 hover:border-blue-300 hover:text-blue-700 hover:bg-blue-50 transition-all">
                     {s}
                   </button>
                 ))}
@@ -599,19 +614,19 @@ export default function AnalyticsAIPage() {
         </div>
 
         {/* Input */}
-        <div className="flex-shrink-0 px-6 py-4 bg-white border-t border-slate-100">
-          {/* Quick suggestions (shown only when there are messages) */}
+        <div className="flex-shrink-0 px-3 sm:px-6 py-3 sm:py-4 bg-white border-t border-slate-100">
+          {/* Quick suggestions — horizontal scroll on mobile */}
           {messages.length > 0 && !thinking && (
-            <div className="flex gap-2 flex-wrap mb-3">
+            <div className="flex gap-2 mb-3 overflow-x-auto pb-1 scrollbar-none" style={{ scrollbarWidth: 'none' }}>
               {SUGGESTIONS.slice(0, 4).map(s => (
                 <button key={s} onClick={() => send(s)}
-                  className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-[11px] font-medium text-slate-500 hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50 transition-all whitespace-nowrap">
+                  className="flex-shrink-0 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-[11px] font-medium text-slate-500 hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50 transition-all whitespace-nowrap">
                   {s}
                 </button>
               ))}
             </div>
           )}
-          <div className="flex items-end gap-3">
+          <div className="flex items-end gap-2 sm:gap-3">
             <div className="flex-1 relative">
               <textarea
                 ref={inputRef}
@@ -625,14 +640,14 @@ export default function AnalyticsAIPage() {
                 }}
                 onKeyDown={handleKey}
                 disabled={thinking}
-                className="w-full resize-none border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300 disabled:opacity-50 transition-all"
+                className="w-full resize-none border border-slate-200 rounded-2xl px-3 sm:px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300 disabled:opacity-50 transition-all"
                 style={{ minHeight: '48px' }}
               />
             </div>
             <button
               onClick={() => send()}
               disabled={!input.trim() || thinking}
-              className="w-11 h-11 rounded-2xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 flex items-center justify-center transition-colors flex-shrink-0 shadow-sm shadow-blue-200"
+              className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 flex items-center justify-center transition-colors flex-shrink-0 shadow-sm shadow-blue-200"
             >
               {thinking
                 ? <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
@@ -642,7 +657,7 @@ export default function AnalyticsAIPage() {
               }
             </button>
           </div>
-          <p className="text-[10px] text-slate-400 text-center mt-2 font-medium">
+          <p className="hidden sm:block text-[10px] text-slate-400 text-center mt-2 font-medium">
             Powered by Gemini · Live MongoDB data · Press Enter to send, Shift+Enter for new line
           </p>
         </div>
