@@ -52,7 +52,7 @@ export class AttendanceService {
       const checkInMins = getISTMinutes(new Date(check_in));
       if (checkInMins > shiftStartMins + graceMins) {
         is_late = true;
-        late_by_minutes = checkInMins - shiftStartMins;
+        late_by_minutes = checkInMins - (shiftStartMins + graceMins);
       }
     }
 
