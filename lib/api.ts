@@ -352,3 +352,45 @@ export const createCustomer = (data: {
   name: string; phone: string; email?: string; gender?: string;
   address?: string; city?: string; state?: string; pincode?: string; country?: string;
 }) => request<FullCustomer>('/customers', { method: 'POST', body: JSON.stringify(data) });
+
+// ─── Payroll ──────────────────────────────────────────────────────────────────
+
+export interface PayrollCalendarDay {
+  date: string;
+  day: string;
+  status: string;
+  note: string | null;
+  check_in: string | null;
+  check_out: string | null;
+  is_late: boolean;
+  deducted_amount: number;
+}
+
+export interface PayrollIncentive {
+  _id: string;
+  amount: number;
+  reason: string;
+  granted_by?: { _id: string; name: string } | string;
+}
+
+export interface MyPayroll {
+  base_salary: number;
+  total_working_days: number;
+  daily_rate: number;
+  summary: {
+    present: number;
+    half_day: number;
+    on_leave: number;
+    holiday: number;
+    absent: number;
+    yet_to_check_in: number;
+  };
+  deductions: number;
+  incentives: number;
+  incentive_list: PayrollIncentive[];
+  net_payable: number;
+  calendar: PayrollCalendarDay[];
+}
+
+export const getMyPayroll = (month: number, year: number) =>
+  request<MyPayroll>(`/payroll/mine?month=${month}&year=${year}`);

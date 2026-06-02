@@ -231,22 +231,22 @@ function InventoryContent() {
           />
         </div>
         
-        <div className="flex gap-3 overflow-x-auto pb-1 md:pb-0">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 md:flex md:gap-3">
           <select
             value={categoryFilter}
             onChange={e => { setCategoryFilter(e.target.value); setPage(1); if (user) loadInventory(user, 1); }}
-            className="px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-700 focus:outline-none focus:border-[#7A1C2A] min-w-[130px]"
+            className="px-3 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs sm:text-sm text-slate-700 focus:outline-none focus:border-[#7A1C2A] w-full md:min-w-[130px]"
           >
             <option value="">All Categories</option>
             {categories.map(c => (
               <option key={c._id} value={c._id}>{c.name}</option>
             ))}
           </select>
-          
+
           <select
             value={metalFilter}
             onChange={e => { setMetalFilter(e.target.value); setPage(1); if (user) loadInventory(user, 1); }}
-            className="px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-700 focus:outline-none focus:border-[#7A1C2A] min-w-[110px]"
+            className="px-3 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs sm:text-sm text-slate-700 focus:outline-none focus:border-[#7A1C2A] w-full md:min-w-[110px]"
           >
             <option value="">All Metals</option>
             <option value="gold">Gold</option>
@@ -257,7 +257,7 @@ function InventoryContent() {
           <select
             value={purityFilter}
             onChange={e => { setPurityFilter(e.target.value); setPage(1); if (user) loadInventory(user, 1); }}
-            className="px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-700 focus:outline-none focus:border-[#7A1C2A] min-w-[110px]"
+            className="px-3 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs sm:text-sm text-slate-700 focus:outline-none focus:border-[#7A1C2A] w-full md:min-w-[110px]"
           >
             <option value="">All Purities</option>
             {metalFilter === 'gold' && (
@@ -332,8 +332,9 @@ function InventoryContent() {
                   </div>
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-slate-50 flex items-end justify-between">
-                  <div className="flex-1 min-w-0">
+                <div className="mt-6 pt-4 border-t border-slate-50 flex flex-col gap-3">
+                  {/* Price details — full width, no competition for space */}
+                  <div>
                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Price Details</p>
                     <div className="flex flex-col gap-0.5">
                       {(() => {
@@ -353,34 +354,29 @@ function InventoryContent() {
                                 ₹{basePrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                               </span>
                             )}
-                            <div className="min-h-[32px] flex flex-col justify-center gap-0.5">
-                              {adminDiscountPct > 0 && (
-                                <span className="inline-flex items-center justify-between gap-1 text-[9px] font-bold uppercase tracking-wide text-amber-600">
-                                  <span className="flex items-center gap-1">
-                                    <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                                    {adminDiscountPct}% ADMIN OFF
-                                  </span>
-                                  {adminDiscountAmt > 0 && <span>-₹{fa(adminDiscountAmt)}</span>}
-                                </span>
-                              )}
-                              {(item.manager_discount ?? 0) > 0 && (
-                                <span className="inline-flex items-center justify-between gap-1 text-[9px] font-bold uppercase tracking-wide text-emerald-600">
-                                  <span className="flex items-center gap-1">
-                                    <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>
-                                    {item.manager_discount}% MANAGER OFF
-                                  </span>
-                                  {managerDiscountAmt > 0 && <span>-₹{fa(managerDiscountAmt)}</span>}
-                                </span>
-                              )}
-                            </div>
+                            {adminDiscountPct > 0 && (
+                              <span className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wide text-amber-600">
+                                <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                                {adminDiscountPct}% ADMIN OFF
+                                {adminDiscountAmt > 0 && <span className="ml-1">-₹{fa(adminDiscountAmt)}</span>}
+                              </span>
+                            )}
+                            {(item.manager_discount ?? 0) > 0 && (
+                              <span className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wide text-emerald-600">
+                                <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>
+                                {item.manager_discount}% MANAGER OFF
+                                {managerDiscountAmt > 0 && <span className="ml-1">-₹{fa(managerDiscountAmt)}</span>}
+                              </span>
+                            )}
                             <p className="text-lg font-black text-[#5A0F1A] mt-1 tracking-tight">₹{finalPrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
                           </>
                         );
                       })()}
                     </div>
                   </div>
-                  
-                  <div className="flex flex-col items-end gap-2.5">
+
+                  {/* Weight + Metal — own row, no overlap */}
+                  <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-100 rounded-lg">
                       <svg width="12" height="12" className="text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />

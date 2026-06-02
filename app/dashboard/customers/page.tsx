@@ -385,14 +385,6 @@ function CustomerCard({ customer }: { customer: FullCustomer }) {
           <p className="font-black text-slate-900 text-sm leading-snug truncate">{customer.name}</p>
           {customer.phone && <p className="text-[11px] text-slate-400 font-medium">{customer.phone}</p>}
         </div>
-        {customer.isPhoneVerified && (
-          <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[9px] font-black text-emerald-700 flex-shrink-0">
-            <svg width="9" height="9" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-            Verified
-          </div>
-        )}
       </div>
       <div className="space-y-1">
         {customer.email && (
