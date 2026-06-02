@@ -36,7 +36,7 @@ const Typewriter = ({ text, delay = 80 }: { text: string; delay?: number }) => {
   return (
     <span className="relative">
       {currentText}
-      <span className="inline-block w-[3px] h-[0.9em] bg-[#064E3B] ml-1.5 animate-bounce align-middle opacity-80" style={{ animationDuration: '800ms' }}></span>
+      <span className="inline-block w-[3px] h-[0.9em] bg-[#5C0828] ml-1.5 animate-bounce align-middle opacity-80" style={{ animationDuration: '800ms' }}></span>
     </span>
   );
 };
@@ -187,7 +187,7 @@ export default function GoldInvestmentPage() {
               contact: authState.customer.phone || ''
             },
             theme: {
-              color: '#064E3B'
+              color: '#5C0828'
             }
           }
         : {
@@ -222,7 +222,7 @@ export default function GoldInvestmentPage() {
               contact: authState.customer.phone || ''
             },
             theme: {
-              color: '#064E3B'
+              color: '#5C0828'
             }
           };
 
@@ -255,12 +255,12 @@ export default function GoldInvestmentPage() {
 
         <div className="max-w-6xl mx-auto px-6 relative z-10">
           <div className="flex flex-col items-center text-center">
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-[#064E3B]/5 border border-[#064E3B]/10 rounded-full text-[11px] font-black uppercase tracking-[2px] text-[#064E3B] mb-8">
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-[#5C0828]/5 border border-[#5C0828]/10 rounded-full text-[11px] font-black uppercase tracking-[2px] text-[#5C0828] mb-8">
               <Gem size={14} className="animate-pulse" /> The RKM Golden Promise
             </div>
             <h1 className="text-5xl md:text-7xl font-serif font-black text-slate-900 mb-8 leading-tight animate-in fade-in slide-in-from-bottom-8 duration-1000">
               Systematic Gold <br/>
-              <span className="text-[#064E3B] italic font-light h-[1.2em] inline-block">
+              <span className="text-[#5C0828] italic font-light h-[1.2em] inline-block">
                 <Typewriter text="Investment Plan" delay={80} />
               </span>
             </h1>
@@ -268,7 +268,7 @@ export default function GoldInvestmentPage() {
               Secure your future by building wealth month by month. Accumulate value with guaranteed interest and redeem it for exquisite RKM jewellery with exclusive maturity discounts.
             </p>
             <div className="flex items-center gap-6 animate-in fade-in slide-in-from-bottom-6 duration-1000 delay-500 fill-mode-both">
-              <a href="#plans" className="px-8 py-4 bg-[#064E3B] text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-emerald-900/20 hover:-translate-y-1 hover:shadow-2xl hover:shadow-emerald-900/30 transition-all duration-300">
+              <a href="#plans" className="px-8 py-4 bg-[#5C0828] text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-emerald-900/20 hover:-translate-y-1 hover:shadow-2xl hover:shadow-emerald-900/30 transition-all duration-300">
                 Select Your Plan
               </a>
               <a href="#how-it-works" className="px-8 py-4 bg-slate-50 text-slate-600 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-slate-100 hover:-translate-y-1 hover:shadow-md transition-all duration-300 border border-slate-100">
@@ -284,7 +284,7 @@ export default function GoldInvestmentPage() {
         <div className="max-w-6xl mx-auto px-6">
           <div className="text-center mb-20">
             <h2 className="text-3xl font-serif font-bold text-slate-900 mb-4 tracking-tight">Simple 4-Step Accumulation</h2>
-            <div className="h-1.5 w-16 bg-[#064E3B] mx-auto rounded-full"></div>
+            <div className="h-1.5 w-16 bg-[#5C0828] mx-auto rounded-full"></div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
@@ -299,7 +299,7 @@ export default function GoldInvestmentPage() {
                 className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all duration-500 group animate-in fade-in slide-in-from-bottom-8 fill-mode-both"
                 style={{ animationDelay: `${i * 150 + 200}ms`, animationDuration: '800ms' }}
               >
-                <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center text-[#064E3B] mb-6 group-hover:scale-110 group-hover:bg-[#064E3B] group-hover:text-white transition-all">
+                <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center text-[#5C0828] mb-6 group-hover:scale-110 group-hover:bg-[#5C0828] group-hover:text-white transition-all">
                   {step.icon}
                 </div>
                 <h3 className="text-lg font-bold text-slate-900 mb-3">{step.title}</h3>
@@ -315,7 +315,7 @@ export default function GoldInvestmentPage() {
         {activeSub && (
           <div className="max-w-xl mx-auto px-6 mb-20 animate-in fade-in slide-in-from-bottom-5 duration-700">
             <h3 className="text-xl font-serif font-bold text-slate-900 mb-6 flex items-center gap-3">
-               <Gem className="text-[#064E3B]" size={24} /> Your Active Plans
+               <Gem className="text-[#5C0828]" size={24} /> Your Active Plans
             </h3>
             <div className="bg-[#FCFDFD] rounded-[2.5rem] p-10 border border-slate-100 shadow-sm">
                <div className="flex justify-between items-center">
@@ -324,13 +324,13 @@ export default function GoldInvestmentPage() {
                     <p className="text-sm font-bold text-slate-400 mb-2">PAID: {activeSub.installmentsPaid} / {activeSub.plan?.durationMonths}</p>
                     
                     {activeSub.nextDueDate && (
-                      <p className="text-sm font-bold text-[#1A6B3A]">
+                      <p className="text-sm font-bold text-[#7A1238]">
                         NEXT DUE: {new Date(activeSub.nextDueDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }).toUpperCase()}
                       </p>
                     )}
                   </div>
                   <div className="text-right flex flex-col items-end">
-                    <p className="font-black text-[#1A6B3A] text-3xl mb-4">{fmt(activeSub.amountAccumulated)}</p>
+                    <p className="font-black text-[#7A1238] text-3xl mb-4">{fmt(activeSub.amountAccumulated)}</p>
                     <span className="text-[11px] font-black uppercase bg-[#D1FAE5] text-[#065F46] px-4 py-1.5 rounded-lg tracking-widest">
                       {activeSub.status}
                     </span>
@@ -348,7 +348,7 @@ export default function GoldInvestmentPage() {
         <div className="max-w-6xl mx-auto px-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {loading ? (
             <div className="col-span-full h-64 flex items-center justify-center">
-              <Loader2 className="animate-spin text-[#064E3B]" size={32} />
+              <Loader2 className="animate-spin text-[#5C0828]" size={32} />
             </div>
           ) : plans.length === 0 ? (
             <div className="col-span-full h-40 flex flex-col items-center justify-center text-slate-300 gap-2">
@@ -366,19 +366,19 @@ export default function GoldInvestmentPage() {
                   className="relative group flex flex-col h-full animate-in fade-in zoom-in-95 fill-mode-both"
                   style={{ animationDelay: `${index * 150 + 300}ms`, animationDuration: '700ms' }}
                 >
-                  <div className={`absolute -inset-1 bg-gradient-to-b ${isEnrolledInThis ? 'from-[#064E3B] to-[#1A6B3A] opacity-20' : 'from-[#064E3B] to-emerald-400 opacity-0 group-hover:opacity-10'} rounded-[2.5rem] blur transition duration-500`}></div>
-                  <div className={`relative flex-1 bg-white rounded-[2.5rem] p-10 border shadow-sm transition-all flex flex-col ${isEnrolledInThis ? 'border-[#064E3B] shadow-emerald-900/10' : 'border-slate-100 group-hover:border-emerald-100'}`}>
+                  <div className={`absolute -inset-1 bg-gradient-to-b ${isEnrolledInThis ? 'from-[#5C0828] to-[#7A1238] opacity-20' : 'from-[#5C0828] to-emerald-400 opacity-0 group-hover:opacity-10'} rounded-[2.5rem] blur transition duration-500`}></div>
+                  <div className={`relative flex-1 bg-white rounded-[2.5rem] p-10 border shadow-sm transition-all flex flex-col ${isEnrolledInThis ? 'border-[#5C0828] shadow-emerald-900/10' : 'border-slate-100 group-hover:border-emerald-100'}`}>
                     
                     {isEnrolledInThis && (
                       <div className="absolute top-6 right-8">
-                         <span className="flex items-center gap-1.5 text-[8px] font-black uppercase tracking-widest text-white bg-[#064E3B] px-3 py-1.5 rounded-full shadow-lg">
+                         <span className="flex items-center gap-1.5 text-[8px] font-black uppercase tracking-widest text-white bg-[#5C0828] px-3 py-1.5 rounded-full shadow-lg">
                            <CheckCircle2 size={10} /> Active Plan
                          </span>
                       </div>
                     )}
 
                     <div className="mb-8">
-                      <h4 className="font-serif font-black text-2xl text-slate-900 group-hover:text-[#064E3B] transition-colors">{p.name}</h4>
+                      <h4 className="font-serif font-black text-2xl text-slate-900 group-hover:text-[#5C0828] transition-colors">{p.name}</h4>
                       <div className="mt-1.5">
                         <p className={`text-[10px] text-slate-400 font-black uppercase tracking-[0.15em] leading-relaxed transition-all ${expandedPlans[p._id] ? '' : 'line-clamp-2'}`}>
                           {p.description}
@@ -386,7 +386,7 @@ export default function GoldInvestmentPage() {
                         {p.description && p.description.length > 70 && (
                           <button 
                             onClick={() => toggleExpand(p._id)}
-                            className="text-[#064E3B] font-black text-[9px] uppercase tracking-widest mt-2 hover:underline"
+                            className="text-[#5C0828] font-black text-[9px] uppercase tracking-widest mt-2 hover:underline"
                           >
                             {expandedPlans[p._id] ? 'Read Less' : 'Read More'}
                           </button>
@@ -397,7 +397,7 @@ export default function GoldInvestmentPage() {
                     <div className="space-y-6 mb-10 pt-6 border-t border-slate-50">
                       <div className="flex items-center justify-between">
                         <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Payment Mode</span>
-                        <span className="bg-emerald-50 text-[#064E3B] px-3 py-1 rounded-lg text-sm font-bold">Bank EMI</span>
+                        <span className="bg-emerald-50 text-[#5C0828] px-3 py-1 rounded-lg text-sm font-bold">Bank EMI</span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Monthly Commitment</span>
@@ -409,7 +409,7 @@ export default function GoldInvestmentPage() {
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Annual Benefit</span>
-                        <span className="text-xl font-bold text-[#064E3B]">+{p.interestRate}% Int.</span>
+                        <span className="text-xl font-bold text-[#5C0828]">+{p.interestRate}% Int.</span>
                       </div>
                     </div>
 
@@ -417,7 +417,7 @@ export default function GoldInvestmentPage() {
                       {isEnrolledInThis ? (
                         <button 
                           onClick={() => router.push('/profile')}
-                          className="w-full py-5 rounded-2xl bg-[#064E3B] text-white shadow-xl shadow-emerald-900/20 text-xs font-black uppercase tracking-[0.25em] flex items-center justify-center gap-3 hover:translate-y-[-2px] transition-all"
+                          className="w-full py-5 rounded-2xl bg-[#5C0828] text-white shadow-xl shadow-emerald-900/20 text-xs font-black uppercase tracking-[0.25em] flex items-center justify-center gap-3 hover:translate-y-[-2px] transition-all"
                         >
                           Already Enrolled <ArrowRight size={18} />
                         </button>
@@ -425,7 +425,7 @@ export default function GoldInvestmentPage() {
                         <button 
                           onClick={() => handleSubscribe(p._id)}
                           disabled={!!subscribeLoading || !!activeSub}
-                          className={`w-full py-5 rounded-2xl text-white shadow-xl transition-all text-xs font-black uppercase tracking-[0.25em] flex items-center justify-center gap-3 disabled:opacity-30 ${activeSub ? 'bg-slate-300 cursor-not-allowed' : 'bg-[#064E3B] hover:bg-slate-900 shadow-emerald-900/10'}`}
+                          className={`w-full py-5 rounded-2xl text-white shadow-xl transition-all text-xs font-black uppercase tracking-[0.25em] flex items-center justify-center gap-3 disabled:opacity-30 ${activeSub ? 'bg-slate-300 cursor-not-allowed' : 'bg-[#5C0828] hover:bg-slate-900 shadow-emerald-900/10'}`}
                         >
                           {subscribeLoading === p._id ? (
                             <><Loader2 size={16} className="animate-spin" /> Processing...</>
@@ -466,7 +466,7 @@ export default function GoldInvestmentPage() {
                     className="flex gap-6 animate-in fade-in slide-in-from-left-4 fill-mode-both"
                     style={{ animationDelay: `${i * 200 + 400}ms`, animationDuration: '700ms' }}
                   >
-                    <div className="w-10 h-10 rounded-2xl bg-[#064E3B]/5 flex items-center justify-center text-[#064E3B] shrink-0">
+                    <div className="w-10 h-10 rounded-2xl bg-[#5C0828]/5 flex items-center justify-center text-[#5C0828] shrink-0">
                       <CheckCircle2 size={20} />
                     </div>
                     <div>
@@ -485,7 +485,7 @@ export default function GoldInvestmentPage() {
                 <p>The total accumulated value (Principal + Interest) MUST be redeemed against the purchase of jewellery at the end of the tenure.</p>
                 <p>In case of plan cancellation before maturity, the principal amount will be available for purchase credit, but the interest benefit will be forfeited.</p>
              </div>
-             <div className="mt-12 flex items-center gap-4 text-[10px] font-black uppercase tracking-[0.2em] text-[#064E3B]">
+             <div className="mt-12 flex items-center gap-4 text-[10px] font-black uppercase tracking-[0.2em] text-[#5C0828]">
                 <ShieldCheck size={16} /> Secured by RKM Jewellers & Razorpay
              </div>
           </div>
@@ -496,7 +496,7 @@ export default function GoldInvestmentPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-white rounded-[2.5rem] p-10 max-w-sm w-full text-center shadow-2xl animate-in zoom-in-95 duration-500">
             <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6">
-              <CheckCircle2 className="text-[#064E3B]" size={40} />
+              <CheckCircle2 className="text-[#5C0828]" size={40} />
             </div>
             <h3 className="text-2xl font-serif font-black text-slate-900 mb-3">Subscription Active!</h3>
             <p className="text-slate-500 mb-8 text-sm leading-relaxed">
@@ -507,7 +507,7 @@ export default function GoldInvestmentPage() {
                 setShowSuccessDialog(false);
                 router.push('/profile');
               }}
-              className="w-full bg-[#064E3B] text-white font-black uppercase text-[11px] tracking-widest py-4 rounded-xl hover:-translate-y-1 hover:shadow-lg hover:shadow-emerald-900/20 transition-all"
+              className="w-full bg-[#5C0828] text-white font-black uppercase text-[11px] tracking-widest py-4 rounded-xl hover:-translate-y-1 hover:shadow-lg hover:shadow-emerald-900/20 transition-all"
             >
               Go to Dashboard
             </button>

@@ -44,7 +44,7 @@ export default function LogoutDialog({ isOpen, onClose, onConfirm }: LogoutDialo
           <div className="grid grid-cols-1 w-full gap-3 mt-12 pb-2">
             <button 
               onClick={onConfirm}
-              className="w-full py-4 bg-[#1A6B3A] text-white text-[10px] font-black uppercase tracking-[0.3em] rounded-2xl shadow-xl shadow-emerald-900/20 hover:bg-[#14532d] hover:-translate-y-1 active:scale-95 transition-all"
+              className="w-full py-4 bg-[#7A1238] text-white text-[10px] font-black uppercase tracking-[0.3em] rounded-2xl shadow-xl shadow-emerald-900/20 hover:bg-[#14532d] hover:-translate-y-1 active:scale-95 transition-all"
             >
               Confirm Sign Out
             </button>

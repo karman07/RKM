@@ -64,7 +64,7 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-8 py-10 border-b border-[#F0EBE0]/60">
           <div>
-            <h2 className="font-serif text-3xl text-[#1A2E26]">Shopping Bag</h2>
+            <h2 className="font-serif text-3xl text-[#5C0828]">Shopping Bag</h2>
             <p className="text-[9px] uppercase tracking-[0.3em] text-[#7A8C85] mt-2">
               {cartItems.length} Piece{cartItems.length !== 1 && "s"} Selected
             </p>
@@ -78,7 +78,7 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                 width="14" height="14" viewBox="0 0 24 24" fill="none" 
                 stroke="currentColor" strokeWidth="2.5" 
                 className="group-hover:text-white transition-colors duration-500"
-                style={{ color: '#1A2E26'}}
+                style={{ color: '#5C0828'}}
               >
                 <path d="M18 6 6 18M6 6l12 12" />
               </svg>
@@ -91,13 +91,13 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         <div className="flex-1 overflow-y-auto px-8 py-8 custom-scrollbar">
           {cartItems.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center space-y-8">
-              <div className="font-serif text-2xl text-[#1A2E26] opacity-30 italic">
+              <div className="font-serif text-2xl text-[#5C0828] opacity-30 italic">
                 Your bag is currently empty
               </div>
               <button
                 onClick={onClose}
                 style={{ backgroundColor: GOLD }}
-                className="px-10 py-4 text-white text-[9px] font-black uppercase tracking-[0.4em] rounded-full hover:bg-[#1A2E26] transition-all duration-500 shadow-lg"
+                className="px-10 py-4 text-white text-[9px] font-black uppercase tracking-[0.4em] rounded-full hover:bg-[#5C0828] transition-all duration-500 shadow-lg"
               >
                 Continue Exploring
               </button>
@@ -128,7 +128,7 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                     <div className="flex-1 flex flex-col justify-between py-1">
                       <div>
                         <div className="flex justify-between items-start">
-                          <h3 className="font-serif text-lg text-[#1A2E26] leading-tight mb-2">
+                          <h3 className="font-serif text-lg text-[#5C0828] leading-tight mb-2">
                             {item.name}
                           </h3>
                           <button
@@ -167,7 +167,7 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                             +
                           </button>
                         </div>
-                        <p className="font-serif text-lg text-[#1A2E26]">
+                        <p className="font-serif text-lg text-[#5C0828]">
                           ₹
                           {(
                             ((item.pricing_breakdown?.final_price || 0) -
@@ -188,7 +188,7 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         {cartItems.length > 0 && (
           <div className="bg-[#FAFAF8] border-t border-[#F0EBE0] px-10 py-8 space-y-5">
             <div className="space-y-3">
-              <div className="flex justify-between text-[9px] uppercase tracking-[0.2em] font-black text-[#1A2E26]/60">
+              <div className="flex justify-between text-[9px] uppercase tracking-[0.2em] font-black text-[#5C0828]/60">
                 <span>Subtotal (Excl. Tax)</span>
                 <span>₹{subtotal.toLocaleString("en-IN")}</span>
               </div>
@@ -199,7 +199,7 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
             </div>
 
             <div className="flex justify-between items-baseline py-3 border-t border-[#F0EBE0]/60">
-              <span className="font-serif text-xl text-[#1A2E26]">Total</span>
+              <span className="font-serif text-xl text-[#5C0828]">Total</span>
               <span className="font-serif text-3xl text-[#B8975A]">
                 ₹{total.toLocaleString("en-IN")}
               </span>
@@ -209,14 +209,14 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
               <Link
                 href="/checkout"
                 onClick={onClose}
-                className="block w-full bg-[#1A2E26] text-white py-4.5 text-[9px] font-black uppercase tracking-[0.4em] text-center hover:bg-[#B8975A] transition-all duration-700 shadow-xl rounded-full"
+                className="block w-full bg-[#5C0828] text-white py-4.5 text-[9px] font-black uppercase tracking-[0.4em] text-center hover:bg-[#B8975A] transition-all duration-700 shadow-xl rounded-full"
               >
                 Proceed to Checkout
               </Link>
               <Link
                 href="/cart"
                 onClick={onClose}
-                className="block w-full py-2.5 text-[8px] font-black uppercase tracking-[0.3em] text-center text-[#7A8C85] hover:text-[#1A2E26] transition-colors"
+                className="block w-full py-2.5 text-[8px] font-black uppercase tracking-[0.3em] text-center text-[#7A8C85] hover:text-[#5C0828] transition-colors"
               >
                 View Full Detailed Bag
               </Link>

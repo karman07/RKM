@@ -42,7 +42,7 @@ export default function BlogsPage() {
         <div className="max-w-[1440px] mx-auto px-6 lg:px-12 relative z-10 text-center">
           <FadeIn delay={0}>
             <span className="uppercase tracking-[0.4em] text-[10px] font-black text-[#B8975A] mb-6 block">The Artisan Journal</span>
-            <h1 className="font-serif text-5xl md:text-7xl lg:text-8xl text-[#1A2E26] tracking-tight mb-8">
+            <h1 className="font-serif text-5xl md:text-7xl lg:text-8xl text-[#5C0828] tracking-tight mb-8">
               Maison Brilliance
             </h1>
             <p className="text-[#5D6D66] max-w-2xl mx-auto leading-relaxed italic text-lg font-light">

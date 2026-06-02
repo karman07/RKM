@@ -30,7 +30,7 @@ export default function WishlistPage() {
                   My Private Selection
                 </span>
               </div>
-              <h1 className="font-serif text-5xl md:text-7xl text-[#1A2E26] leading-none">
+              <h1 className="font-serif text-5xl md:text-7xl text-[#5C0828] leading-none">
                 Wishlist
               </h1>
               <p className="text-[11px] uppercase tracking-[0.4em] text-[#7A8C85] font-bold opacity-60">
@@ -40,7 +40,7 @@ export default function WishlistPage() {
 
             <Link
               href="/products"
-              className="px-10 py-5 bg-[#1A2E26] text-white text-[10px] uppercase tracking-[0.4em] font-black hover:bg-[#B8975A] transition-all duration-700 shadow-xl"
+              className="px-10 py-5 bg-[#5C0828] text-white text-[10px] uppercase tracking-[0.4em] font-black hover:bg-[#B8975A] transition-all duration-700 shadow-xl"
             >
               Continue Exploring
             </Link>
@@ -64,7 +64,7 @@ export default function WishlistPage() {
                 </div>
               </div>
               <div className="space-y-4">
-                <h3 className="font-serif text-3xl text-[#1A2E26]">Your heart is still open.</h3>
+                <h3 className="font-serif text-3xl text-[#5C0828]">Your heart is still open.</h3>
                 <p className="text-[#7A8C85] max-w-sm mx-auto text-sm leading-relaxed font-light">
                   Explore our collections to find a piece that speaks to your soul. Every masterpiece begins with a single look.
                 </p>

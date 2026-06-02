@@ -28,7 +28,7 @@ export default function CartPage() {
       <div className="max-w-[1440px] mx-auto px-6 lg:px-12 pt-32 pb-24">
         {/* Header */}
         <div className="mb-16">
-          <h1 className="font-serif text-5xl md:text-6xl text-[#1A2E26] mb-4">Your Shopping Bag</h1>
+          <h1 className="font-serif text-5xl md:text-6xl text-[#5C0828] mb-4">Your Shopping Bag</h1>
           <p className="text-[10px] uppercase tracking-[0.4em] text-[#7A8C85]">
             {cartItems.length} {cartItems.length === 1 ? 'Exquisite Piece' : 'Exquisite Pieces'} Ready for Acquisition
           </p>
@@ -37,11 +37,11 @@ export default function CartPage() {
         {cartItems.length === 0 ? (
           <FadeIn delay={200}>
             <div className="text-center py-32 space-y-8">
-              <div className="font-serif text-3xl text-[#1A2E26] opacity-30 italic">Your bag is currently empty</div>
+              <div className="font-serif text-3xl text-[#5C0828] opacity-30 italic">Your bag is currently empty</div>
               <Link
                 href="/products"
                 style={{ backgroundColor: GOLD }}
-                className="inline-block px-12 py-5 text-white text-[10px] font-black uppercase tracking-[0.4em] hover:bg-[#1A2E26] transition-all duration-700 rounded-full"
+                className="inline-block px-12 py-5 text-white text-[10px] font-black uppercase tracking-[0.4em] hover:bg-[#5C0828] transition-all duration-700 rounded-full"
               >
                 Discover the Collections
               </Link>
@@ -68,7 +68,7 @@ export default function CartPage() {
                         <div className="space-y-4">
                           <div className="flex justify-between items-start">
                             <div>
-                              <h3 className="font-serif text-2xl text-[#1A2E26] mb-1">{item.name}</h3>
+                              <h3 className="font-serif text-2xl text-[#5C0828] mb-1">{item.name}</h3>
                               <p className="text-[8px] uppercase tracking-widest text-[#7A8C85]">SKU: {item.sku}</p>
                             </div>
                             <button
@@ -78,7 +78,7 @@ export default function CartPage() {
                               Remove
                             </button>
                           </div>
-                          <div className="flex items-center gap-6 text-[10px] font-black uppercase tracking-widest text-[#1A2E26]/60">
+                          <div className="flex items-center gap-6 text-[10px] font-black uppercase tracking-widest text-[#5C0828]/60">
                             <span>{item.purity} Gold</span>
                             <span className="w-1 h-1 bg-[#B8975A]/20 rounded-full" />
                             <span>{item.net_weight}g</span>
@@ -104,7 +104,7 @@ export default function CartPage() {
                               +
                             </button>
                           </div>
-                          <p className="font-serif text-2xl text-[#1A2E26]">
+                          <p className="font-serif text-2xl text-[#5C0828]">
                             ₹{(((item.pricing_breakdown?.final_price || 0) - (item.pricing_breakdown?.tax_amount || 0)) * item.quantity).toLocaleString('en-IN')}
                             <span className="text-[8px] uppercase tracking-tighter ml-1 opacity-50">Excl. Tax</span>
                           </p>
@@ -121,27 +121,27 @@ export default function CartPage() {
               <h2 className="text-[10px] font-black uppercase tracking-[0.5em] text-[#B8975A] border-b border-[#F0EBE0] pb-6">Order Summary</h2>
 
               <div className="space-y-6">
-                <div className="flex justify-between text-[11px] uppercase tracking-widest font-bold text-[#1A2E26]/60">
+                <div className="flex justify-between text-[11px] uppercase tracking-widest font-bold text-[#5C0828]/60">
                   <span>Subtotal (Excl. Tax)</span>
                   <span>₹{cartItems.reduce((acc, item) => acc + ((item.pricing_breakdown?.final_price || 0) - (item.pricing_breakdown?.tax_amount || 0)) * item.quantity, 0).toLocaleString('en-IN')}</span>
                 </div>
-                <div className="flex justify-between text-[11px] uppercase tracking-widest font-bold text-[#1A2E26]/60">
+                <div className="flex justify-between text-[11px] uppercase tracking-widest font-bold text-[#5C0828]/60">
                   <span>Estimated Tax (GST)</span>
                   <span>₹{cartItems.reduce((acc, item) => acc + (item.pricing_breakdown?.tax_amount || 0) * item.quantity, 0).toLocaleString('en-IN')}</span>
                 </div>
-                <div className="flex justify-between text-[11px] uppercase tracking-widest font-bold text-[#1A2E26]/60">
+                <div className="flex justify-between text-[11px] uppercase tracking-widest font-bold text-[#5C0828]/60">
                   <span>Standard Concierge Shipping</span>
-                  <span className="text-[#064E3B]">Complimentary</span>
+                  <span className="text-[#5C0828]">Complimentary</span>
                 </div>
               </div>
 
               <div className="border-t border-[#F0EBE0] pt-8 flex justify-between items-baseline">
-                <span className="font-serif text-2xl text-[#1A2E26]">Estimated Total</span>
+                <span className="font-serif text-2xl text-[#5C0828]">Estimated Total</span>
                 <span className="font-serif text-4xl text-[#B8975A]">₹{cartItems.reduce((acc, item) => acc + (item.pricing_breakdown?.final_price || 0) * item.quantity, 0).toLocaleString('en-IN')}</span>
               </div>
 
               <button
-                className="w-full bg-[#1A2E26] text-white py-6 text-[10px] font-black uppercase tracking-[0.5em] hover:bg-[#B8975A] transition-all duration-700 shadow-xl rounded-full"
+                className="w-full bg-[#5C0828] text-white py-6 text-[10px] font-black uppercase tracking-[0.5em] hover:bg-[#B8975A] transition-all duration-700 shadow-xl rounded-full"
               >
                 Proceed to Checkout
               </button>

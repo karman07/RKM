@@ -287,7 +287,7 @@ function ProductsContent() {
           </p>
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-5 sm:gap-8">
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-150 fill-mode-both">
-              <h1 className="font-serif text-[2.4rem] sm:text-5xl md:text-6xl text-[#1A2E26] tracking-tight mb-3 sm:mb-4">
+              <h1 className="font-serif text-[2.4rem] sm:text-5xl md:text-6xl text-[#5C0828] tracking-tight mb-3 sm:mb-4">
                 {heading}
               </h1>
               <p className="text-sm text-[#5D6D66] max-w-2xl leading-relaxed hidden sm:block">
@@ -351,7 +351,7 @@ function ProductsContent() {
               )}
               <button
                 type="submit"
-                className="m-1 sm:m-1.5 bg-[#1A2E26] text-white px-5 sm:px-8 py-2.5 sm:py-3 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.3em] sm:tracking-[0.42em] hover:bg-[#B8975A] transition-colors duration-300 flex-shrink-0 rounded-full"
+                className="m-1 sm:m-1.5 bg-[#5C0828] text-white px-5 sm:px-8 py-2.5 sm:py-3 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.3em] sm:tracking-[0.42em] hover:bg-[#B8975A] transition-colors duration-300 flex-shrink-0 rounded-full"
               >
                 Search
               </button>
@@ -397,7 +397,7 @@ function ProductsContent() {
                 <p className="text-[8.5px] uppercase tracking-[0.3em] sm:tracking-[0.34em] text-[#8B8B8B] font-bold mb-0.5 sm:mb-1">
                   Refine Your Selection
                 </p>
-                <h2 className="font-serif text-xl sm:text-2xl text-[#1A2E26]">All Filters</h2>
+                <h2 className="font-serif text-xl sm:text-2xl text-[#5C0828]">All Filters</h2>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
@@ -523,7 +523,7 @@ function ProductsContent() {
 
         {!loading && filteredProducts.length === 0 && (
           <div className="py-16 sm:py-24 border border-[#EBE3D3] bg-[#FFFDF9] text-center rounded-2xl sm:rounded-3xl px-6">
-            <h3 className="font-serif text-3xl sm:text-4xl text-[#1A2E26] mb-3 sm:mb-4">No Matching Pieces</h3>
+            <h3 className="font-serif text-3xl sm:text-4xl text-[#5C0828] mb-3 sm:mb-4">No Matching Pieces</h3>
             <p className="text-[#6A7570] mb-6 sm:mb-8 text-sm">Try a different filter combination to explore more designs.</p>
             <Link
               href="/products"

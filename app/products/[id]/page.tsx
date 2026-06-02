@@ -128,14 +128,14 @@ export default function ProductDetailPage() {
           <span className="opacity-30 flex-shrink-0">/</span>
           <Link href="/products" className="flex-shrink-0 hover:text-[#B8975A] transition-colors">PRODUCTS</Link>
           <span className="opacity-30 flex-shrink-0">/</span>
-          <span className="text-[#1A2E26] truncate">{product.name}</span>
+          <span className="text-[#5C0828] truncate">{product.name}</span>
         </nav>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 xl:gap-20 items-start">
           {/* Left: Gallery (7 cols) */}
           <div className="lg:col-span-7 space-y-6">
             <FadeIn delay={0}>
-              <div className="relative bg-[#FAFAFA] aspect-[4/5] overflow-hidden shadow-sm shadow-[#1A2E26]/5 rounded-3xl">
+              <div className="relative bg-[#FAFAFA] aspect-[4/5] overflow-hidden shadow-sm shadow-[#5C0828]/5 rounded-3xl">
                 <img 
                   src={imageUrls[selectedImage]} 
                   alt={product.name}
@@ -169,7 +169,7 @@ export default function ProductDetailPage() {
                     <span className="text-[9px] uppercase font-black tracking-[0.4em] text-[#B8975A]">
                       {product.collection_name || 'Signature Series'}
                     </span>
-                    <h1 className="font-serif text-4xl sm:text-5xl xl:text-6xl text-[#1A2E26] leading-[1.1]">
+                    <h1 className="font-serif text-4xl sm:text-5xl xl:text-6xl text-[#5C0828] leading-[1.1]">
                       {product.name}
                     </h1>
                   </div>
@@ -182,7 +182,7 @@ export default function ProductDetailPage() {
                              ₹{product.pricing_breakdown?.subtotal?.toLocaleString('en-IN')}
                            </span>
                         )}
-                        <p className="font-serif text-4xl sm:text-5xl text-[#1A2E26] font-bold">
+                        <p className="font-serif text-4xl sm:text-5xl text-[#5C0828] font-bold">
                           ₹{product.pricing_breakdown?.final_price?.toLocaleString('en-IN')}
                         </p>
                       </div>
@@ -197,7 +197,7 @@ export default function ProductDetailPage() {
                     </div>
                     <div className="text-right">
                       <span className="text-[8px] uppercase tracking-[0.1em] font-bold text-[#B8975A] block">Authenticity</span>
-                      <span className="text-[9px] font-sans font-bold text-[#1A2E26] uppercase">SKU: {product.sku}</span>
+                      <span className="text-[9px] font-sans font-bold text-[#5C0828] uppercase">SKU: {product.sku}</span>
                     </div>
                   </div>
                 </div>
@@ -210,20 +210,20 @@ export default function ProductDetailPage() {
                     </div>
                   ) : cartQty > 0 ? (
                     <FadeIn direction="none" delay={0}>
-                      <div className="flex items-center w-full border-2 border-[#1A2E26] rounded-full overflow-hidden h-20 shadow-lg">
+                      <div className="flex items-center w-full border-2 border-[#5C0828] rounded-full overflow-hidden h-20 shadow-lg">
                         <button 
                           onClick={() => dispatch(updateQuantity({ id: product._id, quantity: Math.max(0, cartQty - 1) }))}
-                          className="flex-1 h-full bg-[#FAFAFA] hover:bg-[#F0EEE8] text-[#1A2E26] flex items-center justify-center transition-all duration-300 group"
+                          className="flex-1 h-full bg-[#FAFAFA] hover:bg-[#F0EEE8] text-[#5C0828] flex items-center justify-center transition-all duration-300 group"
                         >
                           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="group-hover:scale-125 transition-transform"><path d="M5 12h14"/></svg>
                         </button>
-                        <div className="flex-[2] h-full flex flex-col items-center justify-center bg-white border-x-2 border-[#1A2E26]/10">
+                        <div className="flex-[2] h-full flex flex-col items-center justify-center bg-white border-x-2 border-[#5C0828]/10">
                           <span className="text-[9px] uppercase font-black tracking-[0.3em] text-[#B8975A] mb-1">In Your Bag</span>
-                          <span className="font-serif text-3xl text-[#1A2E26]">{cartQty}</span>
+                          <span className="font-serif text-3xl text-[#5C0828]">{cartQty}</span>
                         </div>
                         <button 
                           onClick={() => dispatch(updateQuantity({ id: product._id, quantity: cartQty + 1 }))}
-                          className="flex-1 h-full bg-[#FAFAFA] hover:bg-[#F0EEE8] text-[#1A2E26] flex items-center justify-center transition-all duration-300 group"
+                          className="flex-1 h-full bg-[#FAFAFA] hover:bg-[#F0EEE8] text-[#5C0828] flex items-center justify-center transition-all duration-300 group"
                         >
                           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="group-hover:scale-125 transition-transform"><path d="M12 5v14M5 12h14"/></svg>
                         </button>
@@ -232,7 +232,7 @@ export default function ProductDetailPage() {
                   ) : (
                     <button
                       onClick={handleAddToCart}
-                      className="w-full bg-[#1A2E26] text-white py-10 uppercase tracking-[0.6em] text-[11px] font-black transition-all duration-700 shadow-2xl flex items-center justify-center gap-4 hover:bg-[#B8975A] transform hover:-translate-y-1 active:scale-95 group rounded-full"
+                      className="w-full bg-[#5C0828] text-white py-10 uppercase tracking-[0.6em] text-[11px] font-black transition-all duration-700 shadow-2xl flex items-center justify-center gap-4 hover:bg-[#B8975A] transform hover:-translate-y-1 active:scale-95 group rounded-full"
                     >
                       <span className="group-hover:rotate-12 transition-transform duration-500">
                         <BagIcon />
@@ -245,8 +245,8 @@ export default function ProductDetailPage() {
                 {/* Artisan Narrative */}
                 {description && (
                   <div className="space-y-4 pt-4 border-t border-[#F0EDEA]">
-                    <h5 className="text-[10px] uppercase tracking-[0.3em] font-black text-[#1A2E26]">Artisan Narrative</h5>
-                    <p className="text-[#1A2E26]/70 leading-relaxed font-light text-xl italic tracking-wide">
+                    <h5 className="text-[10px] uppercase tracking-[0.3em] font-black text-[#5C0828]">Artisan Narrative</h5>
+                    <p className="text-[#5C0828]/70 leading-relaxed font-light text-xl italic tracking-wide">
                       "{description}"
                     </p>
                   </div>
@@ -254,48 +254,48 @@ export default function ProductDetailPage() {
 
                 {/* Specifications Grid */}
                 <div className="space-y-8 pt-4 border-t border-[#F0EDEA]">
-                  <h5 className="text-[10px] uppercase tracking-[0.3em] font-black text-[#1A2E26]">Technical Essence</h5>
+                  <h5 className="text-[10px] uppercase tracking-[0.3em] font-black text-[#5C0828]">Technical Essence</h5>
                   <div className="grid grid-cols-2 gap-y-6 text-[11px]">
                     <div className="space-y-1">
                       <span className="text-[#7A8C85] uppercase tracking-wider text-[9px]">Composition</span>
-                      <p className="text-[#1A2E26] font-medium capitalize">{product.purity}K {product.metal_color} {product.metal_type}</p>
+                      <p className="text-[#5C0828] font-medium capitalize">{product.purity}K {product.metal_color} {product.metal_type}</p>
                     </div>
                     <div className="space-y-1">
                       <span className="text-[#7A8C85] uppercase tracking-wider text-[9px]">Net Weight</span>
-                      <p className="text-[#1A2E26] font-medium">{product.net_weight}g</p>
+                      <p className="text-[#5C0828] font-medium">{product.net_weight}g</p>
                     </div>
                     {product.stone_weight !== undefined && product.stone_weight > 0 && (
                       <div className="space-y-1">
                         <span className="text-[#7A8C85] uppercase tracking-wider text-[9px]">Stone Weight</span>
-                        <p className="text-[#1A2E26] font-medium">{product.stone_weight}g</p>
+                        <p className="text-[#5C0828] font-medium">{product.stone_weight}g</p>
                       </div>
                     )}
                     <div className="space-y-1">
                       <span className="text-[#7A8C85] uppercase tracking-wider text-[9px]">Gross Weight</span>
-                      <p className="text-[#1A2E26] font-medium">{product.gross_weight}g</p>
+                      <p className="text-[#5C0828] font-medium">{product.gross_weight}g</p>
                     </div>
                     {product.hallmark_number && (
                       <div className="space-y-1">
                         <span className="text-[#7A8C85] uppercase tracking-wider text-[9px]">Hallmark</span>
-                        <p className="text-[#1A2E26] font-medium">{product.hallmark_number}</p>
+                        <p className="text-[#5C0828] font-medium">{product.hallmark_number}</p>
                       </div>
                     )}
                     {product.stone_type && (
                       <div className="space-y-1">
                         <span className="text-[#7A8C85] uppercase tracking-wider text-[9px]">Gemstone Type</span>
-                        <p className="text-[#1A2E26] font-medium capitalize">{product.stone_type}</p>
+                        <p className="text-[#5C0828] font-medium capitalize">{product.stone_type}</p>
                       </div>
                     )}
                     {product.dimensions && (
                       <div className="space-y-1">
                         <span className="text-[#7A8C85] uppercase tracking-wider text-[9px]">Dimensions</span>
-                        <p className="text-[#1A2E26] font-medium">{product.dimensions}</p>
+                        <p className="text-[#5C0828] font-medium">{product.dimensions}</p>
                       </div>
                     )}
                     {product.ring_size && (
                       <div className="space-y-1">
                         <span className="text-[#7A8C85] uppercase tracking-wider text-[9px]">Ring Size</span>
-                        <p className="text-[#1A2E26] font-medium">Size {product.ring_size}</p>
+                        <p className="text-[#5C0828] font-medium">Size {product.ring_size}</p>
                       </div>
                     )}
                   </div>

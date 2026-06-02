@@ -32,7 +32,7 @@ export default function FeatureSplit() {
             <div>
               <button 
                 style={{ borderColor: THEME.colors.primary, color: THEME.colors.primary }}
-                className="px-10 py-5 border uppercase tracking-[0.2em] text-xs font-semibold hover:bg-[#064E3B] hover:text-white transition-all duration-500"
+                className="px-10 py-5 border uppercase tracking-[0.2em] text-xs font-semibold hover:bg-[#5C0828] hover:text-white transition-all duration-500"
               >
                 Discover Our Ethics
               </button>

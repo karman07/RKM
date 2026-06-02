@@ -87,13 +87,13 @@ function OrderTimeline({ status }: { status: OrderStatus }) {
               <div className={`w-7 h-7 rounded-full flex items-center justify-center border-2 transition-all ${
                 done
                   ? active
-                    ? 'bg-[#1A6B3A] border-[#1A6B3A] text-white shadow-lg shadow-emerald-900/20'
+                    ? 'bg-[#7A1238] border-[#7A1238] text-white shadow-lg shadow-emerald-900/20'
                     : 'bg-emerald-100 border-emerald-300 text-emerald-700'
                   : 'bg-white border-slate-200 text-slate-300'
               }`}>
                 {done ? <CheckCircle2 size={14} /> : <div className="w-2 h-2 rounded-full bg-current" />}
               </div>
-              <span className={`text-[8px] font-black uppercase tracking-wide mt-1 whitespace-nowrap ${done ? (active ? 'text-[#1A6B3A]' : 'text-emerald-600') : 'text-slate-300'}`}>
+              <span className={`text-[8px] font-black uppercase tracking-wide mt-1 whitespace-nowrap ${done ? (active ? 'text-[#7A1238]' : 'text-emerald-600') : 'text-slate-300'}`}>
                 {meta.label}
               </span>
             </div>
@@ -190,7 +190,7 @@ export default function OrdersPage() {
           </div>
           <button
             onClick={() => authState.token && fetchHistory(authState.token)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white border border-slate-100 text-slate-400 hover:text-[#1A6B3A] hover:border-emerald-200 transition-all text-[10px] font-black uppercase tracking-widest shadow-sm"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white border border-slate-100 text-slate-400 hover:text-[#7A1238] hover:border-emerald-200 transition-all text-[10px] font-black uppercase tracking-widest shadow-sm"
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             Refresh
@@ -209,7 +209,7 @@ export default function OrdersPage() {
               onClick={() => setTab(t.key)}
               className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-[0.15em] transition-all ${
                 tab === t.key
-                  ? 'bg-[#1A6B3A] text-white shadow-lg shadow-emerald-900/20'
+                  ? 'bg-[#7A1238] text-white shadow-lg shadow-emerald-900/20'
                   : 'bg-white text-slate-400 border border-slate-100 hover:border-emerald-200 hover:text-slate-700'
               }`}
             >
@@ -224,7 +224,7 @@ export default function OrdersPage() {
         {/* Content */}
         {loading ? (
           <div className="flex items-center justify-center py-32">
-            <Loader2 size={36} className="animate-spin text-[#1A6B3A]" />
+            <Loader2 size={36} className="animate-spin text-[#7A1238]" />
           </div>
         ) : totalCount === 0 ? (
           <div className="text-center py-32">
@@ -235,7 +235,7 @@ export default function OrdersPage() {
             <p className="text-[11px] font-bold text-slate-300 uppercase tracking-widest mb-8">
               Your purchase history will appear here
             </p>
-            <Link href="/products" className="inline-flex items-center gap-2 px-6 py-3 bg-[#1A6B3A] text-white text-[10px] font-black uppercase tracking-widest rounded-2xl hover:-translate-y-0.5 transition-all shadow-lg shadow-emerald-900/20">
+            <Link href="/products" className="inline-flex items-center gap-2 px-6 py-3 bg-[#7A1238] text-white text-[10px] font-black uppercase tracking-widest rounded-2xl hover:-translate-y-0.5 transition-all shadow-lg shadow-emerald-900/20">
               <ShoppingBag size={14} /> Start Shopping
             </Link>
           </div>
@@ -247,7 +247,7 @@ export default function OrdersPage() {
               <>
                 {tab === 'all' && (
                   <div className="flex items-center gap-3 mt-2 mb-3">
-                    <Package size={16} className="text-[#1A6B3A]" />
+                    <Package size={16} className="text-[#7A1238]" />
                     <span className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-500">Online Orders</span>
                     <div className="flex-1 h-px bg-slate-100" />
                   </div>
@@ -261,9 +261,9 @@ export default function OrdersPage() {
                     <div key={order._id} className={`bg-white rounded-[2rem] border overflow-hidden transition-all shadow-sm hover:shadow-md ${isActive ? 'border-emerald-100' : 'border-slate-100'}`}>
                       {/* Active Order Banner */}
                       {isActive && (
-                        <div className="bg-gradient-to-r from-[#1A6B3A]/5 to-emerald-50 border-b border-emerald-100 px-6 pt-4 pb-2">
+                        <div className="bg-gradient-to-r from-[#7A1238]/5 to-emerald-50 border-b border-emerald-100 px-6 pt-4 pb-2">
                           <div className="flex items-center justify-between mb-1">
-                            <span className="text-[9px] font-black uppercase tracking-[0.25em] text-[#1A6B3A]">Active Order</span>
+                            <span className="text-[9px] font-black uppercase tracking-[0.25em] text-[#7A1238]">Active Order</span>
                             {order.estimated_delivery && (
                               <span className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-full">
                                 <Calendar size={10} />
@@ -273,7 +273,7 @@ export default function OrdersPage() {
                           </div>
                           <OrderTimeline status={order.status} />
                           {order.admin_delivery_note && (
-                            <p className="text-[10px] font-bold text-[#1A6B3A] mb-3 flex items-center gap-1.5">
+                            <p className="text-[10px] font-bold text-[#7A1238] mb-3 flex items-center gap-1.5">
                               <Truck size={11} /> {order.admin_delivery_note}
                             </p>
                           )}
@@ -406,7 +406,7 @@ export default function OrdersPage() {
               <>
                 {tab === 'all' && (
                   <div className="flex items-center gap-3 mt-8 mb-3">
-                    <Store size={16} className="text-[#1A6B3A]" />
+                    <Store size={16} className="text-[#7A1238]" />
                     <span className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-500">In-Store Purchases</span>
                     <div className="flex-1 h-px bg-slate-100" />
                   </div>
@@ -507,7 +507,7 @@ export default function OrdersPage() {
               <>
                 {tab === 'all' && (
                   <div className="flex items-center gap-3 mt-8 mb-3">
-                    <Gem size={16} className="text-[#1A6B3A]" />
+                    <Gem size={16} className="text-[#7A1238]" />
                     <span className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-500">Gold Investment Plans</span>
                     <div className="flex-1 h-px bg-slate-100" />
                   </div>
@@ -563,7 +563,7 @@ export default function OrdersPage() {
                           <span className="text-base font-black text-[#065F46]">{formatINR(earnedInterest)}</span>
                         </div>
                         <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-gradient-to-r from-emerald-400 to-[#1A6B3A] rounded-full transition-all duration-700" style={{ width: `${returnProgress}%` }} />
+                          <div className="h-full bg-gradient-to-r from-emerald-400 to-[#7A1238] rounded-full transition-all duration-700" style={{ width: `${returnProgress}%` }} />
                         </div>
                         <div className="mt-1.5 text-[9px] font-bold text-slate-400">
                           {formatINR(earnedInterest)} of {formatINR(projectedInterest)} total return achieved

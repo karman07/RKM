@@ -39,7 +39,7 @@ export default function CategorySection({ category, products, index }: CategoryS
                 Maison Brilliance
               </span>
             </div>
-            <h3 className="font-serif text-5xl md:text-7xl text-[#1A2E26] leading-none">
+            <h3 className="font-serif text-5xl md:text-7xl text-[#5C0828] leading-none">
               {category.name}
             </h3>
             <p className="text-[10px] uppercase tracking-[0.3em] text-[#7A8C85] font-medium opacity-60">
@@ -49,7 +49,7 @@ export default function CategorySection({ category, products, index }: CategoryS
 
           <Link
             href={`/products?category=${category.slug}`}
-            className="group flex items-center gap-4 text-[10px] uppercase tracking-[0.4em] font-bold text-[#1A2E26] hover:text-[#B8975A] transition-all duration-500 pb-2 border-b border-[#1A2E26]/10 hover:border-[#B8975A]"
+            className="group flex items-center gap-4 text-[10px] uppercase tracking-[0.4em] font-bold text-[#5C0828] hover:text-[#B8975A] transition-all duration-500 pb-2 border-b border-[#5C0828]/10 hover:border-[#B8975A]"
           >
             Explore All
             <div className="overflow-hidden w-6 h-3 relative">
@@ -76,7 +76,7 @@ export default function CategorySection({ category, products, index }: CategoryS
           [1, 2, 3].map((i) => (
             <div key={i} className="group cursor-pointer opacity-20">
               <div className="relative aspect-[3/4] mb-8 overflow-hidden bg-[#F0F2F5] rounded-2xl">
-                <div className="absolute inset-0 flex items-center justify-center text-[8px] uppercase tracking-[0.5em] font-bold text-[#1A2E26]">Coming Soon</div>
+                <div className="absolute inset-0 flex items-center justify-center text-[8px] uppercase tracking-[0.5em] font-bold text-[#5C0828]">Coming Soon</div>
               </div>
             </div>
           ))

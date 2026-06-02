@@ -7,7 +7,7 @@
 
 body {
   font-family: var(--font-sans), sans-serif;
-  color: #1A2E26;
+  color: #5C0828;
   background-color: #F7F5F0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -54,7 +54,7 @@ h1, h2, h3, h4, h5, h6, .font-serif {
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #1A2E26;
+  background: #5C0828;
 }
 
 /* Firefox */

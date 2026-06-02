@@ -52,7 +52,7 @@ export default function RootLayout({
       className={`${cormorant.variable} ${jost.variable} h-full antialiased scroll-smooth`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col font-sans selection:bg-[#064E3B]/20" suppressHydrationWarning>
+      <body className="min-h-full flex flex-col font-sans selection:bg-[#5C0828]/20" suppressHydrationWarning>
         <AnalyticsTracker />
         <script
           type="application/ld+json"

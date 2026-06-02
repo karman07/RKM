@@ -203,7 +203,7 @@ export default function ProfilePage() {
         {goldSubs.length > 0 && (
           <div className="mb-12">
             <div className="flex items-center gap-3 mb-6">
-              <Gem size={20} className="text-[#1A6B3A]" />
+              <Gem size={20} className="text-[#7A1238]" />
               <h2 className="text-xl font-serif font-bold text-slate-900">Your Active Investment Plans</h2>
               <span className="text-[9px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full">
                 {goldSubs.length} Plan{goldSubs.length > 1 ? 's' : ''}
@@ -255,7 +255,7 @@ export default function ProfilePage() {
                         <div>
                           <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-400">Total Return Progress</p>
                           {sub.nextDueDate && (
-                            <p className="text-[9px] font-bold text-[#1A6B3A] uppercase tracking-wider mt-0.5">
+                            <p className="text-[9px] font-bold text-[#7A1238] uppercase tracking-wider mt-0.5">
                               Next Due: {new Date(sub.nextDueDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                             </p>
                           )}
@@ -266,7 +266,7 @@ export default function ProfilePage() {
                         </div>
                       </div>
                       <div className="h-4 bg-slate-100 rounded-full overflow-hidden mt-3">
-                        <div className="h-full bg-gradient-to-r from-emerald-400 to-[#1A6B3A] rounded-full transition-all duration-700 relative" style={{ width: `${returnProgress}%` }}>
+                        <div className="h-full bg-gradient-to-r from-emerald-400 to-[#7A1238] rounded-full transition-all duration-700 relative" style={{ width: `${returnProgress}%` }}>
                           <div className="absolute inset-0 bg-white/20 rounded-full" />
                         </div>
                       </div>
@@ -303,7 +303,7 @@ export default function ProfilePage() {
                 </div>
                 <button 
                   onClick={() => fileInputRef.current?.click()}
-                  className="absolute bottom-1 right-1 w-10 h-10 bg-[#1A6B3A] text-white rounded-full flex items-center justify-center shadow-lg hover:scale-110 active:scale-95 transition-all cursor-pointer border-2 border-white"
+                  className="absolute bottom-1 right-1 w-10 h-10 bg-[#7A1238] text-white rounded-full flex items-center justify-center shadow-lg hover:scale-110 active:scale-95 transition-all cursor-pointer border-2 border-white"
                 >
                   <Camera size={18} />
                 </button>
@@ -326,17 +326,17 @@ export default function ProfilePage() {
                 </div>
                 <div className="flex items-center justify-between text-xs py-3 border-t border-slate-50/50 group cursor-pointer" onClick={() => router.push('/gold-investment')}>
                   <div className="flex items-center gap-3 text-slate-500">
-                    <Gem size={16} className="text-slate-300 group-hover:text-[#1A6B3A] transition-colors" />
+                    <Gem size={16} className="text-slate-300 group-hover:text-[#7A1238] transition-colors" />
                     <span className="font-bold uppercase tracking-wider group-hover:text-slate-900 transition-colors">Gold Investments</span>
                   </div>
                   <span className="bg-slate-50 text-slate-400 px-2.5 py-1 rounded-lg">{goldSubs.length}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs py-3 border-t border-slate-50/50 group cursor-pointer" onClick={() => router.push('/orders')}>
                   <div className="flex items-center gap-3 text-slate-500">
-                    <ShoppingBag size={16} className="text-slate-300 group-hover:text-[#1A6B3A] transition-colors" />
+                    <ShoppingBag size={16} className="text-slate-300 group-hover:text-[#7A1238] transition-colors" />
                     <span className="font-bold uppercase tracking-wider group-hover:text-slate-900 transition-colors">Orders</span>
                   </div>
-                  <span className="bg-slate-50 text-slate-400 px-2.5 py-1 rounded-lg group-hover:bg-emerald-50 group-hover:text-[#1A6B3A] transition-colors">
+                  <span className="bg-slate-50 text-slate-400 px-2.5 py-1 rounded-lg group-hover:bg-emerald-50 group-hover:text-[#7A1238] transition-colors">
                     {purchaseHistory ? (purchaseHistory.store_purchases.length + purchaseHistory.online_orders.length) : 0}
                   </span>
                 </div>
@@ -360,7 +360,7 @@ export default function ProfilePage() {
               {/* Toast Notification */}
               {(success || error) && (
                 <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[1000] animate-in fade-in slide-in-from-bottom-5 duration-500">
-                  <div className={`px-8 py-4 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] flex items-center gap-4 border ${success ? 'bg-[#1A6B3A] border-emerald-400/20 text-white' : 'bg-red-600 border-red-400/20 text-white'}`}>
+                  <div className={`px-8 py-4 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] flex items-center gap-4 border ${success ? 'bg-[#7A1238] border-emerald-400/20 text-white' : 'bg-red-600 border-red-400/20 text-white'}`}>
                     {success ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
                     <span className="text-[11px] font-black uppercase tracking-[0.2em]">{success || error}</span>
                     <button onClick={() => {setSuccess(''); setError('');}} className="ml-4 opacity-50 hover:opacity-100 transition-opacity">
@@ -375,7 +375,7 @@ export default function ProfilePage() {
                 {/* Basic Details Section */}
                 <div className="space-y-6">
                   <div className="flex items-center gap-3">
-                    <User size={18} className="text-[#1A6B3A]" />
+                    <User size={18} className="text-[#7A1238]" />
                     <h4 className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-900">Information Profile</h4>
                   </div>
                   
@@ -386,7 +386,7 @@ export default function ProfilePage() {
                         type="text" 
                         value={form.name} 
                         onChange={e => setForm({...form, name: e.target.value})}
-                        className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:ring-4 focus:ring-emerald-500/5 focus:border-[#1A6B3A] transition-all text-sm font-bold text-slate-700"
+                        className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:ring-4 focus:ring-emerald-500/5 focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700"
                         placeholder="Karman Singh"
                       />
                     </div>
@@ -398,7 +398,7 @@ export default function ProfilePage() {
                           type="email" 
                           value={form.email} 
                           onChange={e => setForm({...form, email: e.target.value})}
-                          className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:ring-4 focus:ring-emerald-500/5 focus:border-[#1A6B3A] transition-all text-sm font-bold text-slate-700 pr-12"
+                          className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:ring-4 focus:ring-emerald-500/5 focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700 pr-12"
                           placeholder="karman@example.com"
                         />
                         <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
@@ -408,7 +408,7 @@ export default function ProfilePage() {
                               <button 
                                 type="button"
                                 onClick={handleVerifyEmail}
-                                className="text-[8px] font-black uppercase tracking-widest text-[#1A6B3A] bg-emerald-50 px-2 py-1 rounded hover:bg-[#1A6B3A] hover:text-white transition-all shadow-sm"
+                                className="text-[8px] font-black uppercase tracking-widest text-[#7A1238] bg-emerald-50 px-2 py-1 rounded hover:bg-[#7A1238] hover:text-white transition-all shadow-sm"
                               >
                                 Verify Now
                               </button>
@@ -422,7 +422,7 @@ export default function ProfilePage() {
                       <select 
                         value={form.gender} 
                         onChange={e => setForm({...form, gender: e.target.value})}
-                        className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:ring-4 focus:ring-emerald-500/5 focus:border-[#1A6B3A] transition-all text-sm font-bold text-slate-700 appearance-none"
+                        className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:ring-4 focus:ring-emerald-500/5 focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700 appearance-none"
                       >
                         <option value="">Select Gender</option>
                         <option value="male">Male</option>
@@ -444,7 +444,7 @@ export default function ProfilePage() {
                 {/* Address Section */}
                 <div className="space-y-6 pt-10 border-t border-slate-50">
                   <div className="flex items-center gap-3">
-                    <MapPin size={18} className="text-[#1A6B3A]" />
+                    <MapPin size={18} className="text-[#7A1238]" />
                     <h4 className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-900">Delivery Architecture</h4>
                   </div>
 
@@ -455,7 +455,7 @@ export default function ProfilePage() {
                         type="text" 
                         value={form.address} 
                         onChange={e => setForm({...form, address: e.target.value})}
-                        className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:ring-4 focus:ring-emerald-500/5 focus:border-[#1A6B3A] transition-all text-sm font-bold text-slate-700"
+                        className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:ring-4 focus:ring-emerald-500/5 focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700"
                         placeholder="Enter full street address"
                       />
                     </div>
@@ -467,7 +467,7 @@ export default function ProfilePage() {
                           type="text" 
                           value={form.city} 
                           onChange={e => setForm({...form, city: e.target.value})}
-                          className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-[#1A6B3A] transition-all text-sm font-bold text-slate-700"
+                          className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700"
                           placeholder="e.g. Haryana"
                         />
                       </div>
@@ -477,7 +477,7 @@ export default function ProfilePage() {
                           type="text" 
                           value={form.state} 
                           onChange={e => setForm({...form, state: e.target.value})}
-                          className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-[#1A6B3A] transition-all text-sm font-bold text-slate-700"
+                          className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700"
                           placeholder="e.g. Gurgaon"
                         />
                       </div>
@@ -487,7 +487,7 @@ export default function ProfilePage() {
                           type="text" 
                           value={form.country} 
                           onChange={e => setForm({...form, country: e.target.value})}
-                          className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-[#1A6B3A] transition-all text-sm font-bold text-slate-700"
+                          className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700"
                           placeholder="India"
                         />
                       </div>
@@ -505,7 +505,7 @@ export default function ProfilePage() {
                   </button>
                   <button 
                     disabled={saveLoading}
-                    className="px-8 py-4 bg-[#1A6B3A] text-white text-[10px] font-black uppercase tracking-[0.3em] rounded-2xl shadow-xl shadow-emerald-900/20 hover:bg-[#14532d] hover:-translate-y-1 active:scale-95 transition-all disabled:opacity-50"
+                    className="px-8 py-4 bg-[#7A1238] text-white text-[10px] font-black uppercase tracking-[0.3em] rounded-2xl shadow-xl shadow-emerald-900/20 hover:bg-[#14532d] hover:-translate-y-1 active:scale-95 transition-all disabled:opacity-50"
                   >
                     {saveLoading ? 'Perfecting...' : 'Save Refined Settings'}
                   </button>
@@ -521,14 +521,14 @@ export default function ProfilePage() {
             <div className="border-b border-slate-50 px-10 py-8 flex items-center justify-between">
               <div>
                 <h3 className="text-xl font-serif font-bold text-slate-900 flex items-center gap-3">
-                  <ShoppingBag size={22} className="text-[#1A6B3A]" />
+                  <ShoppingBag size={22} className="text-[#7A1238]" />
                   Purchase History
                 </h3>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">All your store & online purchases linked to {authState.customer?.phone}</p>
               </div>
               <div className="flex items-center gap-3">
                 {/* View All link */}
-                <Link href="/orders" className="text-[9px] font-black uppercase tracking-[0.2em] text-[#1A6B3A] hover:underline flex items-center gap-1">
+                <Link href="/orders" className="text-[9px] font-black uppercase tracking-[0.2em] text-[#7A1238] hover:underline flex items-center gap-1">
                   View All <span>→</span>
                 </Link>
                 {/* Tab Filter */}
@@ -537,7 +537,7 @@ export default function ProfilePage() {
                     <button
                       key={tab}
                       onClick={() => setHistoryTab(tab)}
-                      className={`px-4 py-2 rounded-2xl text-[9px] font-black uppercase tracking-[0.2em] transition-all ${historyTab === tab ? 'bg-[#1A6B3A] text-white shadow-lg shadow-emerald-900/20' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}
+                      className={`px-4 py-2 rounded-2xl text-[9px] font-black uppercase tracking-[0.2em] transition-all ${historyTab === tab ? 'bg-[#7A1238] text-white shadow-lg shadow-emerald-900/20' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}
                     >
                       {tab === 'all' ? 'All' : tab === 'store' ? 'In-Store' : 'Online'}
                     </button>
@@ -549,7 +549,7 @@ export default function ProfilePage() {
             <div className="p-10">
               {historyLoading ? (
                 <div className="flex items-center justify-center py-16">
-                  <Loader2 size={32} className="animate-spin text-[#1A6B3A]" />
+                  <Loader2 size={32} className="animate-spin text-[#7A1238]" />
                 </div>
               ) : !purchaseHistory || (purchaseHistory.store_purchases.length === 0 && purchaseHistory.online_orders.length === 0) ? (
                 <div className="text-center py-16">

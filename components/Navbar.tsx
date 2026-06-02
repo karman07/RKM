@@ -556,7 +556,7 @@ export default function Navbar() {
                     style={{ color: textCol }}
                     className="p-2.5 rounded-full hover:bg-black/[0.05] transition-colors duration-300 relative"
                   >
-                    <div className="w-6 h-6 rounded-full bg-[#1A6B3A] text-white flex items-center justify-center text-[9px] font-black overflow-hidden ring-2 ring-white shadow-sm transition-transform group-hover:scale-110">
+                    <div className="w-6 h-6 rounded-full bg-[#7A1238] text-white flex items-center justify-center text-[9px] font-black overflow-hidden ring-2 ring-white shadow-sm transition-transform group-hover:scale-110">
                       {authState.customer?.profileImage ? (
                         <img
                           src={`${process.env.NEXT_PUBLIC_API_URL}${authState.customer.profileImage}`}
@@ -578,21 +578,21 @@ export default function Navbar() {
 
                     <Link
                       href="/profile"
-                      className="flex items-center gap-3 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 hover:text-[#1A6B3A] hover:bg-emerald-50 transition-all"
+                      className="flex items-center gap-3 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 hover:text-[#7A1238] hover:bg-emerald-50 transition-all"
                     >
                       <UserIcon size={14} className="opacity-50" /> My Profile
                     </Link>
 
                     <Link
                       href="/wishlist"
-                      className="flex items-center gap-3 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 hover:text-[#1A6B3A] hover:bg-emerald-50 transition-all"
+                      className="flex items-center gap-3 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 hover:text-[#7A1238] hover:bg-emerald-50 transition-all"
                     >
                       <Heart size={14} className="opacity-50" /> Saved Items
                     </Link>
 
                     <Link
                       href="/orders"
-                      className="flex items-center gap-3 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 hover:text-[#1A6B3A] hover:bg-emerald-50 transition-all"
+                      className="flex items-center gap-3 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 hover:text-[#7A1238] hover:bg-emerald-50 transition-all"
                     >
                       <ShoppingBag size={14} className="opacity-50" /> My Orders
                     </Link>

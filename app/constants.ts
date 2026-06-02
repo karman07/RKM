@@ -4,17 +4,17 @@ export const STATIC_BASE_URL = process.env.NEXT_PUBLIC_STATIC_URL || "http://loc
 
 export const THEME = {
   colors: {
-    primary: "#064E3B",      // Deep Emerald Green (Base Color)
-    primaryLight: "#059669", // Lighter Emerald
-    primaryDark: "#022C22",  // Very Dark Emerald
+    primary: "#5C0828",      // Deep Maroon (Base Color)
+    primaryLight: "#7A1238", // Lighter Maroon
+    primaryDark: "#3A0418",  // Very Dark Maroon
     secondary: "#D4AF37",    // Soft Gold for accents
     background: "#F8F9FA",   // Very light gray base
     surface: "#FFFFFF",      // Clean white surface
-    surfaceAlt: "#F0FDF4",   // Very subtle green surface
+    surfaceAlt: "#FDF4F6",   // Very subtle maroon surface
     text: "#111827",         // Very dark gray for text
     textLight: "#FFFFFF",    // White text (on dark backgrounds)
     textMuted: "#6B7280",    // Muted/gray text
     border: "#E5E7EB",       // Light gray border
-    borderGreen: "#34D399",  // Muted green border
+    borderMaroon: "#C07090", // Muted maroon border
   }
 };

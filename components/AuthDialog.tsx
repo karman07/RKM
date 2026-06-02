@@ -381,7 +381,7 @@ export default function AuthDialog() {
                     >
                       <span className="text-xs font-black text-slate-400 bg-slate-50 px-2 py-1 rounded-md">{getFlagEmoji(selectedDialCode.code)}</span>
                       <span className="text-sm font-black text-slate-800 tracking-tight">{selectedDialCode.dial_code}</span>
-                      <ChevronDown size={14} className={`text-slate-400 transition-transform duration-500 ${isDialCodeOpen ? 'rotate-180 text-[#1A6B3A]' : ''}`} />
+                      <ChevronDown size={14} className={`text-slate-400 transition-transform duration-500 ${isDialCodeOpen ? 'rotate-180 text-[#7A1238]' : ''}`} />
                     </button>
 
                     {isDialCodeOpen && (
@@ -394,7 +394,7 @@ export default function AuthDialog() {
                               value={dialCodeSearch}
                               onChange={(e) => setDialCodeSearch(e.target.value)}
                               placeholder="Search your country..."
-                              className="w-full pl-10 pr-4 py-3 bg-slate-50 border-none rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-[#1A6B3A]/10 transition-all"
+                              className="w-full pl-10 pr-4 py-3 bg-slate-50 border-none rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-[#7A1238]/10 transition-all"
                               onClick={(e) => e.stopPropagation()}
                               autoFocus
                             />
@@ -416,11 +416,11 @@ export default function AuthDialog() {
                                 <div className="flex items-center gap-4">
                                   <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-2 py-1 rounded-md">{getFlagEmoji(c.code)}</span>
                                   <div className="flex flex-col gap-0.5">
-                                    <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider group-hover:text-[#1A6B3A]">{c.name}</span>
+                                    <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider group-hover:text-[#7A1238]">{c.name}</span>
                                     <span className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.1em]">{c.code}</span>
                                   </div>
                                 </div>
-                                <span className="text-xs font-black text-[#1A6B3A] bg-emerald-50 px-2.5 py-1 rounded-lg">{c.dial_code}</span>
+                                <span className="text-xs font-black text-[#7A1238] bg-emerald-50 px-2.5 py-1 rounded-lg">{c.dial_code}</span>
                               </button>
                             ))
                           ) : (
@@ -440,13 +440,13 @@ export default function AuthDialog() {
                       value={phoneNumber}
                       onChange={e => setPhoneNumber(e.target.value)}
                       placeholder="e.g. 9876543210"
-                      className="w-full h-[60px] px-6 bg-slate-50/50 border border-slate-200 rounded-2xl outline-none focus:border-[#1A6B3A] focus:ring-4 focus:ring-[#1A6B3A]/5 transition-all text-base font-black tracking-widest placeholder:text-slate-300 placeholder:font-medium placeholder:tracking-normal"
+                      className="w-full h-[60px] px-6 bg-slate-50/50 border border-slate-200 rounded-2xl outline-none focus:border-[#7A1238] focus:ring-4 focus:ring-[#7A1238]/5 transition-all text-base font-black tracking-widest placeholder:text-slate-300 placeholder:font-medium placeholder:tracking-normal"
                       required
                     />
                   </div>
                 </div>
               </div>
-                <button disabled={loading} className="w-full py-4 bg-[#1A6B3A] text-white text-[11px] font-bold uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-emerald-900/20 hover:bg-[#14532d] hover:-translate-y-0.5 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50">
+                <button disabled={loading} className="w-full py-4 bg-[#7A1238] text-white text-[11px] font-bold uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-emerald-900/20 hover:bg-[#14532d] hover:-translate-y-0.5 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50">
                 {loading ? 'Sending OTP...' : 'Send OTP'} <ChevronRight size={14} />
               </button>
             </form>
@@ -455,7 +455,7 @@ export default function AuthDialog() {
           {step === 'otp' && (
             <form onSubmit={handleVerifyOtp} className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="space-y-2 text-center mb-4">
-                <p className="text-sm font-bold text-slate-700">We sent a code to <span className="text-[#1A6B3A]">{phoneNumber}</span></p>
+                <p className="text-sm font-bold text-slate-700">We sent a code to <span className="text-[#7A1238]">{phoneNumber}</span></p>
                 <div onClick={() => setStep('phone')} className="text-[11px] font-bold uppercase tracking-widest text-blue-600 cursor-pointer hover:underline">Change Number</div>
               </div>
               <div className="space-y-2">
@@ -465,11 +465,11 @@ export default function AuthDialog() {
                   value={otp}
                   onChange={e => setOtp(e.target.value)}
                   placeholder="• • • • • •"
-                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-[#1A6B3A] focus:ring-1 focus:ring-[#1A6B3A] transition-all text-center text-2xl tracking-[0.5em] font-black"
+                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-[#7A1238] focus:ring-1 focus:ring-[#7A1238] transition-all text-center text-2xl tracking-[0.5em] font-black"
                   required
                 />
               </div>
-              <button disabled={loading} className="w-full py-4 bg-[#1A6B3A] text-white text-[11px] font-bold uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-emerald-900/20 hover:bg-[#14532d] hover:-translate-y-0.5 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50">
+              <button disabled={loading} className="w-full py-4 bg-[#7A1238] text-white text-[11px] font-bold uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-emerald-900/20 hover:bg-[#14532d] hover:-translate-y-0.5 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50">
                 {loading ? 'Verifying...' : 'Verify Identity'} <CheckCircle2 size={14} />
               </button>
             </form>
@@ -485,17 +485,17 @@ export default function AuthDialog() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5 col-span-2">
                   <label className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-400">Full Name</label>
-                  <input required value={name} onChange={e => setName(e.target.value)} className="w-full px-4 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-[#1A6B3A] focus:ring-1 focus:ring-[#1A6B3A]" placeholder="e.g. Karman Singh" />
+                  <input required value={name} onChange={e => setName(e.target.value)} className="w-full px-4 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-[#7A1238] focus:ring-1 focus:ring-[#7A1238]" placeholder="e.g. Karman Singh" />
                 </div>
 
                 <div className="space-y-1.5 col-span-2 sm:col-span-1">
                   <label className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-400">Email</label>
-                  <input type="email" required value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-[#1A6B3A] focus:ring-1 focus:ring-[#1A6B3A]" placeholder="hello@example.com" />
+                  <input type="email" required value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-[#7A1238] focus:ring-1 focus:ring-[#7A1238]" placeholder="hello@example.com" />
                 </div>
                 
                 <div className="space-y-1.5 col-span-2 sm:col-span-1">
                   <label className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-400">Gender</label>
-                  <select required value={gender} onChange={e => setGender(e.target.value)} className="w-full px-4 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-[#1A6B3A] appearance-none">
+                  <select required value={gender} onChange={e => setGender(e.target.value)} className="w-full px-4 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-[#7A1238] appearance-none">
                     <option value="">Select Gender</option>
                     <option value="male">Male</option>
                     <option value="female">Female</option>
@@ -505,13 +505,13 @@ export default function AuthDialog() {
               </div>
 
               <div className="space-y-4 pt-2 border-t border-slate-100">
-                <div className="flex items-center gap-2 text-[#1A6B3A]">
+                <div className="flex items-center gap-2 text-[#7A1238]">
                   <MapPin size={14} /> <span className="text-[10px] font-bold uppercase tracking-[0.2em]">Delivery Information</span>
                 </div>
                 
                 <div className="space-y-1.5">
                   <label className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-400">Address Line</label>
-                  <input required value={address} onChange={e => setAddress(e.target.value)} className="w-full px-4 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-[#1A6B3A]" placeholder="House No, Street, Landmark" />
+                  <input required value={address} onChange={e => setAddress(e.target.value)} className="w-full px-4 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-[#7A1238]" placeholder="House No, Street, Landmark" />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -520,7 +520,7 @@ export default function AuthDialog() {
                     <label className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-400">Country</label>
                     <div 
                       onClick={() => setActiveDropdown(activeDropdown === 'country' ? null : 'country')}
-                      className={`w-full px-4 py-3 text-sm bg-slate-50 border ${activeDropdown === 'country' ? 'border-[#1A6B3A] ring-1 ring-[#1A6B3A]' : 'border-slate-200'} rounded-xl cursor-pointer flex items-center justify-between transition-all`}
+                      className={`w-full px-4 py-3 text-sm bg-slate-50 border ${activeDropdown === 'country' ? 'border-[#7A1238] ring-1 ring-[#7A1238]' : 'border-slate-200'} rounded-xl cursor-pointer flex items-center justify-between transition-all`}
                     >
                       <span className={country ? 'text-slate-900' : 'text-slate-400'}>
                         {country || 'Select Country'}
@@ -555,7 +555,7 @@ export default function AuthDialog() {
                                   setCountrySearch('');
                                   setActiveDropdown(null);
                                 }}
-                                className={`px-4 py-2.5 text-xs cursor-pointer transition-colors flex items-center gap-2 ${country === c.name ? 'bg-emerald-50 text-[#1A6B3A] font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
+                                className={`px-4 py-2.5 text-xs cursor-pointer transition-colors flex items-center gap-2 ${country === c.name ? 'bg-emerald-50 text-[#7A1238] font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
                               >
                                 {c.name}
                               </div>
@@ -573,7 +573,7 @@ export default function AuthDialog() {
                     <label className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-400">State</label>
                     <div 
                       onClick={() => !country ? null : setActiveDropdown(activeDropdown === 'state' ? null : 'state')}
-                      className={`w-full px-4 py-3 text-sm bg-slate-50 border ${activeDropdown === 'state' ? 'border-[#1A6B3A] ring-1 ring-[#1A6B3A]' : 'border-slate-200'} rounded-xl transition-all ${!country ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} flex items-center justify-between`}
+                      className={`w-full px-4 py-3 text-sm bg-slate-50 border ${activeDropdown === 'state' ? 'border-[#7A1238] ring-1 ring-[#7A1238]' : 'border-slate-200'} rounded-xl transition-all ${!country ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} flex items-center justify-between`}
                     >
                       <span className={stateName ? 'text-slate-900' : 'text-slate-400'}>
                         {stateName || 'Select State'}
@@ -607,7 +607,7 @@ export default function AuthDialog() {
                                   setStateSearch('');
                                   setActiveDropdown(null);
                                 }}
-                                className={`px-4 py-2.5 text-xs cursor-pointer transition-colors flex items-center gap-2 ${stateName === s.name ? 'bg-emerald-50 text-[#1A6B3A] font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
+                                className={`px-4 py-2.5 text-xs cursor-pointer transition-colors flex items-center gap-2 ${stateName === s.name ? 'bg-emerald-50 text-[#7A1238] font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
                               >
                                 {s.name}
                               </div>
@@ -625,7 +625,7 @@ export default function AuthDialog() {
                     <label className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-400">City</label>
                     <div 
                       onClick={() => !stateName ? null : setActiveDropdown(activeDropdown === 'city' ? null : 'city')}
-                      className={`w-full px-4 py-3 text-sm bg-slate-50 border ${activeDropdown === 'city' ? 'border-[#1A6B3A] ring-1 ring-[#1A6B3A]' : 'border-slate-200'} rounded-xl transition-all ${!stateName ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} flex items-center justify-between`}
+                      className={`w-full px-4 py-3 text-sm bg-slate-50 border ${activeDropdown === 'city' ? 'border-[#7A1238] ring-1 ring-[#7A1238]' : 'border-slate-200'} rounded-xl transition-all ${!stateName ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} flex items-center justify-between`}
                     >
                       <span className={city ? 'text-slate-900' : 'text-slate-400'}>
                         {city || 'Select City'}
@@ -658,7 +658,7 @@ export default function AuthDialog() {
                                   setCitySearch('');
                                   setActiveDropdown(null);
                                 }}
-                                className={`px-4 py-2.5 text-xs cursor-pointer transition-colors flex items-center gap-2 ${city === cityName ? 'bg-emerald-50 text-[#1A6B3A] font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
+                                className={`px-4 py-2.5 text-xs cursor-pointer transition-colors flex items-center gap-2 ${city === cityName ? 'bg-emerald-50 text-[#7A1238] font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
                               >
                                 {cityName}
                               </div>
@@ -673,7 +673,7 @@ export default function AuthDialog() {
                 </div>
               </div>
 
-              <button disabled={loading} className="w-full mt-4 py-4 bg-[#1A6B3A] text-white text-[11px] font-bold uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-emerald-900/20 hover:bg-[#14532d] hover:-translate-y-0.5 transition-all active:scale-95 disabled:opacity-50">
+              <button disabled={loading} className="w-full mt-4 py-4 bg-[#7A1238] text-white text-[11px] font-bold uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-emerald-900/20 hover:bg-[#14532d] hover:-translate-y-0.5 transition-all active:scale-95 disabled:opacity-50">
                 {loading ? 'Creating Profile...' : 'Complete Registration'}
               </button>
             </form>

@@ -10,13 +10,13 @@ export default function GoldInvestmentTeaser() {
       
       <div className="max-w-[1440px] mx-auto relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-20 items-center">
         <div className="space-y-10">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-[#064E3B]/5 border border-[#064E3B]/10 rounded-full text-[11px] font-black uppercase tracking-[2px] text-[#064E3B]">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-[#5C0828]/5 border border-[#5C0828]/10 rounded-full text-[11px] font-black uppercase tracking-[2px] text-[#5C0828]">
             <Gem size={14} className="animate-pulse" /> The RKM Promise
           </div>
           
           <h2 className="text-4xl md:text-6xl font-serif font-black text-slate-900 leading-tight">
             Systematic Gold <br/>
-            <span className="text-[#064E3B] italic font-light">Investment Plan</span>
+            <span className="text-[#5C0828] italic font-light">Investment Plan</span>
           </h2>
           
           <p className="text-slate-500 font-medium md:text-lg leading-relaxed max-w-xl">
@@ -25,14 +25,14 @@ export default function GoldInvestmentTeaser() {
 
           <div className="grid grid-cols-2 gap-8 pt-4">
             <div className="flex flex-col gap-2">
-              <div className="w-10 h-10 rounded-2xl bg-emerald-50 flex items-center justify-center text-[#064E3B]">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-50 flex items-center justify-center text-[#5C0828]">
                 <TrendingUp size={20} />
               </div>
               <h4 className="font-bold text-slate-900 text-sm mt-2">Assured Returns</h4>
               <p className="text-xs text-slate-500 max-w-[200px]">Principal earns fixed monthly interest.</p>
             </div>
             <div className="flex flex-col gap-2">
-              <div className="w-10 h-10 rounded-2xl bg-emerald-50 flex items-center justify-center text-[#064E3B]">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-50 flex items-center justify-center text-[#5C0828]">
                 <ShieldCheck size={20} />
               </div>
               <h4 className="font-bold text-slate-900 text-sm mt-2">Zero Friction</h4>
@@ -43,7 +43,7 @@ export default function GoldInvestmentTeaser() {
           <div className="pt-8">
             <Link 
               href="/gold-investment" 
-              className="inline-flex items-center gap-3 px-8 py-4 bg-[#064E3B] text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-emerald-900/20 hover:-translate-y-1 hover:shadow-2xl transition-all duration-300"
+              className="inline-flex items-center gap-3 px-8 py-4 bg-[#5C0828] text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-emerald-900/20 hover:-translate-y-1 hover:shadow-2xl transition-all duration-300"
             >
               Explore Plans <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
             </Link>
@@ -51,7 +51,7 @@ export default function GoldInvestmentTeaser() {
         </div>
 
         <div className="relative h-[600px] w-full rounded-[3rem] overflow-hidden shadow-2xl border border-slate-100 group">
-          <div className="absolute inset-0 bg-[#064E3B]/10 z-10 transition-colors duration-500 group-hover:bg-transparent"></div>
+          <div className="absolute inset-0 bg-[#5C0828]/10 z-10 transition-colors duration-500 group-hover:bg-transparent"></div>
           <img 
             src="https://images.unsplash.com/photo-1601121141461-9d6647bca1ed?q=80&w=2670&auto=format&fit=crop" 
             alt="Gold Investment" 

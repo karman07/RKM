@@ -65,7 +65,7 @@ export default function ProductCard({ product, index, badge }: ProductCardProps)
         <div className="relative overflow-hidden mb-8 aspect-[3/4] bg-[#F8F8F8] shadow-sm transition-all duration-700 group-hover:shadow-2xl rounded-2xl">
           {/* Subtle Badge */}
           {badge && (
-            <div className="absolute top-0 left-0 z-20 px-4 py-2 bg-[#0D1B15] text-[#D4B07A] text-[8px] font-bold uppercase tracking-[0.4em] rounded-br-2xl">
+            <div className="absolute top-0 left-0 z-20 px-4 py-2 bg-[#5C0828] text-[#D4B07A] text-[8px] font-bold uppercase tracking-[0.4em] rounded-br-2xl">
               {badge}
             </div>
           )}
@@ -86,7 +86,7 @@ export default function ProductCard({ product, index, badge }: ProductCardProps)
             <Link 
               href={`/products/${product._id}`}
               onClick={(e) => e.stopPropagation()}
-              className="group/btn flex-1 py-3 lg:py-4 bg-white text-[#0D1B15] text-[8px] lg:text-[9px] uppercase tracking-[0.2em] lg:tracking-[0.4em] font-bold shadow-2xl hover:bg-[#B8975A] hover:text-white transition-all duration-500 text-center rounded-full hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
+              className="group/btn flex-1 py-3 lg:py-4 bg-white text-[#5C0828] text-[8px] lg:text-[9px] uppercase tracking-[0.2em] lg:tracking-[0.4em] font-bold shadow-2xl hover:bg-[#B8975A] hover:text-white transition-all duration-500 text-center rounded-full hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
             >
               Explore
               <svg 
@@ -102,7 +102,7 @@ export default function ProductCard({ product, index, badge }: ProductCardProps)
               </svg>
             </Link>
             {cartItem ? (
-              <div className="flex-[1.2] flex items-center bg-[#0D1B15] rounded-full overflow-hidden shadow-2xl hover:scale-105 active:scale-95 transition-all duration-500" onClick={(e) => e.stopPropagation()}>
+              <div className="flex-[1.2] flex items-center bg-[#5C0828] rounded-full overflow-hidden shadow-2xl hover:scale-105 active:scale-95 transition-all duration-500" onClick={(e) => e.stopPropagation()}>
                 <button 
                   onClick={(e) => {
                     e.preventDefault();
@@ -113,7 +113,7 @@ export default function ProductCard({ product, index, badge }: ProductCardProps)
                 >
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14"/></svg>
                 </button>
-                <div className="flex-1 h-full flex flex-col items-center justify-center bg-[#0D1B15] border-x border-white/5 py-3 lg:py-4">
+                <div className="flex-1 h-full flex flex-col items-center justify-center bg-[#5C0828] border-x border-white/5 py-3 lg:py-4">
                   <span className="text-white text-[10px] lg:text-[11px] font-bold">{cartItem.quantity}</span>
                 </div>
                 <button 
@@ -145,7 +145,7 @@ export default function ProductCard({ product, index, badge }: ProductCardProps)
                 className={`relative overflow-hidden flex-[0.8] py-3 lg:py-4 text-[8px] lg:text-[9px] uppercase tracking-[0.2em] lg:tracking-[0.4em] font-bold shadow-2xl transition-all duration-500 rounded-full group/bag ${
                   product.in_stock === false 
                     ? "bg-[#EAEAEA] text-[#999999] cursor-not-allowed" 
-                    : "bg-[#0D1B15] text-white hover:bg-[#B8975A] hover:scale-105 active:scale-95"
+                    : "bg-[#5C0828] text-white hover:bg-[#B8975A] hover:scale-105 active:scale-95"
                 }`}
               >
                 <span className="relative z-10">{product.in_stock === false ? 'Unavailable' : '+ Bag'}</span>
@@ -175,13 +175,13 @@ export default function ProductCard({ product, index, badge }: ProductCardProps)
         <div className="space-y-4 px-1">
           <div className="space-y-2">
             <div className="flex justify-between items-baseline gap-4">
-              <h4 className="font-serif text-2xl tracking-wide text-[#1A2E26] leading-snug group-hover:text-[#B8975A] transition-colors duration-500 truncate">
+              <h4 className="font-serif text-2xl tracking-wide text-[#5C0828] leading-snug group-hover:text-[#B8975A] transition-colors duration-500 truncate">
                 {product.name}
               </h4>
               <div className="flex flex-col items-end">
                 <div className="flex items-center gap-2">
                   {(product.pricing_breakdown?.discount_amount ?? 0) > 0 && (
-                    <span className="text-xs line-through opacity-40 font-light text-[#1A2E26]">
+                    <span className="text-xs line-through opacity-40 font-light text-[#5C0828]">
                       ₹{product.pricing_breakdown?.subtotal?.toLocaleString('en-IN')}
                     </span>
                   )}
@@ -190,7 +190,7 @@ export default function ProductCard({ product, index, badge }: ProductCardProps)
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5 mt-0.5">
-                   <span className="text-[7px] uppercase tracking-wider opacity-60 font-black text-[#1A2E26]">Inc. all taxes</span>
+                   <span className="text-[7px] uppercase tracking-wider opacity-60 font-black text-[#5C0828]">Inc. all taxes</span>
                    {(product.pricing_breakdown?.discount_amount ?? 0) > 0 && (
                      <span className="text-[7px] px-1.5 py-0.5 bg-[#B8975A] text-white font-black uppercase tracking-widest rounded-sm animate-pulse">
                         {Math.round(((product.pricing_breakdown?.discount_amount ?? 0) / (product.pricing_breakdown?.subtotal ?? 1)) * 100)}% OFF
@@ -200,7 +200,7 @@ export default function ProductCard({ product, index, badge }: ProductCardProps)
               </div>
             </div>
             
-            <div className="flex items-center gap-3 text-[10px] font-sans font-bold uppercase tracking-[0.2em] text-[#7A8C85] group-hover:text-[#1A2E26] transition-colors duration-500">
+            <div className="flex items-center gap-3 text-[10px] font-sans font-bold uppercase tracking-[0.2em] text-[#7A8C85] group-hover:text-[#5C0828] transition-colors duration-500">
               <span className="px-2 py-0.5 border border-[#B8975A]/20 rounded-full">{product.purity}</span>
               <span className="w-1 h-1 rounded-full bg-[#B8975A]/20" />
               <span>{product.net_weight}g Total weight</span>

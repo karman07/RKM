@@ -7,7 +7,7 @@
   position: fixed;
   bottom: 2rem;
   right: 2rem;
-  background: linear-gradient(135deg, #1A2E26 0%, #2C4A3C 100%);
+  background: linear-gradient(135deg, #5C0828 0%, #7A1238 100%);
   color: #D4AF6E;
   padding: 0.85rem 1.6rem;
   border-radius: 50px;
@@ -29,7 +29,7 @@
 .chatButton:hover {
   transform: translateY(-4px);
   box-shadow: 0 16px 40px rgba(26, 46, 38, 0.4), 0 4px 12px rgba(0, 0, 0, 0.2);
-  background: linear-gradient(135deg, #2C4A3C 0%, #1A2E26 100%);
+  background: linear-gradient(135deg, #7A1238 0%, #5C0828 100%);
 }
 
 /* === CHAT WINDOW === */
@@ -52,7 +52,7 @@
 
 /* === HEADER === */
 .header {
-  background: linear-gradient(135deg, #1A2E26 0%, #233D32 100%);
+  background: linear-gradient(135deg, #5C0828 0%, #6E1030 100%);
   padding: 1.1rem 1.2rem;
   display: flex;
   justify-content: space-between;
@@ -196,7 +196,7 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #1A2E26, #2C4A3C);
+  background: linear-gradient(135deg, #5C0828, #7A1238);
   border: 1px solid rgba(212, 175, 110, 0.2);
   display: flex;
   align-items: center;
@@ -229,7 +229,7 @@
 }
 
 .userBubble {
-  background: linear-gradient(135deg, #1A2E26, #233D32);
+  background: linear-gradient(135deg, #5C0828, #6E1030);
   color: #F7F5F0;
   border-bottom-right-radius: 4px;
 }
@@ -243,7 +243,7 @@
 }
 
 .assistantBubble strong {
-  color: #1A2E26;
+  color: #5C0828;
   font-weight: 600;
 }
 
@@ -254,7 +254,7 @@
   padding: 0.1em 0.4em;
   font-size: 0.8em;
   font-family: 'Courier New', monospace;
-  color: #1A2E26;
+  color: #5C0828;
 }
 
 /* === PRODUCT CARDS === */
@@ -309,7 +309,7 @@
 
 .featuredCard .cardInfo h4 {
   font-size: 0.83rem;
-  color: #1A2E26;
+  color: #5C0828;
   font-weight: 600;
   margin: 0 0 4px;
   line-height: 1.3;
@@ -349,7 +349,7 @@
 
 .miniCard .cardInfo h4 {
   font-size: 0.72rem;
-  color: #1A2E26;
+  color: #5C0828;
   font-weight: 600;
   margin: 0 0 2px;
   white-space: nowrap;
@@ -394,7 +394,7 @@
 .viewBtn {
   display: inline-block;
   font-size: 0.71rem;
-  color: #1A2E26;
+  color: #5C0828;
   background: rgba(212, 175, 110, 0.1);
   border: 1px solid rgba(212, 175, 110, 0.3);
   padding: 0.22rem 0.65rem;
@@ -419,7 +419,7 @@
 .suggestionBtn {
   background: linear-gradient(135deg, rgba(212, 175, 110, 0.07), rgba(212, 175, 110, 0.03));
   border: 1px solid rgba(212, 175, 110, 0.28);
-  color: #1A2E26;
+  color: #5C0828;
   font-size: 0.72rem;
   padding: 0.4rem 0.85rem;
   border-radius: 50px;
@@ -455,7 +455,7 @@
   font-family: inherit;
   font-size: 0.84rem;
   outline: none;
-  color: #1A2E26;
+  color: #5C0828;
   background: #FAFAF8;
   transition: border-color 0.2s ease, background 0.2s ease;
 }
@@ -472,7 +472,7 @@
 .footer button {
   width: 38px;
   height: 38px;
-  background: linear-gradient(135deg, #1A2E26, #233D32);
+  background: linear-gradient(135deg, #5C0828, #6E1030);
   color: #D4AF6E;
   border: none;
   border-radius: 10px;

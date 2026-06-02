@@ -9,7 +9,7 @@ import { toast } from "sonner";
 declare global { interface Window { Razorpay: any } }
 
 const GOLD = "#B8975A";
-const DARK = "#1A2E26";
+const DARK = "#5C0828";
 
 function staticImg(path: string) {
   if (!path) return "";
@@ -212,8 +212,8 @@ export default function CheckoutPage() {
   if (cartItems.length === 0) return (
     <div className="min-h-screen flex items-center justify-center bg-[#F9F8F6]">
       <div className="text-center">
-        <h2 className="font-serif text-3xl mb-6 text-[#1A2E26]">Your bag is empty</h2>
-        <Link href="/products" className="text-[10px] font-black uppercase tracking-[0.3em] text-white bg-[#1A2E26] px-10 py-5 rounded-full hover:bg-[#B8975A] transition-all">Back to Store</Link>
+        <h2 className="font-serif text-3xl mb-6 text-[#5C0828]">Your bag is empty</h2>
+        <Link href="/products" className="text-[10px] font-black uppercase tracking-[0.3em] text-white bg-[#5C0828] px-10 py-5 rounded-full hover:bg-[#B8975A] transition-all">Back to Store</Link>
       </div>
     </div>
   );
@@ -225,7 +225,7 @@ export default function CheckoutPage() {
 
           {/* ── Left: Form ── */}
           <div className="flex-1 space-y-10">
-            <h1 className="font-serif text-5xl text-[#1A2E26]">Checkout</h1>
+            <h1 className="font-serif text-5xl text-[#5C0828]">Checkout</h1>
 
             {/* Contact */}
             <section className="space-y-4">
@@ -322,10 +322,10 @@ export default function CheckoutPage() {
 
             <div className="flex flex-col sm:flex-row gap-4 pt-4">
               <button onClick={handlePlaceOrder} disabled={placing || outOfRange || loadingDelivery}
-                className="flex-1 flex items-center justify-center gap-3 bg-[#1A2E26] text-white px-10 py-5 rounded-full text-[11px] font-black uppercase tracking-[0.3em] hover:bg-[#B8975A] transition-all duration-500 shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed">
+                className="flex-1 flex items-center justify-center gap-3 bg-[#5C0828] text-white px-10 py-5 rounded-full text-[11px] font-black uppercase tracking-[0.3em] hover:bg-[#B8975A] transition-all duration-500 shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed">
                 {placing ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Processing…</> : <>Pay ₹{total.toLocaleString("en-IN")} →</>}
               </button>
-              <Link href="/cart" className="px-8 py-5 text-[10px] font-black uppercase tracking-[0.3em] text-[#7A8C85] hover:text-[#1A2E26] transition-colors flex items-center justify-center">
+              <Link href="/cart" className="px-8 py-5 text-[10px] font-black uppercase tracking-[0.3em] text-[#7A8C85] hover:text-[#5C0828] transition-colors flex items-center justify-center">
                 ← Return to Bag
               </Link>
             </div>
@@ -334,7 +334,7 @@ export default function CheckoutPage() {
           {/* ── Right: Summary ── */}
           <div className="lg:w-[420px]">
             <aside className="bg-white border border-[#EDEAE4] rounded-[3rem] p-8 lg:sticky lg:top-32 shadow-sm">
-              <h2 className="font-serif text-3xl text-[#1A2E26] mb-8">Order Summary</h2>
+              <h2 className="font-serif text-3xl text-[#5C0828] mb-8">Order Summary</h2>
               <div className="space-y-6 max-h-[35vh] overflow-y-auto pr-2 mb-8">
                 {cartItems.map(item => (
                   <div key={item._id} className="flex gap-4 items-center">
@@ -342,10 +342,10 @@ export default function CheckoutPage() {
                       <img src={staticImg(item.images?.[0] || "")} className="w-full h-full object-cover" alt={item.name} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h4 className="font-serif text-[14px] text-[#1A2E26] leading-tight truncate">{item.name}</h4>
+                      <h4 className="font-serif text-[14px] text-[#5C0828] leading-tight truncate">{item.name}</h4>
                       <p className="text-[9px] uppercase tracking-widest text-[#7A8C85] mt-0.5">Qty {item.quantity}</p>
                     </div>
-                    <p className="font-serif text-[14px] text-[#1A2E26] flex-shrink-0">₹{((item.pricing_breakdown?.final_price || 0) * item.quantity).toLocaleString("en-IN")}</p>
+                    <p className="font-serif text-[14px] text-[#5C0828] flex-shrink-0">₹{((item.pricing_breakdown?.final_price || 0) * item.quantity).toLocaleString("en-IN")}</p>
                   </div>
                 ))}
               </div>
@@ -362,7 +362,7 @@ export default function CheckoutPage() {
                       : <span>₹{deliveryCharge}</span>}
                 </div>
                 <div className="flex justify-between items-baseline pt-4 border-t border-[#F0EBE0]">
-                  <span className="font-serif text-2xl text-[#1A2E26]">Total</span>
+                  <span className="font-serif text-2xl text-[#5C0828]">Total</span>
                   <span className="font-serif text-4xl" style={{ color: GOLD }}>₹{total.toLocaleString("en-IN")}</span>
                 </div>
               </div>

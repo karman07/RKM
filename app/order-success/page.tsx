@@ -23,7 +23,7 @@ function OrderSuccessContent() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/>
           </svg>
         </div>
-        <h1 className="font-serif text-4xl text-[#1A2E26] mb-4">Order Placed!</h1>
+        <h1 className="font-serif text-4xl text-[#5C0828] mb-4">Order Placed!</h1>
         <p className="text-[#7A8C85] text-sm leading-relaxed mb-2">
           Thank you for your purchase. Your order has been confirmed and payment received.
         </p>
@@ -31,11 +31,11 @@ function OrderSuccessContent() {
         <p className="text-xs text-[#7A8C85] mb-8">You will receive a confirmation shortly. Our team will process your order and update you on the delivery status.</p>
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Link href="/products"
-            className="px-8 py-4 bg-[#1A2E26] text-white rounded-full text-[10px] font-black uppercase tracking-[0.3em] hover:bg-[#B8975A] transition-all">
+            className="px-8 py-4 bg-[#5C0828] text-white rounded-full text-[10px] font-black uppercase tracking-[0.3em] hover:bg-[#B8975A] transition-all">
             Continue Shopping
           </Link>
           <Link href="/"
-            className="px-8 py-4 border border-[#EDEAE4] rounded-full text-[10px] font-black uppercase tracking-[0.3em] text-[#7A8C85] hover:text-[#1A2E26] transition-colors">
+            className="px-8 py-4 border border-[#EDEAE4] rounded-full text-[10px] font-black uppercase tracking-[0.3em] text-[#7A8C85] hover:text-[#5C0828] transition-colors">
             Back to Home
           </Link>
         </div>
