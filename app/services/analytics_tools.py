@@ -863,6 +863,126 @@ async def get_staff_profile(name: str) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Branch-level Attendance
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def get_branch_attendance(date: str = "today", branch_name: str = "") -> dict:
+    """
+    Attendance for a specific branch (or all branches) on a given date.
+    Returns per-branch breakdown: present, absent, on-leave counts and staff lists.
+    """
+    db = get_db()
+    att_col  = db["attendances"]
+    users    = db["users"]
+    branches = db["branches"]
+
+    now = _now()
+    if date == "today":
+        target = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif date == "yesterday":
+        target = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    else:
+        try:
+            from datetime import datetime as dt
+            target = dt.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except Exception:
+            target = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    day_end = target + timedelta(days=1)
+
+    # Resolve branch filter
+    branch_filter: dict = {}
+    branch_doc = None
+    if branch_name:
+        import re as _re
+        branch_doc = await branches.find_one({"name": {"$regex": _re.escape(branch_name), "$options": "i"}})
+        if branch_doc:
+            branch_filter = {"branch": branch_doc["_id"]}
+        else:
+            return {"error": f"Branch '{branch_name}' not found. Check the branch name."}
+
+    # Get all active staff (optionally filtered by branch)
+    all_staff = await users.find({"isActive": True, **branch_filter}, {"name": 1, "role": 1, "branch": 1}).to_list(500)
+
+    # Build user-id → branch name map
+    branch_ids = {str(u.get("branch")) for u in all_staff if u.get("branch")}
+    branch_name_map: dict = {}
+    for bid in branch_ids:
+        try:
+            b = await branches.find_one({"_id": ObjectId(bid)}, {"name": 1})
+            if b:
+                branch_name_map[bid] = b["name"]
+        except Exception:
+            pass
+
+    # Attendance records for the target date
+    att_records = await att_col.find({"date": {"$gte": target, "$lt": day_end}}).to_list(2000)
+    att_map: dict = {str(r["user_id"]): r for r in att_records}
+
+    # Organise by branch
+    branch_data: dict = {}   # branch_name → {present, absent, on_leave, staff}
+
+    for u in all_staff:
+        uid  = str(u["_id"])
+        bkey = branch_name_map.get(str(u.get("branch")), "Unassigned")
+        if bkey not in branch_data:
+            branch_data[bkey] = {"branch": bkey, "present": 0, "absent": 0, "on_leave": 0, "half_day": 0, "staff": []}
+
+        rec    = att_map.get(uid)
+        status = rec.get("status") if rec else None
+
+        entry = {"name": u["name"], "role": u.get("role", "staff"), "status": status or "absent"}
+
+        if status in ("present",):
+            branch_data[bkey]["present"] += 1
+        elif status == "half-day":
+            branch_data[bkey]["present"] += 1   # counts as present for attendance
+            branch_data[bkey]["half_day"] += 1
+            entry["status"] = "half-day"
+        elif status in ("on-leave", "paid-time-off"):
+            branch_data[bkey]["on_leave"] += 1
+        else:
+            branch_data[bkey]["absent"] += 1
+
+        branch_data[bkey]["staff"].append(entry)
+
+    result = sorted(branch_data.values(), key=lambda x: x["branch"])
+    overall_present = sum(b["present"] for b in result)
+    overall_absent  = sum(b["absent"]  for b in result)
+    overall_total   = len(all_staff)
+    rate = round(overall_present / overall_total * 100, 1) if overall_total else 0
+
+    return {
+        "date": target.strftime("%Y-%m-%d"),
+        "queried_branch": branch_doc["name"] if branch_doc else "All branches",
+        "overall_total_staff": overall_total,
+        "overall_present": overall_present,
+        "overall_absent":  overall_absent,
+        "overall_attendance_rate_pct": rate,
+        "by_branch": result,
+        "_charts": [
+            {
+                "type": "bar",
+                "title": f"Branch Attendance — {target.strftime('%d %b')}",
+                "y_label": "Staff Count",
+                "data": [
+                    {"label": b["branch"], "value": b["present"], "value2": b["absent"]}
+                    for b in result
+                ],
+            },
+            {
+                "type": "donut",
+                "title": f"Overall Attendance — {target.strftime('%d %b')}",
+                "data": [
+                    {"label": "Present", "value": overall_present, "color": "#16a34a"},
+                    {"label": "Absent",  "value": overall_absent,  "color": "#ef4444"},
+                ],
+            },
+        ],
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Today quick snapshot
 # ─────────────────────────────────────────────────────────────────────────────
 

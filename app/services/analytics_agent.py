@@ -23,6 +23,7 @@ from app.services.analytics_tools import (
     get_profit_summary,
     get_online_orders_summary,
     get_staff_attendance,
+    get_branch_attendance,
     get_staff_profile,
     get_attendance_summary,
     get_leave_requests,
@@ -52,6 +53,7 @@ TOOL_HANDLERS: dict[str, Any] = {
     "get_profit_summary": get_profit_summary,
     "get_online_orders_summary": get_online_orders_summary,
     "get_staff_attendance": get_staff_attendance,
+    "get_branch_attendance": get_branch_attendance,
     "get_attendance_summary": get_attendance_summary,
     "get_leave_requests": get_leave_requests,
     "get_location_violations": get_location_violations,
@@ -153,15 +155,55 @@ TOOL_DECLARATIONS = [
     ),
     types.FunctionDeclaration(
         name="get_staff_attendance",
-        description="Staff attendance for a specific date — who was present, who was absent, attendance rate. Use for 'attendance today', 'who came yesterday', 'how many staff present' queries.",
+        description=(
+            "All-staff attendance for a specific date — who was present, absent, on leave, and the overall rate. "
+            "Use for: 'attendance today', 'who came in yesterday', 'how many staff present', "
+            "'show me today\\'s attendance', 'who\\'s absent today'. "
+            "Returns two lists: staff_present and staff_absent with names and roles."
+        ),
         parameters=types.Schema(
             type="OBJECT",
-            properties={"date": types.Schema(type="STRING", description="'today', 'yesterday', or a date string YYYY-MM-DD. Default 'today'.")},
+            properties={
+                "date": types.Schema(
+                    type="STRING",
+                    description="'today', 'yesterday', or a YYYY-MM-DD date string. Default 'today'.",
+                ),
+            },
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="get_branch_attendance",
+        description=(
+            "Attendance broken down by branch for a given date. "
+            "Use for: 'attendance at Mohalli branch', 'which branch had most absences today', "
+            "'how many staff at [branch name] came in', 'branch-wise attendance today/yesterday'. "
+            "Can also return overall multi-branch summary when no specific branch is named. "
+            "Returns per-branch counts of present, absent, on-leave staff plus full staff lists."
+        ),
+        parameters=types.Schema(
+            type="OBJECT",
+            properties={
+                "date": types.Schema(
+                    type="STRING",
+                    description="'today', 'yesterday', or YYYY-MM-DD. Default 'today'.",
+                ),
+                "branch_name": types.Schema(
+                    type="STRING",
+                    description=(
+                        "Partial or full branch name to filter by (e.g. 'Mohalli', 'Sector 17'). "
+                        "Leave empty to get all branches."
+                    ),
+                ),
+            },
         ),
     ),
     types.FunctionDeclaration(
         name="get_attendance_summary",
-        description="Attendance summary over N days: attendance rate per staff member, overall average. Use for 'attendance this month', 'most absent staff', 'attendance trend' queries.",
+        description=(
+            "Attendance summary over N days per staff member: present days, absent days, attendance rate %. "
+            "Use for: 'attendance this month', 'most absent staff', 'who has lowest attendance', "
+            "'attendance trend', 'show me attendance for last 30 days'."
+        ),
         parameters=types.Schema(
             type="OBJECT",
             properties={"days": types.Schema(type="INTEGER", description="Past days. Default 30.")},
@@ -223,43 +265,56 @@ TOOL_DECLARATIONS = [
 
 SYSTEM_PROMPT = """You are RKM Business Intelligence — the private AI analyst for RKM Jewellers with FULL access to the live business database.
 
-COMPLETE DATABASE ACCESS — you can query ALL of these:
-- SALES: inventory_items (sold items, revenue, payment mode, staff, branch)
-- PROFIT: selling_price minus purchase_price (cost) for every sold item
-- PRODUCTS: product catalogue, metal types, purities
-- STAFF PERFORMANCE: top cashiers and managers by sales
-- STAFF ATTENDANCE: daily present/absent, check-in records (attendances collection)
-- LEAVE REQUESTS: who applied, leave type, approval status (leaverequests collection)
-- LOCATION VIOLATIONS: staff who clocked in outside branch geofence (locationviolations)
-- CUSTOMERS: customer count, new joins, repeat buyers
-- CUSTOMER FEEDBACK: satisfaction scores, visit-again rate, recommendations (feedbacks)
-- OLD GOLD: buy-back transactions, exchange value, status (oldgoldtransactions)
-- ONLINE ORDERS: website/app orders count and revenue (onlineorders)
-- INVENTORY STATUS: available/sold/reserved/damaged stock counts
-- PURCHASE ORDERS: supplier orders, spend, status (purchase_orders)
-- REFUNDS/RETURNS: return requests count and refunded amounts
-- BRANCHES: branch-wise sales and revenue
+━━━ DATABASE ACCESS ━━━
+- SALES & REVENUE: inventory_items (sold items, payment mode, cashier, branch)
+- PROFIT: selling_price minus purchase_price per item
+- PRODUCTS: catalogue, metal types, purities, SKUs
+- STAFF PERFORMANCE: top cashiers/managers by sales count and revenue
+- ATTENDANCE (three tools — pick the right one):
+    • get_staff_attendance   → who came in company-wide on a specific DATE
+    • get_branch_attendance  → attendance split by BRANCH (or one specific branch) on a date
+    • get_attendance_summary → per-staff attendance RATE over N days (trends, most absent)
+- LEAVE REQUESTS: approvals, types, pending (leaverequests)
+- LOCATION VIOLATIONS: staff who clocked in outside geofence
+- CUSTOMERS: total, new joins, repeat buyers
+- CUSTOMER FEEDBACK: satisfaction, visit-again, recommendations
+- OLD GOLD: buy-back count, value, status
+- ONLINE ORDERS: count, revenue, status breakdown
+- INVENTORY STATUS: available/sold/reserved/damaged stock
+- PURCHASE ORDERS: supplier orders, spend, status
+- REFUNDS/RETURNS: return counts and amounts
+- BRANCHES: sales and revenue by branch
 
-MANDATORY RULES — NEVER BREAK:
-1. ALWAYS call tool(s) first. NEVER say "I don't have access", "my tools don't support", or "I can't calculate" — you have access to everything.
-2. PROFIT = revenue (selling_price × (1 - manager_discount%)) MINUS purchase_price. Use get_profit_summary.
-3. ATTENDANCE: "how many staff present today/yesterday" → use get_staff_attendance(date="today" or "yesterday"). Always mention BOTH who was present AND who was absent (staff_absent list). Absent = no check-in record for that day.
-4. STAFF PROFILE: "tell me about X", "who is X", "which branch is X from" → ALWAYS use get_staff_profile(name="X"). This returns branch, avatar, email, sales, attendance. Never say you don't have branch info — always call this tool.
-4. LEAVE: "leave requests" → use get_leave_requests.
-5. Period mapping (apply automatically, NEVER ask user):
-   - "today" → get_today_snapshot + get_staff_attendance(date="today")
-   - "yesterday" → days=1, get_staff_attendance(date="yesterday")
-   - "this week" → days=7  |  "this month" → days=30
+━━━ ATTENDANCE ROUTING — FOLLOW EXACTLY ━━━
+| Query type                                      | Tool to call                                   |
+|------------------------------------------------|------------------------------------------------|
+| "attendance today / yesterday / on [date]"     | get_staff_attendance(date=...)                 |
+| "attendance at [branch]"                       | get_branch_attendance(date=..., branch_name=...)|
+| "which branch had most absences"               | get_branch_attendance(date=...)                |
+| "attendance this month / last N days / trend"  | get_attendance_summary(days=N)                 |
+| "who has worst/best attendance"                | get_attendance_summary(days=30)                |
+
+Always include BOTH present AND absent staff by name when get_staff_attendance is called.
+Always show per-branch breakdown when get_branch_attendance is called.
+
+━━━ MANDATORY RULES ━━━
+1. ALWAYS call tool(s) first — never say "I don't have access" or "I can't calculate".
+2. PROFIT = revenue (selling_price × (1 − manager_discount%)) MINUS purchase_price → use get_profit_summary.
+3. STAFF PROFILE: "tell me about X" / "who is X" / "X's branch" → get_staff_profile(name="X"). Returns branch, avatar, email, sales, attendance. Never claim you lack this info.
+4. Period mapping (auto-apply, never ask the user):
+   - "today"            → get_today_snapshot + get_staff_attendance(date="today")
+   - "yesterday"        → get_staff_attendance(date="yesterday") + days=1 for sales tools
+   - "this week"        → days=7   |   "this month" → days=30
    - "all time" / "ever" / no period → days=730
-6. If 0 results for a short period → auto-retry with days=730.
-7. For broad questions, call multiple tools in parallel then compose one answer.
+5. 0 results for a short period → auto-retry with days=730.
+6. Broad questions → call multiple tools in one round, compose one answer.
 
-OUTPUT FORMAT:
-- Bold (**) all key numbers and names
-- Bullet lists for rankings
+━━━ OUTPUT FORMAT ━━━
+- **Bold** all key numbers and names
+- Bullet lists for rankings and staff lists
 - ₹ prefix; use L (lakhs) or Cr (crores) for large numbers
-- Brief one-line insight after data
-- Never add caveats or disclaimers"""
+- One-line insight after data (e.g. "Mohalli branch leads with 95% attendance")
+- Never add disclaimers or say "based on the data provided" """
 
 
 # ─────────────────────────────────────────────────────────────────────────────
