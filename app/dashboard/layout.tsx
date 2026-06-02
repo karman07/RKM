@@ -26,6 +26,7 @@ const ROUTE_PERMISSION: Record<string, string> = {
   '/dashboard/holidays':           'holidays',
   '/dashboard/location-violations':'location-violations',
   '/dashboard/reimbursements':     'reimbursements',
+  '/dashboard/payroll':            'payroll',
   '/dashboard/online-orders':      'online-orders',
   '/dashboard/products':           'products',
   '/dashboard/categories':         'categories',

@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import {
-  getUsers, getDailyAttendance, getBranches, getAttendanceStats, getAllLeaves, getUserAttendance, getShiftReport, triggerAutoCheckout, staticUrl,
+  getUsers, getDailyAttendance, getBranches, getAttendanceStats, getAllLeaves, getUserAttendance, getShiftReport, triggerAutoCheckout, getHolidays, staticUrl,
   type User, type Attendance, type Branch, type AttendanceStats, type ShiftReport,
 } from '@/lib/api';
 import { ChevronLeft, ChevronRight, Calendar, CheckCircle2, XCircle, Clock, Building2, Loader2, Info, AlertTriangle, Timer } from 'lucide-react';
@@ -17,10 +17,12 @@ function getUserId(a: Attendance): string | null {
 }
 
 const STATUS = {
-  present:    { label: 'Present',  dot: 'bg-emerald-500', text: 'text-emerald-600', border: 'border-emerald-200' },
-  absent:     { label: 'Absent',   dot: 'bg-red-500',     text: 'text-red-600',     border: 'border-red-200'     },
-  'half-day': { label: 'Half Day', dot: 'bg-amber-400',   text: 'text-amber-600',   border: 'border-amber-200'   },
-  'on-leave': { label: 'On Leave', dot: 'bg-blue-500',    text: 'text-blue-600',    border: 'border-blue-200'    },
+  present:           { label: 'Present',          dot: 'bg-emerald-500', text: 'text-emerald-600', border: 'border-emerald-200' },
+  absent:            { label: 'Absent',            dot: 'bg-red-500',     text: 'text-red-600',     border: 'border-red-200'     },
+  'half-day':        { label: 'Half Day',          dot: 'bg-amber-400',   text: 'text-amber-600',   border: 'border-amber-200'   },
+  'on-leave':        { label: 'Paid Time Off',     dot: 'bg-blue-500',    text: 'text-blue-600',    border: 'border-blue-200'    },
+  'holiday':         { label: 'Holiday',           dot: 'bg-violet-500',  text: 'text-violet-600',  border: 'border-violet-200'  },
+  'yet-to-check-in': { label: 'Yet to Check In',  dot: 'bg-orange-400',  text: 'text-orange-600',  border: 'border-orange-200'  },
 } as const;
 type StatusKey = keyof typeof STATUS;
 
@@ -30,6 +32,7 @@ export default function AttendancePage() {
   const [attendance, setAttendance]   = useState<Attendance[]>([]);
   const [branches, setBranches]       = useState<Branch[]>([]);
   const [onLeaveList, setOnLeaveList] = useState<any[]>([]);
+  const [holidays, setHolidays] = useState<any[]>([]);
   const [loading, setLoading]         = useState(true);
   const [activeBranch, setActiveBranch] = useState<string>('all');
   const [profileTarget, setProfileTarget] = useState<User | null>(null);
@@ -81,17 +84,19 @@ export default function AttendancePage() {
     setLoading(true);
     try {
       const dateStr = selectedDate.toISOString().split('T')[0];
-      const [uRes, aRes, bRes, lRes, sRep] = await Promise.all([
+      const [uRes, aRes, bRes, lRes, sRep, hRes] = await Promise.all([
         getUsers(undefined, 1, 200),
         getDailyAttendance(dateStr),
         getBranches(),
         getAllLeaves({ status: 'approved' }),
         getShiftReport(dateStr).catch(() => null),
+        getHolidays(selectedDate.getFullYear()).catch(() => []),
       ]);
       setUsers(uRes.data);
       setAttendance(aRes);
       setBranches(bRes);
       setShiftReport(sRep);
+      setHolidays(hRes);
       setOnLeaveList(lRes.filter((l: any) => {
         const from = new Date(l.from_date);
         const to   = new Date(l.to_date);
@@ -438,12 +443,44 @@ export default function AttendancePage() {
                   <tbody className="divide-y divide-slate-50">
                     {group.users.map(u => {
                       const rec      = getRecord(u._id);
-                      const status   = rec?.status as StatusKey | undefined;
-                      const cfg      = status ? STATUS[status] : null;
                       const isOnLeave = onLeaveList.some((l: any) => {
                         const mid = typeof l.manager_id === 'object' ? l.manager_id?._id : l.manager_id;
                         return mid === u._id;
                       });
+                      const todayStr = new Date().toISOString().split('T')[0];
+                      const selStr   = selectedDate.toISOString().split('T')[0];
+                      const isToday  = selStr === todayStr;
+
+                      // Determine if selected date is a holiday
+                      const isHoliday = holidays.some((h: any) => {
+                        if (h.is_yearly) {
+                          const [hm, hd] = h.date.split('-');
+                          const [, sm, sd] = selStr.split('-');
+                          return hm === sm && hd === sd;
+                        }
+                        return h.date === selStr;
+                      });
+                      const holidayName = isHoliday ? holidays.find((h: any) => {
+                        if (h.is_yearly) { const [hm, hd] = h.date.split('-'); const [, sm, sd] = selStr.split('-'); return hm === sm && hd === sd; }
+                        return h.date === selStr;
+                      })?.name : null;
+
+                      // Compute display status
+                      let displayStatus: StatusKey | null = null;
+                      let extraLabel: string | null = null;
+                      if (rec) {
+                        const s = rec.status as string;
+                        if (s === 'on-leave' || isOnLeave) { displayStatus = 'on-leave'; }
+                        else if (s === 'holiday' || isHoliday) { displayStatus = 'holiday'; extraLabel = holidayName; }
+                        else displayStatus = s as StatusKey;
+                      } else if (isHoliday) {
+                        displayStatus = 'holiday'; extraLabel = holidayName;
+                      } else if (isOnLeave) {
+                        displayStatus = 'on-leave';
+                      } else if (!rec && isToday) {
+                        displayStatus = 'yet-to-check-in';
+                      }
+                      const cfg = displayStatus ? STATUS[displayStatus] : null;
 
                       return (
                         <tr key={u._id} className="hover:bg-slate-50/40 transition-colors">
@@ -473,15 +510,14 @@ export default function AttendancePage() {
 
                           {/* Status — read-only badge */}
                           <td className="px-7 py-4">
-                            {isOnLeave && !rec ? (
-                              <span className="inline-flex items-center gap-1.5 text-[11px] font-black text-blue-600 border border-blue-200 px-3 py-1.5 rounded-full bg-white">
-                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500" /> On Leave
-                              </span>
-                            ) : cfg ? (
-                              <span className={`inline-flex items-center gap-1.5 text-[11px] font-black border px-3 py-1.5 rounded-full bg-white ${cfg.text} ${cfg.border}`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
-                                {cfg.label}
-                              </span>
+                            {cfg ? (
+                              <div className="flex flex-col gap-0.5">
+                                <span className={`inline-flex items-center gap-1.5 text-[11px] font-black border px-3 py-1.5 rounded-full bg-white ${cfg.text} ${cfg.border}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+                                  {cfg.label}
+                                </span>
+                                {extraLabel && <span className="text-[10px] text-slate-400 font-semibold ml-3">{extraLabel}</span>}
+                              </div>
                             ) : (
                               <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-300 border border-slate-100 px-3 py-1.5 rounded-full bg-white">
                                 <Clock className="w-3 h-3" /> Not Recorded

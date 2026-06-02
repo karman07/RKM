@@ -127,7 +127,7 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
         </section>}
 
         {/* Inventory Section */}
-        {(['inventory','inventory.sold','inventory.allocate','inventory.damaged','inventory.stolen','purchase-orders','suppliers','branches','analytics.branches','refunds','attendance','item-attendance','leaves','holidays','location-violations','reimbursements','online-orders'].some(k => can(k))) && <section>
+        {(['inventory','inventory.sold','inventory.allocate','inventory.damaged','inventory.stolen','purchase-orders','suppliers','branches','analytics.branches','refunds','attendance','item-attendance','leaves','holidays','location-violations','reimbursements','payroll','online-orders'].some(k => can(k))) && <section>
           {!isCollapsed && <p className="px-8 mb-4 text-[10px] font-black uppercase tracking-[0.25em] text-slate-400 animate-[fadeRise_400ms_ease-out]">Asset Custody</p>}
           <div className="space-y-2">
             {can('inventory') && <Link href="/dashboard/inventory" onClick={onNavigate} title={isCollapsed ? "Current Stock" : ""} className={navClass(pathname === '/dashboard/inventory')} style={getNavStyle(pathname === '/dashboard/inventory')}>
@@ -209,6 +209,11 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
               {isCollapsed && pathname.startsWith('/dashboard/reimbursements') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
               <NavIcon active={pathname.startsWith('/dashboard/reimbursements')} color={pathname.startsWith('/dashboard/reimbursements') ? colors.activeText : colors.textMuted}><path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Reimbursements</span>}
+            </Link>}
+            {can('payroll') && <Link href="/dashboard/payroll" onClick={onNavigate} title={isCollapsed ? "Payroll" : ""} className={navClass(pathname.startsWith('/dashboard/payroll'))} style={getNavStyle(pathname.startsWith('/dashboard/payroll'))}>
+              {isCollapsed && pathname.startsWith('/dashboard/payroll') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname.startsWith('/dashboard/payroll')} color={pathname.startsWith('/dashboard/payroll') ? colors.activeText : colors.textMuted}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Payroll</span>}
             </Link>}
             {can('online-orders') && <Link href="/dashboard/online-orders" onClick={onNavigate} title={isCollapsed ? "Online Orders" : ""} className={navClass(pathname.startsWith('/dashboard/online-orders') && !pathname.includes('/settings'))} style={getNavStyle(pathname.startsWith('/dashboard/online-orders') && !pathname.includes('/settings'))}>
               {isCollapsed && pathname.startsWith('/dashboard/online-orders') && !pathname.includes('/settings') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}

@@ -84,9 +84,10 @@ export default function SettingsPage() {
   const [emailEnabled, setEmailEnabled] = useState(true);
 
   // Work schedule
-  const [shiftStart, setShiftStart]   = useState('09:00');
-  const [shiftEnd, setShiftEnd]       = useState('18:00');
-  const [graceMinutes, setGraceMinutes] = useState('5');
+  const [shiftStart, setShiftStart]         = useState('09:00');
+  const [shiftEnd, setShiftEnd]             = useState('18:00');
+  const [graceMinutes, setGraceMinutes]     = useState('5');
+  const [halfDayThreshold, setHalfDayThreshold] = useState('12:00');
 
   // Fetch purity lookups from database
   useEffect(() => {
@@ -164,6 +165,7 @@ export default function SettingsPage() {
     setShiftStart(settings.shift_start_time ?? '09:00');
     setShiftEnd(settings.shift_end_time ?? '18:00');
     setGraceMinutes(String(settings.late_grace_minutes ?? 5));
+    setHalfDayThreshold((settings as any).half_day_threshold_time ?? '12:00');
   }, [loading, lookupsLoading, settings, purityLookups, metalConfig]);
 
   function showToast(message: string, type: 'success' | 'danger' | 'info' = 'info') {
@@ -220,6 +222,7 @@ export default function SettingsPage() {
         shift_start_time: shiftStart,
         shift_end_time: shiftEnd,
         late_grace_minutes: Number(graceMinutes) || 5,
+        half_day_threshold_time: halfDayThreshold,
       });
 
       await fetch(`${API_BASE}/online-orders/delivery-settings`, {
@@ -677,7 +680,7 @@ return (
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {/* Shift Start */}
           <div className="space-y-2">
             <label className="text-[10px] font-black uppercase tracking-widest" style={{ color: colors.textHeader }}>
@@ -725,19 +728,44 @@ return (
               />
               <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black uppercase tracking-wider opacity-40" style={{ color: colors.textMain }}>MIN</span>
             </div>
-            <p className="text-[10px] opacity-50" style={{ color: colors.textMain }}>Allowed delay after start</p>
+            <p className="text-[10px] opacity-50" style={{ color: colors.textMain }}>Allowed delay after shift start</p>
+          </div>
+
+          {/* Half-Day Threshold */}
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-widest" style={{ color: colors.textHeader }}>
+              Half-Day Threshold
+            </label>
+            <input
+              type="time"
+              value={halfDayThreshold}
+              onChange={e => setHalfDayThreshold(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl border text-sm font-bold focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all"
+              style={{ borderColor: colors.border, background: theme === 'dark' ? '#1e293b' : '#f8fafc', color: colors.textMain }}
+            />
+            <p className="text-[10px] opacity-50" style={{ color: colors.textMain }}>
+              Sign-in at or after this time → Half Day
+            </p>
           </div>
         </div>
 
         {/* Preview */}
-        <div className="flex flex-wrap items-center gap-3 p-4 rounded-xl" style={{ background: '#0ea5e908', border: '1px solid #0ea5e920' }}>
-          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#0ea5e9" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <p className="text-[11px] font-bold" style={{ color: '#0369a1' }}>
-            Staff signing in after <strong>{shiftStart}</strong> + {graceMinutes}min grace will be marked <span className="text-red-600">Late</span>.
-            Signing out before <strong>{shiftEnd}</strong> will be flagged as <span className="text-amber-600">Early Departure</span>.
-          </p>
+        <div className="space-y-2 p-4 rounded-xl" style={{ background: '#0ea5e908', border: '1px solid #0ea5e920' }}>
+          <div className="flex items-center gap-2">
+            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#0ea5e9" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-[11px] font-bold" style={{ color: '#0369a1' }}>
+              Attendance Rules Preview
+            </p>
+          </div>
+          <ul className="text-[11px] space-y-1 pl-5 list-disc" style={{ color: '#0369a1' }}>
+            <li>Sign in before <strong>{shiftStart}</strong> + {graceMinutes} min → <span className="text-emerald-600">Present (on time)</span></li>
+            <li>Sign in after <strong>{shiftStart}</strong> + {graceMinutes} min, before <strong>{halfDayThreshold}</strong> → <span className="text-orange-500">Present (Late)</span></li>
+            <li>Sign in at <strong>{halfDayThreshold}</strong> or later → <span className="text-amber-600">Half Day</span></li>
+            <li>Sign out before <strong>{shiftEnd}</strong> → <span className="text-red-500">Early Departure</span> flag</li>
+            <li>Multiple sign-ins: <strong>first check-in</strong> is recorded; <strong>last sign-out</strong> is recorded</li>
+          </ul>
         </div>
       </section>
 

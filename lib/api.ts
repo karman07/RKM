@@ -112,7 +112,7 @@ export interface User {
   _id: string;
   name: string;
   email: string;
-  role: 'admin' | 'manager' | 'cashier' | 'custom';
+  role: 'admin' | 'manager' | 'cashier' | 'custom' | 'worker';
   branch?: Branch | string;
   custom_role?: CustomRole | string | null;
   is_active: boolean;
@@ -416,6 +416,22 @@ export const getCashiersByBranch = (branchId?: string, limit = 100) => {
     meta: res.meta,
   }));
 };
+
+/** Fetch non-login workers (sweeper, cleaner, security, etc.) */
+export const getWorkers = (branchId?: string, page = 1, limit = 50) => {
+  const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (branchId) qs.set('branch_id', branchId);
+  return request<PaginatedResponse<UserApiResponse>>(`/users/workers?${qs}`).then((res) => ({
+    data: res.data.map(normalizeUser),
+    meta: res.meta,
+  }));
+};
+
+export const createWorker = (data: object) =>
+  request<UserApiResponse>('/users', { method: 'POST', body: JSON.stringify(data) }).then(normalizeUser);
+
+export const markWorkerAttendance = (data: { user_id: string; date: string; status: string; notes?: string }) =>
+  request<any>('/attendance/mark', { method: 'POST', body: JSON.stringify(data) });
 
 // ─── Categories ───────────────────────────────────────────────────────────────
 
@@ -824,6 +840,8 @@ export interface AppSettings {
   shift_end_time?: string;
   /** Grace period in minutes after shift start before marking late */
   late_grace_minutes?: number;
+  /** Time (HH:MM IST) at or after which a sign-in is treated as half-day */
+  half_day_threshold_time?: string;
   whatsapp_notifications_enabled?: boolean;
   email_notifications_enabled?: boolean;
   email_triggers?: Record<string, boolean>;
@@ -908,6 +926,22 @@ export const uploadBlogImage = async (file: File): Promise<{ url: string }> => {
   if (!res.ok) throw new Error('Blog image upload failed');
   return res.json() as Promise<{ url: string }>;
 };
+/** Upload an employee onboarding document (image or PDF, max 10 MB). */
+export const uploadUserDoc = async (file: File): Promise<{ url: string; filename: string; original_name: string; size: number }> => {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${API_BASE}/uploads/user-docs`, {
+    method: 'POST',
+    headers: authHeadersMultipart(),
+    body: form,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).message || 'Document upload failed');
+  }
+  return res.json();
+};
+
 // ─── Attendance ────────────────────────────────────────────────────────────────
 
 export const markAttendance = (data: {
@@ -948,6 +982,52 @@ export const triggerAutoCheckout = (date?: string) =>
     `/attendance/auto-checkout${date ? `?date=${date}` : ''}`,
     { method: 'POST' },
   );
+
+// ─── Payroll ─────────────────────────────────────────────────────────────────
+
+export interface PayrollCalendarDay {
+  date: string;
+  day: string;
+  status: 'present' | 'absent' | 'half-day' | 'paid-time-off' | 'holiday' | 'weekend' | 'yet-to-check-in' | 'upcoming';
+  note: string | null;
+  check_in: string | null;
+  check_out: string | null;
+  is_late: boolean;
+  deducted_amount: number;
+}
+
+export interface Incentive {
+  _id: string;
+  amount: number;
+  reason: string;
+  granted_by?: { _id: string; name: string } | string;
+  createdAt?: string;
+}
+
+export interface PayrollSummary {
+  user: User;
+  base_salary: number;
+  total_working_days: number;
+  daily_rate: number;
+  summary: { present: number; half_day: number; on_leave: number; holiday: number; absent: number; yet_to_check_in: number };
+  deductions: number;
+  incentives: number;
+  incentive_list: Incentive[];
+  net_payable: number;
+  calendar: PayrollCalendarDay[];
+}
+
+export const getPayrollSummary = (month: number, year: number) =>
+  request<PayrollSummary[]>(`/payroll/summary?month=${month}&year=${year}`);
+
+export const getMyPayroll = (month: number, year: number) =>
+  request<PayrollSummary>(`/payroll/mine?month=${month}&year=${year}`);
+
+export const addIncentive = (data: { user_id: string; month: number; year: number; amount: number; reason?: string }) =>
+  request<Incentive>('/incentives', { method: 'POST', body: JSON.stringify(data) });
+
+export const deleteIncentive = (id: string) =>
+  request<{ deleted: boolean }>(`/incentives/${id}`, { method: 'DELETE' });
 
 // ─── Customers ────────────────────────────────────────────────────────────────
 

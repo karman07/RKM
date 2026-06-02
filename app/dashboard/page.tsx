@@ -200,9 +200,6 @@ export default function AdminHome() {
   if (isAdmin && stats?.pendingReimbs > 0) {
     alerts.push({ icon: CreditCard, text: `${stats.pendingReimbs} Reimbursement${stats.pendingReimbs > 1 ? 's' : ''} Pending`, sub: 'Requires your approval', href: '/dashboard/reimbursements', color: 'bg-blue-50 border-blue-200 text-blue-800' });
   }
-  if (isAdmin && !stats?.isHoliday && stats?.absentToday > 0) {
-    alerts.push({ icon: AlertTriangle, text: `${stats.absentToday} Staff Absent Today`, sub: `${stats.onLeaveToday ?? 0} on approved leave · ${stats.presentToday ?? 0} present`, href: '/dashboard/attendance', color: 'bg-red-50 border-red-200 text-red-800' });
-  }
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-8 pb-16 animate-[fadeRise_300ms_ease-out]">
