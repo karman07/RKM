@@ -175,7 +175,13 @@ function CreatePanel({
     setItems(prev => {
       const n = [...prev];
       const stones = [...n[itemIdx].stones];
-      stones[stoneIdx] = { ...stones[stoneIdx], [field]: value };
+      const updated = { ...stones[stoneIdx], [field]: value };
+      if ((field === 'weight' || field === 'stone_type') && settings) {
+        const w = parseFloat(updated.weight);
+        const rate = settings.stone_rates?.[updated.stone_type] ?? 0;
+        if (w > 0 && rate > 0) updated.estimated_value = String(Math.round(w * rate));
+      }
+      stones[stoneIdx] = updated;
       n[itemIdx] = { ...n[itemIdx], stones };
       return n;
     });
@@ -407,7 +413,12 @@ function CreatePanel({
                                   className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs focus:outline-none" />
                               </div>
                               <div>
-                                <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 block mb-0.5">Est. Value (₹)</label>
+                                <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 block mb-0.5">
+                                  Est. Value (₹)
+                                  {(settings?.stone_rates?.[stone.stone_type] ?? 0) > 0 && (
+                                    <span className="normal-case font-medium text-slate-400 ml-1">— auto from rates</span>
+                                  )}
+                                </label>
                                 <input type="number" placeholder="0"
                                   value={stone.estimated_value} onChange={e => updateStone(i, si, 'estimated_value', e.target.value)}
                                   className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs focus:outline-none" />

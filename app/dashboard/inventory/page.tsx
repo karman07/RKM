@@ -423,61 +423,160 @@ export function InventoryPageContent() {
 
       <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-8 py-8">
         {/* Filters */}
-        <div className="flex flex-wrap gap-3 mb-6">
-          <div className="relative flex-1 min-w-[220px]">
-            <svg className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            <input
-              id="inventory-search-input"
-              type="text"
-              placeholder="Search product or barcode or invoice..."
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') setSearch(searchInput);
-              }}
-              className="w-full bg-white border border-slate-200 rounded-2xl py-3 pl-11 pr-4 text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#7A1C2A]/10 focus:border-[#7A1C2A] transition-all"
-            />
+        <div className="space-y-3 mb-6">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <svg className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                id="inventory-search-input"
+                type="text"
+                placeholder="Search product or barcode..."
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') setSearch(searchInput);
+                }}
+                className="w-full bg-white border border-slate-200 rounded-2xl py-3 pl-11 pr-4 text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#7A1C2A]/10 focus:border-[#7A1C2A] transition-all"
+              />
+            </div>
+            <button
+              onClick={() => setSearch(searchInput)}
+              className="bg-[#7A1C2A] hover:bg-[#5E1520] text-white px-4 sm:px-5 py-3 rounded-2xl text-sm font-bold shadow-sm transition-all whitespace-nowrap"
+            >
+              Search
+            </button>
+            <button
+              onClick={() => setShowCameraScanner(true)}
+              className="bg-slate-800 hover:bg-slate-900 text-white px-3 sm:px-4 py-3 rounded-2xl text-sm font-bold shadow-sm transition-all flex items-center gap-2"
+              title="Scan using device camera"
+            >
+              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <span className="hidden sm:inline">Scan</span>
+            </button>
           </div>
-          <button
-            onClick={() => setSearch(searchInput)}
-            className="bg-[#7A1C2A] hover:bg-[#5E1520] text-white px-5 py-3 rounded-2xl text-sm font-bold shadow-sm transition-all"
-          >
-            Search
-          </button>
-          <button
-            onClick={() => setShowCameraScanner(true)}
-            className="bg-slate-800 hover:bg-slate-900 text-white px-4 py-3 rounded-2xl text-sm font-bold shadow-sm transition-all flex items-center gap-2"
-            title="Scan using device camera"
-          >
-            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            Scan
-          </button>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-white border border-slate-200 rounded-2xl px-4 py-3 text-sm font-bold text-slate-600 focus:outline-none focus:border-[#7A1C2A] transition-all"
-          >
-            <option value="">All Status</option>
-            <option value="available">Available</option>
-            <option value="sold">Sold</option>
-            <option value="reserved">Reserved</option>
-            <option value="damaged">Damaged</option>
-            <option value="returned">Returned</option>
-            <option value="stolen">Stolen</option>
-          </select>
-          <div className="flex items-center px-4 py-3 bg-white border border-slate-100 rounded-2xl text-[11px] font-bold text-slate-500">
-            {totalItems} items
+          <div className="flex gap-3 items-center flex-wrap">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="flex-1 sm:flex-none bg-white border border-slate-200 rounded-2xl px-4 py-2.5 text-sm font-bold text-slate-600 focus:outline-none focus:border-[#7A1C2A] transition-all"
+            >
+              <option value="">All Status</option>
+              <option value="available">Available</option>
+              <option value="sold">Sold</option>
+              <option value="reserved">Reserved</option>
+              <option value="damaged">Damaged</option>
+              <option value="returned">Returned</option>
+              <option value="stolen">Stolen</option>
+            </select>
+            <div className="flex items-center px-4 py-2.5 bg-white border border-slate-100 rounded-2xl text-[11px] font-bold text-slate-500 whitespace-nowrap">
+              {totalItems} items
+            </div>
           </div>
         </div>
 
-        {/* Table */}
-        <div className="bg-white border border-slate-100 rounded-3xl shadow-sm overflow-hidden mb-6">
-          <table className="w-full text-left">
+        {/* Mobile Card View */}
+        <div className="md:hidden space-y-3 mb-6">
+          {filteredItems.length === 0 ? (
+            <div className="py-16 text-center">
+              <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                <svg width="24" height="24" className="text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                </svg>
+              </div>
+              <p className="text-slate-400 font-medium text-sm">No inventory items found</p>
+            </div>
+          ) : filteredItems.map((item) => {
+            const product = item.product_id as any;
+            const cfg = STATUS_CONFIG[item.status] ?? STATUS_CONFIG.available;
+            const imgPath = product?.images?.[0];
+            const img = staticUrl(imgPath);
+            const pb = (item as any).pricing_breakdown;
+            const adminDiscountPct = item.admin_discount > 0 ? item.admin_discount : (product?.discount_percentage || 0);
+            const adminDiscountAmt: number = pb?.discount_amount || 0;
+            const basePrice: number = item.selling_price + adminDiscountAmt;
+            const hasDiscount = adminDiscountPct > 0 || (item.manager_discount ?? 0) > 0;
+            const finalPrice = item.live_selling_price ?? item.selling_price;
+            const fa = (n: number) => Math.abs(n).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+            return (
+              <div key={item._id} className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm">
+                <div className="flex gap-3 mb-3">
+                  <div className="relative w-14 h-14 rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 flex-shrink-0 flex items-center justify-center overflow-hidden border border-slate-200">
+                    <svg width="18" height="18" className="text-slate-300/80" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                    </svg>
+                    {img && <img src={img} alt={product?.name ?? ''} className="absolute inset-0 w-full h-full object-cover z-10" onError={(e) => { e.currentTarget.style.opacity = '0'; }} />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-black text-slate-900 truncate">{product?.name ?? 'Unknown Item'}</p>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {product?.sku && <span className="px-1.5 py-0.5 bg-slate-50 border border-slate-200 rounded text-[9px] font-black uppercase text-slate-600">SKU {product.sku}</span>}
+                      <span className="px-1.5 py-0.5 bg-slate-50 border border-slate-200 rounded text-[9px] font-black uppercase text-slate-600">{product?.metal_type || 'Gold'} · {product?.purity || '—'}</span>
+                      {product?.gross_weight && <span className="px-1.5 py-0.5 bg-slate-50 border border-slate-200 rounded text-[9px] font-black uppercase text-slate-600">{product.gross_weight}g</span>}
+                    </div>
+                    <div className="flex items-center justify-between mt-2">
+                      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-black uppercase ${cfg.bg} ${cfg.text}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+                        {cfg.label}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-[10px] font-bold text-slate-400 mb-2">
+                  Barcode: <code className="bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded-md text-slate-600 font-bold">{item.barcode}</code>
+                </p>
+                <div className="mb-3">
+                  {hasDiscount && <span className="text-[11px] font-bold text-slate-400 line-through block">₹{basePrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>}
+                  {adminDiscountPct > 0 && (
+                    <span className="text-[10px] font-bold uppercase text-amber-600 flex items-center gap-1">
+                      <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                      {adminDiscountPct}% Admin Off {adminDiscountAmt > 0 && `(-₹${fa(adminDiscountAmt)})`}
+                    </span>
+                  )}
+                  {(item.manager_discount ?? 0) > 0 && (
+                    <span className="text-[10px] font-bold uppercase text-emerald-600 flex items-center gap-1">
+                      <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>
+                      {item.manager_discount}% Mgr Off
+                    </span>
+                  )}
+                  <span className="text-base font-black text-[#7A1C2A] block">₹{finalPrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+                </div>
+                {item.status === 'available' && (
+                  <div className="flex gap-2 flex-wrap border-t border-slate-50 pt-3">
+                    <button
+                      onClick={() => { setSellItem(item); setSellForm({ customer_name: '', customer_phone: '', customer_country_code: '+91', customer_email: '', shipping_address: '', shipping_city: '', shipping_state: '', shipping_pincode: '', payment_mode: 'cash', discount: 0, sold_by_user_id: '' }); }}
+                      className="flex-1 py-2.5 bg-gradient-to-br from-[#5A0F1A] to-[#7A1C2A] text-white rounded-xl text-[11px] font-black uppercase tracking-wider shadow-sm"
+                    >Sell</button>
+                    <button onClick={() => setViewItem(item)} className="py-2.5 px-3 bg-white border border-slate-200 text-slate-700 rounded-xl text-[11px] font-black uppercase tracking-wider">View</button>
+                    <button onClick={() => { setDamageItem(item); setDamageForm({ reason: '' }); }} className="py-2.5 px-3 bg-white border border-red-100 text-red-600 rounded-xl text-[11px] font-black uppercase tracking-wider">Damage</button>
+                    <button onClick={() => { setStolenItem(item); setStolenForm({ reason: '' }); }} className="py-2.5 px-3 bg-white border border-stone-100 text-stone-600 rounded-xl text-[11px] font-black uppercase tracking-wider">Stolen</button>
+                  </div>
+                )}
+                {item.status === 'sold' && (
+                  <div className="flex gap-2 border-t border-slate-50 pt-3">
+                    <button onClick={() => handleReturn(item)} className="flex-1 py-2.5 bg-white border border-orange-100 text-orange-600 rounded-xl text-[11px] font-black uppercase tracking-wider">Return</button>
+                    <button onClick={() => setBill(item)} className="flex-1 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-[11px] font-black uppercase tracking-wider">View Bill</button>
+                    <button onClick={() => setViewItem(item)} className="py-2.5 px-3 bg-white border border-slate-200 text-slate-700 rounded-xl text-[11px] font-black uppercase tracking-wider">View</button>
+                  </div>
+                )}
+                {item.status !== 'available' && item.status !== 'sold' && (
+                  <div className="border-t border-slate-50 pt-3">
+                    <button onClick={() => setViewItem(item)} className="w-full py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-[11px] font-black uppercase tracking-wider">View Details</button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Desktop Table */}
+        <div className="hidden md:block bg-white border border-slate-100 rounded-3xl shadow-sm overflow-hidden mb-6">
+          <div className="overflow-x-auto">
+          <table className="w-full text-left min-w-[700px]">
             <thead>
               <tr className="border-b border-slate-50 bg-slate-50/60">
                 <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-500">Product</th>
@@ -729,6 +828,7 @@ export function InventoryPageContent() {
               <p className="text-slate-400 font-medium">No inventory items found</p>
             </div>
           )}
+          </div>
         </div>
 
         {/* Pagination */}
@@ -744,7 +844,7 @@ export function InventoryPageContent() {
       {/* ── Sell Modal ── */}
       {sellItem && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-[24px] shadow-2xl w-full max-w-4xl p-8 max-h-[95vh] overflow-y-auto">
+          <div className="bg-white rounded-[24px] shadow-2xl w-full max-w-4xl p-4 sm:p-8 max-h-[95vh] overflow-y-auto">
             <div className="flex justify-between items-start mb-6 border-b border-slate-100 pb-5">
               <div>
                 <h2 className="text-xl font-black text-slate-900">Sell Item</h2>
@@ -765,8 +865,8 @@ export function InventoryPageContent() {
               </button>
             </div>
 
-            <div className="space-y-8">
-              <div className="grid grid-cols-2 gap-5">
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-black uppercase tracking-widest text-[#7A1C2A] mb-2">Customer Name <span className="text-red-500">*</span></label>
                   <input type="text" value={sellForm.customer_name || ''} onChange={(e) => setSellForm({ ...sellForm, customer_name: e.target.value })}
@@ -802,7 +902,7 @@ export function InventoryPageContent() {
                     </div>
                     <input type="tel" value={sellForm.customer_phone || ''} onChange={(e) => { setSellForm({ ...sellForm, customer_phone: e.target.value.replace(/\D/g, '').slice(0, 10) }); setPhoneVerified(false); setOtpSent(false); setOtpError(''); }}
                       disabled={phoneVerified || otpSent}
-                      className="flex-1 bg-transparent px-5 py-4 text-lg font-black tracking-wider text-slate-900 disabled:text-slate-400 focus:outline-none" placeholder="10 Digit Mobile Number" />
+                      className="flex-1 bg-transparent px-3 sm:px-5 py-4 text-base sm:text-lg font-black tracking-wider text-slate-900 disabled:text-slate-400 focus:outline-none min-w-0" placeholder="Mobile Number" />
                   </div>
                   {sellForm.customer_phone && sellForm.customer_phone.length === 10 && !phoneVerified && !otpSent && (
                     <button onClick={handleSendOTP} disabled={otpSending} className="px-8 py-4 bg-[#5A0F1A] text-white text-xs font-black uppercase tracking-widest rounded-2xl whitespace-nowrap hidden lg:block shadow-lg hover:bg-[#7A1C2A] transition-all transform hover:scale-105 active:scale-95">
@@ -831,7 +931,7 @@ export function InventoryPageContent() {
                 {otpError && <p className="text-[11px] text-red-600 font-black mt-3 flex items-center gap-1.5 px-2 bg-red-50 py-2 rounded-lg border border-red-100"><span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" /> {otpError}</p>}
               </div>
 
-              <div className="grid grid-cols-2 gap-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Email</label>
                   <input type="email" value={sellForm.customer_email || ''} onChange={(e) => setSellForm({ ...sellForm, customer_email: e.target.value })}
@@ -844,7 +944,7 @@ export function InventoryPageContent() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">City</label>
                   <input type="text" value={sellForm.shipping_city || ''} onChange={(e) => setSellForm({ ...sellForm, shipping_city: e.target.value })}
@@ -862,7 +962,7 @@ export function InventoryPageContent() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Payment Mode</label>
                   <select value={sellForm.payment_mode} onChange={(e) => setSellForm({ ...sellForm, payment_mode: e.target.value })}
@@ -917,24 +1017,24 @@ export function InventoryPageContent() {
               </div>
 
               <div id="recaptcha-cont"></div>
-              <div className="flex justify-end gap-3 mt-8 pt-5 border-t border-slate-100">
-                <button 
-                  onClick={() => { 
-                    setSellItem(null); 
+              <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 mt-6 pt-5 border-t border-slate-100">
+                <button
+                  onClick={() => {
+                    setSellItem(null);
                     setSellForm({ customer_name: '', customer_phone: '', customer_country_code: '+91', customer_email: '', shipping_address: '', shipping_city: '', shipping_state: '', shipping_pincode: '', payment_mode: 'cash', discount: 0, sold_by_user_id: '' });
-                    setOtpSent(false); 
-                    setPhoneVerified(false); 
-                    setOtp(''); 
-                    setOtpError(''); 
-                  }} 
-                  className="px-8 py-3.5 bg-white border border-slate-200 rounded-2xl text-[11px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-50 transition-colors shadow-sm"
+                    setOtpSent(false);
+                    setPhoneVerified(false);
+                    setOtp('');
+                    setOtpError('');
+                  }}
+                  className="w-full sm:w-auto px-8 py-3.5 bg-white border border-slate-200 rounded-2xl text-[11px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-50 transition-colors shadow-sm"
                 >
                   Cancel
                 </button>
-                <button 
-                  onClick={handleSell} 
-                  disabled={selling || (sellForm.customer_phone.length === 10 && !phoneVerified)} 
-                  className="px-10 py-3.5 bg-[#5A0F1A] hover:bg-[#7A1C2A] text-white rounded-2xl text-[11px] font-black uppercase tracking-widest transition-colors shadow-md disabled:opacity-60 flex items-center justify-center"
+                <button
+                  onClick={handleSell}
+                  disabled={selling || (sellForm.customer_phone.length === 10 && !phoneVerified)}
+                  className="w-full sm:w-auto px-10 py-3.5 bg-[#5A0F1A] hover:bg-[#7A1C2A] text-white rounded-2xl text-[11px] font-black uppercase tracking-widest transition-colors shadow-md disabled:opacity-60 flex items-center justify-center"
                 >
                   {selling ? 'Processing...' : (sellForm.customer_phone.length === 10 && !phoneVerified) ? 'Verify Phone First' : 'Confirm Sale'}
                 </button>

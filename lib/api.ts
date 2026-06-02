@@ -601,3 +601,93 @@ export const createCustomer = (data: {
   name: string; phone: string; email?: string; gender?: string;
   address?: string; city?: string; state?: string; pincode?: string; country?: string;
 }) => request<FullCustomer>('/customers', { method: 'POST', body: JSON.stringify(data) });
+
+// ─── Payroll ──────────────────────────────────────────────────────────────────
+
+export interface PayrollCalendarDay {
+  date: string;
+  day: string;
+  status: string;
+  note: string | null;
+  check_in: string | null;
+  check_out: string | null;
+  is_late: boolean;
+  deducted_amount: number;
+}
+
+export interface PayrollIncentive {
+  _id: string;
+  amount: number;
+  reason: string;
+  granted_by?: { _id: string; name: string } | string;
+}
+
+export interface MyPayroll {
+  base_salary: number;
+  total_working_days: number;
+  daily_rate: number;
+  summary: {
+    present: number;
+    half_day: number;
+    on_leave: number;
+    holiday: number;
+    absent: number;
+    yet_to_check_in: number;
+  };
+  deductions: number;
+  incentives: number;
+  incentive_list: PayrollIncentive[];
+  net_payable: number;
+  calendar: PayrollCalendarDay[];
+}
+
+export const getMyPayroll = (month: number, year: number) =>
+  request<MyPayroll>(`/payroll/mine?month=${month}&year=${year}`);
+
+// ─── Workers (non-login staff: sweeper, cleaner, security, etc.) ──────────────
+
+export interface Worker {
+  _id: string;
+  name: string;
+  job_title?: string;
+  branch?: { _id: string; name: string };
+  base_salary?: number;
+  salary_type?: string;
+  joining_date?: string;
+  mobile_number?: string;
+  isActive: boolean;
+  role: 'worker';
+}
+
+export const getWorkers = (branchId?: string) => {
+  const qs = branchId ? `?branch_id=${branchId}` : '';
+  return request<{ data: Worker[]; meta: any }>(`/users/workers${qs}`);
+};
+
+export const createWorker = (data: {
+  name: string;
+  job_title?: string;
+  branch?: string;
+  base_salary?: number;
+  salary_type?: string;
+  joining_date?: string;
+  mobile_number?: string;
+}) =>
+  request<Worker>('/users', { method: 'POST', body: JSON.stringify({ ...data, role: 'worker' }) });
+
+export const updateWorker = (id: string, data: object) =>
+  request<Worker>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+
+export const deleteWorker = (id: string) =>
+  request<void>(`/users/${id}`, { method: 'DELETE' });
+
+export const markWorkerAttendance = (data: {
+  user_id: string;
+  date: string;
+  status: 'present' | 'absent' | 'half-day' | 'on-leave';
+  notes?: string;
+}) =>
+  request<any>('/attendance/mark', { method: 'POST', body: JSON.stringify(data) });
+
+export const getWorkerAttendance = (userId: string, start: string, end: string) =>
+  request<any[]>(`/attendance/user/${userId}?start=${start}&end=${end}`);
