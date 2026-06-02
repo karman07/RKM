@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, Fragment } from 'react';
 import {
   getOldGoldTransactions,
   createOldGoldTransaction,
@@ -978,8 +978,8 @@ export default function OldGoldPage() {
                 const isBusy    = (k: string) => busy === `${k}-${txn._id}`;
 
                 return (
-                  <>
-                    <tr key={txn._id} className="hover:bg-slate-50/40 transition-colors group">
+                  <Fragment key={txn._id}>
+                    <tr className="hover:bg-slate-50/40 transition-colors group">
                       {/* Expand toggle */}
                       <td className="pl-5 pr-2 py-4">
                         <button
@@ -1069,7 +1069,7 @@ export default function OldGoldPage() {
                     </tr>
 
                     {isExpanded && <TxnDetail key={`d-${txn._id}`} txn={txn} />}
-                  </>
+                  </Fragment>
                 );
               })}
             </tbody>

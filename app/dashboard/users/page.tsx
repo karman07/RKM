@@ -8,6 +8,7 @@ import {
 } from '@/lib/api';
 import Modal from '@/components/Modal';
 import UserHistoryDrawer from '@/components/UserHistoryDrawer';
+import PhoneOtpField from '@/components/PhoneOtpField';
 import {
   Plus, Edit2, Trash2, ChevronLeft, ChevronRight, Shield, UserCheck,
   Building2, Mail, Loader2, User as UserIcon, FileText, CreditCard,
@@ -169,6 +170,10 @@ export default function UsersPage() {
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [historyUser, setHistoryUser]   = useState<User | null>(null);
 
+  // Phone OTP verification state (reset when modal opens)
+  const [mobileVerified, setMobileVerified]   = useState(false);
+  const [familyVerified, setFamilyVerified]   = useState(false);
+
   // Attendance marking for workers
   const [attendanceTarget, setAttendanceTarget] = useState<User | null>(null);
   const [attendanceDate, setAttendanceDate]     = useState(() => new Date().toISOString().split('T')[0]);
@@ -218,6 +223,8 @@ export default function UsersPage() {
     setEditTarget(null);
     setForm(emptyForm);
     setError('');
+    setMobileVerified(false);
+    setFamilyVerified(false);
     setModalOpen(true);
   }
 
@@ -247,10 +254,22 @@ export default function UsersPage() {
       appointment_letter_url:   (u as any).appointment_letter_url         || '',
     });
     setError('');
+    // Treat existing saved numbers as already verified
+    setMobileVerified(!!(editTarget && (editTarget as any).mobile_number));
+    setFamilyVerified(!!(editTarget && (editTarget as any).family_contact_number));
     setModalOpen(true);
   }
 
   async function handleSave() {
+    // Block if phone numbers entered but not verified
+    if (form.mobile_number && form.mobile_number.length === 10 && !mobileVerified) {
+      setError('Please verify the employee mobile number before saving.');
+      return;
+    }
+    if (form.family_contact_number && form.family_contact_number.length === 10 && !familyVerified) {
+      setError('Please verify the family contact number before saving.');
+      return;
+    }
     setSaving(true);
     setError('');
     try {
@@ -557,18 +576,14 @@ export default function UsersPage() {
             </div>
           )}
 
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1 flex items-center gap-1">
-              <Phone className="w-3 h-3" /> Mobile Number
-            </label>
-            <input
-              type="tel"
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:border-blue-400 focus:bg-white transition-all"
-              value={form.mobile_number || ''}
-              onChange={e => setForm({ ...form, mobile_number: e.target.value.replace(/\D/g, '').slice(0, 10) })}
-              placeholder="10-digit mobile number"
-            />
-          </div>
+          <PhoneOtpField
+            label="Employee Mobile Number"
+            value={form.mobile_number || ''}
+            onChange={val => setForm({ ...form, mobile_number: val })}
+            onVerifiedChange={setMobileVerified}
+            fieldKey="employee-mobile"
+            initialValue={editTarget ? (editTarget as any).mobile_number : undefined}
+          />
 
           {form.role !== 'worker' && (
             <div className="space-y-1.5">
@@ -674,18 +689,14 @@ export default function UsersPage() {
               <Users className="w-3.5 h-3.5 text-blue-600" />
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Family &amp; Emergency Contact</p>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1 flex items-center gap-1">
-                <Phone className="w-3 h-3" /> Family Contact Number
-              </label>
-              <input
-                type="tel"
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:border-blue-400 focus:bg-white transition-all"
-                value={form.family_contact_number || ''}
-                onChange={e => setForm({ ...form, family_contact_number: e.target.value.replace(/\D/g, '').slice(0, 10) })}
-                placeholder="10-digit mobile number"
-              />
-            </div>
+            <PhoneOtpField
+              label="Family Contact Number"
+              value={form.family_contact_number || ''}
+              onChange={val => setForm({ ...form, family_contact_number: val })}
+              onVerifiedChange={setFamilyVerified}
+              fieldKey="family-contact"
+              initialValue={editTarget ? (editTarget as any).family_contact_number : undefined}
+            />
           </div>
 
           {/* ── KYC Documents ── */}
@@ -764,11 +775,19 @@ export default function UsersPage() {
             </button>
             <button
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving
+                || (!!form.mobile_number && form.mobile_number.length === 10 && !mobileVerified)
+                || (!!form.family_contact_number && form.family_contact_number.length === 10 && !familyVerified)}
               className={`flex-1 ${form.role === 'worker' ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-500/20' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20'} disabled:opacity-50 text-white text-xs font-bold uppercase tracking-widest rounded-xl transition-all shadow-lg flex items-center justify-center gap-2`}
             >
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-              {editTarget ? 'Save Changes' : form.role === 'worker' ? 'Add Worker' : 'Create Employee'}
+              {saving
+                ? 'Saving…'
+                : (form.mobile_number?.length === 10 && !mobileVerified)
+                  ? 'Verify Mobile First'
+                  : (form.family_contact_number?.length === 10 && !familyVerified)
+                    ? 'Verify Family No. First'
+                    : editTarget ? 'Save Changes' : form.role === 'worker' ? 'Add Worker' : 'Create Employee'}
             </button>
           </div>
         </div>
