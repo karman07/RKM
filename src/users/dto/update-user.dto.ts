@@ -50,4 +50,36 @@ export class UpdateUserDto {
   @IsString()
   @IsOptional()
   avatar?: string;
+
+  @IsString()
+  @IsOptional()
+  pan_card?: string;
+
+  @IsString()
+  @IsOptional()
+  aadhar_card?: string;
+
+  @IsString()
+  @IsOptional()
+  offer_letter_url?: string;
+
+  @IsString()
+  @IsOptional()
+  appointment_letter_url?: string;
+
+  @IsString()
+  @IsOptional()
+  mobile_number?: string;
+
+  @IsString()
+  @IsOptional()
+  family_contact_number?: string;
+
+  @IsString()
+  @IsOptional()
+  father_aadhar_card_url?: string;
+
+  @IsString()
+  @IsOptional()
+  mother_aadhar_card_url?: string;
 }

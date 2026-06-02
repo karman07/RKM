@@ -31,6 +31,8 @@ import { HolidaysModule } from './modules/holidays/holidays.module';
 import { LocationViolationsModule } from './modules/location-violations/location-violations.module';
 import { CustomRolesModule } from './modules/custom-roles/custom-roles.module';
 import { OldGoldModule } from './modules/old-gold/old-gold.module';
+import { PayrollModule } from './modules/payroll/payroll.module';
+import { IncentiveModule } from './modules/incentives/incentive.module';
 
 @Module({
   imports: [
@@ -70,6 +72,8 @@ import { OldGoldModule } from './modules/old-gold/old-gold.module';
     LocationViolationsModule,
     CustomRolesModule,
     OldGoldModule,
+    PayrollModule,
+    IncentiveModule,
   ],
   controllers: [AppController],
   providers: [AppService],

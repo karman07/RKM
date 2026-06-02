@@ -15,16 +15,24 @@ export class CreateUserDto {
   @IsNotEmpty()
   name: string;
 
+  /** Optional for WORKER role — auto-generated if absent */
   @IsEmail()
-  @IsNotEmpty()
-  email: string;
+  @IsOptional()
+  email?: string;
 
+  /** Optional for WORKER role — auto-generated if absent */
   @IsString()
   @MinLength(6)
-  password: string;
+  @IsOptional()
+  password?: string;
 
   @IsEnum(UserRole)
   role: UserRole;
+
+  /** Only for WORKER role: actual job title (Sweeper, Cleaner, Security, etc.) */
+  @IsString()
+  @IsOptional()
+  job_title?: string;
 
   @IsString()
   @IsOptional()
@@ -50,4 +58,36 @@ export class CreateUserDto {
   @IsString()
   @IsOptional()
   custom_role?: string;
+
+  @IsString()
+  @IsOptional()
+  pan_card?: string;
+
+  @IsString()
+  @IsOptional()
+  aadhar_card?: string;
+
+  @IsString()
+  @IsOptional()
+  offer_letter_url?: string;
+
+  @IsString()
+  @IsOptional()
+  appointment_letter_url?: string;
+
+  @IsString()
+  @IsOptional()
+  mobile_number?: string;
+
+  @IsString()
+  @IsOptional()
+  family_contact_number?: string;
+
+  @IsString()
+  @IsOptional()
+  father_aadhar_card_url?: string;
+
+  @IsString()
+  @IsOptional()
+  mother_aadhar_card_url?: string;
 }

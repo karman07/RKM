@@ -17,7 +17,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../../auth/guards/roles.guard.js';
 import { Roles } from '../../auth/decorators/roles.decorator.js';
 import { UserRole } from '../../users/schemas/user.schema.js';
-import { multerConfig } from './multer.config.js';
+import { multerConfig, multerDocConfig } from './multer.config.js';
 import { UploadsService } from './uploads.service.js';
 
 const MAX_PRODUCT_IMAGES = 10;
@@ -104,5 +104,19 @@ export class UploadsController {
   uploadUserImage(@UploadedFile() file: Express.Multer.File) {
     if (!file) throw new BadRequestException('No file uploaded');
     return this.uploadsService.buildFileResponse('users', file);
+  }
+
+  /**
+   * Upload an employee onboarding document (image or PDF).
+   * Used for PAN card, Aadhaar card, offer letter, appointment letter, etc.
+   * Field name: "file", accepts images + PDF, max 10 MB.
+   */
+  @Post('user-docs')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FileInterceptor('file', multerDocConfig('user-docs')))
+  uploadUserDoc(@UploadedFile() file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No file uploaded');
+    return this.uploadsService.buildFileResponse('user-docs', file);
   }
 }

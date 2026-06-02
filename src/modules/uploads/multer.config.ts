@@ -7,6 +7,10 @@ import type { Request } from 'express';
 const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp'];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 
+const DOC_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.pdf'];
+const DOC_MAX_SIZE   = 10 * 1024 * 1024; // 10 MB
+
+/** Multer config for general images (no PDF) */
 export function multerConfig(folder: string) {
   return {
     storage: diskStorage({
@@ -32,5 +36,34 @@ export function multerConfig(folder: string) {
       }
     },
     limits: { fileSize: MAX_FILE_SIZE },
+  };
+}
+
+/** Multer config for documents — images AND PDF, 10 MB limit */
+export function multerDocConfig(folder: string) {
+  return {
+    storage: diskStorage({
+      destination: (_req: Request, _file: Express.Multer.File, cb: (err: Error | null, dest: string) => void) => {
+        const uploadPath = join(process.cwd(), 'uploads', folder);
+        if (!existsSync(uploadPath)) {
+          mkdirSync(uploadPath, { recursive: true });
+        }
+        cb(null, uploadPath);
+      },
+      filename: (_req: Request, file: Express.Multer.File, cb: (err: Error | null, name: string) => void) => {
+        const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+        const ext = extname(file.originalname).toLowerCase();
+        cb(null, `${uniqueSuffix}${ext}`);
+      },
+    }),
+    fileFilter: (_req: Request, file: Express.Multer.File, cb: (err: Error | null, accept: boolean) => void) => {
+      const ext = extname(file.originalname).toLowerCase();
+      if (DOC_EXTENSIONS.includes(ext)) {
+        cb(null, true);
+      } else {
+        cb(new BadRequestException(`Allowed types: ${DOC_EXTENSIONS.join(', ')}`), false);
+      }
+    },
+    limits: { fileSize: DOC_MAX_SIZE },
   };
 }

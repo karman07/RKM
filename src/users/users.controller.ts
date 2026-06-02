@@ -53,22 +53,36 @@ export class UsersController {
   @Get('cashiers')
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   getCashiers(
-    @Query('page') page?: number, 
+    @Query('page') page?: number,
     @Query('limit') limit?: number,
     @Query('branch_id') branchId?: string
   ) {
     return this.usersService.findByRole(UserRole.CASHIER, Number(page) || 1, Number(limit) || 20, branchId);
   }
 
+  // ─── Admin & Manager: Get non-login workers (sweeper, cleaner, etc.) ────────
+  @Get('workers')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  getWorkers(
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @Query('branch_id') branchId?: string,
+    @Request() req?: any,
+  ) {
+    // Manager can only see workers in their own branch
+    const branch = req.user.role === UserRole.MANAGER ? (req.user.branch || branchId) : branchId;
+    return this.usersService.findWorkers(branch, Number(page) || 1, Number(limit) || 50);
+  }
+
   // ─── Admin & Manager: Get specific user ────────────────────────────────────
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   findOne(@Param('id') id: string, @Request() req) {
-    // Manager can only view cashiers
     if (req.user.role === UserRole.MANAGER) {
       return this.usersService.findById(id).then((user) => {
-        if (user._id.toString() !== req.user.userId && user.role !== UserRole.CASHIER) {
-          throw new ForbiddenException('Managers can only view themselves or their branch cashiers');
+        const allowed = [UserRole.CASHIER, UserRole.WORKER];
+        if (user._id.toString() !== req.user.userId && !allowed.includes(user.role)) {
+          throw new ForbiddenException('Managers can only view themselves, cashiers, or workers');
         }
         return user;
       });
@@ -76,7 +90,7 @@ export class UsersController {
     return this.usersService.findById(id);
   }
 
-  // ─── Admin: Update any user; Manager: Update cashiers only ─────────────────
+  // ─── Admin: Update any user; Manager: Update cashiers + workers ────────────
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   async update(
@@ -86,21 +100,23 @@ export class UsersController {
   ) {
     if (req.user.role === UserRole.MANAGER) {
       const target = await this.usersService.findById(id);
-      if (target.role !== UserRole.CASHIER && target._id.toString() !== req.user.userId) {
-        throw new ForbiddenException('Managers can only update themselves or cashiers');
+      const allowed = [UserRole.CASHIER, UserRole.WORKER];
+      if (!allowed.includes(target.role) && target._id.toString() !== req.user.userId) {
+        throw new ForbiddenException('Managers can only update themselves, cashiers, or workers');
       }
     }
     return this.usersService.update(id, dto);
   }
 
-  // ─── Admin: Delete any user; Manager: Delete cashiers only ─────────────────
+  // ─── Admin: Delete any user; Manager: Delete cashiers + workers ────────────
   @Delete(':id')
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   async remove(@Param('id') id: string, @Request() req) {
     if (req.user.role === UserRole.MANAGER) {
       const target = await this.usersService.findById(id);
-      if (target.role !== UserRole.CASHIER) {
-        throw new ForbiddenException('Managers can only delete cashiers');
+      const allowed = [UserRole.CASHIER, UserRole.WORKER];
+      if (!allowed.includes(target.role)) {
+        throw new ForbiddenException('Managers can only delete cashiers or workers');
       }
     }
     return this.usersService.remove(id);

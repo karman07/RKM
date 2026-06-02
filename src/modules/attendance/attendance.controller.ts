@@ -56,23 +56,19 @@ export class AttendanceController {
     return this.attendanceService.getStats(userId, Number(month), Number(year));
   }
 
-  // Self check-in (called automatically on login; body may carry lat/lng)
+  // Self check-in (called automatically on login; body may carry lat/lng).
+  // Status (present vs half-day) is determined automatically by the service
+  // using the admin-configured half_day_threshold_time setting.
   @Post('check-in')
   checkIn(@Req() req: any, @Body() body: any) {
     const uid = req.user?.userId || req.user?.sub || req.user?._id;
     const now = new Date();
-
-    // Determine present vs half-day using IST hour
-    const formatter = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', hour: 'numeric', hour12: false });
-    const hour = parseInt(formatter.format(now), 10);
-    const status = hour >= 12 ? 'half-day' : 'present';
-
     return this.attendanceService.markAttendance({
       user_id: uid,
       date: now,
-      status,
-      check_in: now,
-      check_in_lat: body?.latitude ?? null,
+      // No status — service auto-determines present vs half-day from settings
+      check_in:     now,
+      check_in_lat: body?.latitude  ?? null,
       check_in_lng: body?.longitude ?? null,
     }, uid);
   }

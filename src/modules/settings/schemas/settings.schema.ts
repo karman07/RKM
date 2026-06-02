@@ -88,6 +88,14 @@ export class Settings {
   @Prop({ type: Number, min: 0, max: 60, default: 5 })
   late_grace_minutes: number;
 
+  /**
+   * If a staff member signs in at or after this time (HH:MM IST), the day
+   * is automatically marked as half-day instead of present.
+   * E.g. "12:00" means signing in at noon or later → half-day.
+   */
+  @Prop({ type: String, default: '12:00' })
+  half_day_threshold_time: string;
+
   // ─── Notifications ───────────────────────────────────────────────────────────
 
   /** Whether WhatsApp notifications are enabled for automated sale events */

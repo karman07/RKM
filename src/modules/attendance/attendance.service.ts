@@ -10,11 +10,32 @@ function parseTime(hhmm: string): number {
   return (h || 0) * 60 + (m || 0);
 }
 
-/** Get IST hour+minute from a Date (UTC) */
+/** Get IST minutes-since-midnight from a UTC Date */
 function getISTMinutes(date: Date): number {
   const IST_OFFSET = 5.5 * 60 * 60 * 1000;
   const ist = new Date(date.getTime() + IST_OFFSET);
   return ist.getUTCHours() * 60 + ist.getUTCMinutes();
+}
+
+/**
+ * Determine attendance status from check-in time vs admin-configured thresholds.
+ *
+ * Rules (all times in IST):
+ *   check-in >= shift_end_time     → ABSENT   (arrived after shift closed — counts as absent)
+ *   check-in >= half_day_threshold → HALF_DAY
+ *   check-in <  half_day_threshold → PRESENT
+ */
+function determineCheckInStatus(
+  checkInTime: Date,
+  settings: { half_day_threshold_time?: string; shift_end_time?: string },
+): AttendanceStatus {
+  const shiftEndMins  = parseTime(settings.shift_end_time          ?? '18:00');
+  const thresholdMins = parseTime(settings.half_day_threshold_time ?? '12:00');
+  const checkInMins   = getISTMinutes(checkInTime);
+
+  if (checkInMins >= shiftEndMins)  return AttendanceStatus.ABSENT;
+  if (checkInMins >= thresholdMins) return AttendanceStatus.HALF_DAY;
+  return AttendanceStatus.PRESENT;
 }
 
 @Injectable()
@@ -24,6 +45,18 @@ export class AttendanceService {
     private settingsService: SettingsService,
   ) {}
 
+  /**
+   * Create or update an attendance record for a user on a given date.
+   *
+   * Key invariants enforced here:
+   *   • check_in  → only written on the FIRST sign-in of the day; subsequent
+   *                 logins do not overwrite it.
+   *   • check_out → always updated to the latest sign-out so the last departure
+   *                 is always recorded correctly.
+   *   • status    → auto-determined from check-in time vs half_day_threshold_time
+   *                 when not explicitly provided (admin override).  Only set on
+   *                 the first check-in; re-logins don't change an already-set status.
+   */
   async markAttendance(data: any, adminId: string) {
     const {
       user_id, date, status, notes,
@@ -32,20 +65,19 @@ export class AttendanceService {
       check_out_lat, check_out_lng,
     } = data;
 
-    // Normalize date to IST midnight to avoid UTC/IST date mismatch
+    // Normalise date to IST midnight
     const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-    const rawDate = new Date(date);
-    const istDate = new Date(rawDate.getTime() + IST_OFFSET_MS);
-    const istDateStr = istDate.toISOString().split('T')[0];
+    const rawDate       = new Date(date);
+    const istDate       = new Date(rawDate.getTime() + IST_OFFSET_MS);
+    const istDateStr    = istDate.toISOString().split('T')[0];
     const attendanceDate = new Date(istDateStr + 'T00:00:00.000Z');
 
-    // Fetch shift settings once
-    const settings = await this.settingsService.get();
+    const settings      = await this.settingsService.get();
     const shiftStartMins = parseTime(settings.shift_start_time ?? '09:00');
     const shiftEndMins   = parseTime(settings.shift_end_time   ?? '18:00');
     const graceMins      = settings.late_grace_minutes ?? 5;
 
-    // Compute late status when check-in is provided
+    // ── Late-arrival flag ──────────────────────────────────────────────────────
     let is_late = false;
     let late_by_minutes = 0;
     if (check_in) {
@@ -56,58 +88,81 @@ export class AttendanceService {
       }
     }
 
-    // Compute early-checkout status
+    // ── Early-departure flag ───────────────────────────────────────────────────
     let is_early_checkout = false;
-    let early_by_minutes = 0;
+    let early_by_minutes  = 0;
     if (check_out) {
       const checkOutMins = getISTMinutes(new Date(check_out));
       if (checkOutMins < shiftEndMins) {
         is_early_checkout = true;
-        early_by_minutes = shiftEndMins - checkOutMins;
+        early_by_minutes  = shiftEndMins - checkOutMins;
       }
     }
 
+    // ── Auto-determine status from check-in time when not explicitly given ─────
+    // Only relevant for self-check-in (no status in payload).
+    const autoStatus = check_in
+      ? determineCheckInStatus(new Date(check_in), settings)
+      : undefined;
+
+    // ── Update existing record ─────────────────────────────────────────────────
     const existing = await this.attendanceModel.findOne({
       user_id: new Types.ObjectId(user_id),
       date: attendanceDate,
     });
 
     if (existing) {
-      existing.status = status || existing.status;
-      existing.notes  = notes  || existing.notes;
-      if (check_in)  {
-        existing.check_in = new Date(check_in);
-        existing.is_late = is_late;
-        existing.late_by_minutes = late_by_minutes;
-        // Clear stale checkout if it predates the new check-in
-        if (existing.check_out && existing.check_out <= existing.check_in) {
-          existing.check_out = undefined;
-          existing.is_early_checkout = false;
-          existing.early_by_minutes = 0;
-          (existing as any).auto_checked_out = false;
-        }
+      // Notes always mergeable
+      if (notes) existing.notes = notes;
+
+      // Admin-provided status always wins
+      if (status) {
+        existing.status = status;
       }
+
+      // CHECK-IN: only record the FIRST sign-in of the day
+      if (check_in) {
+        if (!existing.check_in) {
+          // First sign-in → set check_in, late flags, and auto-status
+          existing.check_in        = new Date(check_in);
+          existing.is_late         = is_late;
+          existing.late_by_minutes = late_by_minutes;
+          // Apply auto-status only if admin didn't explicitly set one
+          if (!status && autoStatus) {
+            existing.status = autoStatus;
+          }
+        }
+        // Subsequent logins: check_in, status, and late flags remain unchanged.
+      }
+
+      // CHECK-OUT: always update to the LATEST sign-out of the day
       if (check_out) {
         const checkOutDate = new Date(check_out);
-        // Only store checkout if it is after the current check-in
+        // Must be after the original first check-in to be meaningful
         if (!existing.check_in || checkOutDate > existing.check_in) {
-          existing.check_out = checkOutDate;
+          existing.check_out        = checkOutDate;
           existing.is_early_checkout = is_early_checkout;
-          existing.early_by_minutes = early_by_minutes;
+          existing.early_by_minutes  = early_by_minutes;
+          (existing as any).auto_checked_out = false; // manual checkout clears the flag
         }
       }
+
       if (check_in_lat  != null) (existing as any).check_in_lat  = check_in_lat;
       if (check_in_lng  != null) (existing as any).check_in_lng  = check_in_lng;
       if (check_out_lat != null) (existing as any).check_out_lat = check_out_lat;
       if (check_out_lng != null) (existing as any).check_out_lng = check_out_lng;
+
       existing.marked_by = new Types.ObjectId(adminId);
       return existing.save();
     }
 
+    // ── Create new record (first event of the day) ─────────────────────────────
+    const resolvedStatus = status ?? autoStatus ?? AttendanceStatus.PRESENT;
+
     const attendance = new this.attendanceModel({
-      user_id: new Types.ObjectId(user_id),
-      date: attendanceDate,
-      status: status || AttendanceStatus.PRESENT,
+      user_id:  new Types.ObjectId(user_id),
+      date:     attendanceDate,
+      status:   resolvedStatus,
       notes,
       check_in:  check_in  ? new Date(check_in)  : null,
       check_out: check_out ? new Date(check_out) : null,
@@ -150,20 +205,20 @@ export class AttendanceService {
       date: { $gte: startDate, $lte: endDate },
     });
     return {
-      present:         records.filter(r => r.status === AttendanceStatus.PRESENT).length,
-      absent:          records.filter(r => r.status === AttendanceStatus.ABSENT).length,
-      halfDay:         records.filter(r => r.status === AttendanceStatus.HALF_DAY).length,
-      onLeave:         records.filter(r => r.status === AttendanceStatus.ON_LEAVE).length,
+      present:          records.filter(r => r.status === AttendanceStatus.PRESENT).length,
+      absent:           records.filter(r => r.status === AttendanceStatus.ABSENT).length,
+      halfDay:          records.filter(r => r.status === AttendanceStatus.HALF_DAY).length,
+      onLeave:          records.filter(r => r.status === AttendanceStatus.ON_LEAVE).length,
       totalWorkingDays: records.length,
-      lateCount:       records.filter(r => r.is_late).length,
-      earlyCheckouts:  records.filter(r => r.is_early_checkout).length,
+      lateCount:        records.filter(r => r.is_late).length,
+      earlyCheckouts:   records.filter(r => r.is_early_checkout).length,
     };
   }
 
   async getAllStatsForMonth(month: number, year: number) {
     const startDate = new Date(year, month, 1);
     const endDate   = new Date(year, month + 1, 0);
-    const records = await this.attendanceModel
+    const records   = await this.attendanceModel
       .find({ date: { $gte: startDate, $lte: endDate } })
       .populate('user_id', 'name role branch');
 
@@ -171,7 +226,7 @@ export class AttendanceService {
     records.forEach(r => {
       const uId = (r.user_id as any)._id.toString();
       if (!userMap[uId]) userMap[uId] = { user: r.user_id, present: 0, absent: 0, halfDay: 0, onLeave: 0, lateCount: 0, earlyCheckouts: 0 };
-      if (r.status === AttendanceStatus.PRESENT)  userMap[uId].present++;
+      if (r.status === AttendanceStatus.PRESENT)   userMap[uId].present++;
       else if (r.status === AttendanceStatus.ABSENT)    userMap[uId].absent++;
       else if (r.status === AttendanceStatus.HALF_DAY)  userMap[uId].halfDay++;
       else if (r.status === AttendanceStatus.ON_LEAVE)  userMap[uId].onLeave++;
@@ -181,7 +236,7 @@ export class AttendanceService {
     return Object.values(userMap);
   }
 
-  async getRecentSummary(days: number = 30) {
+  async getRecentSummary(days = 30) {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
     const stats = await this.attendanceModel.aggregate([
@@ -203,41 +258,36 @@ export class AttendanceService {
   }
 
   /**
-   * Auto-checkout all users who checked in but never signed out for a given date.
-   * Uses shift_end_time from settings as the checkout time.
-   * Marks records with auto_checked_out = true so admin can identify them.
+   * Auto-checkout users who checked in but never signed out for a given date.
+   * Sets check_out to shift_end_time and marks auto_checked_out = true.
    */
   async autoCheckoutMissedUsers(date: Date) {
-    const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-    const istDate = new Date(date.getTime() + IST_OFFSET_MS);
-    const istDateStr = istDate.toISOString().split('T')[0];
+    const IST_OFFSET_MS  = 5.5 * 60 * 60 * 1000;
+    const istDate        = new Date(date.getTime() + IST_OFFSET_MS);
+    const istDateStr     = istDate.toISOString().split('T')[0];
     const attendanceDate = new Date(istDateStr + 'T00:00:00.000Z');
-    const nextDay = new Date(attendanceDate.getTime() + 24 * 60 * 60 * 1000);
+    const nextDay        = new Date(attendanceDate.getTime() + 24 * 60 * 60 * 1000);
 
-    const settings = await this.settingsService.get();
+    const settings    = await this.settingsService.get();
     const shiftEndStr = settings.shift_end_time ?? '18:00';
 
-    // Build the checkout timestamp on the IST date at shift end time
     const [endH, endM] = shiftEndStr.split(':').map(Number);
-    // shift end in UTC = IST date midnight (UTC) + endH:endM - 5h30m offset
-    const shiftEndUtc = new Date(
-      attendanceDate.getTime() + ((endH * 60 + endM) - 5 * 60 - 30) * 60 * 1000
+    const shiftEndUtc  = new Date(
+      attendanceDate.getTime() + ((endH * 60 + endM) - 5 * 60 - 30) * 60 * 1000,
     );
 
     const missed = await this.attendanceModel.find({
-      date: { $gte: attendanceDate, $lt: nextDay },
+      date:     { $gte: attendanceDate, $lt: nextDay },
       check_in: { $exists: true, $ne: null },
       $or: [{ check_out: { $exists: false } }, { check_out: null }],
     });
 
     const updated: any[] = [];
     for (const record of missed) {
-      // Checkout must be after check-in
       if (record.check_in && shiftEndUtc <= record.check_in) continue;
-
-      record.check_out = shiftEndUtc;
-      record.is_early_checkout = false;
-      record.early_by_minutes = 0;
+      record.check_out           = shiftEndUtc;
+      record.is_early_checkout   = false;
+      record.early_by_minutes    = 0;
       (record as any).auto_checked_out = true;
       await record.save();
       updated.push(record);
@@ -251,7 +301,7 @@ export class AttendanceService {
     };
   }
 
-  /** Shift report: daily attendance enriched with late/early info */
+  /** Shift report: daily attendance enriched with late/early-departure info */
   async getShiftReport(date: Date) {
     const startOfDay = new Date(date); startOfDay.setHours(0, 0, 0, 0);
     const endOfDay   = new Date(date); endOfDay.setHours(23, 59, 59, 999);
@@ -265,22 +315,20 @@ export class AttendanceService {
       this.settingsService.get(),
     ]);
 
-    const lateRecords       = records.filter(r => r.is_late);
-    const earlyOutRecords   = records.filter(r => r.is_early_checkout);
-    const onTimeRecords     = records.filter(r => r.check_in && !r.is_late);
-
     return {
-      shift_start_time: settings.shift_start_time ?? '09:00',
-      shift_end_time:   settings.shift_end_time   ?? '18:00',
-      late_grace_minutes: settings.late_grace_minutes ?? 5,
+      shift_start_time:       settings.shift_start_time       ?? '09:00',
+      shift_end_time:         settings.shift_end_time         ?? '18:00',
+      late_grace_minutes:     settings.late_grace_minutes     ?? 5,
+      half_day_threshold_time: settings.half_day_threshold_time ?? '12:00',
       summary: {
-        total:         records.length,
-        on_time:       onTimeRecords.length,
-        late:          lateRecords.length,
-        early_checkout: earlyOutRecords.length,
+        total:          records.length,
+        on_time:        records.filter(r => r.check_in && !r.is_late).length,
+        late:           records.filter(r => r.is_late).length,
+        early_checkout: records.filter(r => r.is_early_checkout).length,
+        half_day:       records.filter(r => r.status === AttendanceStatus.HALF_DAY).length,
       },
-      late_arrivals:    lateRecords,
-      early_departures: earlyOutRecords,
+      late_arrivals:    records.filter(r => r.is_late),
+      early_departures: records.filter(r => r.is_early_checkout),
       all_records:      records,
     };
   }

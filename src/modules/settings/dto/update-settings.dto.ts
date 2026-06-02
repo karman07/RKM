@@ -60,6 +60,11 @@ export class UpdateSettingsDto {
   @Max(60)
   late_grace_minutes?: number;
 
+  /** Time (HH:MM IST) at or after which a late sign-in counts as half-day */
+  @IsOptional()
+  @IsString()
+  half_day_threshold_time?: string;
+
   /** Enable or disable WhatsApp notifications for automated sale events */
   @IsOptional()
   @IsBoolean()

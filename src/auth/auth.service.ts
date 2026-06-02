@@ -53,6 +53,11 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials or inactive user');
     }
 
+    // Workers (sweeper, cleaner, etc.) have no system access — attendance marked by manager/admin
+    if (user.role === 'worker') {
+      throw new ForbiddenException('This account does not have system access. Please contact your manager.');
+    }
+
     // Admins and custom-role users bypass geofence
     if (user.role !== 'admin' && user.role !== 'custom') {
       const branchId = user.branch?._id || user.branch;

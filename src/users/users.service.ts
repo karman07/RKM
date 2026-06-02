@@ -2,11 +2,11 @@ import {
   Injectable,
   ConflictException,
   NotFoundException,
-  ForbiddenException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
+import { v4 as uuidv4 } from 'uuid';
 import { User, UserDocument, UserRole } from './schemas/user.schema';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -16,16 +16,32 @@ export class UsersService {
   constructor(@InjectModel(User.name) private userModel: Model<UserDocument>) {}
 
   async create(createUserDto: CreateUserDto): Promise<UserDocument> {
-    const existing = await this.userModel.findOne({
-      email: createUserDto.email,
-    });
-    if (existing) {
-      throw new ConflictException('Email already in use');
+    const isWorker = createUserDto.role === UserRole.WORKER;
+
+    // Workers get auto-generated placeholder credentials — they cannot log in
+    const email    = isWorker ? `worker.${uuidv4()}@nologin.internal` : (createUserDto.email ?? '');
+    const password = isWorker ? uuidv4()                              : (createUserDto.password ?? '');
+
+    if (!isWorker) {
+      const existing = await this.userModel.findOne({ email });
+      if (existing) throw new ConflictException('Email already in use');
     }
 
-    const hashed = await bcrypt.hash(createUserDto.password, 10);
-    const user = new this.userModel({ ...createUserDto, password: hashed });
+    const hashed = await bcrypt.hash(password, 10);
+    const user = new this.userModel({ ...createUserDto, email, password: hashed });
     return user.save();
+  }
+
+  /** Get all non-login workers, optionally filtered by branch */
+  async findWorkers(branchId?: string, page = 1, limit = 50) {
+    const skip = (page - 1) * limit;
+    const query: any = { role: UserRole.WORKER };
+    if (branchId) query.branch = branchId;
+    const [data, total] = await Promise.all([
+      this.userModel.find(query).select('-password').populate('branch').skip(skip).limit(limit).sort({ createdAt: -1 }).exec(),
+      this.userModel.countDocuments(query).exec(),
+    ]);
+    return { data, meta: { total, page, limit, total_pages: Math.ceil(total / limit) } };
   }
 
   async findAll(page: number = 1, limit: number = 20): Promise<{ data: UserDocument[]; meta: any }> {
