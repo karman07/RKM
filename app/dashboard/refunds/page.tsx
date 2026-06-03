@@ -7,6 +7,7 @@ import {
   getReturnedInventory,
   proposeReturnValuation,
   getSettings,
+  staticUrl,
   type InventoryItem,
   type UserProfile,
   type AppSettings,
@@ -297,9 +298,7 @@ function ManagerRefundsContent() {
                   <tbody className="divide-y divide-slate-50">
                     {filtered.map(({ item, product, breakdown, refundStatus }) => {
                       const img = product?.images?.[0];
-                      const imgSrc = img
-                        ? (img.startsWith('http') ? img : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}${img.startsWith('/') ? '' : '/'}${img}`)
-                        : null;
+                      const imgSrc = img ? staticUrl(img) : null;
                       const statusCfg = REFUND_STATUS[refundStatus as keyof typeof REFUND_STATUS] ?? REFUND_STATUS.pending;
                       const canPropose = refundStatus === 'pending' || refundStatus === 'proposed';
                       return (

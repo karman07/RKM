@@ -142,6 +142,11 @@ export default function ProfilePage() {
                 <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[10px] font-black uppercase tracking-widest border border-slate-200">
                   {user?.branch?.name ?? 'No Branch'}
                 </span>
+                {user?.employee_id && (
+                  <span className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-[10px] font-black uppercase tracking-widest border border-blue-100">
+                    {user.employee_id}
+                  </span>
+                )}
                 {user?.isActive && (
                   <span className="px-3 py-1 bg-[#5A0F1A]/10 text-[#5A0F1A] rounded-full text-[10px] font-black uppercase tracking-widest border border-[#5A0F1A]/20">Active</span>
                 )}
@@ -150,8 +155,9 @@ export default function ProfilePage() {
           </div>
 
           {/* Info Grid */}
-          <div className="grid grid-cols-2 gap-4 mb-8 p-5 bg-slate-50 rounded-2xl">
+          <div className="grid grid-cols-3 gap-4 mb-8 p-5 bg-slate-50 rounded-2xl">
             {[
+              { l: 'Employee ID', v: user?.employee_id ?? '—' },
               { l: 'Branch', v: user?.branch?.name ?? '—' },
               { l: 'City', v: user?.branch?.city ?? '—' },
             ].map((r) => (

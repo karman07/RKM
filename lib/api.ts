@@ -93,6 +93,7 @@ export interface UserProfile {
   isActive: boolean;
   avatar?: string;
   createdAt?: string;
+  employee_id?: string;
 }
 
 export interface Category {

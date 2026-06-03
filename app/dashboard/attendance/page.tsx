@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 
 import BarcodeScannerModal from '../../../components/BarcodeScannerModal';
 import ViewItemModal from '../../../components/ViewItemModal';
-import { getProfile, UserProfile, getItemAttendanceDailyStats, markItemPresent, ItemAttendanceDailyStats, updateInventoryStatus, getAttendanceTrends, AttendanceTrendPoint } from '../../../lib/api';
+import { getProfile, UserProfile, getItemAttendanceDailyStats, markItemPresent, ItemAttendanceDailyStats, updateInventoryStatus, getAttendanceTrends, AttendanceTrendPoint, staticUrl } from '../../../lib/api';
 function fmtDate(d: Date) {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
 }
@@ -305,7 +305,7 @@ export default function AttendancePage() {
                     >
                       <div className="w-14 h-14 bg-slate-100 rounded-2xl flex items-center justify-center overflow-hidden flex-shrink-0 shadow-inner group-hover:scale-105 transition-transform">
                         {item.product_id?.images?.[0] ? (
-                          <img src={item.product_id.images[0].startsWith('http') ? item.product_id.images[0] : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}${item.product_id.images[0].startsWith('/') ? '' : '/'}${item.product_id.images[0]}`} alt="" className="w-full h-full object-cover" />
+                          <img src={staticUrl(item.product_id.images[0])} alt="" className="w-full h-full object-cover" />
                         ) : (
                           <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} className="text-slate-300"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2 2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                         )}
@@ -349,7 +349,7 @@ export default function AttendancePage() {
                       >
                         <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center overflow-hidden flex-shrink-0 shadow-inner">
                           {record.item_id?.product_id?.images?.[0] ? (
-                            <img src={record.item_id.product_id.images[0].startsWith('http') ? record.item_id.product_id.images[0] : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}${record.item_id.product_id.images[0].startsWith('/') ? '' : '/'}${record.item_id.product_id.images[0]}`} alt="" className="w-full h-full object-cover" />
+                            <img src={staticUrl(record.item_id.product_id.images[0])} alt="" className="w-full h-full object-cover" />
                           ) : (
                             <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} className="text-emerald-400"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
                           )}
