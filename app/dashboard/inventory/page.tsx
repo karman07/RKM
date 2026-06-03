@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 
 import BarcodeScannerModal from '../../../components/BarcodeScannerModal';
 import ViewItemModal from '../../../components/ViewItemModal';
+import SaleRequestModal from '../../../components/SaleRequestModal';
 import {
   getProfile, getInventory, getInventoryByBarcode, checkSessionExpiry, staticUrl, getCategories,
   type UserProfile, type InventoryItem, type Category
@@ -44,6 +45,10 @@ function InventoryContent() {
 
   // View Item Modal
   const [viewItem, setViewItem] = useState<InventoryItem | null>(null);
+
+  // Sale Request Modal
+  const [saleRequestItem, setSaleRequestItem] = useState<InventoryItem | null>(null);
+  const [saleRequestSuccess, setSaleRequestSuccess] = useState('');
 
   const loadInventory = useCallback(async (profile: UserProfile, pg = 1) => {
     if (!profile.branch?._id) return;
@@ -107,6 +112,20 @@ function InventoryContent() {
     <div className="p-4 lg:p-8 max-w-7xl mx-auto space-y-6 bg-white min-h-full">
       {showScanner && <BarcodeScannerModal onScan={handleScan} onClose={() => setShowScanner(false)} />}
       {viewItem && <ViewItemModal item={viewItem} onClose={() => setViewItem(null)} />}
+      {saleRequestItem && user && (
+        <SaleRequestModal
+          item={saleRequestItem}
+          userId={user._id}
+          branchId={user.branch?._id ?? ''}
+          onClose={() => setSaleRequestItem(null)}
+          onSuccess={() => {
+            setSaleRequestItem(null);
+            setSaleRequestSuccess(`Sale request for "${(saleRequestItem.product_id as any)?.name ?? saleRequestItem.unique_item_code}" submitted successfully!`);
+            if (user) loadInventory(user, page);
+            setTimeout(() => setSaleRequestSuccess(''), 5000);
+          }}
+        />
+      )}
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -140,6 +159,15 @@ function InventoryContent() {
           </svg>
           <span className="text-sm font-bold text-red-700">{scanError}</span>
           <button onClick={() => setScanError('')} className="ml-auto text-red-400 hover:text-red-600">
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+      )}
+      {saleRequestSuccess && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-3xl p-5 flex items-center gap-3">
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="#059669" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          <span className="text-sm font-bold text-emerald-700">{saleRequestSuccess}</span>
+          <button onClick={() => setSaleRequestSuccess('')} className="ml-auto text-emerald-400 hover:text-emerald-600">
             <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
@@ -303,13 +331,18 @@ function InventoryContent() {
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {items.map(item => {
             const s = STATUS_MAP[item.status] ?? STATUS_MAP.available;
+            const reqStatus = item.sale_request_status;
+            const hasPendingReq = reqStatus === 'pending';
+            const hasRejectedReq = reqStatus === 'rejected';
             return (
-              <div 
-                key={item._id} 
-                onClick={() => setViewItem(item)}
-                className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm hover:shadow-md transition-all hover:border-[#7A1C2A]/30 group cursor-pointer flex flex-col h-full min-h-[220px]"
+              <div
+                key={item._id}
+                className={`bg-white border rounded-3xl p-5 shadow-sm hover:shadow-md transition-all group flex flex-col h-full min-h-[220px] ${hasPendingReq ? 'border-amber-300 ring-1 ring-amber-200' : 'border-slate-100 hover:border-[#7A1C2A]/30'}`}
               >
-                <div className="flex items-start gap-4 mb-auto">
+                <div
+                  onClick={() => setViewItem(item)}
+                  className="flex items-start gap-4 mb-auto cursor-pointer"
+                >
                   {item.product_id?.images?.[0] ? (
                     <img src={staticUrl(item.product_id.images[0])} alt="" className="w-16 h-16 rounded-2xl object-cover border border-slate-100 flex-shrink-0" />
                   ) : (
@@ -328,12 +361,24 @@ function InventoryContent() {
                         <span className={`w-1 h-1 rounded-full ${s.dot}`} />
                         {s.label}
                       </span>
+                      {hasPendingReq && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-100 text-amber-700">
+                          <span className="w-1 h-1 rounded-full bg-amber-500 animate-pulse" />
+                          Pending Approval
+                        </span>
+                      )}
+                      {hasRejectedReq && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-red-50 text-red-600">
+                          <span className="w-1 h-1 rounded-full bg-red-500" />
+                          Request Rejected
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
 
                 <div className="mt-6 pt-4 border-t border-slate-50 flex flex-col gap-3">
-                  {/* Price details — full width, no competition for space */}
+                  {/* Price details */}
                   <div>
                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Price Details</p>
                     <div className="flex flex-col gap-0.5">
@@ -375,7 +420,7 @@ function InventoryContent() {
                     </div>
                   </div>
 
-                  {/* Weight + Metal — own row, no overlap */}
+                  {/* Weight + Metal */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-100 rounded-lg">
                       <svg width="12" height="12" className="text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -388,6 +433,34 @@ function InventoryContent() {
                       <p className="text-[11px] font-bold text-slate-600 whitespace-nowrap">{item.product_id?.metal_type} · {item.product_id?.purity}</p>
                     </div>
                   </div>
+
+                  {/* Request Sale / Status button */}
+                  {item.status === 'available' && (
+                    <>
+                      {hasPendingReq ? (
+                        <div className="flex items-center justify-center gap-2 py-2.5 bg-amber-50 border border-amber-200 rounded-2xl">
+                          <div className="w-3 h-3 border-2 border-amber-400/40 border-t-amber-500 rounded-full animate-spin" />
+                          <span className="text-xs font-black text-amber-700">Awaiting Approval…</span>
+                        </div>
+                      ) : hasRejectedReq ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setSaleRequestItem(item); }}
+                          className="w-full flex items-center justify-center gap-2 py-2.5 bg-red-50 hover:bg-[#5A0F1A] border border-red-200 hover:border-[#5A0F1A] rounded-2xl text-xs font-black text-red-600 hover:text-white transition-all"
+                        >
+                          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                          Re-submit Request
+                        </button>
+                      ) : (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setSaleRequestItem(item); }}
+                          className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#5A0F1A] hover:bg-[#7A1C2A] rounded-2xl text-xs font-black text-white transition-all shadow-sm shadow-[#5A0F1A]/20 active:scale-[0.98]"
+                        >
+                          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                          Request Sale
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
             );

@@ -120,6 +120,12 @@ export default function ProfilePage() {
                 )}
               </div>
               <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
+              {user?.employee_id && (
+                <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 border border-slate-200 rounded-xl">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Employee ID</span>
+                  <span className="text-xs font-black text-slate-700">{user.employee_id}</span>
+                </div>
+              )}
               <button
                 onClick={() => fileRef.current?.click()}
                 disabled={uploadingAvatar}
@@ -152,12 +158,16 @@ export default function ProfilePage() {
               <p className="text-[10px] text-slate-400 mt-1.5 ml-1">Email cannot be changed. Contact admin for updates.</p>
             </div>
 
-            <div className="flex items-center gap-4 pt-2">
-              <div className="flex-1 space-y-1">
+            <div className="grid grid-cols-3 gap-4 pt-2">
+              <div className="space-y-1">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Employee ID</p>
+                <p className="text-sm font-bold text-slate-700">{user?.employee_id ?? '—'}</p>
+              </div>
+              <div className="space-y-1">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Branch</p>
                 <p className="text-sm font-bold text-slate-700">{user?.branch?.name ?? '—'}</p>
               </div>
-              <div className="flex-1 space-y-1">
+              <div className="space-y-1">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Joined</p>
                 <p className="text-sm font-bold text-slate-700">
                   {user?.createdAt ? new Date(user.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}

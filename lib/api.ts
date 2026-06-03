@@ -88,6 +88,7 @@ export interface UserProfile {
   isActive: boolean;
   avatar?: string;
   createdAt?: string;
+  employee_id?: string;
 }
 
 export interface Category {
@@ -138,6 +139,11 @@ export interface InventoryItem {
   image_url?: string;
   pricing_breakdown?: Record<string, number>;
   sale_reference?: string;
+  sale_request_status?: 'none' | 'pending' | 'approved' | 'rejected';
+  sale_request_at?: string;
+  sale_request_by_name?: string;
+  sale_request_rejection_reason?: string;
+  sale_request_data?: Record<string, any>;
   createdAt: string;
   updatedAt: string;
 }
@@ -394,3 +400,66 @@ export interface MyPayroll {
 
 export const getMyPayroll = (month: number, year: number) =>
   request<MyPayroll>(`/payroll/mine?month=${month}&year=${year}`);
+
+// ── Sale Requests ─────────────────────────────────────────────────────────────
+
+export interface PaymentSplit {
+  mode: string;
+  amount: number;
+  reference?: string;
+}
+
+export interface SaleRequestData {
+  sold_customer_name: string;
+  sold_customer_phone: string;
+  sold_customer_email?: string;
+  shipping_address?: string;
+  shipping_city?: string;
+  shipping_state?: string;
+  shipping_pincode?: string;
+  shipping_country?: string;
+  sale_channel: string;
+  payment_mode: string;
+  is_emi?: boolean;
+  emi_provider?: string;
+  emi_tenure_months?: number;
+  emi_down_payment?: number;
+  selling_price?: number;
+  sold_at_branch_id?: string;
+  sold_by_user_id?: string;
+  notes?: string;
+  payment_splits?: PaymentSplit[];
+}
+
+export interface SaleRequestItem {
+  _id: string;
+  product_id: Product;
+  unique_item_code: string;
+  barcode: string;
+  status: string;
+  selling_price: number;
+  live_selling_price?: number;
+  admin_discount: number;
+  manager_discount: number;
+  image_url?: string;
+  branch_id?: Branch | string;
+  sale_request_status: 'none' | 'pending' | 'approved' | 'rejected';
+  sale_request_at?: string;
+  sale_request_by?: { _id: string; name: string; email: string; role: string } | string;
+  sale_request_by_name?: string;
+  sale_request_notes?: string;
+  sale_request_data?: SaleRequestData;
+  sale_request_reviewed_at?: string;
+  sale_request_rejection_reason?: string;
+}
+
+export const submitSaleRequest = (itemId: string, data: SaleRequestData) =>
+  request<SaleRequestItem>(`/inventory/${itemId}/sale-request`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+export const getMySaleRequests = (page = 1, limit = 20) =>
+  request<{ data: SaleRequestItem[]; meta: { total: number; page: number; limit: number; total_pages: number } }>(
+    `/inventory?sale_request_by_me=true&page=${page}&limit=${limit}`
+  );
