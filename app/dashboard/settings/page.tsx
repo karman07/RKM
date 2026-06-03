@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { updateSettings, syncAllInventoryPrices, getLookups, type Lookup, API_BASE } from '@/lib/api';
+import { updateSettings, syncAllInventoryPrices, getLookups, uploadCompanyLogo, staticUrl, type Lookup, API_BASE } from '@/lib/api';
 import { useSettings } from '@/components/SettingsContext';
 import { useAppTheme } from '@/components/AppThemeContext';
 import { APP_THEME } from '@/lib/theme-constants';
@@ -89,6 +89,27 @@ export default function SettingsPage() {
   const [graceMinutes, setGraceMinutes]     = useState('5');
   const [halfDayThreshold, setHalfDayThreshold] = useState('12:00');
 
+  // Company / HR
+  const [companyName,     setCompanyName]     = useState('RKM Jewellers');
+  const [companyTagline,  setCompanyTagline]  = useState('Excellence in Gold & Jewellery');
+  const [companyAddress,  setCompanyAddress]  = useState('');
+  const [companyPhone,    setCompanyPhone]    = useState('');
+  const [companyEmail,    setCompanyEmail]    = useState('');
+  const [companyGstin,    setCompanyGstin]    = useState('');
+  const [companyLogoUrl,  setCompanyLogoUrl]  = useState('');
+  const [hrProbation,         setHrProbation]         = useState('6');
+  const [hrProbationNotice,   setHrProbationNotice]   = useState('7');
+  const [hrNotice,            setHrNotice]            = useState('30');
+  const [hrFine,              setHrFine]              = useState('200000');
+  const [hrCasualLeaves,      setHrCasualLeaves]      = useState('3');
+  const [hrAbsentAbandonment, setHrAbsentAbandonment] = useState('3');
+  // Salary structure
+  const [hrBasicPct,      setHrBasicPct]      = useState('50');
+  const [hrHraPct,        setHrHraPct]        = useState('20');
+  const [hrTransportPct,  setHrTransportPct]  = useState('10');
+  const [hrSpecialPct,    setHrSpecialPct]    = useState('20');
+  const [uploadingLogo,   setUploadingLogo]   = useState(false);
+
   // Fetch purity lookups from database
   useEffect(() => {
     getLookups()
@@ -166,6 +187,25 @@ export default function SettingsPage() {
     setShiftEnd(settings.shift_end_time ?? '18:00');
     setGraceMinutes(String(settings.late_grace_minutes ?? 5));
     setHalfDayThreshold((settings as any).half_day_threshold_time ?? '12:00');
+
+    // HR / Company
+    setCompanyName(settings.company_name ?? 'RKM Jewellers');
+    setCompanyTagline(settings.company_tagline ?? 'Excellence in Gold & Jewellery');
+    setCompanyAddress(settings.company_address ?? '');
+    setCompanyPhone(settings.company_phone ?? '');
+    setCompanyEmail(settings.company_email ?? '');
+    setCompanyGstin(settings.company_gstin ?? '');
+    setCompanyLogoUrl(settings.company_logo_url ?? '');
+    setHrProbation(String(settings.hr_probation_months ?? 6));
+    setHrProbationNotice(String(settings.hr_probation_notice_days ?? 7));
+    setHrNotice(String(settings.hr_notice_period_days ?? 30));
+    setHrBasicPct(String(settings.hr_salary_basic_pct ?? 50));
+    setHrHraPct(String(settings.hr_salary_hra_pct ?? 20));
+    setHrTransportPct(String(settings.hr_salary_transport_pct ?? 10));
+    setHrSpecialPct(String(settings.hr_salary_special_pct ?? 20));
+    setHrFine(String(settings.hr_fine_amount ?? 200000));
+    setHrCasualLeaves(String(settings.hr_casual_leaves ?? 3));
+    setHrAbsentAbandonment(String(settings.hr_absent_days_abandonment ?? 3));
   }, [loading, lookupsLoading, settings, purityLookups, metalConfig]);
 
   function showToast(message: string, type: 'success' | 'danger' | 'info' = 'info') {
@@ -223,6 +263,24 @@ export default function SettingsPage() {
         shift_end_time: shiftEnd,
         late_grace_minutes: Number(graceMinutes) || 5,
         half_day_threshold_time: halfDayThreshold,
+        // Company / HR
+        company_name:     companyName.trim(),
+        company_tagline:  companyTagline.trim(),
+        company_address:  companyAddress.trim(),
+        company_phone:    companyPhone.trim(),
+        company_email:    companyEmail.trim(),
+        company_gstin:    companyGstin.trim(),
+        company_logo_url: companyLogoUrl,
+        hr_probation_months:        Number(hrProbation) || 6,
+        hr_probation_notice_days:   Number(hrProbationNotice) || 7,
+        hr_notice_period_days:      Number(hrNotice) || 30,
+        hr_salary_basic_pct:        Number(hrBasicPct) || 50,
+        hr_salary_hra_pct:          Number(hrHraPct) || 20,
+        hr_salary_transport_pct:    Number(hrTransportPct) || 10,
+        hr_salary_special_pct:      Number(hrSpecialPct) || 20,
+        hr_fine_amount:            Number(hrFine) || 200000,
+        hr_casual_leaves:          Number(hrCasualLeaves) || 3,
+        hr_absent_days_abandonment:Number(hrAbsentAbandonment) || 3,
       });
 
       await fetch(`${API_BASE}/online-orders/delivery-settings`, {
@@ -661,6 +719,186 @@ return (
               <p className="text-[10px] font-medium" style={{ color: theme === 'light' ? '#92400e' : '#fbbf24' }}>Tip: Set Charge to 0 for free zones. Orders above the free delivery threshold get free delivery regardless of zone.</p>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* ── Company & HR Settings ── */}
+      <section className="rounded-[2rem] border overflow-hidden shadow-sm" style={{ backgroundColor: colors.bg, borderColor: colors.border }}>
+        <div className="px-8 py-6 border-b flex items-center gap-3" style={{ borderColor: colors.border }}>
+          <div className="w-1.5 h-7 rounded-full" style={{ backgroundColor: '#7B1818' }} />
+          <div>
+            <h2 className="text-[15px] font-bold" style={{ color: colors.textMain }}>Company &amp; HR Settings</h2>
+            <p className="text-[11px] mt-0.5" style={{ color: colors.textMuted }}>Used in generated PDF documents — offer, appointment &amp; welcome letters.</p>
+          </div>
+        </div>
+        <div className="px-8 py-6 space-y-8">
+
+          {/* Company logo */}
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-widest mb-3" style={{ color: colors.textMuted }}>Company Logo</p>
+            <div className="flex items-center gap-5">
+              <div className="w-20 h-20 rounded-2xl border-2 border-dashed flex items-center justify-center overflow-hidden bg-slate-50 flex-shrink-0" style={{ borderColor: colors.border }}>
+                {companyLogoUrl
+                  ? <img src={staticUrl(companyLogoUrl)} alt="Logo" className="w-full h-full object-contain p-1" />
+                  : <span className="text-[10px] font-bold text-slate-400 text-center leading-tight px-1">No Logo</span>}
+              </div>
+              <div>
+                <p className="text-xs font-bold mb-1" style={{ color: colors.textMain }}>Upload company logo</p>
+                <p className="text-[10px] mb-2" style={{ color: colors.textMuted }}>PNG or JPG · Transparent background recommended · max 2 MB</p>
+                <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 border rounded-xl text-[11px] font-bold transition-all hover:border-[#7B1818] hover:text-[#7B1818]"
+                  style={{ borderColor: colors.border, color: colors.textMuted }}>
+                  {uploadingLogo ? 'Uploading…' : companyLogoUrl ? 'Change Logo' : 'Upload Logo'}
+                  <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
+                    disabled={uploadingLogo}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setUploadingLogo(true);
+                      try {
+                        const { url } = await uploadCompanyLogo(file);
+                        setCompanyLogoUrl(url);
+                        showToast('Logo uploaded', 'success');
+                      } catch { showToast('Logo upload failed', 'danger'); }
+                      finally { setUploadingLogo(false); e.target.value = ''; }
+                    }}
+                  />
+                </label>
+                {companyLogoUrl && (
+                  <button onClick={() => setCompanyLogoUrl('')}
+                    className="ml-2 text-[10px] font-bold text-red-400 hover:text-red-600">Remove</button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Company details */}
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-widest mb-3" style={{ color: colors.textMuted }}>Company Details</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {([
+                { label: 'Company Name',    val: companyName,    set: setCompanyName,    ph: 'RKM Jewellers' },
+                { label: 'Tagline',         val: companyTagline, set: setCompanyTagline, ph: 'Excellence in Gold & Jewellery' },
+                { label: 'Address',         val: companyAddress, set: setCompanyAddress, ph: 'Shop No. 1, Main Market, Chandigarh' },
+                { label: 'Phone',           val: companyPhone,   set: setCompanyPhone,   ph: '+91 98765 43210' },
+                { label: 'Email',           val: companyEmail,   set: setCompanyEmail,   ph: 'hr@rkmjewellers.com' },
+                { label: 'GSTIN',           val: companyGstin,   set: setCompanyGstin,   ph: '03AAAAA0000A1Z5' },
+              ] as { label: string; val: string; set: (v: string) => void; ph: string }[]).map(f => (
+                <div key={f.label}>
+                  <label className="block text-[10px] font-black uppercase tracking-widest mb-1.5" style={{ color: colors.textMuted }}>{f.label}</label>
+                  <input
+                    value={f.val} onChange={e => f.set(e.target.value)} placeholder={f.ph}
+                    className="w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#7B1818]/20 focus:border-[#7B1818] transition-all"
+                    style={{ backgroundColor: colors.bg, borderColor: colors.border, color: colors.textMain }}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Probation Settings ── */}
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-widest mb-3" style={{ color: colors.textMuted }}>Probation</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              {([
+                { label: 'Duration (months)',          val: hrProbation,        set: setHrProbation,        min: 1, unit: 'mo'   },
+                { label: 'Notice during probation',    val: hrProbationNotice,  set: setHrProbationNotice,  min: 1, unit: 'days' },
+                { label: 'Post-confirmation notice',   val: hrNotice,           set: setHrNotice,           min: 1, unit: 'days' },
+                { label: 'Absent → abandonment',       val: hrAbsentAbandonment,set: setHrAbsentAbandonment,min: 1, unit: 'days' },
+              ] as { label: string; val: string; set: (v: string) => void; min: number; unit: string }[]).map(f => (
+                <div key={f.label}>
+                  <label className="block text-[10px] font-black uppercase tracking-widest mb-1.5" style={{ color: colors.textMuted }}>{f.label}</label>
+                  <div className="relative">
+                    <input type="number" min={f.min} value={f.val} onChange={e => f.set(e.target.value)}
+                      className="w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E3264]/20 focus:border-[#1E3264] transition-all"
+                      style={{ backgroundColor: colors.bg, borderColor: colors.border, color: colors.textMain }} />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold pointer-events-none" style={{ color: colors.textMuted }}>{f.unit}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Salary Structure ── */}
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-widest mb-1" style={{ color: colors.textMuted }}>Salary Structure Breakdown</p>
+            <p className="text-[10px] mb-3" style={{ color: colors.textMuted }}>Components as % of gross monthly. Special allowance = remainder (100 − sum of others).</p>
+
+            {/* Live preview bar */}
+            {(() => {
+              const b = Number(hrBasicPct) || 0;
+              const h = Number(hrHraPct) || 0;
+              const t = Number(hrTransportPct) || 0;
+              const s = Math.max(0, 100 - b - h - t);
+              const total = b + h + t;
+              const warn = total > 100;
+              return (
+                <div className="mb-4">
+                  <div className="flex h-5 rounded-lg overflow-hidden gap-0.5 mb-1">
+                    <div style={{ width: `${b}%`, backgroundColor: '#1E3264' }} title={`Basic ${b}%`} />
+                    <div style={{ width: `${h}%`, backgroundColor: '#A07820' }} title={`HRA ${h}%`} />
+                    <div style={{ width: `${t}%`, backgroundColor: '#2D6A4F' }} title={`Transport ${t}%`} />
+                    <div style={{ width: `${s}%`, backgroundColor: '#555555' }} title={`Special ${s}%`} />
+                  </div>
+                  <div className="flex gap-4 text-[9px] font-bold">
+                    <span style={{ color: '#1E3264' }}>■ Basic {b}%</span>
+                    <span style={{ color: '#A07820' }}>■ HRA {h}%</span>
+                    <span style={{ color: '#2D6A4F' }}>■ Transport {t}%</span>
+                    <span style={{ color: '#555555' }}>■ Special {s}%</span>
+                    {warn && <span className="text-red-500 ml-auto">⚠ Total exceeds 100%</span>}
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              {([
+                { label: 'Basic Salary %',       val: hrBasicPct,     set: setHrBasicPct,     color: '#1E3264' },
+                { label: 'HRA %',                val: hrHraPct,       set: setHrHraPct,       color: '#A07820' },
+                { label: 'Transport Allowance %',val: hrTransportPct, set: setHrTransportPct, color: '#2D6A4F' },
+                { label: 'Special Allowance %',  val: hrSpecialPct,   set: setHrSpecialPct,   color: '#555555' },
+              ] as { label: string; val: string; set: (v: string) => void; color: string }[]).map(f => (
+                <div key={f.label}>
+                  <label className="block text-[10px] font-black uppercase tracking-widest mb-1.5"
+                    style={{ color: f.color }}>{f.label}</label>
+                  <div className="relative">
+                    <input type="number" min={0} max={100} value={f.val} onChange={e => f.set(e.target.value)}
+                      className="w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none transition-all"
+                      style={{ backgroundColor: colors.bg, borderColor: colors.border, color: colors.textMain }} />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold pointer-events-none" style={{ color: colors.textMuted }}>%</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-[9px] mt-2 font-medium" style={{ color: colors.textMuted }}>
+              Special allowance auto-fills as the remainder. Shown in generated PDFs as: Basic · HRA · Transport · Special.
+            </p>
+          </div>
+
+          {/* ── Other policy values ── */}
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-widest mb-3" style={{ color: colors.textMuted }}>Other HR Policy Values</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              {([
+                { label: 'Casual Leaves / Year',  val: hrCasualLeaves,       set: setHrCasualLeaves,       min: 0, unit: 'leaves' },
+                { label: 'Misconduct Fine (₹)',    val: hrFine,               set: setHrFine,               min: 0, unit: '₹'     },
+              ] as { label: string; val: string; set: (v: string) => void; min: number; unit: string }[]).map(f => (
+                <div key={f.label}>
+                  <label className="block text-[10px] font-black uppercase tracking-widest mb-1.5" style={{ color: colors.textMuted }}>{f.label}</label>
+                  <div className="relative">
+                    <input type="number" min={f.min} value={f.val} onChange={e => f.set(e.target.value)}
+                      className="w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E3264]/20 focus:border-[#1E3264] transition-all"
+                      style={{ backgroundColor: colors.bg, borderColor: colors.border, color: colors.textMain }} />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold pointer-events-none" style={{ color: colors.textMuted }}>{f.unit}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl text-[10px] font-medium" style={{ backgroundColor: theme === 'light' ? '#eff6ff' : '#1e2d45', color: theme === 'light' ? '#1d4ed8' : '#93c5fd' }}>
+            All values above are automatically inserted into generated PDF letters (Offer · Appointment · Welcome). Save once here — all future documents use the updated values.
+          </div>
+
         </div>
       </section>
 

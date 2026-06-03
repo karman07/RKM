@@ -443,7 +443,13 @@ ${billEl.outerHTML}
                 {invoiceNumber ? `INVOICE NO: ${invoiceNumber}` : `REF: ${saleRef}`}
               </div>
               <div><b>Date:</b> {date}</div>
-              <div><b>Mode:</b> {customer?.payment_mode?.toUpperCase() ?? 'CASH'}</div>
+              <div><b>Mode:</b> {(() => {
+                const splits = (customer as any)?.payment_splits;
+                if (Array.isArray(splits) && splits.length > 1) {
+                  return splits.map((s: any) => `${(s.mode ?? 'CASH').toUpperCase()} ₹${fmt(s.amount ?? 0)}`).join(' + ');
+                }
+                return customer?.payment_mode?.toUpperCase() ?? 'CASH';
+              })()}</div>
             </div>
             <div style={{ marginTop: '6px', padding: '2px 10px', background: '#fff', color: '#000', border: '1px solid #000', fontSize: '8px', fontWeight: 700, display: 'inline-block', letterSpacing: '1.5px' }}>
               CUSTOMER COPY
@@ -588,16 +594,30 @@ ${billEl.outerHTML}
               <thead>
                 <tr style={{ borderBottom: '1px solid #ddd', color: '#666' }}>
                   <th style={{ textAlign: 'left', padding: '3px 0', fontWeight: 600 }}>Mode</th>
-                  <th style={{ textAlign: 'left', padding: '3px 0', fontWeight: 600 }}>Reference</th>
+                  <th style={{ textAlign: 'left', padding: '3px 0', fontWeight: 600 }}>Reference / TXN</th>
                   <th style={{ textAlign: 'right', padding: '3px 0', fontWeight: 600 }}>Amount (₹)</th>
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td style={{ padding: '4px 0', fontWeight: 700 }}>{customer?.payment_mode?.toUpperCase() ?? 'CASH'}</td>
-                  <td style={{ padding: '4px 0', color: '#555', fontFamily: 'monospace', fontSize: '9px' }}>{saleRef}</td>
-                  <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: 700 }}>₹{fmt(totalFinal)}</td>
-                </tr>
+                {(() => {
+                  const splits = (customer as any)?.payment_splits;
+                  if (Array.isArray(splits) && splits.length > 0) {
+                    return splits.map((s: any, i: number) => (
+                      <tr key={i} style={{ borderBottom: '1px dotted #eee' }}>
+                        <td style={{ padding: '4px 0', fontWeight: 700 }}>{(s.mode ?? 'cash').toUpperCase()}</td>
+                        <td style={{ padding: '4px 0', color: '#555', fontFamily: 'monospace', fontSize: '8.5px' }}>{s.reference || saleRef}</td>
+                        <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: 700 }}>₹{fmt(s.amount ?? 0)}</td>
+                      </tr>
+                    ));
+                  }
+                  return (
+                    <tr>
+                      <td style={{ padding: '4px 0', fontWeight: 700 }}>{customer?.payment_mode?.toUpperCase() ?? 'CASH'}</td>
+                      <td style={{ padding: '4px 0', color: '#555', fontFamily: 'monospace', fontSize: '9px' }}>{saleRef}</td>
+                      <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: 700 }}>₹{fmt(totalFinal)}</td>
+                    </tr>
+                  );
+                })()}
               </tbody>
             </table>
             <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid #ddd', paddingTop: '6px' }}>

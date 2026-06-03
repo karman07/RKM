@@ -216,10 +216,27 @@ export default function UserHistoryDrawer({ user, onClose }: { user: User; onClo
           </div>
         </div>
 
-        {/* Joined date */}
-        <div className="px-8 py-3 border-b border-slate-50 flex items-center gap-2 text-[11px] text-slate-400 flex-shrink-0">
-          <Clock className="w-3.5 h-3.5" />
-          <span>Joined <strong className="text-slate-600">{fmtDate(user.created_at)}</strong></span>
+        {/* Joined date + Employee ID */}
+        <div className="px-8 py-3 border-b border-slate-50 flex items-center gap-4 flex-shrink-0">
+          <div className="flex items-center gap-2 text-[11px] text-slate-400">
+            <Clock className="w-3.5 h-3.5" />
+            <span>
+              Joined{' '}
+              <strong className="text-slate-600">
+                {user.joining_date
+                  ? fmtDate(user.joining_date)
+                  : user.created_at
+                    ? fmtDate(user.created_at)
+                    : '—'}
+              </strong>
+            </span>
+          </div>
+          {(user as any).employee_id && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 border border-blue-100 rounded-lg">
+              <span className="text-[9px] font-black uppercase tracking-widest text-blue-400">ID</span>
+              <span className="text-[11px] font-black text-blue-700">{(user as any).employee_id}</span>
+            </div>
+          )}
         </div>
 
         {/* ── Tabs ── */}

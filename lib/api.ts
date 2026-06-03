@@ -117,6 +117,8 @@ export interface User {
   custom_role?: CustomRole | string | null;
   is_active: boolean;
   created_at: string;
+  employee_id?: string;
+  joining_date?: string;
 }
 
 export interface Attendance {
@@ -161,16 +163,19 @@ export interface ShiftReport {
 export const getShiftReport = (date?: string) =>
   request<ShiftReport>(`/attendance/shift-report${date ? `?date=${date}` : ''}`);
 
-type UserApiResponse = Omit<User, 'is_active'> & {
+type UserApiResponse = Omit<User, 'is_active' | 'created_at'> & {
   is_active?: boolean;
   isActive?: boolean;
+  created_at?: string;
+  createdAt?: string;
 };
 
 function normalizeUser(user: UserApiResponse): User {
-  const { isActive, is_active, ...rest } = user;
+  const { isActive, is_active, createdAt, created_at, ...rest } = user;
   return {
     ...rest,
     is_active: typeof is_active === 'boolean' ? is_active : Boolean(isActive),
+    created_at: created_at || createdAt || '',
   };
 }
 
@@ -328,6 +333,17 @@ export interface InventoryItem {
   return_admin_notes?: string;
   return_refund_status?: 'pending' | 'proposed' | 'approved' | 'rejected';
   return_approved_at?: string | null;
+  payment_splits?: Array<{ mode: string; amount: number; reference?: string }>;
+  // ─── Sale Request ─────────────────────────────────────────────────────────
+  sale_request_status?: 'none' | 'pending' | 'approved' | 'rejected';
+  sale_request_at?: string;
+  sale_request_by?: User | string | null;
+  sale_request_by_name?: string;
+  sale_request_notes?: string;
+  sale_request_data?: Record<string, any>;
+  sale_request_reviewer?: User | string | null;
+  sale_request_reviewed_at?: string;
+  sale_request_rejection_reason?: string;
   createdAt: string;
 }
 
@@ -340,6 +356,7 @@ export interface Customer {
   address?: string;
   city?: string;
   state?: string;
+  pincode?: string;
   country?: string;
   profileImage?: string;
   isEmailVerified: boolean;
@@ -404,6 +421,37 @@ export const updateUser = (id: string, data: object) =>
 
 export const deleteUser = (id: string) =>
   request<void>(`/users/${id}`, { method: 'DELETE' });
+
+export const generateEmployeeId = (id: string) =>
+  request<UserApiResponse>(`/users/${id}/generate-employee-id`, { method: 'POST' }).then(normalizeUser);
+
+export type DocumentType = 'offer-letter' | 'appointment-letter' | 'welcome-letter';
+export const generateUserDocument = (id: string, type: DocumentType) =>
+  request<{ url: string }>(`/users/${id}/documents/${type}`, { method: 'POST' });
+
+export const uploadCompanyLogo = async (file: File): Promise<{ url: string }> => {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${API_BASE}/uploads/users`, {
+    method: 'POST',
+    headers: authHeadersMultipart(),
+    body: form,
+  });
+  if (!res.ok) throw new Error('Logo upload failed');
+  return res.json();
+};
+
+export const uploadUserAvatar = async (file: File): Promise<{ url: string }> => {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${API_BASE}/uploads/users`, {
+    method: 'POST',
+    headers: authHeadersMultipart(),
+    body: form,
+  });
+  if (!res.ok) throw new Error('Avatar upload failed');
+  return res.json();
+};
 
 
 /** Fetch cashiers filtered by branch — used in sell modal */
@@ -661,6 +709,24 @@ export const approveReturnValuation = (
     body: JSON.stringify(payload),
   });
 
+export const getPendingSaleRequests = (params?: { page?: number; limit?: number; branch_id?: string }) => {
+  const qs = params ? '?' + new URLSearchParams(
+    Object.fromEntries(Object.entries(params).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]))
+  ).toString() : '';
+  return request<{ data: InventoryItem[]; meta: { total: number; page: number; limit: number; total_pages: number } }>(
+    `/inventory/sale-requests${qs}`
+  );
+};
+
+export const approveSaleRequest = (id: string) =>
+  request<InventoryItem>(`/inventory/${id}/sale-request/approve`, { method: 'PATCH' });
+
+export const rejectSaleRequest = (id: string, reason: string) =>
+  request<InventoryItem>(`/inventory/${id}/sale-request/reject`, {
+    method: 'PATCH',
+    body: JSON.stringify({ reason }),
+  });
+
 export const updateInventoryStatus = (
   id: string,
   payload: {
@@ -682,6 +748,7 @@ export const updateInventoryStatus = (
     emi_tenure_months?: number;
     emi_provider?: string;
     emi_down_payment?: number;
+    payment_splits?: Array<{ mode: string; amount: number; reference?: string }>;
   }
 ) =>
   request<InventoryItem>(`/inventory/${id}/status`, {
@@ -845,6 +912,24 @@ export interface AppSettings {
   whatsapp_notifications_enabled?: boolean;
   email_notifications_enabled?: boolean;
   email_triggers?: Record<string, boolean>;
+  // ─── Company / HR ───────────────────────────────────────────────────────────
+  company_name?: string;
+  company_tagline?: string;
+  company_address?: string;
+  company_phone?: string;
+  company_email?: string;
+  company_gstin?: string;
+  company_logo_url?: string;
+  hr_probation_months?: number;
+  hr_probation_notice_days?: number;
+  hr_notice_period_days?: number;
+  hr_salary_basic_pct?: number;
+  hr_salary_hra_pct?: number;
+  hr_salary_transport_pct?: number;
+  hr_salary_special_pct?: number;
+  hr_fine_amount?: number;
+  hr_casual_leaves?: number;
+  hr_absent_days_abandonment?: number;
   updatedAt?: string;
 }
 
@@ -1034,6 +1119,8 @@ export const deleteIncentive = (id: string) =>
 export const getCustomers = (page: number = 1, limit: number = 20) =>
   request<PaginatedResponse<Customer>>(`/customers?page=${page}&limit=${limit}`);
 export const getCustomerById = (id: string) => request<Customer>(`/customers/${id}`);
+export const searchCustomersByPhone = (phone: string) =>
+  request<{ data: Customer[] }>(`/customers/search?phone=${encodeURIComponent(phone)}`);
 
 // ─── WhatsApp API Helpers ─────────────────────────────────────────────────────
 

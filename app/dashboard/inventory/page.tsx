@@ -26,6 +26,8 @@ import {
 } from '@/lib/api';
 import Link from 'next/link';
 import Modal from '@/components/Modal';
+import CustomerSearchPanel, { type CustomerDraft } from '@/components/CustomerSearchPanel';
+import PaymentSplitsInput, { type PaymentSplit } from '@/components/PaymentSplitsInput';
 import dynamic from 'next/dynamic';
 
 const Doughnut = dynamic(() => import('react-chartjs-2').then(mod => mod.Doughnut), { ssr: false });
@@ -124,20 +126,13 @@ export default function InventoryPage() {
   const [statusModal, setStatusModal] = useState<InventoryItem | null>(null);
   const [newStatus, setNewStatus] = useState('');
   const [newSellingPrice, setNewSellingPrice] = useState('');
-  const [soldForm, setSoldForm] = useState({
-    sold_customer_name: '',
-    sold_customer_phone: '',
-    sold_customer_email: '',
-    shipping_address: '',
-    shipping_city: '',
-    shipping_state: '',
-    shipping_pincode: '',
-    shipping_country: 'India',
-    sale_channel: 'store',
-    payment_mode: 'cash',
-    sold_at_branch_id: '',
-    sold_by_user_id: '',
+  const [customerDraft, setCustomerDraft] = useState<CustomerDraft>({
+    name: '', phone: '', email: '', address: '', city: '', state: '', pincode: '', country: 'India',
   });
+  const [saleChannel, setSaleChannel] = useState('store');
+  const [soldAtBranchId, setSoldAtBranchId] = useState('');
+  const [soldByUserId, setSoldByUserId] = useState('');
+  const [paymentSplits, setPaymentSplits] = useState<PaymentSplit[]>([{ mode: 'cash', amount: '', reference: '' }]);
 
   // ── Cashiers for sold form ─────────────────────────────────────────────────
   const [cashiers, setCashiers] = useState<User[]>([]);
@@ -652,14 +647,14 @@ export default function InventoryPage() {
                           {transitions.length > 0 && (
                             <button 
                               onClick={() => { 
-                                setStatusModal(item); 
-                                setNewStatus(transitions[0]); 
-                                setNewSellingPrice(String(item.selling_price)); 
-                                // Preset branch from item or current user
-                                setSoldForm(prev => ({
-                                  ...prev,
-                                  sold_at_branch_id: (item.branch_id && typeof item.branch_id === 'object' ? (item.branch_id as any)._id : item.branch_id) || (user as any)?.branch_id || ''
-                                }));
+                                setStatusModal(item);
+                                setNewStatus(transitions[0]);
+                                setNewSellingPrice(String(item.selling_price));
+                                setCustomerDraft({ name: '', phone: '', email: '', address: '', city: '', state: '', pincode: '', country: 'India' });
+                                setSaleChannel('store');
+                                setSoldAtBranchId((item.branch_id && typeof item.branch_id === 'object' ? (item.branch_id as any)._id : item.branch_id) || (user as any)?.branch_id || '');
+                                setSoldByUserId('');
+                                setPaymentSplits([{ mode: 'cash', amount: String(Math.round(item.selling_price)), reference: '' }]);
                               }} 
                               title="Change Status" 
                               className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition-all active:scale-90 shadow-sm"
@@ -905,73 +900,81 @@ export default function InventoryPage() {
           </div>
 
           {newStatus === 'sold' && (
-            <div className="grid grid-cols-2 gap-5 p-5 bg-white rounded-2xl border border-slate-100 animate-[fadeRise_300ms_ease-out] shadow-sm">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Customer Name <span className="text-red-500">*</span></label>
-                <input className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-semibold focus:ring-2 focus:ring-blue-500" value={soldForm.sold_customer_name} onChange={e => setSoldForm({ ...soldForm, sold_customer_name: e.target.value })} placeholder="Full Name" />
-              </div>
+            <div className="space-y-5 p-5 bg-white rounded-2xl border border-slate-100 animate-[fadeRise_300ms_ease-out] shadow-sm">
+              {/* Final Sale Price */}
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Final Sale Price (₹) <span className="text-red-500">*</span></label>
-                <input type="number" className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-black text-blue-700 focus:ring-2 focus:ring-blue-500" value={newSellingPrice} onChange={e => setNewSellingPrice(e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Phone <span className="text-red-500">*</span></label>
-                <input className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm focus:ring-2 focus:ring-blue-500" value={soldForm.sold_customer_phone} onChange={e => setSoldForm({ ...soldForm, sold_customer_phone: e.target.value })} placeholder="+91..." />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Email</label>
-                <input className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm focus:ring-2 focus:ring-blue-500" value={soldForm.sold_customer_email} onChange={e => setSoldForm({ ...soldForm, sold_customer_email: e.target.value })} placeholder="email@..." />
-              </div>
-              <div className="col-span-2 space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Shipping Address <span className="text-red-500">*</span></label>
-                <textarea className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm resize-none focus:ring-2 focus:ring-blue-500" rows={2} value={soldForm.shipping_address} onChange={e => setSoldForm({ ...soldForm, shipping_address: e.target.value })} placeholder="Full address..." />
-              </div>
-              <div className="grid grid-cols-3 gap-3 col-span-2">
-                <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">City</label><input className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white outline-none text-sm focus:ring-2 focus:ring-blue-500" value={soldForm.shipping_city} onChange={e => setSoldForm({ ...soldForm, shipping_city: e.target.value })} /></div>
-                <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">State</label><input className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white outline-none text-sm focus:ring-2 focus:ring-blue-500" value={soldForm.shipping_state} onChange={e => setSoldForm({ ...soldForm, shipping_state: e.target.value })} /></div>
-                <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">PIN</label><input className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white outline-none text-sm focus:ring-2 focus:ring-blue-500" value={soldForm.shipping_pincode} onChange={e => setSoldForm({ ...soldForm, shipping_pincode: e.target.value })} /></div>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Payment Mode</label>
-                <select className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-bold appearance-none focus:ring-2 focus:ring-blue-500" value={soldForm.payment_mode} onChange={e => setSoldForm({ ...soldForm, payment_mode: e.target.value })}>
-                  <option value="cash">Cash</option><option value="card">Card</option><option value="upi">UPI</option><option value="bank_transfer">Bank Transfer</option><option value="cheque">Cheque</option>
-                </select>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sale Branch <span className="text-red-500">*</span></label>
-                <select 
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-bold appearance-none focus:ring-2 focus:ring-blue-500" 
-                  value={soldForm.sold_at_branch_id} 
-                  onChange={e => setSoldForm({ ...soldForm, sold_at_branch_id: e.target.value })}
-                >
-                  <option value="">Select Sale Branch...</option>
-                  {branches.map(b => <option key={b._id} value={b._id}>{b.name} ({b.code})</option>)}
-                </select>
+                <input
+                  type="number"
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-black text-blue-700 focus:ring-2 focus:ring-blue-500"
+                  value={newSellingPrice}
+                  onChange={e => {
+                    setNewSellingPrice(e.target.value);
+                    const amt = parseFloat(e.target.value) || 0;
+                    setPaymentSplits(prev => prev.length === 1 ? [{ ...prev[0], amount: amt > 0 ? String(Math.round(amt)) : '' }] : prev);
+                  }}
+                />
               </div>
 
-              {/* ── Cashier Attribution ── */}
-              <div className="col-span-2 p-4 rounded-2xl border-2 border-blue-100 bg-gradient-to-r from-blue-50/60 to-purple-50/40 space-y-2.5">
+              {/* Customer */}
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Customer Details</p>
+                <CustomerSearchPanel
+                  value={customerDraft}
+                  onChange={setCustomerDraft}
+                />
+              </div>
+
+              {/* Sale details row */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sale Channel</label>
+                  <select className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-bold appearance-none focus:ring-2 focus:ring-blue-500" value={saleChannel} onChange={e => setSaleChannel(e.target.value)}>
+                    <option value="store">In-Store</option>
+                    <option value="online">Online</option>
+                    <option value="phone">Phone</option>
+                    <option value="referral">Referral</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sale Branch <span className="text-red-500">*</span></label>
+                  <select className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-bold appearance-none focus:ring-2 focus:ring-blue-500" value={soldAtBranchId} onChange={e => setSoldAtBranchId(e.target.value)}>
+                    <option value="">Select Branch…</option>
+                    {branches.map(b => <option key={b._id} value={b._id}>{b.name} ({b.code})</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Payment splits */}
+              <PaymentSplitsInput
+                splits={paymentSplits}
+                onChange={setPaymentSplits}
+                totalAmount={parseFloat(newSellingPrice) || (statusModal?.selling_price ?? 0)}
+              />
+
+              {/* Cashier attribution */}
+              <div className="p-4 rounded-2xl border-2 border-blue-100 bg-gradient-to-r from-blue-50/60 to-purple-50/40 space-y-2.5">
                 <label className="text-[10px] font-black text-blue-700 uppercase tracking-widest flex items-center gap-2">
                   <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                  Cashier Attribution — Sale Performance Record
+                  Cashier Attribution
                 </label>
                 <select
                   className="w-full px-4 py-3 rounded-xl border border-blue-200 bg-white outline-none text-sm font-bold appearance-none focus:ring-2 focus:ring-blue-500 text-slate-900"
-                  value={soldForm.sold_by_user_id}
-                  onChange={e => setSoldForm({ ...soldForm, sold_by_user_id: e.target.value })}
+                  value={soldByUserId}
+                  onChange={e => setSoldByUserId(e.target.value)}
                 >
                   <option value="">— No Cashier / Manager Direct Sale —</option>
                   {cashiers.map(c => (
                     <option key={c._id} value={c._id}>{c.name}{(c.branch && typeof c.branch === 'object') ? ` · ${(c.branch as any).name}` : ''}</option>
                   ))}
                 </select>
-                {soldForm.sold_by_user_id ? (
+                {soldByUserId ? (
                   <p className="text-[10px] font-bold text-blue-600 flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                    This sale will be attributed to the selected cashier's performance record
+                    Sale attributed to selected cashier
                   </p>
                 ) : (
-                  <p className="text-[10px] text-slate-400 font-medium">Optionally select a cashier to track sales performance</p>
+                  <p className="text-[10px] text-slate-400 font-medium">Optionally select a cashier to track performance</p>
                 )}
               </div>
             </div>
@@ -1022,17 +1025,30 @@ export default function InventoryPage() {
             <button onClick={() => setStatusModal(null)} className="flex-1 py-4 rounded-2xl border border-slate-200 text-[11px] font-bold uppercase tracking-widest text-slate-400">Cancel</button>
             <button onClick={async () => {
               try {
-                // Filter out empty strings to avoid validation errors for optional fields
-                const filteredSoldForm = Object.fromEntries(
-                  Object.entries(soldForm).map(([k, v]) => [k, v === '' ? undefined : v])
-                );
-                // Auto-generate invoice number for new sales
                 const invoiceRef = newStatus === 'sold' ? generateSaleInvoiceNumber() : undefined;
-                await updateInventoryStatus(statusModal!._id, { 
-                  status: newStatus, 
-                  ...filteredSoldForm,
-                  ...(invoiceRef ? { sale_reference: invoiceRef } : {}),
-                  selling_price: Number(newSellingPrice) || statusModal!.selling_price 
+                const splits = paymentSplits.filter(s => parseFloat(s.amount) > 0).map(s => ({
+                  mode: s.mode, amount: parseFloat(s.amount), reference: s.reference || undefined,
+                }));
+                await updateInventoryStatus(statusModal!._id, {
+                  status: newStatus,
+                  ...(newStatus === 'sold' ? {
+                    sold_customer_name: customerDraft.name || undefined,
+                    sold_customer_phone: customerDraft.phone || undefined,
+                    sold_customer_email: customerDraft.email || undefined,
+                    shipping_address: customerDraft.address || 'Store Collection',
+                    shipping_city: customerDraft.city || undefined,
+                    shipping_state: customerDraft.state || undefined,
+                    shipping_pincode: customerDraft.pincode || undefined,
+                    shipping_country: customerDraft.country || 'India',
+                    sale_channel: saleChannel,
+                    payment_mode: splits[0]?.mode ?? 'cash',
+                    payment_splits: splits.length > 0 ? splits : undefined,
+                    sold_at_branch_id: soldAtBranchId || undefined,
+                    sold_by_user_id: soldByUserId || undefined,
+                    selling_price: Number(newSellingPrice) || statusModal!.selling_price,
+                    ...(invoiceRef ? { sale_reference: invoiceRef } : {}),
+                  } : {}),
+                  selling_price: Number(newSellingPrice) || statusModal!.selling_price,
                 });
                 setStatusModal(null); showToast('Status updated', 'success'); load();
               } catch (e: any) { showToast(e.message, 'danger'); }
