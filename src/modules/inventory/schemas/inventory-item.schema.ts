@@ -175,6 +175,13 @@ export class InventoryItem {
   @Prop({ type: String, trim: true, default: null })
   razorpay_payment_id: string | null;
 
+  /** Split payment entries — each has a mode, amount, and optional reference/TXN id */
+  @Prop({
+    type: [{ mode: String, amount: Number, reference: String }],
+    default: [],
+  })
+  payment_splits: Array<{ mode: string; amount: number; reference?: string }>;
+
   @Prop({ type: Date, default: null })
   reserved_at: Date | null;
 
@@ -216,6 +223,34 @@ export class InventoryItem {
   @Prop({ type: Date, default: null })
   damaged_at: Date | null;
 
+  // ─── Sale Request (Cashier → Admin/Manager approval flow) ───────────────────
+  @Prop({ type: String, enum: ['none', 'pending', 'approved', 'rejected'], default: 'none' })
+  sale_request_status: 'none' | 'pending' | 'approved' | 'rejected';
+
+  @Prop({ type: Date, default: null })
+  sale_request_at: Date | null;
+
+  @Prop({ type: Types.ObjectId, ref: 'User', default: null })
+  sale_request_by: Types.ObjectId | null;
+
+  @Prop({ trim: true, default: '' })
+  sale_request_by_name: string;
+
+  @Prop({ trim: true, default: '' })
+  sale_request_notes: string;
+
+  @Prop({ type: Object, default: null })
+  sale_request_data: Record<string, any> | null;
+
+  @Prop({ type: Types.ObjectId, ref: 'User', default: null })
+  sale_request_reviewer: Types.ObjectId | null;
+
+  @Prop({ type: Date, default: null })
+  sale_request_reviewed_at: Date | null;
+
+  @Prop({ trim: true, default: '' })
+  sale_request_rejection_reason: string;
+
   // Soft Delete
   @Prop({ type: Boolean, default: false })
   is_deleted: boolean;
@@ -243,3 +278,4 @@ InventoryItemSchema.index({ branch_id: 1, status: 1 });
 InventoryItemSchema.index({ branch_id: 1, sold_at: -1 });
 InventoryItemSchema.index({ sold_at_branch_id: 1, sold_at: -1 });
 InventoryItemSchema.index({ sold_by_user_id: 1, sold_at: -1 });
+InventoryItemSchema.index({ sale_request_status: 1, sale_request_at: -1 });

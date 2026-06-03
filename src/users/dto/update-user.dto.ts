@@ -39,6 +39,22 @@ export class UpdateUserDto {
   @IsOptional()
   base_salary?: number;
 
+  @IsNumber()
+  @IsOptional()
+  salary_basic?: number;
+
+  @IsNumber()
+  @IsOptional()
+  salary_hra?: number;
+
+  @IsNumber()
+  @IsOptional()
+  salary_transport?: number;
+
+  @IsNumber()
+  @IsOptional()
+  salary_special?: number;
+
   @IsString()
   @IsOptional()
   salary_type?: string;
@@ -82,4 +98,8 @@ export class UpdateUserDto {
   @IsString()
   @IsOptional()
   mother_aadhar_card_url?: string;
+
+  @IsString()
+  @IsOptional()
+  welcome_letter_url?: string;
 }

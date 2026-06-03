@@ -123,4 +123,8 @@ export class UpdateInventoryStatusDto {
   @IsOptional()
   @IsString()
   razorpay_payment_id?: string;
+
+  /** Split payment entries — overrides payment_mode when provided */
+  @IsOptional()
+  payment_splits?: Array<{ mode: string; amount: number; reference?: string }>;
 }

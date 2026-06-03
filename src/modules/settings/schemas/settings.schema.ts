@@ -112,6 +112,76 @@ export class Settings {
     default: { sale_completed: true, sale_returned: true, sale_reserved: false },
   })
   email_triggers: Record<string, boolean>;
+
+  // ─── Company / HR Settings ───────────────────────────────────────────────────
+
+  @Prop({ type: String, default: 'RKM Jewellers' })
+  company_name: string;
+
+  @Prop({ type: String, default: 'Excellence in Gold & Jewellery' })
+  company_tagline: string;
+
+  @Prop({ type: String, default: '' })
+  company_address: string;
+
+  @Prop({ type: String, default: '' })
+  company_phone: string;
+
+  @Prop({ type: String, default: '' })
+  company_email: string;
+
+  @Prop({ type: String, default: '' })
+  company_gstin: string;
+
+  /** URL of the company logo stored in uploads */
+  @Prop({ type: String, default: '' })
+  company_logo_url: string;
+
+  // ── Probation ────────────────────────────────────────────────────────────────
+
+  /** Probation period in months */
+  @Prop({ type: Number, default: 6 })
+  hr_probation_months: number;
+
+  /** Notice period during probation in days */
+  @Prop({ type: Number, default: 7 })
+  hr_probation_notice_days: number;
+
+  /** Post-confirmation notice period in days */
+  @Prop({ type: Number, default: 30 })
+  hr_notice_period_days: number;
+
+  // ── Salary structure percentages (must total 100) ─────────────────────────
+
+  /** Basic salary as % of gross (default 50) */
+  @Prop({ type: Number, default: 50 })
+  hr_salary_basic_pct: number;
+
+  /** HRA as % of gross (default 20) */
+  @Prop({ type: Number, default: 20 })
+  hr_salary_hra_pct: number;
+
+  /** Transport / conveyance allowance as % of gross (default 10) */
+  @Prop({ type: Number, default: 10 })
+  hr_salary_transport_pct: number;
+
+  /** Special / other allowance as % of gross — auto-computed remainder shown in PDF */
+  @Prop({ type: Number, default: 20 })
+  hr_salary_special_pct: number;
+
+  // ── Other HR policy variables ─────────────────────────────────────────────
+
+  /** Fine amount in INR for misconduct/damage */
+  @Prop({ type: Number, default: 200000 })
+  hr_fine_amount: number;
+
+  /** Casual leave entitlement per calendar year */
+  @Prop({ type: Number, default: 3 })
+  hr_casual_leaves: number;
+
+  /** Consecutive absent days before treated as abandonment */
+  @Prop({ type: Number, default: 3 })
+  hr_absent_days_abandonment: number;
 }
 
 export const SettingsSchema = SchemaFactory.createForClass(Settings);

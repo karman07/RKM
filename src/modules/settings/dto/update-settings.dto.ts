@@ -79,4 +79,88 @@ export class UpdateSettingsDto {
   @IsOptional()
   @IsObject()
   email_triggers?: Record<string, boolean>;
+
+  // ─── Company / HR Settings ─────────────────────────────────────────────────
+
+  @IsOptional()
+  @IsString()
+  company_name?: string;
+
+  @IsOptional()
+  @IsString()
+  company_tagline?: string;
+
+  @IsOptional()
+  @IsString()
+  company_address?: string;
+
+  @IsOptional()
+  @IsString()
+  company_phone?: string;
+
+  @IsOptional()
+  @IsString()
+  company_email?: string;
+
+  @IsOptional()
+  @IsString()
+  company_gstin?: string;
+
+  @IsOptional()
+  @IsString()
+  company_logo_url?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  hr_probation_months?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  hr_probation_notice_days?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  hr_notice_period_days?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  hr_salary_basic_pct?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  hr_salary_hra_pct?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  hr_salary_transport_pct?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  hr_salary_special_pct?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  hr_fine_amount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  hr_casual_leaves?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  hr_absent_days_abandonment?: number;
 }

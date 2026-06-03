@@ -35,6 +35,10 @@ export class User {
   @Prop({ default: true })
   isActive: boolean;
 
+  /** Auto-generated unique employee identifier, e.g. EMP-0001 */
+  @Prop({ type: String, required: false, unique: true, sparse: true })
+  employee_id?: string;
+
   @Prop({ type: String, required: false })
   avatar?: string;
 
@@ -45,6 +49,19 @@ export class User {
   // HR / Onboarding
   @Prop({ type: Number, required: false })
   base_salary?: number;
+
+  /** Individual salary component amounts (set per-employee by admin) */
+  @Prop({ type: Number, required: false })
+  salary_basic?: number;
+
+  @Prop({ type: Number, required: false })
+  salary_hra?: number;
+
+  @Prop({ type: Number, required: false })
+  salary_transport?: number;
+
+  @Prop({ type: Number, required: false })
+  salary_special?: number;
 
   @Prop({ type: String, required: false })
   salary_type?: string; // 'monthly' | 'daily' | 'hourly'
@@ -63,6 +80,9 @@ export class User {
 
   @Prop({ type: String, required: false })
   appointment_letter_url?: string;
+
+  @Prop({ type: String, required: false })
+  welcome_letter_url?: string;
 
   // Employee mobile
   @Prop({ type: String, required: false })

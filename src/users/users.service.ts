@@ -2,6 +2,7 @@ import {
   Injectable,
   ConflictException,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -12,8 +13,37 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
 @Injectable()
-export class UsersService {
+export class UsersService implements OnModuleInit {
   constructor(@InjectModel(User.name) private userModel: Model<UserDocument>) {}
+
+  async onModuleInit() {
+    await this.backfillEmployeeIds();
+  }
+
+  private async generateEmployeeId(): Promise<string> {
+    const last = await this.userModel
+      .findOne({ employee_id: { $regex: /^EMP-\d+$/ } })
+      .sort({ employee_id: -1 })
+      .select('employee_id')
+      .exec();
+    const nextNum = last?.employee_id
+      ? parseInt(last.employee_id.replace('EMP-', ''), 10) + 1
+      : 1;
+    return `EMP-${String(nextNum).padStart(4, '0')}`;
+  }
+
+  /** Assign employee_id to every existing user that does not have one yet. Runs once on startup. */
+  private async backfillEmployeeIds(): Promise<void> {
+    const missing = await this.userModel
+      .find({ $or: [{ employee_id: { $exists: false } }, { employee_id: null }] })
+      .sort({ createdAt: 1 })
+      .select('_id')
+      .exec();
+    for (const user of missing) {
+      const employee_id = await this.generateEmployeeId();
+      await this.userModel.updateOne({ _id: user._id }, { $set: { employee_id } }).exec();
+    }
+  }
 
   async create(createUserDto: CreateUserDto): Promise<UserDocument> {
     const isWorker = createUserDto.role === UserRole.WORKER;
@@ -27,8 +57,9 @@ export class UsersService {
       if (existing) throw new ConflictException('Email already in use');
     }
 
+    const employee_id = await this.generateEmployeeId();
     const hashed = await bcrypt.hash(password, 10);
-    const user = new this.userModel({ ...createUserDto, email, password: hashed });
+    const user = new this.userModel({ ...createUserDto, email, password: hashed, employee_id });
     return user.save();
   }
 
@@ -116,6 +147,19 @@ export class UsersService {
       .exec();
     if (!user) throw new NotFoundException(`User ${id} not found`);
     return user;
+  }
+
+  async generateEmployeeIdForUser(id: string): Promise<UserDocument> {
+    const user = await this.userModel.findById(id).exec();
+    if (!user) throw new NotFoundException(`User ${id} not found`);
+    if (user.employee_id) return user.populate('branch');
+    const employee_id = await this.generateEmployeeId();
+    const updated = await this.userModel
+      .findByIdAndUpdate(id, { employee_id }, { new: true })
+      .select('-password')
+      .populate('branch')
+      .exec();
+    return updated!;
   }
 
   async remove(id: string): Promise<{ message: string }> {

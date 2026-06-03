@@ -229,6 +229,70 @@ export class InventoryController {
   }
 
   /**
+   * POST /inventory/:id/sale-request
+   * Cashier submits a sale request for admin/manager approval.
+   */
+  @Post(':id/sale-request')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER)
+  @HttpCode(HttpStatus.CREATED)
+  submitSaleRequest(
+    @Param('id') id: string,
+    @Body() body: Record<string, any>,
+    @Request() req: any,
+  ) {
+    const userId = req.user?.userId || req.user?.sub || req.user?._id || req.user?.id;
+    const userName = req.user?.name || req.user?.email || 'Cashier';
+    return this.inventoryService.submitSaleRequest(id, body, userId?.toString(), userName);
+  }
+
+  /**
+   * PATCH /inventory/:id/sale-request/approve
+   * Admin or Manager approves a pending sale request.
+   */
+  @Patch(':id/sale-request/approve')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  approveSaleRequest(
+    @Param('id') id: string,
+    @Request() req: any,
+  ) {
+    const userId = req.user?.userId || req.user?.sub || req.user?._id || req.user?.id;
+    return this.inventoryService.approveSaleRequest(id, userId?.toString(), req.user?.role);
+  }
+
+  /**
+   * PATCH /inventory/:id/sale-request/reject
+   * Admin or Manager rejects a pending sale request.
+   */
+  @Patch(':id/sale-request/reject')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  rejectSaleRequest(
+    @Param('id') id: string,
+    @Body() body: { reason?: string },
+    @Request() req: any,
+  ) {
+    const userId = req.user?.userId || req.user?.sub || req.user?._id || req.user?.id;
+    return this.inventoryService.rejectSaleRequest(id, userId?.toString(), body.reason ?? '');
+  }
+
+  /**
+   * GET /inventory/sale-requests
+   * Admin or Manager fetches pending sale requests (optionally filtered by branch).
+   */
+  @Get('sale-requests')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  getSaleRequests(
+    @Query('page') page: string,
+    @Query('limit') limit: string,
+    @Query('branch_id') branchId: string,
+  ) {
+    return this.inventoryService.getPendingSaleRequests(
+      Number(page) || 1,
+      Number(limit) || 20,
+      branchId,
+    );
+  }
+
+  /**
    * PATCH /inventory/:id/return-approval
    * Admin-only: Set the final approved refund value for a returned item.
    * Body: { approved_value: number, notes: string, action: 'approved' | 'rejected' }

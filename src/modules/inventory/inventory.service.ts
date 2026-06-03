@@ -1182,6 +1182,18 @@ export class InventoryService {
       if (dto.selling_price != null) {
         item.selling_price = dto.selling_price;
       }
+      // Split payments — normalise and store; derive primary payment_mode from first split
+      if (Array.isArray(dto.payment_splits) && dto.payment_splits.length > 0) {
+        (item as any).payment_splits = dto.payment_splits.map(s => ({
+          mode: s.mode?.trim() ?? 'cash',
+          amount: Number(s.amount) || 0,
+          reference: s.reference?.trim() ?? '',
+        }));
+        // Keep payment_mode consistent with first split for backwards compat
+        item.payment_mode = dto.payment_splits[0]?.mode?.trim() ?? item.payment_mode;
+      } else {
+        (item as any).payment_splits = [{ mode: item.payment_mode, amount: item.selling_price, reference: '' }];
+      }
 
       // ─── Full Sale Traceability ─────────────────────────────────────────────
       // Record the branch where the sale happened
@@ -1357,6 +1369,164 @@ export class InventoryService {
     (item as any).return_refund_status = action;
     (item as any).return_approved_at = new Date();
     return item.save();
+  }
+
+  // ─── Sale Request (Cashier → Admin/Manager approval) ────────────────────────
+
+  async submitSaleRequest(
+    id: string,
+    requestData: Record<string, any>,
+    requestingUserId: string,
+    requestingUserName: string,
+  ): Promise<InventoryItemDocument> {
+    this.validateObjectId(id);
+    const item = await this.inventoryModel.findById(id).populate('product_id branch_id');
+    if (!item) throw new NotFoundException(`Inventory item ${id} not found`);
+    if (item.status !== InventoryStatus.AVAILABLE && item.status !== InventoryStatus.RESERVED) {
+      throw new BadRequestException(`Item is not available for sale (status: ${item.status})`);
+    }
+    if ((item as any).sale_request_status === 'pending') {
+      throw new ConflictException('A sale request is already pending for this item');
+    }
+
+    (item as any).sale_request_status = 'pending';
+    (item as any).sale_request_at = new Date();
+    (item as any).sale_request_by = requestingUserId && Types.ObjectId.isValid(requestingUserId)
+      ? new Types.ObjectId(requestingUserId) : null;
+    (item as any).sale_request_by_name = requestingUserName ?? '';
+    (item as any).sale_request_notes = requestData.notes ?? '';
+    (item as any).sale_request_data = requestData;
+    (item as any).sale_request_reviewer = null;
+    (item as any).sale_request_reviewed_at = null;
+    (item as any).sale_request_rejection_reason = '';
+
+    const saved = await item.save();
+
+    const itemName = (saved as any).product_id?.name || saved.unique_item_code;
+    const branchName = (saved as any).branch_id?.name || 'Branch';
+    const branchIdStr = (saved as any).branch_id?._id?.toString() ?? saved.branch_id?.toString();
+    try {
+      const notifTitle = '🛒 Sale Request Submitted';
+      const notifBody = `${requestingUserName} requested to sell "${itemName}" at ${branchName} for ₹${(requestData.selling_price ?? saved.selling_price)?.toLocaleString('en-IN')}.`;
+      const notifData = { type: 'sale_request', item_id: saved._id?.toString() ?? '', url: '/dashboard/sale-approvals' };
+      void this.notificationsService.notifyAdmins(notifTitle, notifBody, notifData);
+      if (branchIdStr) {
+        void this.notificationsService.notifyManagersOfBranch(branchIdStr, notifTitle, notifBody, notifData);
+      } else {
+        void this.notificationsService.notifyAllManagers(notifTitle, notifBody, notifData);
+      }
+    } catch { /* non-blocking */ }
+
+    return saved;
+  }
+
+  async approveSaleRequest(
+    id: string,
+    reviewerId: string,
+    reviewerRole: string,
+  ): Promise<InventoryItemDocument> {
+    this.validateObjectId(id);
+    const item = await this.inventoryModel.findById(id);
+    if (!item) throw new NotFoundException(`Inventory item ${id} not found`);
+    if ((item as any).sale_request_status !== 'pending') {
+      throw new BadRequestException('No pending sale request for this item');
+    }
+
+    const saleData = (item as any).sale_request_data ?? {};
+    const dto: UpdateInventoryStatusDto = {
+      status: InventoryStatus.SOLD,
+      sold_customer_name: saleData.sold_customer_name,
+      sold_customer_phone: saleData.sold_customer_phone,
+      sold_customer_email: saleData.sold_customer_email,
+      shipping_address: saleData.shipping_address || 'Store Collection',
+      shipping_city: saleData.shipping_city,
+      shipping_state: saleData.shipping_state,
+      shipping_pincode: saleData.shipping_pincode,
+      shipping_country: saleData.shipping_country,
+      sale_channel: saleData.sale_channel || 'in-store',
+      payment_mode: saleData.payment_mode,
+      is_emi: saleData.is_emi,
+      emi_provider: saleData.emi_provider,
+      emi_tenure_months: saleData.emi_tenure_months,
+      emi_down_payment: saleData.emi_down_payment,
+      selling_price: saleData.selling_price,
+      sold_at_branch_id: saleData.sold_at_branch_id,
+      sold_by_user_id: saleData.sold_by_user_id,
+      payment_splits: saleData.payment_splits,
+    };
+
+    (item as any).sale_request_status = 'approved';
+    (item as any).sale_request_reviewer = reviewerId && Types.ObjectId.isValid(reviewerId)
+      ? new Types.ObjectId(reviewerId) : null;
+    (item as any).sale_request_reviewed_at = new Date();
+    await item.save();
+
+    return this.updateStatus(id, dto, reviewerId, undefined, reviewerRole);
+  }
+
+  async rejectSaleRequest(
+    id: string,
+    reviewerId: string,
+    rejectionReason: string,
+  ): Promise<InventoryItemDocument> {
+    this.validateObjectId(id);
+    const item = await this.inventoryModel.findById(id);
+    if (!item) throw new NotFoundException(`Inventory item ${id} not found`);
+    if ((item as any).sale_request_status !== 'pending') {
+      throw new BadRequestException('No pending sale request for this item');
+    }
+
+    (item as any).sale_request_status = 'rejected';
+    (item as any).sale_request_reviewer = reviewerId && Types.ObjectId.isValid(reviewerId)
+      ? new Types.ObjectId(reviewerId) : null;
+    (item as any).sale_request_reviewed_at = new Date();
+    (item as any).sale_request_rejection_reason = rejectionReason ?? '';
+
+    const saved = await item.save();
+
+    const requestByUserId = (saved as any).sale_request_by?.toString();
+    const itemName = (saved as any).product_id?.name || saved.unique_item_code;
+    try {
+      if (requestByUserId) {
+        void this.notificationsService.sendToUser(
+          requestByUserId,
+          '❌ Sale Request Rejected',
+          `Your request to sell "${itemName}" was rejected. Reason: ${rejectionReason || 'No reason given'}.`,
+          { type: 'sale_request_rejected', item_id: saved._id?.toString() ?? '', url: '/dashboard/inventory' },
+        );
+      }
+    } catch { /* non-blocking */ }
+
+    return saved;
+  }
+
+  async getPendingSaleRequests(page = 1, limit = 20, branchId?: string) {
+    const skip = (page - 1) * limit;
+    const filter: Record<string, unknown> = {
+      is_deleted: { $ne: true },
+      sale_request_status: 'pending',
+    };
+    if (branchId && Types.ObjectId.isValid(branchId)) {
+      filter.branch_id = new Types.ObjectId(branchId);
+    }
+
+    const [items, total] = await Promise.all([
+      this.inventoryModel
+        .find(filter as any)
+        .populate({ path: 'product_id', select: 'name sku metal_type purity gross_weight net_weight images' })
+        .populate({ path: 'branch_id', select: 'name code city' })
+        .populate({ path: 'sale_request_by', select: 'name email role' })
+        .sort({ sale_request_at: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      this.inventoryModel.countDocuments(filter as any),
+    ]);
+
+    return {
+      data: items,
+      meta: { total, page: Number(page), limit: Number(limit), total_pages: Math.ceil(total / limit) },
+    };
   }
 
   // ─── Get Returned Items ─────────────────────────────────────────────────────

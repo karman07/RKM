@@ -12,6 +12,8 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
+import { DocumentsService } from './documents.service';
+import type { DocumentType } from './documents.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -22,7 +24,10 @@ import { UserRole } from './schemas/user.schema';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly documentsService: DocumentsService,
+  ) {}
 
   // ─── Admin: Create any user ────────────────────────────────────────────────
   @Post()
@@ -106,6 +111,23 @@ export class UsersController {
       }
     }
     return this.usersService.update(id, dto);
+  }
+
+  // ─── Admin: Generate HR document (offer/appointment/welcome letter) ──────────
+  @Post(':id/documents/:type')
+  @Roles(UserRole.ADMIN)
+  generateDocument(
+    @Param('id') id: string,
+    @Param('type') type: DocumentType,
+  ) {
+    return this.documentsService.generate(id, type);
+  }
+
+  // ─── Admin: Generate employee ID for an existing user that lacks one ─────────
+  @Post(':id/generate-employee-id')
+  @Roles(UserRole.ADMIN)
+  async generateEmployeeId(@Param('id') id: string) {
+    return this.usersService.generateEmployeeIdForUser(id);
   }
 
   // ─── Admin: Delete any user; Manager: Delete cashiers + workers ────────────
