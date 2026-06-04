@@ -18,11 +18,13 @@ import {
   getSettings,
   getCashiersByBranch,
   generateSaleInvoiceNumber,
+  getSuppliers,
   type InventoryItem,
   type Lookup,
   type Product,
   type Branch,
   type User,
+  type Supplier,
 } from '@/lib/api';
 import Link from 'next/link';
 import Modal from '@/components/Modal';
@@ -107,6 +109,11 @@ export default function InventoryPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
   const [barcodeInput, setBarcodeInput] = useState('');
+
+  // ── Suppliers ──────────────────────────────────────────────────────────────
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [supplierQuery, setSupplierQuery] = useState('');
+  const [supplierOpen, setSupplierOpen] = useState(false);
 
   // ── Add item modal ──────────────────────────────────────────────────────────
   const [addModal, setAddModal] = useState(false);
@@ -212,15 +219,23 @@ export default function InventoryPage() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    Promise.all([getProducts({ limit: '1000' }), getLookups(), getBranches().catch(() => []), getMe().catch(() => null), getSettings().catch(() => null), getCashiersByBranch(undefined, 200).catch(() => ({ data: [], meta: {} }))])
-      .then(([productResponse, lookupData, branchData, meData, settingsData, cashierRes]) => {
-        setProducts(productResponse.data);
-        setLookups(lookupData);
-        setBranches(branchData);
-        setUser(meData);
-        setSettings(settingsData);
-        setCashiers((cashierRes as any).data || []);
-      });
+    Promise.all([
+      getProducts({ limit: '1000' }),
+      getLookups(),
+      getBranches().catch(() => []),
+      getMe().catch(() => null),
+      getSettings().catch(() => null),
+      getCashiersByBranch(undefined, 200).catch(() => ({ data: [], meta: {} })),
+      getSuppliers().catch(() => []),
+    ]).then(([productResponse, lookupData, branchData, meData, settingsData, cashierRes, supplierRes]) => {
+      setProducts(productResponse.data);
+      setLookups(lookupData);
+      setBranches(branchData);
+      setUser(meData);
+      setSettings(settingsData);
+      setCashiers((cashierRes as any).data || []);
+      setSuppliers((Array.isArray(supplierRes) ? supplierRes : []).filter((s: Supplier) => s.is_active !== false));
+    });
   }, []);
 
   // ─── Product Select ──────────────────────────────────────────────────────
@@ -254,6 +269,8 @@ export default function InventoryPage() {
       setAddModal(false);
       setAddForm(emptyAddForm);
       setSelectedProduct(null);
+      setSupplierQuery('');
+      setSupplierOpen(false);
       showToast('Items added to inventory', 'success');
       load();
     } catch (error: unknown) {
@@ -543,7 +560,7 @@ export default function InventoryPage() {
                             <p className="text-[13px] font-black text-slate-900 leading-tight mb-0.5">{product?.name || '—'}</p>
                             <div className="flex items-center gap-2 flex-wrap">
                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">#{item.unique_item_code}</span>
-                               {(item as any).is_new_stock && (
+                               {(Date.now() - new Date(item.createdAt).getTime()) < 2 * 60 * 60 * 1000 && (
                                  <span className="inline-flex items-center gap-1 px-2 py-[2px] bg-emerald-500 text-white rounded-full text-[8px] font-black uppercase tracking-wider shadow-[0_2px_6px_rgba(16,185,129,0.4)] animate-pulse">
                                    <span className="w-1 h-1 rounded-full bg-white" />NEW
                                  </span>
@@ -563,7 +580,7 @@ export default function InventoryPage() {
                       <td className="px-4 py-3">
                         {dims ? (
                           <div className="flex flex-col gap-0.5">
-                            <span className="px-2 py-1 rounded-lg bg-violet-50 border border-violet-100 text-violet-700 text-[10px] font-bold inline-flex items-center gap-1">
+                            <span className="px-2 py-1 rounded-lg bg-violet-50 text-violet-700 text-[10px] font-bold inline-flex items-center gap-1">
                               <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5-5-5m5 5v-4m0 4h-4" /></svg>
                               {dims}
                             </span>
@@ -751,15 +768,77 @@ export default function InventoryPage() {
             </div>
 
 
-            {/* Source */}
+            {/* Source / Vendor — searchable supplier dropdown */}
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Source / Vendor <span className="text-red-500">*</span></label>
-              <input
-                className="w-full px-5 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-medium focus:ring-2 focus:ring-blue-500"
-                value={addForm.source}
-                onChange={e => setAddForm({ ...addForm, source: e.target.value })}
-                placeholder="e.g. Rahul Jewellers, Mumbai"
-              />
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                Source / Vendor <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  className="w-full px-5 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-medium focus:ring-2 focus:ring-blue-500 pr-10"
+                  value={supplierQuery || addForm.source}
+                  placeholder="Search supplier or type name…"
+                  onFocus={() => setSupplierOpen(true)}
+                  onChange={e => {
+                    setSupplierQuery(e.target.value);
+                    setAddForm({ ...addForm, source: e.target.value });
+                    setSupplierOpen(true);
+                  }}
+                  onBlur={() => setTimeout(() => setSupplierOpen(false), 150)}
+                />
+                {/* chevron icon */}
+                <svg className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M19 9l-7 7-7-7" /></svg>
+
+                {/* Dropdown list */}
+                {supplierOpen && (
+                  <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+                    {(() => {
+                      const q = (supplierQuery || addForm.source).trim().toLowerCase();
+                      const filtered = suppliers.filter(s =>
+                        !q || s.name.toLowerCase().includes(q) || (s.place || '').toLowerCase().includes(q) || (s.contact_person || '').toLowerCase().includes(q)
+                      );
+                      return filtered.length === 0 ? (
+                        <div className="px-5 py-3 text-[11px] text-slate-400 font-semibold">
+                          No suppliers found — type to use custom name
+                        </div>
+                      ) : (
+                        <div className="max-h-52 overflow-y-auto divide-y divide-slate-50">
+                          {filtered.map(s => (
+                            <button
+                              key={s._id}
+                              type="button"
+                              onMouseDown={() => {
+                                setAddForm({ ...addForm, source: s.name });
+                                setSupplierQuery(s.name);
+                                setSupplierOpen(false);
+                              }}
+                              className="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors"
+                            >
+                              <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 text-[10px] font-black text-blue-600">
+                                {s.name.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-bold text-slate-800 truncate">{s.name}</p>
+                                <p className="text-[10px] text-slate-400 truncate">
+                                  {[s.contact_person, s.place].filter(Boolean).join(' · ') || 'No contact info'}
+                                </p>
+                              </div>
+                              {s.gst_number && (
+                                <span className="text-[9px] font-black text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded flex-shrink-0 mt-0.5">
+                                  GST
+                                </span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+              {addForm.source && suppliers.find(s => s.name === addForm.source) === undefined && (
+                <p className="text-[10px] text-amber-500 font-semibold">Custom supplier — not in your supplier network</p>
+              )}
             </div>
 
             {/* Count */}

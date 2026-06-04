@@ -306,10 +306,17 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
               <NavIcon active={pathname.startsWith('/dashboard/roles')} color={pathname.startsWith('/dashboard/roles') ? colors.activeText : colors.textMuted}><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" strokeLinecap="round" strokeLinejoin="round" /></NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Role Management</span>}
             </Link>}
-            {can('users') && <Link href="/dashboard/users" onClick={onNavigate} title={isCollapsed ? "User Roles" : ""} className={navClass(pathname.startsWith('/dashboard/users'))} style={getNavStyle(pathname.startsWith('/dashboard/users'))}>
-              {isCollapsed && pathname.startsWith('/dashboard/users') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
-              <NavIcon active={pathname.startsWith('/dashboard/users')} color={pathname.startsWith('/dashboard/users') ? colors.activeText : colors.textMuted}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></NavIcon>
+            {can('users') && <Link href="/dashboard/users" onClick={onNavigate} title={isCollapsed ? "User Roles" : ""} className={navClass(pathname.startsWith('/dashboard/users') && !pathname.startsWith('/dashboard/users/') && pathname !== '/dashboard/reporting-managers')} style={getNavStyle(pathname.startsWith('/dashboard/users') && !pathname.startsWith('/dashboard/reporting-managers'))}>
+              {isCollapsed && pathname.startsWith('/dashboard/users') && !pathname.startsWith('/dashboard/reporting-managers') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname.startsWith('/dashboard/users') && !pathname.startsWith('/dashboard/reporting-managers')} color={pathname.startsWith('/dashboard/users') && !pathname.startsWith('/dashboard/reporting-managers') ? colors.activeText : colors.textMuted}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Access Control</span>}
+            </Link>}
+            {permissions === null && <Link href="/dashboard/reporting-managers" onClick={onNavigate} title={isCollapsed ? "Reporting Structure" : ""} className={navClass(pathname.startsWith('/dashboard/reporting-managers'))} style={getNavStyle(pathname.startsWith('/dashboard/reporting-managers'))}>
+              {isCollapsed && pathname.startsWith('/dashboard/reporting-managers') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname.startsWith('/dashboard/reporting-managers')} color={pathname.startsWith('/dashboard/reporting-managers') ? colors.activeText : colors.textMuted}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z" />
+              </NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Reporting Structure</span>}
             </Link>}
             {can('customers') && <Link href="/dashboard/customers" onClick={onNavigate} title={isCollapsed ? "Client Relations" : ""} className={navClass(pathname.startsWith('/dashboard/customers'))} style={getNavStyle(pathname.startsWith('/dashboard/customers'))}>
               {isCollapsed && pathname.startsWith('/dashboard/customers') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}

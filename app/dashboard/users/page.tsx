@@ -14,7 +14,7 @@ import {
   Plus, Edit2, Trash2, ChevronLeft, ChevronRight, Shield, UserCheck,
   Building2, Mail, Loader2, User as UserIcon, FileText, CreditCard,
   DollarSign, Calendar, Upload, Phone, Users, Wrench, Camera,
-  Download, RefreshCw, CheckCircle2, Sparkles,
+  Download, RefreshCw, CheckCircle2, Sparkles, Search, X, UserCog,
 } from 'lucide-react';
 
 const roleBadge: Record<string, { wrap: string; dot: string; icon: any }> = {
@@ -43,6 +43,9 @@ interface UserForm {
   salary_hra?: string;
   salary_transport?: string;
   salary_special?: string;
+  // Reporting manager
+  reporting_manager_id?: string;
+  reporting_manager_name?: string;
   // Contact
   mobile_number?: string;
   family_contact_number?: string;
@@ -178,6 +181,9 @@ export default function UsersPage() {
   const [saving, setSaving]         = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [generatingDoc, setGeneratingDoc]     = useState<DocumentType | null>(null);
+  const [managerMode, setManagerMode]         = useState<'system' | 'custom'>('system');
+  const [managerSearch, setManagerSearch]     = useState('');
+  const [managerList, setManagerList]         = useState<User[]>([]);
   const [error, setError]           = useState('');
   const [toast, setToast]           = useState<{ message: string; type: 'success' | 'danger' } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
@@ -234,13 +240,25 @@ export default function UsersPage() {
     setTimeout(() => setToast(null), 3000);
   }
 
+  function fetchManagers() {
+    Promise.all([
+      getUsers('manager', 1, 100),
+      getUsers('admin', 1, 100),
+    ]).then(([mgrs, admins]) => {
+      setManagerList([...(mgrs.data as User[]), ...(admins.data as User[])]);
+    }).catch(() => {});
+  }
+
   function openCreate() {
     setEditTarget(null);
     setForm(emptyForm);
     setError('');
     setMobileVerified(false);
     setFamilyVerified(false);
+    setManagerMode('system');
+    setManagerSearch('');
     setModalTab('profile');
+    fetchManagers();
     setModalOpen(true);
   }
 
@@ -265,6 +283,9 @@ export default function UsersPage() {
       salary_hra:               (u as any).salary_hra?.toString()         || '',
       salary_transport:         (u as any).salary_transport?.toString()   || '',
       salary_special:           (u as any).salary_special?.toString()     || '',
+      reporting_manager_id:     (u as any).reporting_manager_id?._id
+                                  || (u as any).reporting_manager_id?.toString() || '',
+      reporting_manager_name:   (u as any).reporting_manager_name         || '',
       mobile_number:            (u as any).mobile_number                  || '',
       family_contact_number:    (u as any).family_contact_number          || '',
       pan_card:                 (u as any).pan_card                       || '',
@@ -277,6 +298,9 @@ export default function UsersPage() {
     });
     setError('');
     setModalTab('profile');
+    setManagerMode((u as any).reporting_manager_name && !(u as any).reporting_manager_id ? 'custom' : 'system');
+    setManagerSearch('');
+    fetchManagers();
     // Treat existing saved numbers as already verified
     setMobileVerified(!!(u && (u as any).mobile_number));
     setFamilyVerified(!!(u && (u as any).family_contact_number));
@@ -317,6 +341,8 @@ export default function UsersPage() {
         ...(form.salary_hra        ? { salary_hra:             Number(form.salary_hra)        } : {}),
         ...(form.salary_transport  ? { salary_transport:       Number(form.salary_transport)  } : {}),
         ...(form.salary_special    ? { salary_special:         Number(form.salary_special)    } : {}),
+        reporting_manager_id:   form.reporting_manager_id   || null,
+        reporting_manager_name: form.reporting_manager_name || null,
         ...(form.mobile_number     ? { mobile_number:          form.mobile_number             } : {}),
         ...(form.family_contact_number ? { family_contact_number: form.family_contact_number  } : {}),
         ...(form.pan_card          ? { pan_card:               form.pan_card                  } : {}),
@@ -718,6 +744,122 @@ export default function UsersPage() {
                     <option value="">None</option>
                     {branches.map(b => <option key={b._id} value={b._id}>{b.name}</option>)}
                   </select>
+                </div>
+              </div>
+
+              {/* ── Reporting Manager ── */}
+              <div className="border border-slate-200 rounded-2xl overflow-hidden">
+                {/* Header */}
+                <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <UserCog className="w-3.5 h-3.5 text-blue-600" />
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Reporting Manager</p>
+                  </div>
+                  {/* Mode toggle */}
+                  <div className="flex items-center bg-white border border-slate-200 rounded-lg p-0.5 gap-0.5">
+                    <button type="button" onClick={() => { setManagerMode('system'); setForm(f => ({ ...f, reporting_manager_name: '' })); }}
+                      className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${managerMode === 'system' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                      From System
+                    </button>
+                    <button type="button" onClick={() => { setManagerMode('custom'); setForm(f => ({ ...f, reporting_manager_id: '' })); }}
+                      className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${managerMode === 'custom' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                      Custom
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-4">
+                  {managerMode === 'system' ? (
+                    <div className="space-y-3">
+                      {/* Selected manager card */}
+                      {form.reporting_manager_id ? (
+                        (() => {
+                          const mgr = managerList.find(m => m._id === form.reporting_manager_id);
+                          const initials = mgr ? mgr.name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase() : '?';
+                          return (
+                            <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-100 rounded-xl">
+                              <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white text-xs font-black flex-shrink-0 overflow-hidden">
+                                {(mgr as any)?.avatar
+                                  ? <img src={staticUrl((mgr as any).avatar)} alt="" className="w-full h-full object-cover" />
+                                  : initials}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-black text-slate-900 leading-tight">{mgr?.name || 'Selected Manager'}</p>
+                                <p className="text-[10px] text-blue-600 font-bold uppercase tracking-wider">{mgr?.role}</p>
+                              </div>
+                              <button type="button" onClick={() => setForm(f => ({ ...f, reporting_manager_id: '' }))}
+                                className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          );
+                        })()
+                      ) : (
+                        <p className="text-[10px] text-slate-400 font-medium">No manager assigned. Search below to assign one.</p>
+                      )}
+
+                      {/* Search input */}
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                        <input
+                          className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-400 focus:bg-white transition-all"
+                          placeholder="Search managers and admins…"
+                          value={managerSearch}
+                          onChange={e => setManagerSearch(e.target.value)}
+                        />
+                      </div>
+
+                      {/* Manager list */}
+                      {managerSearch.trim() && (() => {
+                        const q = managerSearch.toLowerCase();
+                        const filtered = managerList.filter(m =>
+                          m._id !== (editTarget?._id) &&
+                          (m.name.toLowerCase().includes(q) || m.role.toLowerCase().includes(q))
+                        ).slice(0, 5);
+                        return filtered.length > 0 ? (
+                          <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
+                            {filtered.map(m => {
+                              const initials = m.name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase();
+                              const isSelected = form.reporting_manager_id === m._id;
+                              return (
+                                <button key={m._id} type="button"
+                                  onClick={() => { setForm(f => ({ ...f, reporting_manager_id: m._id, reporting_manager_name: '' })); setManagerSearch(''); }}
+                                  className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-all ${isSelected ? 'bg-blue-50' : 'bg-white hover:bg-slate-50'}`}>
+                                  <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white text-[10px] font-black flex-shrink-0 overflow-hidden">
+                                    {(m as any).avatar ? <img src={staticUrl((m as any).avatar)} alt="" className="w-full h-full object-cover" /> : initials}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-bold text-slate-900 leading-tight truncate">{m.name}</p>
+                                    <p className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">{m.role}</p>
+                                  </div>
+                                  {isSelected && <CheckCircle2 className="w-4 h-4 text-blue-600 flex-shrink-0" />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="text-[10px] text-slate-400 font-medium px-1">No managers found matching "{managerSearch}"</p>
+                        );
+                      })()}
+                    </div>
+                  ) : (
+                    /* Custom text mode */
+                    <div className="space-y-3">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Manager's Full Name</label>
+                        <input
+                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:border-blue-400 focus:bg-white transition-all"
+                          placeholder="e.g. Rajiv Sharma"
+                          value={form.reporting_manager_name || ''}
+                          onChange={e => setForm(f => ({ ...f, reporting_manager_name: e.target.value }))}
+                        />
+                      </div>
+                      <p className="flex items-center gap-1.5 text-[10px] text-slate-400 font-medium">
+                        <Sparkles className="w-3 h-3 text-blue-400" />
+                        This name appears in generated offer and appointment letters.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
 
