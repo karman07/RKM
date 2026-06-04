@@ -113,54 +113,28 @@ const NAV_ITEMS = [
   },
 ];
 
-interface SidebarProps {
-  children: React.ReactNode;
+// ── Extracted as a top-level component so React never remounts it on re-render ──
+
+interface SidebarContentProps {
+  collapsed: boolean;
+  user: UserProfile | null;
+  pathname: string;
+  searchParams: ReturnType<typeof useSearchParams>;
+  onNavigate: (href: string) => void;
+  onLogout: () => void;
+  onMobileClose: () => void;
 }
 
-export function SidebarInner({ children }: SidebarProps) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const [user, setUser] = useState<UserProfile | null>(null);
-  const [collapsed, setCollapsed] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
-
-  useEffect(() => {
-    getProfile().then(setUser).catch(() => {
-      localStorage.removeItem('manager_session');
-      router.replace('/login');
-    });
-  }, [router]);
-
-  async function handleLogout() {
-    // Best-effort: record attendance when signing out
-    try {
-      const session = JSON.parse(localStorage.getItem('manager_session') ?? '{}');
-      if (session?.token) {
-        await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000'}/attendance/check-out`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session.token}`,
-          },
-        });
-      }
-    } catch (_) {
-      // Attendance is best-effort — don't block logout
-    }
-    localStorage.removeItem('manager_session');
-    router.replace('/login');
-  }
-
-  const activeNav = NAV_ITEMS.find((n) => pathname.startsWith(n.href));
+function SidebarContent({
+  collapsed, user, pathname, searchParams,
+  onNavigate, onLogout, onMobileClose,
+}: SidebarContentProps) {
   const initials = (user?.name ?? 'M').split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
 
-  const Sidebar = () => (
-    <aside
-      className={`flex flex-col h-full bg-[#5A0F1A] text-white transition-all duration-300 ${collapsed ? 'w-[72px]' : 'w-64'}`}
-    >
+  return (
+    <aside className={`flex flex-col h-full bg-[#5A0F1A] text-white transition-all duration-300 ${collapsed ? 'w-[72px]' : 'w-64'}`}>
       {/* Logo */}
-      <div className="flex items-center gap-3 px-4 py-5 border-b border-white/10">
+      <div className="flex items-center gap-3 px-4 py-5 border-b border-white/10 flex-shrink-0">
         <div className="w-10 h-10 rounded-xl bg-white/15 flex-shrink-0 flex items-center justify-center overflow-hidden">
           <img src="/rkm-logo.png" alt="RKM" className="w-full h-full object-contain scale-150 brightness-150" />
         </div>
@@ -174,36 +148,7 @@ export function SidebarInner({ children }: SidebarProps) {
         )}
       </div>
 
-      <style dangerouslySetInnerHTML={{ __html: `
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.1);
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(255, 255, 255, 0.2);
-        }
-        .custom-scrollbar-dark::-webkit-scrollbar {
-          width: 6px;
-        }
-        .custom-scrollbar-dark::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .custom-scrollbar-dark::-webkit-scrollbar-thumb {
-          background: rgba(0, 0, 0, 0.1);
-          border-radius: 10px;
-        }
-        .custom-scrollbar-dark::-webkit-scrollbar-thumb:hover {
-          background: rgba(0, 0, 0, 0.2);
-        }
-      `}} />
-
-      {/* Nav */}
+      {/* Nav — scroll position is preserved because this component is never remounted */}
       <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto custom-scrollbar">
         {NAV_ITEMS.map((item) => {
           const active = pathname.startsWith(item.href);
@@ -211,17 +156,8 @@ export function SidebarInner({ children }: SidebarProps) {
             <div key={item.id} className="flex flex-col mb-3 space-y-1">
               <button
                 onClick={() => {
-                  if (item.href === pathname) {
-                    const content = document.querySelector('.custom-scrollbar-dark');
-                    if (content) {
-                      content.scrollTo({ top: 0, behavior: 'smooth' });
-                    } else {
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }
-                  } else {
-                    router.push(item.href);
-                  }
-                  setMobileOpen(false);
+                  onNavigate(item.href);
+                  onMobileClose();
                 }}
                 className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl transition-all text-left group ${
                   active
@@ -243,7 +179,7 @@ export function SidebarInner({ children }: SidebarProps) {
                   </span>
                 )}
               </button>
-              {/* Sub-links ALWAYS visible */}
+
               {!collapsed && item.sub.length > 0 && (
                 <div className="flex flex-col px-3 space-y-0.5 pb-1">
                   {item.sub.map((s) => {
@@ -264,27 +200,13 @@ export function SidebarInner({ children }: SidebarProps) {
                           if (s.href.includes('#')) {
                             const [path, hash] = s.href.split('#');
                             if (path === pathname) {
-                              const el = document.getElementById(hash);
-                              if (el) {
-                                el.scrollIntoView({ behavior: 'smooth' });
-                                setMobileOpen(false);
-                                return;
-                              }
+                              document.getElementById(hash)?.scrollIntoView({ behavior: 'smooth' });
+                              onMobileClose();
+                              return;
                             }
                           }
-                          const currentFullUrl = pathname + (searchParams.toString() ? '?' + searchParams.toString() : '');
-                          if (s.href === currentFullUrl) {
-                            const content = document.querySelector('.custom-scrollbar-dark');
-                            if (content) {
-                              content.scrollTo({ top: 0, behavior: 'smooth' });
-                            } else {
-                              window.scrollTo({ top: 0, behavior: 'smooth' });
-                            }
-                            setMobileOpen(false);
-                            return;
-                          }
-                          router.push(s.href);
-                          setMobileOpen(false);
+                          onNavigate(s.href);
+                          onMobileClose();
                         }}
                         className={`w-full flex items-center pl-8 pr-3 py-2 rounded-xl text-[12px] font-bold transition-all ${
                           isSubActive ? 'text-white bg-white/10 shadow-sm' : 'text-white/60 hover:bg-white/5 hover:text-white'
@@ -307,10 +229,10 @@ export function SidebarInner({ children }: SidebarProps) {
       </nav>
 
       {/* User card */}
-      <div className="border-t border-white/10 p-3">
+      <div className="border-t border-white/10 p-3 flex-shrink-0">
         {collapsed ? (
           <button
-            onClick={handleLogout}
+            onClick={onLogout}
             className="w-full h-10 flex items-center justify-center rounded-xl hover:bg-white/10 text-white/60 hover:text-white transition-colors"
             title="Sign Out"
           >
@@ -328,7 +250,7 @@ export function SidebarInner({ children }: SidebarProps) {
               <p className="text-[10px] text-white/50 font-medium">Manager</p>
             </div>
             <button
-              onClick={handleLogout}
+              onClick={onLogout}
               className="p-1.5 rounded-lg hover:bg-white/10 text-white/50 hover:text-white transition-colors flex-shrink-0"
               title="Sign Out"
             >
@@ -341,13 +263,76 @@ export function SidebarInner({ children }: SidebarProps) {
       </div>
     </aside>
   );
+}
+
+// ── Layout wrapper ────────────────────────────────────────────────────────────
+
+interface SidebarProps {
+  children: React.ReactNode;
+}
+
+export function SidebarInner({ children }: SidebarProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    getProfile().then(setUser).catch(() => {
+      localStorage.removeItem('manager_session');
+      router.replace('/login');
+    });
+  }, [router]);
+
+  async function handleLogout() {
+    try {
+      const session = JSON.parse(localStorage.getItem('manager_session') ?? '{}');
+      if (session?.token) {
+        await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000'}/attendance/check-out`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.token}`,
+          },
+        });
+      }
+    } catch (_) {}
+    localStorage.removeItem('manager_session');
+    router.replace('/login');
+  }
+
+  function handleNavigate(href: string) {
+    router.push(href);
+  }
+
+  const activeNav = NAV_ITEMS.find((n) => pathname.startsWith(n.href));
 
   return (
     <div className="flex h-screen bg-white overflow-hidden font-sans">
+      <style dangerouslySetInnerHTML={{ __html: `
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+        .custom-scrollbar-dark::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar-dark::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar-dark::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 10px; }
+        .custom-scrollbar-dark::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.2); }
+      `}} />
+
       {/* Desktop sidebar */}
       <div className="hidden md:flex flex-col flex-shrink-0 relative">
-        <Sidebar />
-        {/* Collapse toggle */}
+        <SidebarContent
+          collapsed={collapsed}
+          user={user}
+          pathname={pathname}
+          searchParams={searchParams}
+          onNavigate={handleNavigate}
+          onLogout={handleLogout}
+          onMobileClose={() => setMobileOpen(false)}
+        />
         <button
           onClick={() => setCollapsed(!collapsed)}
           className="absolute top-1/2 -translate-y-1/2 bg-[#5A0F1A] border border-white/20 rounded-full w-6 h-6 flex items-center justify-center text-white hover:bg-[#7A1C2A] transition-colors z-10"
@@ -364,7 +349,15 @@ export function SidebarInner({ children }: SidebarProps) {
         <div className="fixed inset-0 z-40 md:hidden">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
           <div className="absolute inset-y-0 left-0 w-64 flex flex-col z-50">
-            <Sidebar />
+            <SidebarContent
+              collapsed={false}
+              user={user}
+              pathname={pathname}
+              searchParams={searchParams}
+              onNavigate={handleNavigate}
+              onLogout={handleLogout}
+              onMobileClose={() => setMobileOpen(false)}
+            />
           </div>
         </div>
       )}

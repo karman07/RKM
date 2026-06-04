@@ -626,14 +626,14 @@ export function InventoryPageContent() {
                                 {product.category}
                               </span>
                             )}
-                            {item.is_new_stock && (
+                            {(Date.now() - new Date((item as any).createdAt).getTime()) < 2 * 60 * 60 * 1000 && (
                               <span className="inline-flex items-center gap-1 px-2 py-[3px] bg-emerald-500 text-white rounded-[6px] text-[8px] font-black uppercase tracking-wider leading-none shadow-[0_2px_6px_rgba(16,185,129,0.35)] animate-pulse">
                                 <span className="w-1 h-1 rounded-full bg-white" />
                                 New
                               </span>
                             )}
                             {product?.dimensions && (
-                              <span className="px-2 py-[3px] bg-slate-50 text-slate-600 border border-slate-200 rounded-[6px] text-[8px] font-black uppercase tracking-wider leading-none shadow-[0_1px_2px_rgba(0,0,0,0.02)] flex items-center gap-1">
+                              <span className="px-2 py-[3px] bg-violet-50 text-violet-700 rounded-[6px] text-[8px] font-black uppercase tracking-wider leading-none flex items-center gap-1">
                                 <svg width="8" height="8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
                                 {product.dimensions}
                               </span>

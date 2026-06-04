@@ -94,6 +94,25 @@ export interface UserProfile {
   avatar?: string;
   createdAt?: string;
   employee_id?: string;
+  // HR fields
+  job_title?: string;
+  joining_date?: string;
+  mobile_number?: string;
+  family_contact_number?: string;
+  reporting_manager_id?: { _id: string; name: string; role: string } | string | null;
+  reporting_manager_name?: string | null;
+  custom_role?: { _id: string; name: string } | string | null;
+  base_salary?: number;
+  salary_type?: string;
+  salary_basic?: number;
+  salary_hra?: number;
+  salary_transport?: number;
+  salary_special?: number;
+  pan_card?: string;
+  aadhar_card?: string;
+  offer_letter_url?: string;
+  appointment_letter_url?: string;
+  welcome_letter_url?: string;
 }
 
 export interface Category {
