@@ -134,7 +134,7 @@ export default function Footer() {
       </div>
 
       {/* SEO Footer Text */}
-      <div className="max-w-[1440px] mx-auto mb-16 opacity-30 text-[8px] uppercase tracking-[0.2em] leading-relaxed text-center lg:text-left">
+      <div className="max-w-[1440px] mx-auto mb-16 opacity-60 text-[9px] uppercase tracking-[0.2em] leading-relaxed text-center lg:text-left">
         <p>RKM Jewellers: Your trusted destination for 22K Hallmarked Gold, Certified Diamonds, and Customized Bridal Jewellery in Mohali, Chandigarh, Panchkula, and Punjab. Experience the blend of traditional artistry and modern elegance.</p>
       </div>
 

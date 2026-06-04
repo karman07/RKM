@@ -52,12 +52,12 @@ export default function CategorySection({ category, products, index }: CategoryS
             className="group flex items-center gap-4 text-[10px] uppercase tracking-[0.4em] font-bold text-[#5C0828] hover:text-[#B8975A] transition-all duration-500 pb-2 border-b border-[#5C0828]/10 hover:border-[#B8975A]"
           >
             Explore All
-            <div className="overflow-hidden w-6 h-3 relative">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="absolute -left-full group-hover:left-0 transition-all duration-500">
+            <div className="overflow-hidden w-6 h-6 relative flex-shrink-0">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="absolute -left-full top-0 group-hover:left-0 transition-all duration-500">
                 <line x1="5" y1="12" x2="19" y2="12" />
                 <polyline points="12 5 19 12 12 19" />
               </svg>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="absolute left-0 group-hover:left-full transition-all duration-500">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="absolute left-0 top-0 group-hover:left-full transition-all duration-500">
                 <line x1="5" y1="12" x2="19" y2="12" />
                 <polyline points="12 5 19 12 12 19" />
               </svg>

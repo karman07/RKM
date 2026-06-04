@@ -420,7 +420,7 @@ export default function AuthDialog() {
                                     <span className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.1em]">{c.code}</span>
                                   </div>
                                 </div>
-                                <span className="text-xs font-black text-[#7A1238] bg-emerald-50 px-2.5 py-1 rounded-lg">{c.dial_code}</span>
+                                <span className="text-xs font-black text-[#5C0828] bg-[#FDF4F6] px-2.5 py-1 rounded-lg">{c.dial_code}</span>
                               </button>
                             ))
                           ) : (
@@ -446,7 +446,7 @@ export default function AuthDialog() {
                   </div>
                 </div>
               </div>
-                <button disabled={loading} className="w-full py-4 bg-[#7A1238] text-white text-[11px] font-bold uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-emerald-900/20 hover:bg-[#14532d] hover:-translate-y-0.5 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50">
+                <button disabled={loading} className="w-full py-4 bg-[#7A1238] text-white text-[11px] font-bold uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-[#5C0828]/20 hover:bg-[#3A0418] hover:-translate-y-0.5 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50">
                 {loading ? 'Sending OTP...' : 'Send OTP'} <ChevronRight size={14} />
               </button>
             </form>
@@ -469,7 +469,7 @@ export default function AuthDialog() {
                   required
                 />
               </div>
-              <button disabled={loading} className="w-full py-4 bg-[#7A1238] text-white text-[11px] font-bold uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-emerald-900/20 hover:bg-[#14532d] hover:-translate-y-0.5 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50">
+              <button disabled={loading} className="w-full py-4 bg-[#7A1238] text-white text-[11px] font-bold uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-[#5C0828]/20 hover:bg-[#3A0418] hover:-translate-y-0.5 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50">
                 {loading ? 'Verifying...' : 'Verify Identity'} <CheckCircle2 size={14} />
               </button>
             </form>
@@ -538,7 +538,7 @@ export default function AuthDialog() {
                               placeholder="Search country..."
                               value={countrySearch}
                               onChange={e => setCountrySearch(e.target.value)}
-                              className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 border border-slate-100 rounded-lg outline-none focus:border-emerald-200"
+                              className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 border border-slate-100 rounded-lg outline-none focus:border-[#C07090]"
                               onClick={e => e.stopPropagation()}
                             />
                           </div>
@@ -555,7 +555,7 @@ export default function AuthDialog() {
                                   setCountrySearch('');
                                   setActiveDropdown(null);
                                 }}
-                                className={`px-4 py-2.5 text-xs cursor-pointer transition-colors flex items-center gap-2 ${country === c.name ? 'bg-emerald-50 text-[#7A1238] font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
+                                className={`px-4 py-2.5 text-xs cursor-pointer transition-colors flex items-center gap-2 ${country === c.name ? 'bg-[#FDF4F6] text-[#5C0828] font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
                               >
                                 {c.name}
                               </div>
@@ -591,7 +591,7 @@ export default function AuthDialog() {
                               placeholder="Search state..."
                               value={stateSearch}
                               onChange={e => setStateSearch(e.target.value)}
-                              className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 border border-slate-100 rounded-lg outline-none focus:border-emerald-200"
+                              className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 border border-slate-100 rounded-lg outline-none focus:border-[#C07090]"
                               onClick={e => e.stopPropagation()}
                             />
                           </div>
@@ -607,7 +607,7 @@ export default function AuthDialog() {
                                   setStateSearch('');
                                   setActiveDropdown(null);
                                 }}
-                                className={`px-4 py-2.5 text-xs cursor-pointer transition-colors flex items-center gap-2 ${stateName === s.name ? 'bg-emerald-50 text-[#7A1238] font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
+                                className={`px-4 py-2.5 text-xs cursor-pointer transition-colors flex items-center gap-2 ${stateName === s.name ? 'bg-[#FDF4F6] text-[#5C0828] font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
                               >
                                 {s.name}
                               </div>
@@ -643,7 +643,7 @@ export default function AuthDialog() {
                               placeholder="Search city..."
                               value={citySearch}
                               onChange={e => setCitySearch(e.target.value)}
-                              className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 border border-slate-100 rounded-lg outline-none focus:border-emerald-200"
+                              className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 border border-slate-100 rounded-lg outline-none focus:border-[#C07090]"
                               onClick={e => e.stopPropagation()}
                             />
                           </div>
@@ -658,7 +658,7 @@ export default function AuthDialog() {
                                   setCitySearch('');
                                   setActiveDropdown(null);
                                 }}
-                                className={`px-4 py-2.5 text-xs cursor-pointer transition-colors flex items-center gap-2 ${city === cityName ? 'bg-emerald-50 text-[#7A1238] font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
+                                className={`px-4 py-2.5 text-xs cursor-pointer transition-colors flex items-center gap-2 ${city === cityName ? 'bg-[#FDF4F6] text-[#5C0828] font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
                               >
                                 {cityName}
                               </div>
@@ -673,7 +673,7 @@ export default function AuthDialog() {
                 </div>
               </div>
 
-              <button disabled={loading} className="w-full mt-4 py-4 bg-[#7A1238] text-white text-[11px] font-bold uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-emerald-900/20 hover:bg-[#14532d] hover:-translate-y-0.5 transition-all active:scale-95 disabled:opacity-50">
+              <button disabled={loading} className="w-full mt-4 py-4 bg-[#7A1238] text-white text-[11px] font-bold uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-[#5C0828]/20 hover:bg-[#3A0418] hover:-translate-y-0.5 transition-all active:scale-95 disabled:opacity-50">
                 {loading ? 'Creating Profile...' : 'Complete Registration'}
               </button>
             </form>
@@ -681,7 +681,7 @@ export default function AuthDialog() {
 
         {step === 'success' && (
             <div className="text-center py-10 animate-in zoom-in duration-500 flex flex-col items-center">
-              <div className="w-20 h-20 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mb-6 shadow-inner">
+              <div className="w-20 h-20 bg-[#FDF4F6] text-[#5C0828] rounded-full flex items-center justify-center mb-6 shadow-inner">
                 <CheckCircle2 size={40} />
               </div>
               <h3 className="text-2xl font-serif font-bold text-slate-900">Welcome to RKM</h3>

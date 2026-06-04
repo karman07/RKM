@@ -250,7 +250,7 @@ export default function GoldInvestmentPage() {
     <div className="min-h-screen bg-[#FDFCFB]">
       {/* Hero Section */}
       <div className="relative pt-40 pb-24 overflow-hidden bg-white">
-        <div className="absolute top-0 right-0 -mr-40 -mt-40 w-[600px] h-[600px] rounded-full bg-emerald-100/20 blur-3xl opacity-60 z-0"></div>
+        <div className="absolute top-0 right-0 -mr-40 -mt-40 w-[600px] h-[600px] rounded-full bg-[#B8975A]/10 blur-3xl opacity-60 z-0"></div>
         <div className="absolute bottom-0 left-0 -ml-40 -mb-40 w-[600px] h-[600px] rounded-full bg-slate-50/30 blur-3xl opacity-60 z-0"></div>
 
         <div className="max-w-6xl mx-auto px-6 relative z-10">
@@ -268,7 +268,7 @@ export default function GoldInvestmentPage() {
               Secure your future by building wealth month by month. Accumulate value with guaranteed interest and redeem it for exquisite RKM jewellery with exclusive maturity discounts.
             </p>
             <div className="flex items-center gap-6 animate-in fade-in slide-in-from-bottom-6 duration-1000 delay-500 fill-mode-both">
-              <a href="#plans" className="px-8 py-4 bg-[#5C0828] text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-emerald-900/20 hover:-translate-y-1 hover:shadow-2xl hover:shadow-emerald-900/30 transition-all duration-300">
+              <a href="#plans" className="px-8 py-4 bg-[#5C0828] text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-[#5C0828]/20 hover:-translate-y-1 hover:shadow-2xl hover:shadow-[#5C0828]/30 transition-all duration-300">
                 Select Your Plan
               </a>
               <a href="#how-it-works" className="px-8 py-4 bg-slate-50 text-slate-600 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-slate-100 hover:-translate-y-1 hover:shadow-md transition-all duration-300 border border-slate-100">
@@ -299,7 +299,7 @@ export default function GoldInvestmentPage() {
                 className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all duration-500 group animate-in fade-in slide-in-from-bottom-8 fill-mode-both"
                 style={{ animationDelay: `${i * 150 + 200}ms`, animationDuration: '800ms' }}
               >
-                <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center text-[#5C0828] mb-6 group-hover:scale-110 group-hover:bg-[#5C0828] group-hover:text-white transition-all">
+                <div className="w-14 h-14 bg-[#B8975A]/10 rounded-2xl flex items-center justify-center text-[#5C0828] mb-6 group-hover:scale-110 group-hover:bg-[#5C0828] group-hover:text-white transition-all">
                   {step.icon}
                 </div>
                 <h3 className="text-lg font-bold text-slate-900 mb-3">{step.title}</h3>
@@ -331,7 +331,7 @@ export default function GoldInvestmentPage() {
                   </div>
                   <div className="text-right flex flex-col items-end">
                     <p className="font-black text-[#7A1238] text-3xl mb-4">{fmt(activeSub.amountAccumulated)}</p>
-                    <span className="text-[11px] font-black uppercase bg-[#D1FAE5] text-[#065F46] px-4 py-1.5 rounded-lg tracking-widest">
+                    <span className="text-[11px] font-black uppercase bg-[#5C0828]/10 text-[#5C0828] px-4 py-1.5 rounded-lg tracking-widest">
                       {activeSub.status}
                     </span>
                   </div>
@@ -366,8 +366,8 @@ export default function GoldInvestmentPage() {
                   className="relative group flex flex-col h-full animate-in fade-in zoom-in-95 fill-mode-both"
                   style={{ animationDelay: `${index * 150 + 300}ms`, animationDuration: '700ms' }}
                 >
-                  <div className={`absolute -inset-1 bg-gradient-to-b ${isEnrolledInThis ? 'from-[#5C0828] to-[#7A1238] opacity-20' : 'from-[#5C0828] to-emerald-400 opacity-0 group-hover:opacity-10'} rounded-[2.5rem] blur transition duration-500`}></div>
-                  <div className={`relative flex-1 bg-white rounded-[2.5rem] p-10 border shadow-sm transition-all flex flex-col ${isEnrolledInThis ? 'border-[#5C0828] shadow-emerald-900/10' : 'border-slate-100 group-hover:border-emerald-100'}`}>
+                  <div className={`absolute -inset-1 bg-gradient-to-b ${isEnrolledInThis ? 'from-[#5C0828] to-[#7A1238] opacity-20' : 'from-[#5C0828] to-[#B8975A] opacity-0 group-hover:opacity-10'} rounded-[2.5rem] blur transition duration-500`}></div>
+                  <div className={`relative flex-1 bg-white rounded-[2.5rem] p-10 border shadow-sm transition-all flex flex-col ${isEnrolledInThis ? 'border-[#5C0828] shadow-[#5C0828]/10' : 'border-slate-100 group-hover:border-[#B8975A]/30'}`}>
                     
                     {isEnrolledInThis && (
                       <div className="absolute top-6 right-8">
@@ -397,7 +397,7 @@ export default function GoldInvestmentPage() {
                     <div className="space-y-6 mb-10 pt-6 border-t border-slate-50">
                       <div className="flex items-center justify-between">
                         <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Payment Mode</span>
-                        <span className="bg-emerald-50 text-[#5C0828] px-3 py-1 rounded-lg text-sm font-bold">Bank EMI</span>
+                        <span className="bg-[#B8975A]/10 text-[#5C0828] px-3 py-1 rounded-lg text-sm font-bold">Bank EMI</span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Monthly Commitment</span>
@@ -417,7 +417,7 @@ export default function GoldInvestmentPage() {
                       {isEnrolledInThis ? (
                         <button 
                           onClick={() => router.push('/profile')}
-                          className="w-full py-5 rounded-2xl bg-[#5C0828] text-white shadow-xl shadow-emerald-900/20 text-xs font-black uppercase tracking-[0.25em] flex items-center justify-center gap-3 hover:translate-y-[-2px] transition-all"
+                          className="w-full py-5 rounded-2xl bg-[#5C0828] text-white shadow-xl shadow-[#5C0828]/20 text-xs font-black uppercase tracking-[0.25em] flex items-center justify-center gap-3 hover:translate-y-[-2px] transition-all"
                         >
                           Already Enrolled <ArrowRight size={18} />
                         </button>
@@ -425,7 +425,7 @@ export default function GoldInvestmentPage() {
                         <button 
                           onClick={() => handleSubscribe(p._id)}
                           disabled={!!subscribeLoading || !!activeSub}
-                          className={`w-full py-5 rounded-2xl text-white shadow-xl transition-all text-xs font-black uppercase tracking-[0.25em] flex items-center justify-center gap-3 disabled:opacity-30 ${activeSub ? 'bg-slate-300 cursor-not-allowed' : 'bg-[#5C0828] hover:bg-slate-900 shadow-emerald-900/10'}`}
+                          className={`w-full py-5 rounded-2xl text-white shadow-xl transition-all text-xs font-black uppercase tracking-[0.25em] flex items-center justify-center gap-3 disabled:opacity-30 ${activeSub ? 'bg-slate-300 cursor-not-allowed' : 'bg-[#5C0828] hover:bg-[#7A1238] shadow-[#5C0828]/10'}`}
                         >
                           {subscribeLoading === p._id ? (
                             <><Loader2 size={16} className="animate-spin" /> Processing...</>
@@ -479,7 +479,7 @@ export default function GoldInvestmentPage() {
           </div>
 
           <div className="bg-slate-900 rounded-[3rem] p-12 text-white relative overflow-hidden animate-in fade-in slide-in-from-right-8 duration-1000 fill-mode-both hover:shadow-2xl transition-all">
-             <h3 className="text-2xl font-serif font-bold mb-6 hover:text-emerald-400 transition-colors">Redemption Policy</h3>
+             <h3 className="text-2xl font-serif font-bold mb-6 hover:text-[#B8975A] transition-colors">Redemption Policy</h3>
              <div className="space-y-6 text-sm text-slate-400 leading-relaxed">
                 <p>This plan is a jewellery purchase advance scheme. In accordance with Indian regulatory guidelines, cash refunds or cash withdrawals from this plan are strictly prohibited.</p>
                 <p>The total accumulated value (Principal + Interest) MUST be redeemed against the purchase of jewellery at the end of the tenure.</p>
@@ -495,7 +495,7 @@ export default function GoldInvestmentPage() {
       {showSuccessDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-white rounded-[2.5rem] p-10 max-w-sm w-full text-center shadow-2xl animate-in zoom-in-95 duration-500">
-            <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6">
+            <div className="w-20 h-20 bg-[#B8975A]/10 rounded-full flex items-center justify-center mx-auto mb-6">
               <CheckCircle2 className="text-[#5C0828]" size={40} />
             </div>
             <h3 className="text-2xl font-serif font-black text-slate-900 mb-3">Subscription Active!</h3>
@@ -507,7 +507,7 @@ export default function GoldInvestmentPage() {
                 setShowSuccessDialog(false);
                 router.push('/profile');
               }}
-              className="w-full bg-[#5C0828] text-white font-black uppercase text-[11px] tracking-widest py-4 rounded-xl hover:-translate-y-1 hover:shadow-lg hover:shadow-emerald-900/20 transition-all"
+              className="w-full bg-[#5C0828] text-white font-black uppercase text-[11px] tracking-widest py-4 rounded-xl hover:-translate-y-1 hover:shadow-lg hover:shadow-[#5C0828]/20 transition-all"
             >
               Go to Dashboard
             </button>
