@@ -77,6 +77,14 @@ export class CreateUserDto {
 
   @IsString()
   @IsOptional()
+  reporting_manager_id?: string;
+
+  @IsString()
+  @IsOptional()
+  reporting_manager_name?: string;
+
+  @IsString()
+  @IsOptional()
   pan_card?: string;
 
   @IsString()

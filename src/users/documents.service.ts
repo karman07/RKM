@@ -369,9 +369,11 @@ export class DocumentsService {
     // ── 18 Clauses ──────────────────────────────────────────────────────────
 
     sHead(doc, '1', 'POSITION & REPORTING');
+    const managerName = (user as any).reporting_manager_name
+      || ((user as any).reporting_manager_id?.name)
+      || 'the management or any authorized representative of the Company';
     body(doc,
-      `You will be appointed as ${role} at ${branch} and report to the management or any ` +
-      `authorized representative of the Company.`);
+      `You will be appointed as ${role} at ${branch} and shall report directly to ${managerName}.`);
 
     sHead(doc, '2', 'PLACE OF WORK');
     body(doc,
@@ -598,6 +600,7 @@ export class DocumentsService {
     sHead(doc, '1', 'TERMS OF APPOINTMENT');
     drawTable(doc, [
       ['Designation',       role],
+      ['Reporting To',      (user as any).reporting_manager_name || (user as any).reporting_manager_id?.name || 'Management'],
       ['Branch / Location', branch],
       ['Employee ID',       empId || '—'],
       ['Date of Joining',   joining],

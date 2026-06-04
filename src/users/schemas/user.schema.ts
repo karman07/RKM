@@ -46,6 +46,14 @@ export class User {
   @Prop({ type: String, required: false })
   job_title?: string;
 
+  /** Reporting manager — reference to another User in the system */
+  @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'User', required: false })
+  reporting_manager_id?: mongoose.Types.ObjectId;
+
+  /** Reporting manager name — free-text override (for external managers or custom entry) */
+  @Prop({ type: String, required: false })
+  reporting_manager_name?: string;
+
   // HR / Onboarding
   @Prop({ type: Number, required: false })
   base_salary?: number;

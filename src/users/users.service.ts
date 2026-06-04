@@ -125,7 +125,11 @@ export class UsersService implements OnModuleInit {
   }
 
   async findById(id: string): Promise<UserDocument> {
-    const user = await this.userModel.findById(id).select('-password').populate('branch').exec();
+    const user = await this.userModel.findById(id)
+      .select('-password')
+      .populate('branch')
+      .populate('reporting_manager_id', 'name role employee_id')
+      .exec();
     if (!user) throw new NotFoundException(`User ${id} not found`);
     return user;
   }
