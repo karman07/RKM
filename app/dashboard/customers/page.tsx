@@ -267,7 +267,7 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
               {err && <p className="text-xs text-red-600 font-bold text-center">{err}</p>}
 
               <div className="flex items-center justify-between text-xs">
-                <button onClick={() => { setStep('phone'); setErr(''); setDevOtp(null); }}
+                <button onClick={() => { setStep('phone'); setErr(''); }}
                   className="text-slate-400 hover:text-slate-600 font-bold transition-colors">← Change number</button>
                 {countdown > 0
                   ? <span className="text-slate-400 font-medium">Resend in {countdown}s</span>
