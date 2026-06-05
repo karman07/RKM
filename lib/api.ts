@@ -113,7 +113,24 @@ export interface UserProfile {
   offer_letter_url?: string;
   appointment_letter_url?: string;
   welcome_letter_url?: string;
+  account_number?: string;
+  blank_check_url?: string;
+  custom_field_values?: Record<string, any>;
 }
+
+export interface EmployeeCustomField {
+  _id: string;
+  label: string;
+  key: string;
+  type: 'text' | 'number' | 'date' | 'file' | 'url' | 'textarea';
+  required: boolean;
+  placeholder?: string;
+  description?: string;
+  order: number;
+}
+
+export const getEmployeeCustomFields = () =>
+  request<EmployeeCustomField[]>('/employee-custom-fields');
 
 export interface Category {
   _id: string;

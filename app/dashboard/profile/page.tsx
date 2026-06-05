@@ -2,11 +2,16 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-import { getProfile, updateUserProfile, uploadUserAvatar, staticUrl, UserProfile } from '../../../lib/api';
+import {
+  getProfile, updateUserProfile, uploadUserAvatar, staticUrl,
+  getEmployeeCustomFields,
+  type UserProfile, type EmployeeCustomField,
+} from '../../../lib/api';
 
 export default function ProfilePage() {
   const router = useRouter();
   const [user, setUser] = useState<UserProfile | null>(null);
+  const [customFields, setCustomFields] = useState<EmployeeCustomField[]>([]);
   const [form, setForm] = useState({ name: '', email: '', avatar: '' });
   const [passwordForm, setPasswordForm] = useState({ current: '', newPass: '', confirm: '' });
   const [saving, setSaving] = useState(false);
@@ -18,14 +23,14 @@ export default function ProfilePage() {
     const sessionStr = localStorage.getItem('manager_session');
     if (!sessionStr) { router.replace('/login'); return; }
 
-    getProfile()
-      .then((profile) => {
+    Promise.all([
+      getProfile(),
+      getEmployeeCustomFields().catch(() => [] as EmployeeCustomField[]),
+    ])
+      .then(([profile, cf]) => {
         setUser(profile);
-        setForm({
-          name: profile.name,
-          email: profile.email,
-          avatar: profile.avatar || '',
-        });
+        setCustomFields(cf);
+        setForm({ name: profile.name, email: profile.email, avatar: profile.avatar || '' });
       })
       .catch(() => { localStorage.removeItem('manager_session'); router.replace('/login'); })
       .finally(() => setLoading(false));
@@ -38,7 +43,6 @@ export default function ProfilePage() {
     try {
       const updated = await updateUserProfile(user._id, { name: form.name, avatar: form.avatar });
       setUser(updated);
-      // Update name and avatar in session
       const session = JSON.parse(localStorage.getItem('manager_session') || '{}');
       localStorage.setItem('manager_session', JSON.stringify({ ...session, name: form.name, avatar: form.avatar }));
       setMessage({ type: 'success', text: 'Profile updated successfully!' });
@@ -77,18 +81,19 @@ export default function ProfilePage() {
   const initials = user?.name?.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2) ?? '??';
 
   if (loading) return (
-    
-      <div className="flex h-96 items-center justify-center">
-        <div className="w-12 h-12 border-4 border-[#7A1C2A]/20 border-t-[#7A1C2A] rounded-full animate-spin" />
-      </div>
-    
+    <div className="flex h-96 items-center justify-center">
+      <div className="w-12 h-12 border-4 border-[#7A1C2A]/20 border-t-[#7A1C2A] rounded-full animate-spin" />
+    </div>
   );
 
-  return (
-    
-    <div className="min-h-screen bg-[#FAFAFA] font-sans">
+  const hasContactDetails = user?.mobile_number || user?.family_contact_number;
+  const hasBankDetails = user?.account_number || user?.blank_check_url;
+  const customFieldEntries = customFields.filter(f => user?.custom_field_values?.[f.key]);
 
+  return (
+    <div className="min-h-screen bg-[#FAFAFA] font-sans">
       <div className="max-w-4xl mx-auto px-4 sm:px-8 py-8 space-y-6">
+
         {/* Toast */}
         {message && (
           <div className={`fixed top-24 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-2xl text-sm font-bold shadow-xl ${
@@ -107,7 +112,6 @@ export default function ProfilePage() {
               ) : (
                 initials
               )}
-              {/* Image Upload Overlay */}
               <label className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer flex flex-col items-center justify-center text-white backdrop-blur-sm">
                 <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
@@ -115,9 +119,7 @@ export default function ProfilePage() {
                 </svg>
                 <span className="text-[9px] font-black uppercase mt-1">Upload</span>
                 <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
+                  type="file" accept="image/*" className="hidden"
                   onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (file) {
@@ -230,6 +232,77 @@ export default function ProfilePage() {
           <p className="text-[11px] text-slate-500 font-medium mt-3">Password must be at least 6 characters. Changes take effect immediately.</p>
         </div>
 
+        {/* Contact Details — actual numbers from the database, read-only */}
+        {hasContactDetails && (
+          <div className="bg-white border border-slate-100 rounded-3xl p-8 shadow-sm">
+            <h3 className="text-base font-black text-slate-900 border-b border-slate-100 pb-3 mb-5">Contact Details</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {user?.mobile_number && (
+                <div className="p-4 bg-slate-50 rounded-2xl">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Mobile Number</p>
+                  <p className="text-sm font-bold text-slate-800">+91 {user.mobile_number}</p>
+                </div>
+              )}
+              {user?.family_contact_number && (
+                <div className="p-4 bg-slate-50 rounded-2xl">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Family / Emergency Contact</p>
+                  <p className="text-sm font-bold text-slate-800">+91 {user.family_contact_number}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Bank Details — actual account number stored by admin */}
+        {hasBankDetails && (
+          <div className="bg-white border border-slate-100 rounded-3xl p-8 shadow-sm">
+            <h3 className="text-base font-black text-slate-900 border-b border-slate-100 pb-3 mb-5">Bank Details</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {user?.account_number && (
+                <div className="p-4 bg-slate-50 rounded-2xl">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Account Number</p>
+                  <p className="text-sm font-bold text-slate-800">{user.account_number}</p>
+                </div>
+              )}
+              {user?.blank_check_url && (
+                <div className="p-4 bg-slate-50 rounded-2xl">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Blank Cheque</p>
+                  <a href={staticUrl(user.blank_check_url)} target="_blank" rel="noreferrer"
+                    className="text-sm font-bold text-[#7A1C2A] hover:underline">
+                    View Document ↗
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Admin-defined custom field values — all actual data from the database */}
+        {customFieldEntries.length > 0 && (
+          <div className="bg-white border border-slate-100 rounded-3xl p-8 shadow-sm">
+            <h3 className="text-base font-black text-slate-900 border-b border-slate-100 pb-3 mb-5">Additional Information</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {customFieldEntries.map(field => {
+                const val = user?.custom_field_values?.[field.key];
+                return (
+                  <div key={field._id} className="p-4 bg-slate-50 rounded-2xl">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">{field.label}</p>
+                    {field.type === 'file' ? (
+                      <a href={staticUrl(String(val))} target="_blank" rel="noreferrer"
+                        className="text-sm font-bold text-[#7A1C2A] hover:underline">View Document ↗</a>
+                    ) : field.type === 'url' ? (
+                      <a href={String(val)} target="_blank" rel="noreferrer"
+                        className="text-sm font-bold text-[#7A1C2A] hover:underline">View ↗</a>
+                    ) : (
+                      <p className="text-sm font-bold text-slate-800">{String(val)}</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Branch Info */}
         {user?.branch && (
           <div className="bg-[#5A0F1A] rounded-3xl p-8 text-white shadow-lg shadow-[#5A0F1A]/20">
@@ -261,6 +334,5 @@ export default function ProfilePage() {
         )}
       </div>
     </div>
-    
   );
 }

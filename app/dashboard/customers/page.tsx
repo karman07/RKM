@@ -82,7 +82,6 @@ type AddStep = 'phone' | 'otp' | 'details';
 function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreated: (c: FullCustomer) => void }) {
   const [step, setStep] = useState<AddStep>('phone');
   const [phone, setPhone] = useState('');
-  const [devOtp, setDevOtp] = useState<string | null>(null);
   const [otpVerified, setOtpVerified] = useState(false);
   const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
@@ -131,8 +130,7 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
     setErr('');
     setSending(true);
     try {
-      const res = await sendCustomerOtp(`+91${phone.replace(/^\+91/, '')}`);
-      setDevOtp(res.otp ?? null); // dev only — remove when SMS is live
+      await sendCustomerOtp(`+91${phone.replace(/^\+91/, '')}`);
       setStep('otp');
       setCountdown(60);
     } catch (e: any) {
@@ -302,15 +300,6 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
                   OTP sent to <span className="font-black text-slate-900">+91 {phone}</span>
                 </p>
                 <p className="text-xs text-slate-400 mt-0.5">Enter the 6-digit code received on the customer's phone</p>
-                {/* Dev-only OTP hint */}
-                {devOtp && (
-                  <div className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-700 font-bold">
-                    <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Dev OTP: {devOtp}
-                  </div>
-                )}
               </div>
 
               <OtpInput onComplete={otp => !verifying && handleVerifyOtp(otp)} />
