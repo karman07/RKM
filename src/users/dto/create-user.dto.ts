@@ -114,4 +114,20 @@ export class CreateUserDto {
   @IsString()
   @IsOptional()
   mother_aadhar_card_url?: string;
+
+  @IsString()
+  @IsOptional()
+  bank_name?: string;
+
+  @IsString()
+  @IsOptional()
+  account_number?: string;
+
+  @IsString()
+  @IsOptional()
+  ifsc_code?: string;
+
+  @IsString()
+  @IsOptional()
+  blank_check_url?: string;
 }

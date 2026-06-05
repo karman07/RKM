@@ -106,6 +106,19 @@ export class User {
 
   @Prop({ type: String, required: false })
   mother_aadhar_card_url?: string;
+
+  // Bank details (admin-visible only)
+  @Prop({ type: String, required: false })
+  bank_name?: string;
+
+  @Prop({ type: String, required: false })
+  account_number?: string;
+
+  @Prop({ type: String, required: false })
+  ifsc_code?: string;
+
+  @Prop({ type: String, required: false })
+  blank_check_url?: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

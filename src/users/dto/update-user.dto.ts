@@ -110,4 +110,20 @@ export class UpdateUserDto {
   @IsString()
   @IsOptional()
   welcome_letter_url?: string;
+
+  @IsString()
+  @IsOptional()
+  bank_name?: string;
+
+  @IsString()
+  @IsOptional()
+  account_number?: string;
+
+  @IsString()
+  @IsOptional()
+  ifsc_code?: string;
+
+  @IsString()
+  @IsOptional()
+  blank_check_url?: string;
 }
