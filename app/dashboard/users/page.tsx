@@ -15,6 +15,7 @@ import {
   Building2, Mail, Loader2, User as UserIcon, FileText, CreditCard,
   DollarSign, Calendar, Upload, Phone, Users, Wrench, Camera,
   Download, RefreshCw, CheckCircle2, Sparkles, Search, X, UserCog,
+  Landmark,
 } from 'lucide-react';
 
 const roleBadge: Record<string, { wrap: string; dot: string; icon: any }> = {
@@ -58,6 +59,11 @@ interface UserForm {
   offer_letter_url?: string;
   appointment_letter_url?: string;
   welcome_letter_url?: string;
+  // Bank details (admin-visible)
+  bank_name?: string;
+  account_number?: string;
+  ifsc_code?: string;
+  blank_check_url?: string;
 }
 
 const emptyForm: UserForm = {
@@ -295,6 +301,10 @@ export default function UsersPage() {
       offer_letter_url:         (u as any).offer_letter_url               || '',
       appointment_letter_url:   (u as any).appointment_letter_url         || '',
       welcome_letter_url:       (u as any).welcome_letter_url             || '',
+      bank_name:                (u as any).bank_name                      || '',
+      account_number:           (u as any).account_number                 || '',
+      ifsc_code:                (u as any).ifsc_code                      || '',
+      blank_check_url:          (u as any).blank_check_url                || '',
     });
     setError('');
     setModalTab('profile');
@@ -351,6 +361,10 @@ export default function UsersPage() {
         ...(form.mother_aadhar_card_url ? { mother_aadhar_card_url: form.mother_aadhar_card_url } : {}),
         ...(form.offer_letter_url  ? { offer_letter_url:       form.offer_letter_url          } : {}),
         ...(form.appointment_letter_url ? { appointment_letter_url: form.appointment_letter_url } : {}),
+        ...(form.bank_name         ? { bank_name:              form.bank_name                 } : {}),
+        ...(form.account_number    ? { account_number:         form.account_number            } : {}),
+        ...(form.ifsc_code         ? { ifsc_code:              form.ifsc_code                 } : {}),
+        ...(form.blank_check_url   ? { blank_check_url:        form.blank_check_url           } : {}),
       };
       if (!isWorker && (!editTarget || form.password)) payload.password = form.password;
       if (editTarget) { await updateUser(editTarget._id, payload); showToast(isWorker ? 'Worker updated' : 'User updated', 'success'); }
@@ -1044,6 +1058,56 @@ export default function UsersPage() {
                   <DocUploadField label="Father's Aadhaar Card" value={form.father_aadhar_card_url} onChange={url => setForm({ ...form, father_aadhar_card_url: url })} hint="Image or PDF" />
                   <DocUploadField label="Mother's Aadhaar Card" value={form.mother_aadhar_card_url} onChange={url => setForm({ ...form, mother_aadhar_card_url: url })} hint="Image or PDF" />
                 </div>
+              </div>
+
+              {/* ── Bank Details ── */}
+              <div className="pt-1 border-t border-slate-100 space-y-4">
+                <div className="flex items-center gap-2 pt-1">
+                  <Landmark className="w-3.5 h-3.5 text-blue-600" />
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                    Bank Details <span className="font-medium normal-case tracking-tight text-slate-400">— Admin Only</span>
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Bank Name</label>
+                    <input
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:border-blue-400 focus:bg-white transition-all"
+                      value={form.bank_name || ''}
+                      onChange={e => setForm({ ...form, bank_name: e.target.value })}
+                      placeholder="e.g. State Bank of India"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">IFSC Code</label>
+                    <input
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold font-mono focus:outline-none focus:border-blue-400 focus:bg-white transition-all uppercase"
+                      value={form.ifsc_code || ''}
+                      onChange={e => setForm({ ...form, ifsc_code: e.target.value.toUpperCase() })}
+                      placeholder="e.g. SBIN0001234"
+                      maxLength={11}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Account Number</label>
+                  <input
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold font-mono tracking-widest focus:outline-none focus:border-blue-400 focus:bg-white transition-all"
+                    value={form.account_number || ''}
+                    onChange={e => setForm({ ...form, account_number: e.target.value.replace(/\D/g, '') })}
+                    placeholder="Enter account number"
+                    inputMode="numeric"
+                  />
+                </div>
+
+                <DocUploadField
+                  label="Blank Cheque"
+                  value={form.blank_check_url}
+                  onChange={url => setForm({ ...form, blank_check_url: url })}
+                  hint="Image or PDF of a blank cheque"
+                />
               </div>
             </div>
           )}
