@@ -180,7 +180,7 @@ export default function SoldInventoryPage() {
     if (!q) return items;
     return items.filter((item) => {
       const productName = typeof item.product_id === 'object' ? item.product_id.name : '';
-      const haystack = [item.unique_item_code, item.barcode, item.sale_reference, productName, item.sold_customer_name, item.sold_customer_phone, item.sale_channel, item.payment_mode].filter(Boolean).join(' ').toLowerCase();
+      const haystack = [item.unique_item_code, item.barcode, item.sale_reference, (item as any).invoice_number, productName, item.sold_customer_name, item.sold_customer_phone, item.sale_channel, item.payment_mode].filter(Boolean).join(' ').toLowerCase();
       return haystack.includes(q);
     });
   }, [items, search]);
@@ -495,10 +495,15 @@ export default function SoldInventoryPage() {
                           </div>
                           <div>
                             <p className="text-sm font-black text-slate-900 tracking-tight group-hover:text-blue-600 transition-colors">{product?.name || 'Artisan Work'}</p>
-                            <div className="flex items-center gap-1.5 mt-1.5">
+                            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                               <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[9px] font-black uppercase rounded-lg tracking-wider border border-slate-200">
                                 {item.unique_item_code}
                               </span>
+                              {item.sale_reference && (
+                                <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[9px] font-black rounded-lg tracking-wider border border-emerald-200">
+                                  INV: {item.sale_reference}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>

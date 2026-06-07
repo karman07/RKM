@@ -363,6 +363,12 @@ export interface Customer {
   isPhoneVerified: boolean;
   isActive: boolean;
   createdAt: string;
+  aadharCard?: string;
+  panCard?: string;
+  accountNumber?: string;
+  ifscCode?: string;
+  bankName?: string;
+  customFields?: { key: string; value: string }[];
 }
 
 export interface PaginatedResponse<T> {
@@ -412,6 +418,9 @@ export const getUsers = (role?: string, page: number = 1, limit: number = 20) =>
     meta: res.meta,
   }));
 };
+
+export const getUserById = (id: string) =>
+  request<UserApiResponse>(`/users/${id}`).then(normalizeUser);
 
 export const createUser = (data: object) =>
   request<UserApiResponse>('/users', { method: 'POST', body: JSON.stringify(data) }).then(normalizeUser);
@@ -930,8 +939,61 @@ export interface AppSettings {
   hr_fine_amount?: number;
   hr_casual_leaves?: number;
   hr_absent_days_abandonment?: number;
+  /** Session expiry in hours for manager and cashier (default 2) */
+  staff_session_expiry_hours?: number;
   updatedAt?: string;
 }
+
+// ─── Security / Fingerprint ──────────────────────────────────────────────────
+
+export interface LoginSession {
+  _id: string;
+  user_id: string;
+  user_name: string;
+  user_email: string;
+  user_role: string;
+  fingerprint_hash: string;
+  fingerprint_matched: boolean;
+  is_new_device: boolean;
+  device_info: Record<string, string>;
+  ip_address: string;
+  login_at: string;
+  expires_at: string;
+  createdAt: string;
+}
+
+export interface SecurityBreach {
+  _id: string;
+  user_id: string;
+  user_name: string;
+  user_email: string;
+  user_role: string;
+  attempted_fingerprint: string;
+  attempt_count: number;
+  device_info: Record<string, string>;
+  ip_address: string;
+  is_reviewed: boolean;
+  reviewed_at?: string;
+  createdAt: string;
+}
+
+export interface SecurityPaginatedResponse<T> {
+  data: T[];
+  meta: { total: number; page: number; limit: number; total_pages: number };
+}
+
+export const getLoginSessions = (page = 1, limit = 50, role?: string) =>
+  request<SecurityPaginatedResponse<LoginSession>>(
+    `/auth/login-sessions?page=${page}&limit=${limit}${role ? `&role=${role}` : ''}`
+  );
+
+export const getSecurityBreaches = (page = 1, limit = 50, unreviewed_only = false) =>
+  request<SecurityPaginatedResponse<SecurityBreach>>(
+    `/auth/security-breaches?page=${page}&limit=${limit}&unreviewed_only=${unreviewed_only}`
+  );
+
+export const reviewBreach = (id: string) =>
+  request<{ reviewed: boolean }>(`/auth/security-breaches/${id}/review`, { method: 'PATCH' });
 
 export const getSettings = () => request<AppSettings>('/settings');
 
@@ -1383,6 +1445,16 @@ export interface InvestmentPlan {
   updatedAt: string;
 }
 
+export interface PaymentLedgerEntry {
+  month: number;
+  amount: number;
+  date: string;
+  type: 'autopay' | 'cash' | 'whatsapp_link';
+  razorpayPaymentId?: string;
+  staffId?: string;
+  note?: string;
+}
+
 export interface GoldSubscription {
   _id: string;
   plan: InvestmentPlan;
@@ -1399,9 +1471,21 @@ export interface GoldSubscription {
   maturesAt?: string;
   redeemed: boolean;
   redemptionDate?: string;
+  amountRedeemed: number;
+  redemptionHistory: {
+    amount: number;
+    date: string;
+    saleReference?: string;
+    note?: string;
+    staffId?: string;
+  }[];
+  paymentLedger: PaymentLedgerEntry[];
   installmentsPaid: number;
   adminNotes?: string;
   interestStopped: boolean;
+  requiresManualPayment: boolean;
+  whatsappRemindersCount: number;
+  manualPaymentLink?: string;
   createdAt: string;
 }
 
@@ -1411,6 +1495,7 @@ export interface GoldStats {
   cancelled: number;
   completed: number;
   halted: number;
+  manualPending: number;
   totalAccumulated: number;
   totalInterest: number;
 }
@@ -1433,10 +1518,12 @@ export async function deleteInvestmentPlan(id: string): Promise<void> {
 }
 
 // Subscriptions
-export async function getSubscriptions(params?: { status?: string; planId?: string }): Promise<GoldSubscription[]> {
+export async function getSubscriptions(params?: { status?: string; planId?: string; phone?: string; email?: string }): Promise<GoldSubscription[]> {
   const q = new URLSearchParams();
   if (params?.status) q.set('status', params.status);
   if (params?.planId) q.set('planId', params.planId);
+  if (params?.phone) q.set('phone', params.phone);
+  if (params?.email) q.set('email', params.email);
   return request<GoldSubscription[]>(`/gold-investment/subscriptions?${q.toString()}`);
 }
 
@@ -1446,6 +1533,18 @@ export async function createSubscription(data: { planId: string; customerName: s
 
 export async function updateSubscription(id: string, data: { adminNotes?: string; redeemed?: boolean }): Promise<GoldSubscription> {
   return request<GoldSubscription>(`/gold-investment/subscriptions/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+}
+
+export async function redeemSubscription(id: string, data: { amount: number; saleReference?: string; note?: string }): Promise<GoldSubscription> {
+  return request<GoldSubscription>(`/gold-investment/subscriptions/${id}/redeem`, { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function markGoldCashPayment(id: string, data: { month: number; staffId?: string; note?: string }): Promise<GoldSubscription> {
+  return request<GoldSubscription>(`/gold-investment/subscriptions/${id}/mark-payment`, { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function sendGoldReminder(id: string): Promise<{ sent: boolean; message: string }> {
+  return request<{ sent: boolean; message: string }>(`/gold-investment/subscriptions/${id}/send-reminder`, { method: 'POST' });
 }
 
 // Stats
@@ -1577,6 +1676,15 @@ export const getUserLeaves = (userId: string) =>
       return id === userId;
     })
   );
+
+// Admin creates a reimbursement on behalf of an employee
+export const adminCreateReimbursement = (
+  employeeId: string,
+  data: { category: string; amount: number; description: string; branch_id?: string; auto_approve?: boolean },
+) => request<ReimbursementRequest>(`/hr/reimbursements/for/${employeeId}`, {
+  method: 'POST',
+  body: JSON.stringify(data),
+});
 
 // Fetch reimbursements for a specific user (admin view)
 export const getUserReimbursements = (userId: string) =>

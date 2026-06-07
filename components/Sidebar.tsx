@@ -104,6 +104,13 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
               <NavIcon active={pathname === '/dashboard/analytics'} color={pathname === '/dashboard/analytics' ? colors.activeText : colors.textMuted}><path d="M12 20v-6M6 20V10M18 20V4" /></NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Business Intelligence</span>}
             </Link>}
+            <Link href="/dashboard/payments" onClick={onNavigate} title={isCollapsed ? "Payments" : ""} className={navClass(pathname.startsWith('/dashboard/payments'))} style={getNavStyle(pathname.startsWith('/dashboard/payments'))}>
+              {isCollapsed && pathname.startsWith('/dashboard/payments') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname.startsWith('/dashboard/payments')} color={pathname.startsWith('/dashboard/payments') ? colors.activeText : colors.textMuted}>
+                <rect x="1" y="4" width="22" height="16" rx="2" ry="2" /><line x1="1" y1="10" x2="23" y2="10" />
+              </NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Payments</span>}
+            </Link>
             <Link href="/dashboard/analytics-ai" onClick={onNavigate} title={isCollapsed ? "AI Insights" : ""} className={navClass(pathname.startsWith('/dashboard/analytics-ai'))} style={getNavStyle(pathname.startsWith('/dashboard/analytics-ai'))}>
               {isCollapsed && pathname.startsWith('/dashboard/analytics-ai') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
               <NavIcon active={pathname.startsWith('/dashboard/analytics-ai')} color={pathname.startsWith('/dashboard/analytics-ai') ? colors.activeText : colors.textMuted}>
@@ -205,6 +212,13 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
               <NavIcon active={pathname.startsWith('/dashboard/location-violations')} color={pathname.startsWith('/dashboard/location-violations') ? '#ef4444' : colors.textMuted}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Location Violations</span>}
             </Link>}
+            <Link href="/dashboard/security" onClick={onNavigate} title={isCollapsed ? "Security Center" : ""} className={navClass(pathname.startsWith('/dashboard/security'))} style={getNavStyle(pathname.startsWith('/dashboard/security'))}>
+              {isCollapsed && pathname.startsWith('/dashboard/security') && <div className="absolute left-0 w-1.5 h-6 bg-red-600 rounded-r-full" />}
+              <NavIcon active={pathname.startsWith('/dashboard/security')} color={pathname.startsWith('/dashboard/security') ? '#dc2626' : colors.textMuted}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Security Center</span>}
+            </Link>
             {can('holidays') && <Link href="/dashboard/holidays" onClick={onNavigate} title={isCollapsed ? "Holidays" : ""} className={navClass(pathname.startsWith('/dashboard/holidays'))} style={getNavStyle(pathname.startsWith('/dashboard/holidays'))}>
               {isCollapsed && pathname.startsWith('/dashboard/holidays') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
               <NavIcon active={pathname.startsWith('/dashboard/holidays')} color={pathname.startsWith('/dashboard/holidays') ? colors.activeText : colors.textMuted}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></NavIcon>

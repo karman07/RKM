@@ -109,6 +109,8 @@ export default function SettingsPage() {
   const [hrTransportPct,  setHrTransportPct]  = useState('10');
   const [hrSpecialPct,    setHrSpecialPct]    = useState('20');
   const [uploadingLogo,   setUploadingLogo]   = useState(false);
+  // Security
+  const [staffSessionExpiry, setStaffSessionExpiry] = useState('2');
 
   // Fetch purity lookups from database
   useEffect(() => {
@@ -206,6 +208,7 @@ export default function SettingsPage() {
     setHrFine(String(settings.hr_fine_amount ?? 200000));
     setHrCasualLeaves(String(settings.hr_casual_leaves ?? 3));
     setHrAbsentAbandonment(String(settings.hr_absent_days_abandonment ?? 3));
+    setStaffSessionExpiry(String(settings.staff_session_expiry_hours ?? 2));
   }, [loading, lookupsLoading, settings, purityLookups, metalConfig]);
 
   function showToast(message: string, type: 'success' | 'danger' | 'info' = 'info') {
@@ -281,6 +284,7 @@ export default function SettingsPage() {
         hr_fine_amount:            Number(hrFine) || 200000,
         hr_casual_leaves:          Number(hrCasualLeaves) || 3,
         hr_absent_days_abandonment:Number(hrAbsentAbandonment) || 3,
+        staff_session_expiry_hours: Math.max(1, Math.min(24, Number(staffSessionExpiry) || 2)),
       });
 
       await fetch(`${API_BASE}/online-orders/delivery-settings`, {
@@ -1004,6 +1008,51 @@ return (
             <li>Sign out before <strong>{shiftEnd}</strong> → <span className="text-red-500">Early Departure</span> flag</li>
             <li>Multiple sign-ins: <strong>first check-in</strong> is recorded; <strong>last sign-out</strong> is recorded</li>
           </ul>
+        </div>
+      </section>
+
+      {/* ── Security Settings ── */}
+      <section className="border rounded-2xl p-6 space-y-5 shadow-sm" style={{ borderColor: colors.border }}>
+        <div>
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: '#dc262610' }}>
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#dc2626" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+            </div>
+            <h2 className="text-[15px] font-bold" style={{ color: colors.textMain }}>Security Settings</h2>
+          </div>
+          <p className="text-xs mt-0.5 opacity-60" style={{ color: colors.textMain }}>
+            Configure session expiry for manager and cashier accounts. Sessions will be invalidated after this duration and staff must log in again.
+          </p>
+        </div>
+
+        <div className="max-w-xs space-y-2">
+          <label className="text-[10px] font-black uppercase tracking-widest" style={{ color: colors.textHeader }}>
+            Staff Session Expiry
+          </label>
+          <div className="relative">
+            <input
+              type="number"
+              min={1}
+              max={24}
+              value={staffSessionExpiry}
+              onChange={e => setStaffSessionExpiry(e.target.value)}
+              className="w-full px-4 py-3 pr-16 rounded-xl border text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all"
+              style={{ borderColor: colors.border, background: theme === 'dark' ? '#1e293b' : '#f8fafc', color: colors.textMain }}
+            />
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[11px] font-bold opacity-40" style={{ color: colors.textMain }}>hrs</span>
+          </div>
+          <p className="text-[10px] opacity-50" style={{ color: colors.textMain }}>
+            1–24 hours. Default: 2 hours. Applies to manager and cashier portals.
+          </p>
+        </div>
+
+        <div className="p-3 rounded-xl text-[10px] font-medium flex items-start gap-2" style={{ backgroundColor: '#fef2f2', color: '#991b1b' }}>
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} className="flex-shrink-0 mt-px">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Sessions already in progress will use their original expiry. The new value applies to all logins after saving.
         </div>
       </section>
 

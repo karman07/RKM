@@ -1,11 +1,13 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import {
-  getAllReimbursements, getMyReimbursements, createReimbursementRequest, reviewReimbursement,
-  getBranches, staticUrl, type ReimbursementRequest, type Branch,
+  getAllReimbursements, getMyReimbursements, createReimbursementRequest,
+  reviewReimbursement, adminCreateReimbursement, getUsers, getUserById,
+  getBranches, staticUrl, type ReimbursementRequest, type Branch, type User,
 } from '@/lib/api';
 import Modal from '@/components/Modal';
-import { CheckCircle2, XCircle, Search, Building2, Plus, Layers, User } from 'lucide-react';
+import UserHistoryDrawer from '@/components/UserHistoryDrawer';
+import { CheckCircle2, XCircle, Search, Plus, Layers, User as UserIcon, UserPlus, Image, ExternalLink, RotateCcw } from 'lucide-react';
 
 const CATEGORY_CONFIG: Record<string, { label: string; color: string; iconPath: string }> = {
   travel:      { label: 'Travel',      color: 'bg-blue-50 text-blue-700 border-blue-100',     iconPath: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
@@ -21,66 +23,158 @@ const STATUS_CONFIG = {
   rejected: { label: 'Rejected', bg: 'bg-red-50 border-red-200',        text: 'text-red-700',     dot: 'bg-red-500'     },
 };
 
-function ReimbRow({ item, onReview, canReview }: {
+function ReimbRow({ item, onReview, canReview, onUserClick }: {
   item: ReimbursementRequest;
   onReview?: (r: ReimbursementRequest, action: 'approved' | 'rejected') => void;
   canReview: boolean;
+  onUserClick?: (userId: string) => void;
 }) {
   const catCfg    = CATEGORY_CONFIG[item.category] ?? CATEGORY_CONFIG.other;
   const statusCfg = STATUS_CONFIG[item.status];
+  const userId    = typeof item.manager_id === 'object' ? (item.manager_id as any)?._id : String(item.manager_id);
+  const receiptUrl = item.receipt_url ? staticUrl(item.receipt_url) : null;
+  const [imgOpen, setImgOpen] = useState(false);
+
   return (
-    <tr className="group hover:bg-slate-50/50 transition-colors">
-      <td className="px-6 py-4">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-blue-600 rounded-xl flex items-center justify-center text-white text-xs font-black shrink-0 overflow-hidden">
-            {(item.manager_id as any)?.avatar
-              ? <img src={staticUrl((item.manager_id as any).avatar)} className="w-full h-full object-cover" />
-              : (item.manager_id?.name || 'U').charAt(0).toUpperCase()}
-          </div>
-          <div>
-            <p className="text-sm font-black text-slate-900">{item.manager_id?.name || '—'}</p>
-            <p className="text-[10px] text-slate-400">{new Date(item.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-          </div>
-        </div>
-      </td>
-      <td className="px-6 py-4">
-        <span className="text-[11px] font-bold text-slate-500">{item.branch_id?.name || '—'}</span>
-      </td>
-      <td className="px-6 py-4">
-        <span className={`inline-flex px-2.5 py-1 rounded-full border text-[10px] font-black uppercase ${catCfg.color}`}>
-          {catCfg.label}
-        </span>
-      </td>
-      <td className="px-6 py-4">
-        <p className="text-sm font-black text-slate-900">₹{item.amount.toLocaleString('en-IN')}</p>
-      </td>
-      <td className="px-6 py-4 max-w-[180px]">
-        <p className="text-[11px] text-slate-500 truncate italic">"{item.description}"</p>
-        {item.admin_note && <p className="text-[10px] text-blue-600 font-bold mt-0.5">Note: {item.admin_note}</p>}
-      </td>
-      <td className="px-6 py-4">
-        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-black uppercase ${statusCfg.bg} ${statusCfg.text}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${statusCfg.dot}`} />
-          {statusCfg.label}
-        </span>
-      </td>
-      {canReview && (
-        <td className="px-6 py-4">
-          {item.status === 'pending' && (
-            <div className="flex gap-2">
-              <button onClick={() => onReview?.(item, 'approved')}
-                className="p-2 rounded-xl bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white transition-all" title="Approve">
-                <CheckCircle2 className="w-4 h-4" />
-              </button>
-              <button onClick={() => onReview?.(item, 'rejected')}
-                className="p-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition-all" title="Reject">
-                <XCircle className="w-4 h-4" />
-              </button>
+    <>
+      {/* Receipt lightbox */}
+      {imgOpen && receiptUrl && (
+        <tr>
+          <td colSpan={8}>
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+              onClick={() => setImgOpen(false)}
+            >
+              <div className="relative max-w-3xl w-full mx-4" onClick={e => e.stopPropagation()}>
+                <button
+                  onClick={() => setImgOpen(false)}
+                  className="absolute -top-10 right-0 p-2 text-white/70 hover:text-white transition-colors"
+                >
+                  <XCircle className="w-6 h-6" />
+                </button>
+                <img
+                  src={receiptUrl}
+                  alt="Receipt"
+                  className="w-full rounded-2xl shadow-2xl object-contain max-h-[80vh]"
+                />
+                <a
+                  href={receiptUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="absolute bottom-3 right-3 flex items-center gap-1.5 px-3 py-1.5 bg-white/90 text-slate-700 text-[11px] font-bold rounded-xl hover:bg-white transition-all"
+                  onClick={e => e.stopPropagation()}
+                >
+                  <ExternalLink className="w-3 h-3" /> Open original
+                </a>
+              </div>
             </div>
+          </td>
+        </tr>
+      )}
+
+      <tr className="group hover:bg-slate-50/50 transition-colors">
+        {/* Employee — opens UserHistoryDrawer */}
+        <td className="px-6 py-4">
+          <button
+            onClick={() => userId && onUserClick?.(userId)}
+            className="flex items-center gap-3 group/emp text-left w-full"
+          >
+            <div className="w-8 h-8 bg-blue-600 rounded-xl flex items-center justify-center text-white text-xs font-black shrink-0 overflow-hidden group-hover/emp:ring-2 group-hover/emp:ring-blue-400 transition-all">
+              {(item.manager_id as any)?.avatar
+                ? <img src={staticUrl((item.manager_id as any).avatar)} className="w-full h-full object-cover" />
+                : (item.manager_id?.name || 'U').charAt(0).toUpperCase()}
+            </div>
+            <div>
+              <p className="text-sm font-black text-slate-900 group-hover/emp:text-blue-600 transition-colors">
+                {item.manager_id?.name || '—'}
+              </p>
+              <p className="text-[10px] text-slate-400">{new Date(item.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+            </div>
+          </button>
+        </td>
+
+        <td className="px-6 py-4">
+          <span className="text-[11px] font-bold text-slate-500">{item.branch_id?.name || '—'}</span>
+        </td>
+
+        <td className="px-6 py-4">
+          <span className={`inline-flex px-2.5 py-1 rounded-full border text-[10px] font-black uppercase ${catCfg.color}`}>
+            {catCfg.label}
+          </span>
+        </td>
+
+        <td className="px-6 py-4">
+          <p className="text-sm font-black text-slate-900">₹{item.amount.toLocaleString('en-IN')}</p>
+        </td>
+
+        {/* Description + receipt thumbnail */}
+        <td className="px-6 py-4 max-w-[200px]">
+          <p className="text-[11px] text-slate-500 truncate italic">"{item.description}"</p>
+          {item.admin_note && (
+            <p className="text-[10px] text-blue-600 font-bold mt-0.5">Note: {item.admin_note}</p>
+          )}
+          {receiptUrl && (
+            <button
+              onClick={() => setImgOpen(true)}
+              className="mt-1.5 flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-blue-600 transition-colors"
+            >
+              <Image className="w-3 h-3" /> View receipt
+            </button>
           )}
         </td>
-      )}
-    </tr>
+
+        <td className="px-6 py-4">
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-black uppercase ${statusCfg.bg} ${statusCfg.text}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${statusCfg.dot}`} />
+            {statusCfg.label}
+          </span>
+        </td>
+
+        {/* Actions — always visible for admin, vary by status */}
+        {canReview && (
+          <td className="px-6 py-4">
+            <div className="flex items-center gap-2">
+              {item.status === 'pending' && (
+                <>
+                  <button
+                    onClick={() => onReview?.(item, 'approved')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white text-[10px] font-black transition-all border border-emerald-100 hover:border-emerald-600"
+                    title="Approve"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Approve
+                  </button>
+                  <button
+                    onClick={() => onReview?.(item, 'rejected')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-50 text-red-500 hover:bg-red-600 hover:text-white text-[10px] font-black transition-all border border-red-100 hover:border-red-600"
+                    title="Reject"
+                  >
+                    <XCircle className="w-3.5 h-3.5" /> Reject
+                  </button>
+                </>
+              )}
+              {item.status === 'approved' && (
+                <button
+                  onClick={() => onReview?.(item, 'rejected')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 text-slate-500 hover:bg-red-50 hover:text-red-600 text-[10px] font-black transition-all border border-slate-200"
+                  title="Revoke approval"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" /> Revoke
+                </button>
+              )}
+              {item.status === 'rejected' && (
+                <button
+                  onClick={() => onReview?.(item, 'approved')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 text-slate-500 hover:bg-emerald-50 hover:text-emerald-600 text-[10px] font-black transition-all border border-slate-200"
+                  title="Re-approve"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" /> Re-approve
+                </button>
+              )}
+            </div>
+          </td>
+        )}
+      </tr>
+    </>
   );
 }
 
@@ -102,11 +196,36 @@ export default function ReimbursementsPage() {
   const [adminNote,    setAdminNote]    = useState('');
   const [reviewing,    setReviewing]    = useState(false);
 
-  const [showApply,    setShowApply]    = useState(false);
+  const [showApply,     setShowApply]     = useState(false);
   const [applyCategory, setApplyCategory] = useState('travel');
   const [applyAmount,   setApplyAmount]   = useState('');
   const [applyDesc,     setApplyDesc]     = useState('');
   const [applying,      setApplying]      = useState(false);
+
+  // Admin: add reimbursement for an employee
+  const [showAdminAdd,    setShowAdminAdd]    = useState(false);
+  const [adminEmpId,      setAdminEmpId]      = useState('');
+  const [adminEmpSearch,  setAdminEmpSearch]  = useState('');
+  const [adminEmpList,    setAdminEmpList]    = useState<{ _id: string; name: string; role: string }[]>([]);
+  const [adminEmpLoading, setAdminEmpLoading] = useState(false);
+  const [adminCategory,   setAdminCategory]   = useState('travel');
+  const [adminAmount,     setAdminAmount]     = useState('');
+  const [adminDesc,       setAdminDesc]       = useState('');
+  const [adminAutoApprove,setAdminAutoApprove]= useState(true);
+  const [adminSaving,     setAdminSaving]     = useState(false);
+  const [adminError,      setAdminError]      = useState('');
+
+  const [drawerUser,     setDrawerUser]     = useState<User | null>(null);
+  const [drawerLoading,  setDrawerLoading]  = useState(false);
+
+  async function openUserDrawer(userId: string) {
+    setDrawerLoading(true);
+    try {
+      const u = await getUserById(userId);
+      setDrawerUser(u);
+    } catch { /* ignore */ }
+    finally { setDrawerLoading(false); }
+  }
 
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'danger' } | null>(null);
   function showToast(msg: string, type: 'success' | 'danger') {
@@ -124,19 +243,19 @@ export default function ReimbursementsPage() {
     } else { setViewerType('admin'); }
   }, []);
 
-  async function load() {
+  async function load(sf = statusFilter, bf = branchFilter) {
     if (!viewerType) return;
     setLoading(true);
     try {
       if (viewerType === 'admin') {
         const [r, b] = await Promise.all([
-          getAllReimbursements({ status: statusFilter || undefined, branch_id: branchFilter || undefined }),
+          getAllReimbursements({ status: sf || undefined, branch_id: bf || undefined }),
           getBranches(),
         ]);
         setAllItems(r); setBranches(b);
       } else {
         const [all, mine, b] = await Promise.all([
-          getAllReimbursements({ branch_id: branchFilter || undefined }),
+          getAllReimbursements({ branch_id: bf || undefined }),
           getMyReimbursements(),
           getBranches(),
         ]);
@@ -146,7 +265,7 @@ export default function ReimbursementsPage() {
     finally { setLoading(false); }
   }
 
-  useEffect(() => { load(); }, [viewerType, statusFilter, branchFilter]);
+  useEffect(() => { load(statusFilter, branchFilter); }, [viewerType, statusFilter, branchFilter]);
 
   async function handleReview() {
     if (!reviewTarget) return;
@@ -154,9 +273,45 @@ export default function ReimbursementsPage() {
     try {
       await reviewReimbursement(reviewTarget._id, reviewAction, adminNote);
       showToast(`Reimbursement ${reviewAction}`, 'success');
-      setReviewTarget(null); setAdminNote(''); load();
+      setReviewTarget(null); setAdminNote(''); load(statusFilter, branchFilter);
     } catch (e: any) { showToast(e.message || 'Failed', 'danger'); }
     finally { setReviewing(false); }
+  }
+
+  // Fetch employees whenever the admin search changes
+  useEffect(() => {
+    if (!showAdminAdd) return;
+    setAdminEmpLoading(true);
+    getUsers(undefined, 1, 100)
+      .then(res => {
+        const q = adminEmpSearch.toLowerCase();
+        setAdminEmpList(
+          res.data
+            .filter((u: any) => !q || u.name.toLowerCase().includes(q))
+            .map((u: any) => ({ _id: u._id, name: u.name, role: u.role }))
+        );
+      })
+      .finally(() => setAdminEmpLoading(false));
+  }, [showAdminAdd, adminEmpSearch]);
+
+  async function handleAdminAdd() {
+    if (!adminEmpId)         { setAdminError('Select an employee'); return; }
+    if (!adminDesc.trim())   { setAdminError('Description is required'); return; }
+    const amt = Number(adminAmount);
+    if (!amt || amt <= 0)    { setAdminError('Enter a valid amount'); return; }
+    setAdminSaving(true); setAdminError('');
+    try {
+      await adminCreateReimbursement(adminEmpId, {
+        category: adminCategory, amount: amt,
+        description: adminDesc.trim(), auto_approve: adminAutoApprove,
+      });
+      showToast('Reimbursement added successfully', 'success');
+      setShowAdminAdd(false);
+      setAdminEmpId(''); setAdminEmpSearch(''); setAdminAmount(''); setAdminDesc('');
+      setAdminCategory('travel'); setAdminAutoApprove(true);
+      load();
+    } catch (e: any) { setAdminError(e.message || 'Failed'); }
+    finally { setAdminSaving(false); }
   }
 
   async function handleApply() {
@@ -238,6 +393,14 @@ export default function ReimbursementsPage() {
               {pendingCount} Pending · ₹{pendingAmount.toLocaleString('en-IN')}
             </div>
           )}
+          {isAdmin && (
+            <button
+              onClick={() => setShowAdminAdd(true)}
+              className="flex items-center gap-2 px-5 py-3 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 shadow-lg shadow-blue-600/20 transition-all"
+            >
+              <UserPlus className="w-4 h-4" /> Add for Employee
+            </button>
+          )}
           {!isAdmin && (
             <button onClick={() => setShowApply(true)}
               className="flex items-center gap-2 px-5 py-3 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 shadow-lg shadow-blue-600/20 transition-all">
@@ -272,7 +435,7 @@ export default function ReimbursementsPage() {
           </button>
           <button onClick={() => setActiveTab('mine')}
             className={`flex items-center gap-2 px-6 py-2.5 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${activeTab === 'mine' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-400 hover:text-blue-600'}`}>
-            <User className="w-3.5 h-3.5" /> My Claims
+            <UserIcon className="w-3.5 h-3.5" /> My Claims
             {myItems.filter(i => i.status === 'pending').length > 0 && (
               <span className="bg-amber-500 text-white text-[9px] font-black rounded-full px-1.5 py-0.5 leading-none">
                 {myItems.filter(i => i.status === 'pending').length}
@@ -300,13 +463,6 @@ export default function ReimbursementsPage() {
             </button>
           ))}
         </div>
-        {(isAdmin || activeTab === 'staff') && (
-          <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)}
-            className="px-5 py-3 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-600 focus:outline-none focus:border-blue-500 transition-all shadow-sm">
-            <option value="">All Branches</option>
-            {branches.map(b => <option key={b._id} value={b._id}>{b.name}</option>)}
-          </select>
-        )}
         <div className="flex-1 relative group">
           <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-blue-600 transition-colors" />
           <input type="text" placeholder={activeTab === 'mine' ? 'Search by description...' : 'Search by employee or description...'}
@@ -375,6 +531,7 @@ export default function ReimbursementsPage() {
                 displayList.map(item => (
                   <ReimbRow key={item._id} item={item} canReview={isAdmin}
                     onReview={(r, a) => { setReviewTarget(r); setReviewAction(a); setAdminNote(''); }}
+                    onUserClick={openUserDrawer}
                   />
                 ))
               )}
@@ -417,6 +574,112 @@ export default function ReimbursementsPage() {
         )}
       </Modal>
 
+      {/* Admin: Add for Employee Modal */}
+      <Modal open={showAdminAdd} onClose={() => { setShowAdminAdd(false); setAdminError(''); }} title="Add Reimbursement for Employee">
+        <div className="space-y-5">
+          {adminError && (
+            <p className="text-xs text-red-500 font-semibold bg-red-50 border border-red-100 rounded-xl px-4 py-2">{adminError}</p>
+          )}
+
+          {/* Employee selector */}
+          <div className="space-y-2">
+            <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400">Employee</label>
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+              <input
+                value={adminEmpSearch}
+                onChange={e => { setAdminEmpSearch(e.target.value); setAdminEmpId(''); }}
+                placeholder="Search employee by name…"
+                className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:border-blue-500 transition-all"
+              />
+            </div>
+            {adminEmpLoading ? (
+              <p className="text-[11px] text-slate-400 px-1">Loading…</p>
+            ) : adminEmpList.length > 0 ? (
+              <div className="max-h-40 overflow-y-auto border border-slate-100 rounded-2xl divide-y divide-slate-50">
+                {adminEmpList.map(emp => (
+                  <button
+                    key={emp._id}
+                    onClick={() => { setAdminEmpId(emp._id); setAdminEmpSearch(emp.name); }}
+                    className={`w-full text-left px-4 py-2.5 flex items-center gap-3 hover:bg-blue-50 transition-colors ${adminEmpId === emp._id ? 'bg-blue-50' : ''}`}
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-slate-800 text-white text-[10px] font-black flex items-center justify-center flex-shrink-0">
+                      {emp.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-slate-900">{emp.name}</p>
+                      <p className="text-[10px] text-slate-400 capitalize">{emp.role}</p>
+                    </div>
+                    {adminEmpId === emp._id && <CheckCircle2 className="w-4 h-4 text-blue-600 ml-auto flex-shrink-0" />}
+                  </button>
+                ))}
+              </div>
+            ) : adminEmpSearch ? (
+              <p className="text-[11px] text-slate-400 px-1">No employees found.</p>
+            ) : null}
+          </div>
+
+          {/* Category */}
+          <div>
+            <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Category</label>
+            <div className="grid grid-cols-3 gap-2">
+              {Object.entries(CATEGORY_CONFIG).map(([k, v]) => (
+                <button key={k} onClick={() => setAdminCategory(k)}
+                  className={`px-3 py-2.5 rounded-2xl text-[10px] font-black uppercase border transition-all ${adminCategory === k ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-600/20' : 'bg-white text-slate-500 border-slate-200 hover:border-blue-300'}`}>
+                  {v.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Amount */}
+          <div>
+            <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Amount (₹)</label>
+            <div className="relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">₹</span>
+              <input type="number" min="1" value={adminAmount} onChange={e => setAdminAmount(e.target.value)}
+                placeholder="Enter amount"
+                className="w-full pl-9 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:border-blue-500 transition-all"
+              />
+            </div>
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Description</label>
+            <textarea value={adminDesc} onChange={e => setAdminDesc(e.target.value)} rows={2}
+              placeholder="e.g. Petrol for site visit, Office stationery…"
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 resize-none transition-all"
+            />
+          </div>
+
+          {/* Auto-approve toggle */}
+          <button type="button" onClick={() => setAdminAutoApprove(v => !v)}
+            className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl border transition-all ${adminAutoApprove ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
+            <div className="text-left">
+              <p className="text-sm font-bold">Auto-approve</p>
+              <p className="text-[11px] font-medium opacity-70">
+                {adminAutoApprove ? 'Approved immediately — appears in payslip' : 'Created as pending — requires review'}
+              </p>
+            </div>
+            <div className="rounded-full transition-all relative flex-shrink-0" style={{ width: 40, height: 22, backgroundColor: adminAutoApprove ? '#10b981' : '#cbd5e1' }}>
+              <div className="absolute top-0.5 bg-white rounded-full shadow transition-all" style={{ width: 18, height: 18, left: adminAutoApprove ? 20 : 2 }} />
+            </div>
+          </button>
+
+          <div className="flex gap-4">
+            <button onClick={() => { setShowAdminAdd(false); setAdminError(''); }}
+              className="flex-1 py-4 border border-slate-200 rounded-2xl text-[11px] font-black uppercase text-slate-500 hover:bg-slate-50 transition-all">
+              Cancel
+            </button>
+            <button onClick={handleAdminAdd} disabled={adminSaving}
+              className="flex-1 bg-blue-600 text-white text-[11px] font-black uppercase rounded-2xl shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+              {adminSaving ? 'Adding…' : <><Plus className="w-3.5 h-3.5" /> Add Reimbursement</>}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       {/* HR: Apply Modal */}
       <Modal open={showApply} onClose={() => setShowApply(false)} title="Submit Reimbursement Claim">
         <div className="space-y-5">
@@ -457,6 +720,19 @@ export default function ReimbursementsPage() {
           </div>
         </div>
       </Modal>
+
+      {/* User sidebar drawer */}
+      {drawerUser && <UserHistoryDrawer user={drawerUser} onClose={() => setDrawerUser(null)} />}
+
+      {/* Spinner while fetching user for drawer */}
+      {drawerLoading && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center pointer-events-none">
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl px-6 py-4 shadow-xl flex items-center gap-3">
+            <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm font-semibold text-slate-600">Loading profile…</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

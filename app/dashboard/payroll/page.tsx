@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { getPayrollSummary, getMyPayroll, addIncentive, deleteIncentive, type PayrollSummary, type PayrollCalendarDay, type Incentive } from '@/lib/api';
-import { ChevronLeft, ChevronRight, TrendingDown, ChevronDown, Wallet, Users, BadgeDollarSign, CircleDollarSign, TrendingUp, Calendar, Gift, Plus, Trash2, Loader2, X } from 'lucide-react';
+import { getPayrollSummary, getMyPayroll, addIncentive, deleteIncentive, getUserReimbursements, API_BASE, type PayrollSummary, type PayrollCalendarDay, type Incentive, type ReimbursementRequest } from '@/lib/api';
+import { ChevronLeft, ChevronRight, TrendingDown, ChevronDown, Wallet, Users, BadgeDollarSign, CircleDollarSign, TrendingUp, Calendar, Gift, Plus, Trash2, Loader2, X, Download, Eye, AlertCircle, FileText } from 'lucide-react';
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
@@ -180,6 +180,381 @@ function IncentiveModal({
   );
 }
 
+// ── Types ─────────────────────────────────────────────────────────────────────
+interface PayslipOverrides {
+  pan_card: string; account_number: string; bank_name: string;
+  uan: string; pf_account: string; esi_number: string; pran: string;
+  tax_regime: string;
+}
+interface ExtraDeduction {
+  id: string;
+  label: string;
+  type: 'fixed' | 'percentage';
+  value: string;   // either a fixed Rs amount or a % number
+}
+
+const DEFAULT_DEDUCTIONS: ExtraDeduction[] = [
+  { id: 'tds', label: 'TDS (Tax Deducted at Source)', type: 'percentage', value: '10' },
+];
+
+function storageKey(userId: string, month: number, year: number) {
+  return `payslip_preflight_v2_${userId}_${month}_${year}`;
+}
+
+function isFilePath(s: string | undefined): boolean {
+  if (!s) return false;
+  return s.includes('/') || s.includes('\\') || /\.(jpg|jpeg|png|pdf|webp)$/i.test(s);
+}
+
+// ── Pre-flight Dialog ─────────────────────────────────────────────────────────
+function PayslipPreflightModal({
+  userId, userName, month, year, userData, grossSalary,
+  onClose, onGenerate,
+}: {
+  userId: string; userName: string; month: number; year: number;
+  userData: any; grossSalary: number;
+  onClose: () => void;
+  onGenerate: (overrides: PayslipOverrides, extraDeds: ExtraDeduction[], mode: 'preview' | 'download') => void;
+}) {
+  const key = storageKey(userId, month, year);
+
+  function fromUser(): PayslipOverrides {
+    return {
+      pan_card:       (!isFilePath(userData?.pan_card) && userData?.pan_card) ? userData.pan_card : '',
+      account_number: userData?.account_number || '',
+      bank_name:      userData?.bank_name      || '',
+      uan:            '', pf_account: '', esi_number: '', pran: '',
+      tax_regime:     'Regular Tax Regime',
+    };
+  }
+
+  // Merge: user-schema values fill empty slots left by localStorage
+  function loadMerged(): { overrides: PayslipOverrides; extraDeds: ExtraDeduction[] } {
+    const base = fromUser();
+    let saved: Partial<{ overrides: PayslipOverrides; extraDeds: ExtraDeduction[] }> = {};
+    if (typeof window !== 'undefined') {
+      try { saved = JSON.parse(localStorage.getItem(key) || '{}'); } catch { /* ignore */ }
+    }
+    const merged: PayslipOverrides = { ...base };
+    if (saved.overrides) {
+      (Object.keys(base) as (keyof PayslipOverrides)[]).forEach(k => {
+        if (saved.overrides![k]) merged[k] = saved.overrides![k];
+      });
+    }
+    // If no saved deductions key at all (first open), seed with TDS default
+    const extraDeds = saved.extraDeds !== undefined ? saved.extraDeds : DEFAULT_DEDUCTIONS;
+    return { overrides: merged, extraDeds };
+  }
+
+  const init = loadMerged();
+  const [ov, setOv]     = useState<PayslipOverrides>(init.overrides);
+  const [deds, setDeds] = useState<ExtraDeduction[]>(init.extraDeds);
+
+  function persist(newOv: PayslipOverrides, newDeds: ExtraDeduction[]) {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(key, JSON.stringify({ overrides: newOv, extraDeds: newDeds }));
+    }
+  }
+
+  function setOvField(k: keyof PayslipOverrides, val: string) {
+    const next = { ...ov, [k]: val }; setOv(next); persist(next, deds);
+  }
+
+  function addDed() {
+    const next = [...deds, { id: Date.now().toString(), label: '', type: 'fixed' as const, value: '' }];
+    setDeds(next); persist(ov, next);
+  }
+  function removeDed(id: string) {
+    const next = deds.filter(d => d.id !== id);
+    setDeds(next); persist(ov, next);
+  }
+  function updateDed(id: string, patch: Partial<ExtraDeduction>) {
+    const next = deds.map(d => d.id === id ? { ...d, ...patch } : d);
+    setDeds(next); persist(ov, next);
+  }
+
+  function dedAmount(d: ExtraDeduction): number {
+    if (d.type === 'fixed') return Number(d.value) || 0;
+    return Math.round((grossSalary * (Number(d.value) || 0)) / 100);
+  }
+
+  const totalExtra = deds.reduce((s, d) => s + dedAmount(d), 0);
+
+  const missingFields = [
+    !ov.pan_card       && 'PAN Number',
+    !ov.account_number && 'Bank Account',
+    !ov.bank_name      && 'Bank Name',
+  ].filter(Boolean);
+
+  function Field({ k, label, placeholder }: { k: keyof PayslipOverrides; label: string; placeholder?: string }) {
+    return (
+      <div className="space-y-1.5">
+        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</label>
+        <input
+          value={ov[k]}
+          onChange={e => setOvField(k, e.target.value)}
+          placeholder={placeholder || label}
+          className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 transition-all"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col">
+
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center">
+              <FileText className="w-4 h-4 text-blue-600" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-slate-900">Generate Payslip</p>
+              <p className="text-[11px] text-slate-400">{userName} · {MONTH_NAMES[month]} {year}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+            <X className="w-4 h-4 text-slate-400" />
+          </button>
+        </div>
+
+        {/* ── Body ── */}
+        <div className="overflow-y-auto flex-1 px-6 py-5 space-y-6">
+
+          {/* Warning */}
+          {missingFields.length > 0 && (
+            <div className="flex items-start gap-3 px-4 py-3 bg-amber-50 border border-amber-100 rounded-xl">
+              <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+              <p className="text-[11px] font-semibold text-amber-700">
+                Complete these fields for a full payslip: <span className="font-black">{missingFields.join(' · ')}</span>
+              </p>
+            </div>
+          )}
+
+          {/* Employee */}
+          <section className="space-y-3">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Employee Details</p>
+            <div className="grid grid-cols-2 gap-3">
+              <Field k="pan_card" label="PAN Number" placeholder="e.g. ABCDE1234F" />
+              <Field k="tax_regime" label="Tax Regime" placeholder="Regular Tax Regime" />
+            </div>
+          </section>
+
+          {/* Bank */}
+          <section className="space-y-3">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Bank Details</p>
+            <div className="grid grid-cols-2 gap-3">
+              <Field k="account_number" label="Account Number" placeholder="Bank account number" />
+              <Field k="bank_name" label="Bank Name" placeholder="e.g. SBI, HDFC, AU Small Finance" />
+            </div>
+          </section>
+
+          {/* Statutory */}
+          <section className="space-y-3">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+              Statutory Details <span className="font-medium normal-case tracking-tight text-slate-300">— optional</span>
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <Field k="uan"        label="UAN"              placeholder="Universal Account Number" />
+              <Field k="pf_account" label="PF Account No."  placeholder="PF account number" />
+              <Field k="esi_number" label="ESI Number"       placeholder="ESI number" />
+              <Field k="pran"       label="PRAN"             placeholder="PR Account Number" />
+            </div>
+          </section>
+
+          {/* Deductions */}
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Deductions</p>
+                {totalExtra > 0 && (
+                  <p className="text-[10px] text-red-500 font-bold mt-0.5">
+                    Total: Rs. {totalExtra.toLocaleString('en-IN')}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={addDed}
+                className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-all"
+              >
+                <Plus className="w-3 h-3" /> Add Deduction
+              </button>
+            </div>
+
+            {deds.length === 0 ? (
+              <p className="text-[11px] text-slate-400 py-2 text-center border border-dashed border-slate-200 rounded-xl">
+                No deductions added.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {deds.map(d => {
+                  const amt = dedAmount(d);
+                  return (
+                    <div key={d.id} className="border border-slate-100 rounded-xl p-3 space-y-2 bg-slate-50/50">
+                      <div className="flex items-center gap-2">
+                        {/* Label */}
+                        <input
+                          value={d.label}
+                          onChange={e => updateDed(d.id, { label: e.target.value })}
+                          placeholder="Deduction name (e.g. Loan EMI)"
+                          className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-red-300 focus:ring-2 focus:ring-red-50 transition-all"
+                        />
+                        {/* Type toggle */}
+                        <div className="flex rounded-lg border border-slate-200 overflow-hidden flex-shrink-0 bg-white text-[11px] font-bold">
+                          {(['fixed', 'percentage'] as const).map(t => (
+                            <button
+                              key={t}
+                              onClick={() => updateDed(d.id, { type: t })}
+                              className={`px-3 py-2 transition-colors ${d.type === t ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-50'}`}
+                            >
+                              {t === 'fixed' ? 'Rs.' : '%'}
+                            </button>
+                          ))}
+                        </div>
+                        {/* Value input */}
+                        <div className="relative w-28 flex-shrink-0">
+                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold pointer-events-none">
+                            {d.type === 'fixed' ? 'Rs.' : '%'}
+                          </span>
+                          <input
+                            type="number" min="0" max={d.type === 'percentage' ? '100' : undefined}
+                            value={d.value}
+                            onChange={e => updateDed(d.id, { value: e.target.value })}
+                            placeholder="0"
+                            className="w-full pl-8 pr-2 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-red-300 focus:ring-2 focus:ring-red-50 transition-all"
+                          />
+                        </div>
+                        <button onClick={() => removeDed(d.id)} className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      {/* Live amount preview for percentage */}
+                      {d.type === 'percentage' && Number(d.value) > 0 && (
+                        <p className="text-[10px] text-slate-500 pl-1">
+                          = <span className="font-bold text-slate-700">Rs. {amt.toLocaleString('en-IN')}</span>
+                          <span className="text-slate-400"> ({d.value}% of Rs. {grossSalary.toLocaleString('en-IN')} gross)</span>
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        </div>
+
+        {/* ── Footer ── */}
+        <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 rounded-b-2xl">
+          <button onClick={onClose} className="px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-bold uppercase tracking-widest text-slate-500 hover:bg-slate-50 transition-all">
+            Cancel
+          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onGenerate(ov, deds, 'preview')}
+              className="flex items-center gap-2 px-4 py-2.5 border border-slate-300 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 text-slate-700 text-xs font-bold uppercase tracking-widest rounded-xl transition-all"
+            >
+              <Eye className="w-3.5 h-3.5" /> Preview
+            </button>
+            <button
+              onClick={() => onGenerate(ov, deds, 'download')}
+              className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-blue-600/20"
+            >
+              <Download className="w-3.5 h-3.5" /> Download PDF
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Payslip Preview Modal ─────────────────────────────────────────────────────
+function PayslipPreviewModal({
+  userId, userName, month, year, overrides, extraDeds,
+  onClose, onDownload,
+}: {
+  userId: string; userName: string; month: number; year: number;
+  overrides: PayslipOverrides; extraDeds: ExtraDeduction[];
+  onClose: () => void; onDownload: () => void;
+}) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState('');
+
+  useEffect(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : '';
+    const body = {
+      month, year,
+      overrides,
+      extra_deductions: extraDeds
+        .filter(d => d.label && Number(d.value) > 0)
+        .map(d => ({ label: d.label, amount: Number(d.value) })),
+    };
+    fetch(`${API_BASE}/payroll/${userId}/payslip`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+      .then(res => { if (!res.ok) throw new Error('Failed to generate'); return res.blob(); })
+      .then(blob => setBlobUrl(URL.createObjectURL(blob)))
+      .catch(() => setError('Could not generate payslip. Please try again.'))
+      .finally(() => setLoading(false));
+
+    return () => { if (blobUrl) URL.revokeObjectURL(blobUrl); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl flex flex-col w-full max-w-4xl" style={{ height: '90vh' }}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 flex-shrink-0">
+          <div>
+            <p className="text-sm font-bold text-slate-900">Payslip Preview</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">{userName} · {MONTH_NAMES[month]} {year}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onDownload}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-blue-600/20"
+            >
+              <Download className="w-3.5 h-3.5" /> Download PDF
+            </button>
+            <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+              <X className="w-4 h-4 text-slate-400" />
+            </button>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-hidden rounded-b-2xl bg-slate-50">
+          {loading && (
+            <div className="h-full flex flex-col items-center justify-center gap-3">
+              <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+              <p className="text-sm text-slate-400 font-medium">Generating payslip…</p>
+            </div>
+          )}
+          {error && (
+            <div className="h-full flex items-center justify-center">
+              <p className="text-sm text-red-500 font-semibold">{error}</p>
+            </div>
+          )}
+          {blobUrl && (
+            <iframe
+              src={blobUrl}
+              className="w-full h-full rounded-b-2xl"
+              title="Payslip Preview"
+              style={{ border: 'none' }}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EmployeePayrollCard({
   data, expanded, onToggle, month, year, onIncentiveChange,
 }: {
@@ -188,8 +563,70 @@ function EmployeePayrollCard({
 }) {
   const u        = data.user as any;
   const initials = u.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
-  const [showIncentiveModal, setShowIncentiveModal] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [showIncentiveModal, setShowIncentiveModal]   = useState(false);
+  const [showPreflight, setShowPreflight]             = useState(false);
+  const [showPreview, setShowPreview]                 = useState(false);
+  const [previewOv, setPreviewOv]                     = useState<PayslipOverrides | null>(null);
+  const [previewDeds, setPreviewDeds]                 = useState<ExtraDeduction[]>([]);
+  const [deletingId, setDeletingId]                   = useState<string | null>(null);
+  const [downloadingSlip, setDownloadingSlip]         = useState(false);
+  const [reimbursements, setReimbursements]           = useState<ReimbursementRequest[] | null>(null);
+
+  useEffect(() => {
+    if (!expanded || reimbursements !== null) return;
+    getUserReimbursements(u._id)
+      .then(all => {
+        const monthStart = new Date(year, month, 1).getTime();
+        const monthEnd   = new Date(year, month + 1, 0, 23, 59, 59).getTime();
+        setReimbursements(
+          all.filter(r => {
+            const t = new Date(r.reviewed_at || r.createdAt).getTime();
+            return t >= monthStart && t <= monthEnd;
+          }),
+        );
+      })
+      .catch(() => setReimbursements([]));
+  }, [expanded]);
+
+  function resolvedDeds(deds: ExtraDeduction[]) {
+    return deds
+      .filter(d => d.label && Number(d.value) > 0)
+      .map(d => ({
+        label: d.label,
+        amount: d.type === 'percentage'
+          ? Math.round(data.base_salary * Number(d.value) / 100)
+          : Number(d.value),
+      }));
+  }
+
+  async function handleDownloadPayslip(ov: PayslipOverrides, deds: ExtraDeduction[]) {
+    setDownloadingSlip(true);
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : '';
+      const body = {
+        month, year,
+        overrides: ov,
+        extra_deductions: resolvedDeds(deds),
+      };
+      const res = await fetch(`${API_BASE}/payroll/${u._id}/payslip`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error('Failed to generate payslip');
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = `payslip-${u.name}-${MONTH_NAMES[month]}-${year}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setDownloadingSlip(false);
+    }
+  }
 
   async function handleDeleteIncentive(id: string) {
     setDeletingId(id);
@@ -208,6 +645,42 @@ function EmployeePayrollCard({
           month={month} year={year}
           onClose={() => setShowIncentiveModal(false)}
           onSaved={onIncentiveChange}
+        />
+      )}
+      {showPreflight && (
+        <PayslipPreflightModal
+          userId={u._id} userName={u.name}
+          month={month} year={year}
+          userData={u}
+          grossSalary={data.base_salary}
+          onClose={() => setShowPreflight(false)}
+          onGenerate={(ov, deds, mode) => {
+            setShowPreflight(false);
+            if (mode === 'preview') {
+              // Convert % deductions to fixed amounts for the preview fetch
+              const resolved = deds
+                .filter(d => d.label && Number(d.value) > 0)
+                .map(d => ({
+                  ...d,
+                  type: 'fixed' as const,
+                  value: String(d.type === 'percentage'
+                    ? Math.round(data.base_salary * Number(d.value) / 100)
+                    : Number(d.value)),
+                }));
+              setPreviewOv(ov); setPreviewDeds(resolved); setShowPreview(true);
+            } else {
+              handleDownloadPayslip(ov, deds);
+            }
+          }}
+        />
+      )}
+      {showPreview && previewOv && (
+        <PayslipPreviewModal
+          userId={u._id} userName={u.name}
+          month={month} year={year}
+          overrides={previewOv} extraDeds={previewDeds}
+          onClose={() => setShowPreview(false)}
+          onDownload={() => { setShowPreview(false); handleDownloadPayslip(previewOv, previewDeds); }}
         />
       )}
 
@@ -356,7 +829,53 @@ function EmployeePayrollCard({
               )}
             </div>
 
-            {/* Net payable */}
+            {/* ── Reimbursements section ── */}
+            {reimbursements !== null && (
+              <div className="border border-slate-100 rounded-xl overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-3.5 bg-slate-50/60">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-3.5 h-3.5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" />
+                    </svg>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                      Reimbursements
+                      {reimbursements.filter(r => r.status === 'approved').length > 0 && (
+                        <span className="ml-2 text-blue-600">
+                          +₹{fmtFull(reimbursements.filter(r => r.status === 'approved').reduce((s, r) => s + r.amount, 0))}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  <span className="text-[10px] font-bold text-slate-400">This month</span>
+                </div>
+                {reimbursements.length === 0 ? (
+                  <p className="text-[11px] text-slate-400 px-5 py-4">No reimbursements this month.</p>
+                ) : (
+                  <div className="divide-y divide-slate-50">
+                    {reimbursements.map(r => (
+                      <div key={r._id} className="flex items-center justify-between px-5 py-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <p className="text-sm font-bold text-slate-800 truncate">{r.description}</p>
+                            <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md flex-shrink-0 ${
+                              r.status === 'approved' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                              : r.status === 'rejected' ? 'bg-red-50 text-red-600 border border-red-100'
+                              : 'bg-amber-50 text-amber-600 border border-amber-100'
+                            }`}>{r.status}</span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 capitalize">{r.category.replace(/-/g, ' ')}</p>
+                        </div>
+                        <p className={`text-sm font-bold ml-4 flex-shrink-0 ${r.status === 'approved' ? 'text-blue-600' : 'text-slate-400'}`}>
+                          {r.status === 'approved' ? '+' : ''}₹{fmtFull(r.amount)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Net payable + Generate Payslip */}
             <div className="border border-slate-200 rounded-xl px-5 py-4 flex items-center justify-between">
               <div>
                 <p className="text-sm font-bold text-slate-700">Net Payable This Month</p>
@@ -365,10 +884,25 @@ function EmployeePayrollCard({
                     ₹{fmtFull(data.base_salary)}
                     {data.deductions > 0 && <span className="text-red-400"> − ₹{fmtFull(data.deductions)}</span>}
                     {data.incentives > 0 && <span className="text-emerald-500"> + ₹{fmtFull(data.incentives)}</span>}
+                    {reimbursements !== null && reimbursements.filter(r => r.status === 'approved').length > 0 && (
+                      <span className="text-blue-500"> + ₹{fmtFull(reimbursements.filter(r => r.status === 'approved').reduce((s, r) => s + r.amount, 0))} reimb.</span>
+                    )}
                   </p>
                 )}
               </div>
-              <p className="text-2xl font-bold text-slate-900">₹{fmtFull(data.net_payable)}</p>
+              <div className="flex items-center gap-3">
+                <p className="text-2xl font-bold text-slate-900">₹{fmtFull(data.net_payable)}</p>
+                <button
+                  onClick={e => { e.stopPropagation(); setShowPreflight(true); }}
+                  disabled={downloadingSlip}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-[11px] font-bold uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-blue-600/20"
+                >
+                  {downloadingSlip
+                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    : <FileText className="w-3.5 h-3.5" />}
+                  Generate Payslip
+                </button>
+              </div>
             </div>
 
             <div>

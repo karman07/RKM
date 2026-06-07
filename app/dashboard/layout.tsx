@@ -46,6 +46,8 @@ const ROUTE_PERMISSION: Record<string, string> = {
   // Old Gold — page access gated by 'old-gold'; action visibility is
   // handled inside the page itself using the finer-grained keys below.
   '/dashboard/old-gold':           'old-gold',
+  // Security center — full admin only
+  '/dashboard/security':           '__admin_only__',
 };
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
