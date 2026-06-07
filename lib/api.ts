@@ -187,6 +187,7 @@ export interface InventoryItem {
   shipping_state?: string;
   shipping_pincode?: string;
   shipping_country?: string;
+  invoice_number?: string;
   sale_reference?: string;
   sale_channel?: string;
   payment_mode?: string;
@@ -204,6 +205,15 @@ export interface InventoryItem {
   return_refund_status?: 'pending' | 'proposed' | 'approved' | 'rejected';
   return_approved_at?: string | null;
   is_new_stock?: boolean;
+  payment_splits?: { mode: string; amount: number; reference?: string }[];
+  investment_redeemed?: number;
+  investment_sub_id?: string;
+  making_charges_discount?: number;
+  sale_request_status?: 'none' | 'pending' | 'approved' | 'rejected';
+  sale_request_at?: string;
+  sale_request_by_name?: string;
+  sale_request_notes?: string;
+  sale_request_data?: Record<string, any>;
   createdAt: string;
   updatedAt: string;
 }
@@ -325,6 +335,10 @@ export const updateInventoryStatus = (id: string, payload: {
   selling_price?: number;
   razorpay_order_id?: string;
   razorpay_payment_id?: string;
+  payment_splits?: { mode: string; amount: number; reference?: string }[];
+  making_charges_discount?: number;
+  investment_redeemed?: number;
+  investment_sub_id?: string;
 }) =>
   request<InventoryItem>(`/inventory/${id}/status`, {
     method: 'PATCH',
@@ -628,6 +642,9 @@ export const getCustomers = (page = 1, limit = 20) =>
 export const searchCustomerByPhone = (phone: string) =>
   request<{ data: FullCustomer[] }>(`/customers/search?phone=${encodeURIComponent(phone)}`);
 
+export const searchCustomers = (q: string) =>
+  request<{ data: FullCustomer[] }>(`/customers/search?q=${encodeURIComponent(q)}`);
+
 export const sendCustomerOtp = (phone: string) =>
   request<{ otp: string; message: string }>('/customers/otp/send', { method: 'POST', body: JSON.stringify({ phone }) });
 
@@ -637,6 +654,8 @@ export const verifyCustomerOtp = (phone: string, otp: string) =>
 export const createCustomer = (data: {
   name: string; phone: string; email?: string; gender?: string;
   address?: string; city?: string; state?: string; pincode?: string; country?: string;
+  aadharCard?: string; panCard?: string; accountNumber?: string; ifscCode?: string; bankName?: string;
+  customFields?: { key: string; value: string }[];
 }) => request<FullCustomer>('/customers', { method: 'POST', body: JSON.stringify(data) });
 
 // ─── Payroll ──────────────────────────────────────────────────────────────────
@@ -728,3 +747,132 @@ export const markWorkerAttendance = (data: {
 
 export const getWorkerAttendance = (userId: string, start: string, end: string) =>
   request<any[]>(`/attendance/user/${userId}?start=${start}&end=${end}`);
+
+// ── Gold Investment ──────────────────────────────────────────────────────────
+
+export interface GoldInvestmentPlan {
+  _id: string;
+  name: string;
+  description?: string;
+  monthlyAmount: number;
+  durationMonths: number;
+  interestRate: number;
+  redemptionDiscount: number;
+  isActive: boolean;
+  razorpayPlanId: string;
+}
+
+export interface PaymentLedgerEntry {
+  month: number;
+  amount: number;
+  date: string;
+  type: 'autopay' | 'cash' | 'whatsapp_link';
+  razorpayPaymentId?: string;
+  staffId?: string;
+  note?: string;
+}
+
+export interface GoldSubscription {
+  _id: string;
+  plan: GoldInvestmentPlan;
+  customerName: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  status: 'active' | 'cancelled' | 'completed' | 'halted' | 'pending';
+  amountAccumulated: number;
+  interestAccumulated: number;
+  amountRedeemed: number;
+  redemptionHistory: { amount: number; date: string; saleReference?: string; note?: string }[];
+  paymentLedger: PaymentLedgerEntry[];
+  installmentsPaid: number;
+  maturesAt?: string;
+  startedAt?: string;
+  redeemed: boolean;
+  interestStopped: boolean;
+  requiresManualPayment: boolean;
+  whatsappRemindersCount: number;
+  adminNotes?: string;
+  createdAt: string;
+}
+
+export interface GoldStats {
+  total: number;
+  active: number;
+  cancelled: number;
+  completed: number;
+  halted: number;
+  manualPending: number;
+  totalAccumulated: number;
+  totalInterest: number;
+}
+
+export const getGoldStats = () => request<GoldStats>('/gold-investment/stats');
+
+export const getInvestmentPlans = () => request<GoldInvestmentPlan[]>('/gold-investment/plans');
+
+export const getGoldSubscriptions = (params?: { status?: string }) => {
+  const q = new URLSearchParams();
+  if (params?.status) q.set('status', params.status);
+  return request<GoldSubscription[]>(`/gold-investment/subscriptions?${q.toString()}`);
+};
+
+export const updateGoldSubscription = (id: string, data: { adminNotes?: string }) =>
+  request<GoldSubscription>(`/gold-investment/subscriptions/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+
+export const redeemGoldSubscription = (id: string, data: { amount: number; saleReference?: string; note?: string }) =>
+  request<GoldSubscription>(`/gold-investment/subscriptions/${id}/redeem`, { method: 'POST', body: JSON.stringify(data) });
+
+export const markGoldCashPayment = (id: string, data: { month: number; staffId?: string; note?: string }) =>
+  request<GoldSubscription>(`/gold-investment/subscriptions/${id}/mark-payment`, { method: 'POST', body: JSON.stringify(data) });
+
+export const sendGoldReminder = (id: string) =>
+  request<{ sent: boolean; message: string }>(`/gold-investment/subscriptions/${id}/send-reminder`, { method: 'POST' });
+
+export interface GoldBalance {
+  _id: string;
+  customerName: string;
+  customerPhone: string;
+  status: string;
+  amountAccumulated: number;
+  interestAccumulated: number;
+  amountRedeemed: number;
+  interestStopped: boolean;
+  availableBalance: number;
+  plan: { name: string; monthlyAmount: number; redemptionDiscount: number; durationMonths: number; interestRate: number };
+  installmentsPaid: number;
+}
+
+export const getGoldBalance = (phone: string) =>
+  request<GoldBalance[]>(`/gold-investment/balance?phone=${encodeURIComponent(phone)}`);
+
+// ── Sale Requests ─────────────────────────────────────────────────────────────
+
+export const getBranches = () => request<Branch[]>('/branches');
+
+export const getPendingSaleRequests = (params?: { page?: number; limit?: number; branch_id?: string }) => {
+  const qs = params ? '?' + new URLSearchParams(
+    Object.fromEntries(Object.entries(params).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]))
+  ).toString() : '';
+  return request<{ data: InventoryItem[]; meta: { total: number; page: number; limit: number; total_pages: number } }>(
+    `/inventory/sale-requests${qs}`
+  );
+};
+
+export const approveSaleRequest = (id: string, overrides?: {
+  selling_price?: number;
+  manager_discount?: number;
+  investment_redeemed?: number;
+  investment_sub_id?: string;
+  making_charges_discount?: number;
+  payment_splits?: Array<{ mode: string; amount: number; reference?: string }>;
+}) =>
+  request<InventoryItem>(`/inventory/${id}/sale-request/approve`, {
+    method: 'PATCH',
+    body: JSON.stringify(overrides ?? {}),
+  });
+
+export const rejectSaleRequest = (id: string, reason: string) =>
+  request<InventoryItem>(`/inventory/${id}/sale-request/reject`, {
+    method: 'PATCH',
+    body: JSON.stringify({ reason }),
+  });

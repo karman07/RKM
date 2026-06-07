@@ -362,6 +362,11 @@ ${billEl.outerHTML}
   const saleRef  = invoiceNumber ?? customer?.unique_item_code ?? '—';
   const billNo   = invoiceNumber ?? `DOC/SAL/${saleRef}`;
 
+  // Investment redemption totals across all items
+  const totalInvestmentRedeemed = items.reduce((s, it) => s + ((it as any).investment_redeemed ?? 0), 0);
+  const totalMakingDiscount = items.reduce((s, it) => s + ((it as any).making_charges_discount ?? 0), 0);
+  const paymentSplits: { mode: string; amount: number; reference?: string }[] = (customer as any)?.payment_splits ?? [];
+
   // ── Branch details (actual data from sold_at_branch_id) ─────────────────────
   let branchData = customer?.sold_at_branch_id && typeof customer.sold_at_branch_id === 'object'
     ? customer.sold_at_branch_id as any
@@ -601,11 +606,21 @@ ${billEl.outerHTML}
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td style={{ padding: '4px 0', fontWeight: 700 }}>{customer?.payment_mode?.toUpperCase() ?? 'CASH'}</td>
-                  <td style={{ padding: '4px 0', color: '#555', fontFamily: 'monospace', fontSize: '9px' }}>{saleRef}</td>
-                  <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: 700 }}>₹{fmt(totalFinal)}</td>
-                </tr>
+                {paymentSplits.length > 0 ? paymentSplits.map((split, si) => (
+                  <tr key={si}>
+                    <td style={{ padding: '4px 0', fontWeight: 700 }}>
+                      {split.mode === 'investment_balance' ? 'INVESTMENT PLAN' : split.mode.toUpperCase().replace(/_/g, ' ')}
+                    </td>
+                    <td style={{ padding: '4px 0', color: '#555', fontFamily: 'monospace', fontSize: '9px' }}>{split.reference ?? saleRef}</td>
+                    <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: 700 }}>₹{fmt(split.amount)}</td>
+                  </tr>
+                )) : (
+                  <tr>
+                    <td style={{ padding: '4px 0', fontWeight: 700 }}>{customer?.payment_mode?.toUpperCase() ?? 'CASH'}</td>
+                    <td style={{ padding: '4px 0', color: '#555', fontFamily: 'monospace', fontSize: '9px' }}>{saleRef}</td>
+                    <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: 700 }}>₹{fmt(totalFinal)}</td>
+                  </tr>
+                )}
               </tbody>
             </table>
             <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid #ddd', paddingTop: '6px' }}>
@@ -639,10 +654,12 @@ ${billEl.outerHTML}
                 totalMgrDis > 0 && { label: 'Additional Discount (Manager)', value: `- ₹${fmt(totalMgrDis)}`, bold: false },
                 { label: 'Taxable Value', value: `₹${fmt(totalTaxable)}`, bold: false },
                 { label: 'Total Tax (GST)', value: `₹${fmt(grandTotalTax)}`, bold: false },
+                totalInvestmentRedeemed > 0 && { label: 'Investment Balance Applied', value: `- ₹${fmt(totalInvestmentRedeemed)}`, bold: false, color: '#7A1C2A' },
+                totalMakingDiscount > 0 && { label: 'Making Charges Discount (Scheme)', value: `- ₹${fmt(totalMakingDiscount)}`, bold: false, color: '#7A1C2A' },
               ].filter(Boolean).map((row: any, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '2.5px 0', borderBottom: '1px solid #eee' }}>
-                  <span style={{ color: '#555' }}>{row.label}</span>
-                  <span style={{ fontWeight: row.bold ? 700 : 400 }}>{row.value}</span>
+                  <span style={{ color: row.color ?? '#555' }}>{row.label}</span>
+                  <span style={{ fontWeight: row.bold ? 700 : 400, color: row.color ?? 'inherit' }}>{row.value}</span>
                 </div>
               ))}
             </div>

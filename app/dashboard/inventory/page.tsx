@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 import ViewItemModal from '../../../components/ViewItemModal';
@@ -7,8 +7,8 @@ import BarcodeScannerModal from '../../../components/BarcodeScannerModal';
 import BillModal from '../../../components/BillModal';
 import {
   getProfile, getInventory, updateInventoryStatus, updateManagerDiscount, getCashiers,
-  generateSaleInvoiceNumber, staticUrl,
-  InventoryItem, UserProfile, Cashier, createPaymentOrder,
+  generateSaleInvoiceNumber, staticUrl, searchCustomers, getGoldBalance, redeemGoldSubscription,
+  InventoryItem, UserProfile, Cashier, createPaymentOrder, FullCustomer, GoldBalance,
 } from '../../../lib/api';
 import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth';
 import { auth } from '../../../lib/firebase';
@@ -53,6 +53,139 @@ interface DamageFormData {
   reason: string;
 }
 
+// ── Customer Picker Dialog ────────────────────────────────────────────────────
+
+function CustomerPickerDialog({ onSelect, onClose }: {
+  onSelect: (c: FullCustomer) => void;
+  onClose: () => void;
+}) {
+  const [q, setQ] = useState('');
+  const [results, setResults] = useState<FullCustomer[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  useEffect(() => {
+    if (timer.current) clearTimeout(timer.current);
+    if (q.trim().length < 2) { setResults([]); setSearched(false); return; }
+    setLoading(true);
+    timer.current = setTimeout(async () => {
+      try {
+        const res = await searchCustomers(q.trim());
+        setResults(res.data ?? []);
+        setSearched(true);
+      } catch { setResults([]); setSearched(true); }
+      finally { setLoading(false); }
+    }, 300);
+    return () => { if (timer.current) clearTimeout(timer.current); };
+  }, [q]);
+
+  function initials(name: string) {
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-start justify-center pt-24 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div className="px-6 py-5 border-b border-slate-100 flex items-center gap-4">
+          <div className="flex-1 relative">
+            <svg className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              ref={inputRef}
+              value={q}
+              onChange={e => setQ(e.target.value)}
+              placeholder="Search by name, phone, or email…"
+              className="w-full pl-11 pr-4 py-3 border border-slate-200 rounded-2xl text-sm font-medium focus:outline-none focus:border-[#7A1C2A] focus:ring-2 focus:ring-[#7A1C2A]/10 transition-all"
+            />
+          </div>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 transition-colors flex-shrink-0">
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="max-h-[420px] overflow-y-auto">
+          {loading && (
+            <div className="flex items-center justify-center py-12">
+              <div className="w-6 h-6 border-2 border-[#7A1C2A]/20 border-t-[#7A1C2A] rounded-full animate-spin" />
+            </div>
+          )}
+          {!loading && q.trim().length < 2 && (
+            <div className="text-center py-12 px-6">
+              <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-3 border border-slate-100">
+                <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="#cbd5e1" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </div>
+              <p className="text-sm font-bold text-slate-400">Type at least 2 characters</p>
+              <p className="text-xs text-slate-300 mt-1">Search across name, phone number, or email</p>
+            </div>
+          )}
+          {!loading && searched && results.length === 0 && q.trim().length >= 2 && (
+            <div className="text-center py-12 px-6">
+              <p className="text-sm font-bold text-slate-500">No customers found</p>
+              <p className="text-xs text-slate-300 mt-1">Try a different name, phone, or email</p>
+            </div>
+          )}
+          {!loading && results.length > 0 && (
+            <div className="divide-y divide-slate-50">
+              {results.map(c => (
+                <button
+                  key={c._id}
+                  onClick={() => onSelect(c)}
+                  className="w-full flex items-center gap-4 px-6 py-4 hover:bg-slate-50 transition-colors text-left group"
+                >
+                  <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-sm font-black text-white flex-shrink-0 transition-transform group-hover:scale-105"
+                    style={{ background: 'linear-gradient(135deg, #7A1C2A, #5A0F1A)' }}>
+                    {initials(c.name)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <p className="text-sm font-black text-slate-900 truncate">{c.name}</p>
+                      {c.isPhoneVerified && (
+                        <span className="flex-shrink-0 text-[8px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full uppercase">Verified</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      {c.phone && (
+                        <span className="text-[11px] text-slate-400 font-medium flex items-center gap-1">
+                          <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+                          {c.phone}
+                        </span>
+                      )}
+                      {c.email && (
+                        <span className="text-[11px] text-slate-400 font-medium flex items-center gap-1 truncate">
+                          <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                          {c.email}
+                        </span>
+                      )}
+                      {c.city && <span className="text-[11px] text-slate-300">{c.city}</span>}
+                    </div>
+                  </div>
+                  <svg className="text-slate-300 group-hover:text-[#7A1C2A] transition-colors flex-shrink-0" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="px-6 py-4 bg-slate-50 border-t border-slate-100">
+          <p className="text-[10px] text-slate-400 font-medium text-center">Select a customer to auto-fill their details</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function InventoryPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -70,6 +203,13 @@ export function InventoryPageContent() {
   // Sell modal state
   const [sellItem, setSellItem] = useState<InventoryItem | null>(null);
   const [sellForm, setSellForm] = useState<SellFormData>({ customer_name: '', customer_phone: '', customer_country_code: '+91', customer_email: '', shipping_address: '', shipping_city: '', shipping_state: '', shipping_pincode: '', payment_mode: 'cash', discount: 0, sold_by_user_id: '' });
+  const [showCustomerPicker, setShowCustomerPicker] = useState(false);
+
+  // Investment balance
+  const [investmentPlans, setInvestmentPlans] = useState<GoldBalance[]>([]);
+  const [selectedInvestmentSub, setSelectedInvestmentSub] = useState<GoldBalance | null>(null);
+  const [investmentApplied, setInvestmentApplied] = useState(0);
+  const [loadingInvestment, setLoadingInvestment] = useState(false);
   const [selling, setSelling] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
   const [otp, setOtp] = useState('');
@@ -213,12 +353,28 @@ export function InventoryPageContent() {
     setOtpSending(false);
   };
 
+  async function fetchInvestmentBalance(phone: string, countryCode: string) {
+    setLoadingInvestment(true);
+    setInvestmentPlans([]);
+    setSelectedInvestmentSub(null);
+    setInvestmentApplied(0);
+    try {
+      const full = `${countryCode}${phone}`;
+      const data = await getGoldBalance(full);
+      const withBalance = (Array.isArray(data) ? data : []).filter(b => b.availableBalance > 0);
+      setInvestmentPlans(withBalance);
+      if (withBalance.length === 1) setSelectedInvestmentSub(withBalance[0]);
+    } catch { setInvestmentPlans([]); }
+    finally { setLoadingInvestment(false); }
+  }
+
   const handleVerifyOTP = async () => {
     if (!otp || !verificationId) return;
     setOtpError("");
     try {
       await verificationId.confirm(otp);
       setPhoneVerified(true);
+      fetchInvestmentBalance(sellForm.customer_phone, sellForm.customer_country_code);
     } catch (err: any) {
       setOtpError('Invalid OTP. Please try again.');
     }
@@ -238,6 +394,24 @@ export function InventoryPageContent() {
           await updateManagerDiscount(sellItem._id, sellForm.discount);
         }
         const saleInvoiceNumber = generateSaleInvoiceNumber();
+
+        // Compute making charges discount from plan's redemptionDiscount
+        const pb = (sellItem as any).pricing_breakdown ?? (typeof sellItem.product_id === 'object' ? (sellItem.product_id as any).pricing_breakdown : null);
+        const makingCharges = pb?.making_charges ?? 0;
+        const redemptionDiscountPct = selectedInvestmentSub?.plan?.redemptionDiscount ?? 0;
+        const makingChargesDiscount = investmentApplied > 0 ? Math.round(makingCharges * redemptionDiscountPct / 100) : 0;
+        const basePrice = Math.round((sellItem.selling_price || sellItem.live_selling_price || 0) * (1 - sellForm.discount / 100));
+        const finalPrice = Math.max(0, basePrice - investmentApplied - makingChargesDiscount);
+
+        // Build payment splits
+        const paymentSplits: { mode: string; amount: number; reference?: string }[] = [];
+        if (investmentApplied > 0) {
+          paymentSplits.push({ mode: 'investment_balance', amount: investmentApplied, reference: selectedInvestmentSub?._id });
+        }
+        if (finalPrice > 0) {
+          paymentSplits.push({ mode: sellForm.payment_mode, amount: finalPrice });
+        }
+
         const updated = await updateInventoryStatus(sellItem._id, {
           status: 'sold',
           sold_customer_name: sellForm.customer_name || undefined,
@@ -254,7 +428,26 @@ export function InventoryPageContent() {
           sold_at_branch_id: (user?.branch as any)?._id || undefined,
           razorpay_order_id: razorpayOrderId,
           razorpay_payment_id: razorpayPaymentId,
+          payment_splits: paymentSplits.length > 0 ? paymentSplits : undefined,
+          investment_redeemed: investmentApplied > 0 ? investmentApplied : undefined,
+          investment_sub_id: selectedInvestmentSub?._id,
+          making_charges_discount: makingChargesDiscount > 0 ? makingChargesDiscount : undefined,
         });
+        // Deduct investment balance after sale is recorded
+        if (selectedInvestmentSub && investmentApplied > 0) {
+          try {
+            const productName = typeof sellItem.product_id === 'object' ? (sellItem.product_id as any).name : sellItem.unique_item_code;
+            const noteparts = [`Redeemed against sale of ${productName} (${saleInvoiceNumber})`];
+            if (makingChargesDiscount > 0) noteparts.push(`Making charges discount: ₹${makingChargesDiscount.toLocaleString('en-IN')} (${redemptionDiscountPct}% off)`);
+            await redeemGoldSubscription(selectedInvestmentSub._id, {
+              amount: investmentApplied,
+              saleReference: saleInvoiceNumber,
+              note: noteparts.join(' | '),
+            });
+          } catch (e) {
+            toast.error('Sale recorded but investment balance deduction failed — please do it manually.');
+          }
+        }
         const populatedUpdated = {
           ...sellItem,
           ...updated,
@@ -268,6 +461,9 @@ export function InventoryPageContent() {
         setOtpSent(false);
         setOtp('');
         setOtpError('');
+        setInvestmentPlans([]);
+        setSelectedInvestmentSub(null);
+        setInvestmentApplied(0);
         setSelling(false);
         setItems((prev) => prev.map((i) => i._id === populatedUpdated._id ? populatedUpdated : i));
       } catch (err: any) {
@@ -526,9 +722,14 @@ export function InventoryPageContent() {
                     </div>
                   </div>
                 </div>
-                <p className="text-[10px] font-bold text-slate-400 mb-2">
+                <p className="text-[10px] font-bold text-slate-400 mb-1.5">
                   Barcode: <code className="bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded-md text-slate-600 font-bold">{item.barcode}</code>
                 </p>
+                {item.sale_reference && (
+                  <p className="text-[10px] font-bold text-emerald-700 mb-2">
+                    Invoice: <code className="bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md text-emerald-700 font-bold">{item.sale_reference}</code>
+                  </p>
+                )}
                 <div className="mb-3">
                   {hasDiscount && <span className="text-[11px] font-bold text-slate-400 line-through block">₹{basePrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>}
                   {adminDiscountPct > 0 && (
@@ -643,11 +844,19 @@ export function InventoryPageContent() {
                       </div>
                     </td>
                     <td className="px-6 py-5 hidden md:table-cell">
-                      <div className="flex items-center gap-2.5">
-                        <svg width="14" height="14" className="text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 4h4v16H4V4zm6 0h2v16h-2V4zm4 0h1v16h-1V4zm3 0h3v16h-3V4z" />
-                        </svg>
-                        <code className="text-[10px] font-bold text-slate-600 bg-white border border-slate-200 px-2.5 py-1 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.02)]">{item.barcode}</code>
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center gap-2.5">
+                          <svg width="14" height="14" className="text-slate-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 4h4v16H4V4zm6 0h2v16h-2V4zm4 0h1v16h-1V4zm3 0h3v16h-3V4z" />
+                          </svg>
+                          <code className="text-[10px] font-bold text-slate-600 bg-white border border-slate-200 px-2.5 py-1 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.02)]">{item.barcode}</code>
+                        </div>
+                        {item.sale_reference && (
+                          <div className="flex items-center gap-1.5 pl-0.5">
+                            <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">INV</span>
+                            <code className="text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">{item.sale_reference}</code>
+                          </div>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-5 hidden lg:table-cell">
@@ -842,6 +1051,34 @@ export function InventoryPageContent() {
       </div>
 
       {/* ── Sell Modal ── */}
+      {sellItem && showCustomerPicker && (
+        <CustomerPickerDialog
+          onClose={() => setShowCustomerPicker(false)}
+          onSelect={(c) => {
+            const rawPhone = (c.phone || '').replace(/^\+91|^\+1|^\+44|^\+971|^\+61|^\+65|^\+49|^\+33|^\+81/, '');
+            const cc = c.phone?.startsWith('+') ? c.phone.replace(/\d+$/, '').replace(/\d{10}$/, '') : '+91';
+            const parsedCc = ['+91','+1','+44','+971','+61','+65','+49','+33','+81'].find(x => (c.phone || '').startsWith(x)) || '+91';
+            const parsedPhone = (c.phone || '').replace(parsedCc, '').replace(/\D/g, '').slice(-10);
+            setSellForm(f => ({
+              ...f,
+              customer_name: c.name,
+              customer_phone: parsedPhone,
+              customer_country_code: parsedCc,
+              customer_email: c.email || f.customer_email,
+              shipping_address: c.address || f.shipping_address,
+              shipping_city: c.city || f.shipping_city,
+              shipping_state: c.state || f.shipping_state,
+              shipping_pincode: c.pincode || f.shipping_pincode,
+            }));
+            if (c.isPhoneVerified && parsedPhone.length === 10) {
+              setPhoneVerified(true);
+              fetchInvestmentBalance(parsedPhone, parsedCc);
+            }
+            setShowCustomerPicker(false);
+          }}
+        />
+      )}
+
       {sellItem && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-[24px] shadow-2xl w-full max-w-4xl p-4 sm:p-8 max-h-[95vh] overflow-y-auto">
@@ -869,15 +1106,71 @@ export function InventoryPageContent() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-black uppercase tracking-widest text-[#7A1C2A] mb-2">Customer Name <span className="text-red-500">*</span></label>
-                  <input type="text" value={sellForm.customer_name || ''} onChange={(e) => setSellForm({ ...sellForm, customer_name: e.target.value })}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-4 text-sm font-bold text-slate-900 focus:outline-[#7A1C2A] transition-all hover:border-slate-300 shadow-sm" placeholder="Full Name" />
+                  {sellForm.customer_name ? (
+                    <div className="flex items-center gap-3 bg-white border border-[#7A1C2A]/30 rounded-xl px-4 py-3 shadow-sm">
+                      <div className="w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black text-white flex-shrink-0"
+                        style={{ background: 'linear-gradient(135deg, #7A1C2A, #5A0F1A)' }}>
+                        {sellForm.customer_name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-black text-slate-900 truncate">{sellForm.customer_name}</p>
+                        {sellForm.customer_phone && <p className="text-[10px] text-slate-400">{sellForm.customer_country_code} {sellForm.customer_phone}</p>}
+                      </div>
+                      <button type="button" onClick={() => setShowCustomerPicker(true)}
+                        className="text-[10px] font-black text-[#7A1C2A] hover:underline flex-shrink-0">Change</button>
+                    </div>
+                  ) : (
+                    <button type="button" onClick={() => setShowCustomerPicker(true)}
+                      className="w-full flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-4 py-4 text-sm text-slate-400 hover:border-[#7A1C2A]/40 hover:bg-slate-50 transition-all shadow-sm group">
+                      <svg className="text-slate-300 group-hover:text-[#7A1C2A] transition-colors" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                      <span className="font-medium">Search customer by name, phone or email…</span>
+                    </button>
+                  )}
                 </div>
                 <div>
                   <label className="block text-[10px] font-black uppercase tracking-widest text-[#7A1C2A] mb-2">Final Sale Price (₹) <span className="text-red-500">*</span></label>
-                  <div className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-4 text-sm font-black text-[#5A0F1A] flex justify-between items-center shadow-sm">
-                    <span>{(Math.round((sellItem.selling_price || sellItem.live_selling_price || 0) * (1 - sellForm.discount / 100))).toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
-                    {sellForm.discount > 0 && <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-md">-{sellForm.discount}% MS</span>}
-                  </div>
+                  {(() => {
+                    const base = Math.round((sellItem.selling_price || sellItem.live_selling_price || 0) * (1 - sellForm.discount / 100));
+                    const pb = (sellItem as any).pricing_breakdown ?? (typeof sellItem.product_id === 'object' ? (sellItem.product_id as any).pricing_breakdown : null);
+                    const mc = pb?.making_charges ?? 0;
+                    const rdPct = selectedInvestmentSub?.plan?.redemptionDiscount ?? 0;
+                    const mcDiscount = investmentApplied > 0 && rdPct > 0 ? Math.round(mc * rdPct / 100) : 0;
+                    const final = Math.max(0, base - investmentApplied - mcDiscount);
+                    return (
+                      <div className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-4 shadow-sm space-y-1.5">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-black text-[#5A0F1A]">₹{final.toLocaleString('en-IN')}</span>
+                          <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                            {sellForm.discount > 0 && <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-md font-black">-{sellForm.discount}% off</span>}
+                            {investmentApplied > 0 && <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-md font-black">-₹{investmentApplied.toLocaleString('en-IN')} balance</span>}
+                            {mcDiscount > 0 && <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-md font-black">-₹{mcDiscount.toLocaleString('en-IN')} making</span>}
+                          </div>
+                        </div>
+                        {(investmentApplied > 0 || mcDiscount > 0) && (
+                          <div className="border-t border-slate-200 pt-1.5 space-y-0.5">
+                            <div className="text-[10px] text-slate-400 font-medium flex items-center gap-1.5">
+                              <span>Item price:</span><span className="font-bold text-slate-600">₹{base.toLocaleString('en-IN')}</span>
+                            </div>
+                            {investmentApplied > 0 && (
+                              <div className="text-[10px] text-amber-600 font-medium flex items-center gap-1.5">
+                                <span>- Investment balance:</span><span className="font-bold">₹{investmentApplied.toLocaleString('en-IN')}</span>
+                              </div>
+                            )}
+                            {mcDiscount > 0 && (
+                              <div className="text-[10px] text-purple-600 font-medium flex items-center gap-1.5">
+                                <span>- Making charges discount ({rdPct}% of ₹{mc.toLocaleString('en-IN')}):</span><span className="font-bold">₹{mcDiscount.toLocaleString('en-IN')}</span>
+                              </div>
+                            )}
+                            <div className="text-[10px] text-[#5A0F1A] font-black flex items-center gap-1.5 border-t border-slate-100 pt-1">
+                              <span>Amount due:</span><span>₹{final.toLocaleString('en-IN')}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -900,7 +1193,7 @@ export function InventoryPageContent() {
                         <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
                       </div>
                     </div>
-                    <input type="tel" value={sellForm.customer_phone || ''} onChange={(e) => { setSellForm({ ...sellForm, customer_phone: e.target.value.replace(/\D/g, '').slice(0, 10) }); setPhoneVerified(false); setOtpSent(false); setOtpError(''); }}
+                    <input type="tel" value={sellForm.customer_phone || ''} onChange={(e) => { setSellForm({ ...sellForm, customer_phone: e.target.value.replace(/\D/g, '').slice(0, 10) }); setPhoneVerified(false); setOtpSent(false); setOtpError(''); setInvestmentPlans([]); setSelectedInvestmentSub(null); setInvestmentApplied(0); }}
                       disabled={phoneVerified || otpSent}
                       className="flex-1 bg-transparent px-3 sm:px-5 py-4 text-base sm:text-lg font-black tracking-wider text-slate-900 disabled:text-slate-400 focus:outline-none min-w-0" placeholder="Mobile Number" />
                   </div>
@@ -1015,6 +1308,101 @@ export function InventoryPageContent() {
                   <span className="text-[11px] font-bold text-slate-400 max-w-[200px]">Lowers the Final Sale Price dynamically based on margin rules.</span>
                 </div>
               </div>
+
+              {/* ── Investment Balance Redemption ── */}
+              {phoneVerified && (
+                <div className="rounded-2xl border-2 border-amber-200 bg-amber-50/40 p-5 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#d97706" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Investment Balance Redemption</p>
+                  </div>
+
+                  {loadingInvestment && (
+                    <div className="flex items-center gap-2 text-xs text-amber-600 font-bold">
+                      <div className="w-4 h-4 border-2 border-amber-300 border-t-amber-600 rounded-full animate-spin" />
+                      Checking investment balance…
+                    </div>
+                  )}
+
+                  {!loadingInvestment && investmentPlans.length === 0 && (
+                    <p className="text-xs text-slate-400 font-medium">No redeemable investment balance found for this customer.</p>
+                  )}
+
+                  {!loadingInvestment && investmentPlans.length > 0 && (
+                    <>
+                      {investmentPlans.length > 1 && (
+                        <div className="space-y-2">
+                          <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Select plan to redeem from</p>
+                          {investmentPlans.map(plan => (
+                            <button key={plan._id} type="button"
+                              onClick={() => { setSelectedInvestmentSub(plan); setInvestmentApplied(0); }}
+                              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all text-left ${selectedInvestmentSub?._id === plan._id ? 'border-amber-500 bg-amber-50' : 'border-slate-200 bg-white hover:border-amber-300'}`}>
+                              <div>
+                                <p className="text-sm font-black text-slate-900">{plan.plan?.name}</p>
+                                <p className="text-[10px] text-slate-400">{plan.installmentsPaid} months paid</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-sm font-black text-amber-700">₹{plan.availableBalance.toLocaleString('en-IN')}</p>
+                                <p className="text-[9px] text-slate-400 font-medium">available</p>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {investmentPlans.length === 1 && selectedInvestmentSub && (
+                        <div className="flex items-center justify-between bg-white rounded-xl px-4 py-3 border border-amber-200">
+                          <div>
+                            <p className="text-sm font-black text-slate-900">{selectedInvestmentSub.plan?.name}</p>
+                            <p className="text-[10px] text-slate-400">{selectedInvestmentSub.installmentsPaid} months paid</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-black text-amber-700">₹{selectedInvestmentSub.availableBalance.toLocaleString('en-IN')}</p>
+                            <p className="text-[9px] text-slate-400 font-medium">available</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {selectedInvestmentSub && (() => {
+                        const basePrice = Math.round((sellItem.selling_price || sellItem.live_selling_price || 0) * (1 - sellForm.discount / 100));
+                        const maxApply = Math.min(selectedInvestmentSub.availableBalance, basePrice);
+                        return (
+                          <div className="space-y-2">
+                            <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 block">
+                              Amount to Apply (max ₹{maxApply.toLocaleString('en-IN')})
+                            </label>
+                            <div className="flex items-center gap-3">
+                              <input type="number" min={0} max={maxApply} value={investmentApplied || ''}
+                                onChange={e => setInvestmentApplied(Math.min(parseFloat(e.target.value) || 0, maxApply))}
+                                placeholder={`0 – ${maxApply.toLocaleString('en-IN')}`}
+                                className="flex-1 bg-white border-2 border-amber-300 rounded-xl px-4 py-3 text-sm font-black text-amber-800 focus:outline-none focus:border-amber-500 shadow-sm"
+                              />
+                              <button type="button" onClick={() => setInvestmentApplied(maxApply)}
+                                className="px-4 py-3 rounded-xl bg-amber-600 text-white text-xs font-black hover:bg-amber-700 transition-colors whitespace-nowrap">
+                                Apply Max
+                              </button>
+                              {investmentApplied > 0 && (
+                                <button type="button" onClick={() => setInvestmentApplied(0)}
+                                  className="px-4 py-3 rounded-xl border border-slate-200 text-slate-500 text-xs font-black hover:bg-slate-50 transition-colors">
+                                  Clear
+                                </button>
+                              )}
+                            </div>
+                            {investmentApplied > 0 && (
+                              <p className="text-[10px] text-amber-700 font-bold flex items-center gap-1.5">
+                                <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                ₹{investmentApplied.toLocaleString('en-IN')} will be deducted from investment balance on sale confirmation
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </>
+                  )}
+                </div>
+              )}
 
               <div id="recaptcha-cont"></div>
               <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 mt-6 pt-5 border-t border-slate-100">

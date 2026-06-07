@@ -3,7 +3,8 @@ import { useEffect, useState, useCallback, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import {
   getCustomers, searchCustomerByPhone, createCustomer,
-  type FullCustomer,
+  getInventory, getGoldBalance,
+  type FullCustomer, type InventoryItem, type GoldBalance,
 } from '../../../lib/api';
 import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from 'firebase/auth';
 import { auth } from '../../../lib/firebase';
@@ -106,6 +107,20 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [state, setState] = useState('');
   const [pincode, setPincode] = useState('');
   const [country, setCountry] = useState('India');
+  // KYC & bank
+  const [aadharCard, setAadharCard] = useState('');
+  const [panCard, setPanCard] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  const [ifscCode, setIfscCode] = useState('');
+  const [bankName, setBankName] = useState('');
+  // Custom fields
+  const [customFields, setCustomFields] = useState<{ key: string; value: string }[]>([]);
+
+  function addCustomField() { setCustomFields(f => [...f, { key: '', value: '' }]); }
+  function removeCustomField(i: number) { setCustomFields(f => f.filter((_, idx) => idx !== i)); }
+  function updateCustomField(i: number, part: 'key' | 'value', val: string) {
+    setCustomFields(f => f.map((item, idx) => idx === i ? { ...item, [part]: val } : item));
+  }
 
   // Live phone search
   useEffect(() => {
@@ -169,6 +184,7 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
     setErr('');
     setSaving(true);
     try {
+      const validCustomFields = customFields.filter(f => f.key.trim());
       const customer = await createCustomer({
         name: name.trim(),
         phone: `+91${phone.replace(/^\+91/, '')}`,
@@ -179,6 +195,12 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
         state: state.trim() || undefined,
         pincode: pincode.trim() || undefined,
         country: country.trim() || 'India',
+        aadharCard: aadharCard.trim() || undefined,
+        panCard: panCard.trim().toUpperCase() || undefined,
+        accountNumber: accountNumber.trim() || undefined,
+        ifscCode: ifscCode.trim().toUpperCase() || undefined,
+        bankName: bankName.trim() || undefined,
+        customFields: validCustomFields.length ? validCustomFields : undefined,
       });
       onCreated(customer);
     } catch (e: any) {
@@ -194,7 +216,7 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
       {/* Invisible reCAPTCHA container required by Firebase phone auth */}
       <div id="recaptcha-customer" />
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
 
         {/* Header */}
         <div className="px-7 py-5 border-b border-slate-100 flex items-center justify-between">
@@ -237,7 +259,7 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
           ))}
         </div>
 
-        <div className="px-7 py-5 space-y-4">
+        <div className="px-7 py-5 space-y-4 overflow-y-auto flex-1">
 
           {/* ─ Step: Phone ─ */}
           {step === 'phone' && (
@@ -358,61 +380,146 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
                 +91 {phone} verified successfully
               </div>
 
-              <div className="space-y-3">
-                <div>
-                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Full Name *</label>
-                  <input placeholder="Customer full name" value={name} onChange={e => setName(e.target.value)}
-                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
-                    style={{ '--tw-ring-color': `${PRIMARY}40` } as any} autoFocus />
+              <div className="space-y-4">
+
+                {/* Basic Info */}
+                <div className="space-y-3">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Basic Info</p>
+                  <div>
+                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Full Name *</label>
+                    <input placeholder="Customer full name" value={name} onChange={e => setName(e.target.value)}
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
+                      style={{ '--tw-ring-color': `${PRIMARY}40` } as any} autoFocus />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Email</label>
+                      <input type="email" placeholder="email@example.com" value={email} onChange={e => setEmail(e.target.value)}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
+                        style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Gender</label>
+                      <select value={gender} onChange={e => setGender(e.target.value)}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 bg-white"
+                        style={{ '--tw-ring-color': `${PRIMARY}40` } as any}>
+                        <option value="">Select</option>
+                        <option value="male">Male</option>
+                        <option value="female">Female</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Address</label>
+                    <input placeholder="Full address…" value={address} onChange={e => setAddress(e.target.value)}
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
+                      style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">City</label>
+                      <input placeholder="City" value={city} onChange={e => setCity(e.target.value)}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
+                        style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">State</label>
+                      <input placeholder="State" value={state} onChange={e => setState(e.target.value)}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
+                        style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Pincode</label>
+                      <input placeholder="PIN" value={pincode} onChange={e => setPincode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
+                        style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+                    </div>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Email</label>
-                    <input type="email" placeholder="email@example.com" value={email} onChange={e => setEmail(e.target.value)}
-                      className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
-                      style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
-                  </div>
-                  <div>
-                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Gender</label>
-                    <select value={gender} onChange={e => setGender(e.target.value)}
-                      className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 bg-white"
-                      style={{ '--tw-ring-color': `${PRIMARY}40` } as any}>
-                      <option value="">Select</option>
-                      <option value="male">Male</option>
-                      <option value="female">Female</option>
-                      <option value="other">Other</option>
-                    </select>
+                {/* KYC Documents */}
+                <div className="border-t border-slate-100 pt-4 space-y-3">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">KYC Documents</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Aadhaar Number</label>
+                      <input placeholder="XXXX XXXX XXXX" value={aadharCard}
+                        onChange={e => setAadharCard(e.target.value.replace(/\D/g, '').slice(0, 12))}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
+                        style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">PAN Number</label>
+                      <input placeholder="ABCDE1234F" value={panCard}
+                        onChange={e => setPanCard(e.target.value.toUpperCase().slice(0, 10))}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 uppercase"
+                        style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+                    </div>
                   </div>
                 </div>
 
-                <div>
-                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Address</label>
-                  <input placeholder="Full address…" value={address} onChange={e => setAddress(e.target.value)}
-                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
-                    style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+                {/* Bank Details */}
+                <div className="border-t border-slate-100 pt-4 space-y-3">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Bank Details</p>
+                  <div>
+                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Account Number</label>
+                    <input placeholder="Bank account number" value={accountNumber}
+                      onChange={e => setAccountNumber(e.target.value.replace(/\D/g, ''))}
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
+                      style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">IFSC Code</label>
+                      <input placeholder="SBIN0001234" value={ifscCode}
+                        onChange={e => setIfscCode(e.target.value.toUpperCase().slice(0, 11))}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 uppercase"
+                        style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Bank Name</label>
+                      <input placeholder="e.g. SBI" value={bankName} onChange={e => setBankName(e.target.value)}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
+                        style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+                    </div>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">City</label>
-                    <input placeholder="City" value={city} onChange={e => setCity(e.target.value)}
-                      className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
-                      style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+                {/* Custom Fields */}
+                <div className="border-t border-slate-100 pt-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Custom Fields</p>
+                    <button type="button" onClick={addCustomField}
+                      className="flex items-center gap-1 text-[10px] font-black px-2.5 py-1 rounded-lg border transition-colors"
+                      style={{ color: PRIMARY, borderColor: `${PRIMARY}40`, background: `${PRIMARY}08` }}>
+                      <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                      </svg>
+                      Add Field
+                    </button>
                   </div>
-                  <div>
-                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">State</label>
-                    <input placeholder="State" value={state} onChange={e => setState(e.target.value)}
-                      className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
-                      style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
-                  </div>
-                  <div>
-                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Pincode</label>
-                    <input placeholder="PIN" value={pincode} onChange={e => setPincode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
-                      style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
-                  </div>
+                  {customFields.length === 0 && (
+                    <p className="text-[10px] text-slate-300 font-medium">No custom fields yet. Click "Add Field" to add any additional info.</p>
+                  )}
+                  {customFields.map((f, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <input placeholder="Field name" value={f.key} onChange={e => updateCustomField(i, 'key', e.target.value)}
+                        className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                        style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+                      <input placeholder="Value" value={f.value} onChange={e => updateCustomField(i, 'value', e.target.value)}
+                        className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                        style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+                      <button type="button" onClick={() => removeCustomField(i)}
+                        className="flex-shrink-0 p-1.5 rounded-lg hover:bg-rose-50 text-slate-300 hover:text-rose-500 transition-colors">
+                        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
                 </div>
+
               </div>
 
               {err && <p className="text-xs text-red-600 font-bold">{err}</p>}
@@ -436,11 +543,221 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
   );
 }
 
+// ── Customer Drawer ───────────────────────────────────────────────────────────
+
+function CustomerDrawer({ customer, onClose }: { customer: FullCustomer; onClose: () => void }) {
+  const [tab, setTab] = useState<'purchases' | 'plans'>('purchases');
+  const [purchases, setPurchases] = useState<InventoryItem[]>([]);
+  const [plans, setPlans] = useState<GoldBalance[]>([]);
+  const [loadingPurchases, setLoadingPurchases] = useState(true);
+  const [loadingPlans, setLoadingPlans] = useState(true);
+
+  const fmtMoney = (n: number) =>
+    new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
+
+  const statusColor = (s: string) => {
+    if (s === 'active') return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+    if (s === 'completed') return 'bg-blue-100 text-blue-700 border-blue-200';
+    if (s === 'cancelled') return 'bg-rose-100 text-rose-700 border-rose-200';
+    if (s === 'halted') return 'bg-amber-100 text-amber-700 border-amber-200';
+    return 'bg-slate-100 text-slate-500 border-slate-200';
+  };
+
+  useEffect(() => {
+    if (!customer.phone) { setLoadingPurchases(false); setLoadingPlans(false); return; }
+    setLoadingPurchases(true);
+    getInventory({ status: 'sold', sold_customer_phone: customer.phone, limit: '200' })
+      .then(res => setPurchases(res.data ?? []))
+      .catch(() => setPurchases([]))
+      .finally(() => setLoadingPurchases(false));
+    setLoadingPlans(true);
+    getGoldBalance(customer.phone)
+      .then(data => setPlans(Array.isArray(data) ? data : []))
+      .catch(() => setPlans([]))
+      .finally(() => setLoadingPlans(false));
+  }, [customer.phone]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex" onClick={onClose}>
+      <div className="flex-1 bg-black/30 backdrop-blur-sm" />
+      <div className="w-full max-w-xl bg-white h-full overflow-y-auto shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div className="px-6 py-5 border-b border-slate-100 flex items-start justify-between sticky top-0 bg-white z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-sm font-black text-white flex-shrink-0" style={{ background: PRIMARY }}>
+              {initials(customer.name)}
+            </div>
+            <div>
+              <h2 className="text-base font-black text-slate-900">{customer.name}</h2>
+              <p className="text-[11px] text-slate-400 font-medium">{customer.phone}{customer.email ? ` · ${customer.email}` : ''}</p>
+              {(customer.city || customer.state) && (
+                <p className="text-[10px] text-slate-400 mt-0.5">{[customer.city, customer.state].filter(Boolean).join(', ')} · Joined {fmt(customer.createdAt)}</p>
+              )}
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 transition-colors flex-shrink-0">
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-1 px-6 py-3 border-b border-slate-100 bg-white sticky top-[77px] z-10">
+          {(['purchases', 'plans'] as const).map(t => (
+            <button key={t} onClick={() => setTab(t)}
+              className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+              style={tab === t ? { background: PRIMARY, color: 'white' } : { color: '#94a3b8' }}>
+              {t === 'purchases' ? 'Purchase History' : 'Investment Plans'}
+            </button>
+          ))}
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 p-6">
+
+          {/* PURCHASES */}
+          {tab === 'purchases' && (
+            loadingPurchases ? (
+              <div className="flex justify-center py-16">
+                <div className="w-6 h-6 border-2 rounded-full animate-spin" style={{ borderColor: `${PRIMARY}30`, borderTopColor: PRIMARY }} />
+              </div>
+            ) : purchases.length === 0 ? (
+              <div className="text-center py-16">
+                <p className="text-slate-400 font-bold text-sm">No purchase history found</p>
+                <p className="text-slate-300 text-xs mt-1">This customer has not made any store purchases yet.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-3">{purchases.length} purchase{purchases.length !== 1 ? 's' : ''}</p>
+                {purchases.map(item => {
+                  const product = typeof item.product_id === 'object' ? item.product_id as any : null;
+                  const name = product?.name || item.unique_item_code;
+                  const price = (item as any).sold_price ?? item.selling_price;
+                  return (
+                    <div key={item._id} className="bg-white border border-slate-100 rounded-2xl p-4 flex items-center gap-4 hover:border-slate-200 transition-colors">
+                      {product?.images?.[0] ? (
+                        <img src={product.images[0]} alt={name} className="w-12 h-12 rounded-xl object-cover flex-shrink-0 border border-slate-100" />
+                      ) : (
+                        <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center flex-shrink-0">
+                          <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#cbd5e1" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                          </svg>
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-sm text-slate-900 truncate">{name}</p>
+                        <p className="text-[10px] text-slate-400 font-medium">{item.unique_item_code}</p>
+                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                          {product?.category && (
+                            <span className="text-[8px] font-black px-1.5 py-0.5 bg-slate-50 border border-slate-200 text-slate-400 rounded uppercase">{product.category}</span>
+                          )}
+                          {product?.metal && (
+                            <span className="text-[8px] font-black px-1.5 py-0.5 bg-amber-50 border border-amber-100 text-amber-600 rounded uppercase">{product.metal}</span>
+                          )}
+                          {item.payment_mode && (
+                            <span className="text-[8px] font-black px-1.5 py-0.5 bg-blue-50 border border-blue-100 text-blue-600 rounded uppercase">{item.payment_mode}</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex-shrink-0 text-right">
+                        <p className="text-sm font-black text-slate-900">{fmtMoney(price)}</p>
+                        {item.sold_at && (
+                          <p className="text-[10px] text-slate-400 mt-0.5">{new Date(item.sold_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )
+          )}
+
+          {/* INVESTMENT PLANS */}
+          {tab === 'plans' && (
+            loadingPlans ? (
+              <div className="flex justify-center py-16">
+                <div className="w-6 h-6 border-2 rounded-full animate-spin" style={{ borderColor: `${PRIMARY}30`, borderTopColor: PRIMARY }} />
+              </div>
+            ) : plans.length === 0 ? (
+              <div className="text-center py-16">
+                <p className="text-slate-400 font-bold text-sm">No investment plans found</p>
+                <p className="text-slate-300 text-xs mt-1">This customer is not enrolled in any gold savings plan.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-3">{plans.length} plan{plans.length !== 1 ? 's' : ''}</p>
+                {plans.map(plan => {
+                  const totalMonths = plan.plan?.durationMonths || 0;
+                  const paid = plan.installmentsPaid || 0;
+                  const ipm = (plan.plan?.monthlyAmount || 0) * (plan.plan?.interestRate || 0) / 100;
+                  const cm = paid >= totalMonths ? paid : Math.max(0, paid - 1);
+                  const interest = plan.interestStopped ? 0 : cm * ipm;
+                  const balance = Math.max(0, paid * (plan.plan?.monthlyAmount || 0) + interest - (plan.amountRedeemed || 0));
+                  return (
+                    <div key={plan._id} className="border border-slate-200 rounded-2xl overflow-hidden">
+                      <div className="px-5 py-4 flex items-start justify-between" style={{ background: `linear-gradient(135deg, ${PRIMARY_D} 0%, ${PRIMARY} 100%)` }}>
+                        <div>
+                          <p className="text-[9px] font-black uppercase tracking-widest text-rose-200 mb-0.5">Gold Savings Plan</p>
+                          <p className="text-base font-black text-white">{plan.plan?.name || 'Gold Plan'}</p>
+                          <p className="text-[10px] text-rose-200 mt-0.5">{plan.plan?.interestRate}% p.a. · {totalMonths} months</p>
+                        </div>
+                        <span className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase border ${statusColor(plan.status)}`}>{plan.status}</span>
+                      </div>
+                      <div className="p-4 space-y-3">
+                        <div className="grid grid-cols-3 gap-2">
+                          {[
+                            { l: 'Monthly', v: fmtMoney(plan.plan?.monthlyAmount || 0) },
+                            { l: 'Paid', v: `${paid} / ${totalMonths}` },
+                            { l: 'Balance', v: fmtMoney(balance), green: true },
+                          ].map((x, i) => (
+                            <div key={i} className={`rounded-xl p-3 border ${x.green ? 'bg-emerald-50 border-emerald-100' : 'bg-slate-50 border-slate-100'}`}>
+                              <p className={`text-[8px] font-black uppercase mb-1 ${x.green ? 'text-emerald-400' : 'text-slate-300'}`}>{x.l}</p>
+                              <p className={`text-xs font-bold ${x.green ? 'text-emerald-700' : 'text-slate-800'}`}>{x.v}</p>
+                            </div>
+                          ))}
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-[9px] font-bold text-slate-400 mb-1">
+                            <span>Progress</span><span>{paid}/{totalMonths} months</span>
+                          </div>
+                          <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${totalMonths ? (paid / totalMonths) * 100 : 0}%` }} />
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between text-xs border-t border-slate-100 pt-2">
+                          <span className="text-slate-400 font-medium">Total paid in</span>
+                          <span className="font-black text-slate-900">{fmtMoney(paid * (plan.plan?.monthlyAmount || 0))}</span>
+                        </div>
+                        {(plan.amountRedeemed || 0) > 0 && (
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-slate-400 font-medium">Redeemed</span>
+                            <span className="font-black text-blue-600">{fmtMoney(plan.amountRedeemed)}</span>
+                          </div>
+                        )}
+                        {interest > 0 && (
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-slate-400 font-medium">Interest earned</span>
+                            <span className="font-black text-amber-600">{fmtMoney(interest)}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Customer Card ─────────────────────────────────────────────────────────────
 
-function CustomerCard({ customer }: { customer: FullCustomer }) {
+function CustomerCard({ customer, onClick }: { customer: FullCustomer; onClick: () => void }) {
   return (
-    <div className="bg-white border border-slate-100 rounded-[24px] p-5 shadow-sm hover:shadow-md transition-shadow">
+    <div onClick={onClick} className="bg-white border border-slate-100 rounded-[24px] p-5 shadow-sm hover:shadow-md hover:border-slate-200 cursor-pointer transition-all">
       <div className="flex items-start gap-3 mb-3">
         <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-sm font-black text-white flex-shrink-0"
           style={{ background: PRIMARY }}>
@@ -488,6 +805,7 @@ function CustomersPageInner() {
   const [q, setQ] = useState('');
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<FullCustomer | null>(null);
 
   const showToast = useCallback((msg: string, ok = true) => {
     setToast({ msg, ok });
@@ -538,6 +856,10 @@ function CustomersPageInner() {
             load(1);
           }}
         />
+      )}
+
+      {selectedCustomer && (
+        <CustomerDrawer customer={selectedCustomer} onClose={() => setSelectedCustomer(null)} />
       )}
 
       {/* Header */}
@@ -603,7 +925,7 @@ function CustomersPageInner() {
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map(c => <CustomerCard key={c._id} customer={c} />)}
+            {filtered.map(c => <CustomerCard key={c._id} customer={c} onClick={() => setSelectedCustomer(c)} />)}
           </div>
           {/* Pagination */}
           {totalPages > 1 && (
