@@ -31,6 +31,13 @@ from app.services.analytics_tools import (
     get_customer_feedback,
     get_purchase_orders,
     get_refunds_summary,
+    get_holidays,
+    get_reimbursements_summary,
+    get_payroll_summary,
+    get_damaged_items,
+    get_stolen_items,
+    get_item_attendance_summary,
+    get_gold_investment_summary,
 )
 
 logger = logging.getLogger(__name__)
@@ -61,6 +68,13 @@ TOOL_HANDLERS: dict[str, Any] = {
     "get_purchase_orders": get_purchase_orders,
     "get_refunds_summary": get_refunds_summary,
     "get_staff_profile": get_staff_profile,
+    "get_holidays": get_holidays,
+    "get_reimbursements_summary": get_reimbursements_summary,
+    "get_payroll_summary": get_payroll_summary,
+    "get_damaged_items": get_damaged_items,
+    "get_stolen_items": get_stolen_items,
+    "get_item_attendance_summary": get_item_attendance_summary,
+    "get_gold_investment_summary": get_gold_investment_summary,
 }
 
 TOOL_DECLARATIONS = [
@@ -261,6 +275,68 @@ TOOL_DECLARATIONS = [
             required=["name"],
         ),
     ),
+    types.FunctionDeclaration(
+        name="get_holidays",
+        description="List company holidays — all or only upcoming. Use for 'holidays', 'upcoming holidays', 'when is the next holiday', 'holiday calendar'.",
+        parameters=types.Schema(
+            type="OBJECT",
+            properties={"upcoming_only": types.Schema(type="BOOLEAN", description="True to return only future holidays. Default false.")},
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="get_reimbursements_summary",
+        description="Staff expense reimbursement requests: total amounts, category breakdown (travel/food/supplies/maintenance), status (pending/approved/rejected). Use for 'reimbursements', 'expense claims', 'who claimed expenses', 'how much reimbursement pending'.",
+        parameters=types.Schema(
+            type="OBJECT",
+            properties={
+                "days": types.Schema(type="INTEGER", description="Past days. Default 30. Use 730 for all time."),
+                "status": types.Schema(type="STRING", description="'approved', 'rejected', 'pending', or 'all'. Default 'all'."),
+            },
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="get_payroll_summary",
+        description="Payroll summary for all staff in a given month: base salaries, absence deductions, and net payable totals. Use for 'payroll', 'salary summary', 'how much salary this month', 'total payroll cost'.",
+        parameters=types.Schema(
+            type="OBJECT",
+            properties={
+                "month": types.Schema(type="INTEGER", description="Month number 1–12. Defaults to previous month."),
+                "year": types.Schema(type="INTEGER", description="4-digit year. Defaults to current year."),
+            },
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="get_damaged_items",
+        description="Damaged inventory items: count, total value at risk, which branch/staff caused damage, and recent damaged items. Use for 'damaged items', 'damage report', 'which staff damaged items', 'damage by branch'.",
+        parameters=types.Schema(
+            type="OBJECT",
+            properties={"days": types.Schema(type="INTEGER", description="Past days. Default 30. Use 730 for all time.")},
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="get_stolen_items",
+        description="Stolen inventory items: count, total value, and breakdown by branch. Use for 'stolen items', 'theft report', 'how many items stolen', 'stolen jewellery'.",
+        parameters=types.Schema(
+            type="OBJECT",
+            properties={"days": types.Schema(type="INTEGER", description="Past days. Default 90. Use 730 for all time.")},
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="get_item_attendance_summary",
+        description="Item attendance (daily physical scanning of inventory items per branch): scan counts by branch and daily trend. Use for 'item attendance', 'item scan', 'which branch is scanning inventory', 'daily item scans'.",
+        parameters=types.Schema(
+            type="OBJECT",
+            properties={"days": types.Schema(type="INTEGER", description="Past days. Default 7.")},
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="get_gold_investment_summary",
+        description="Gold investment plan subscriptions: active/cancelled/completed counts, total accumulated amount, new sign-ups, and redemptions. Use for 'gold investment', 'investment plans', 'subscriptions', 'how many customers investing', 'gold plan summary'.",
+        parameters=types.Schema(
+            type="OBJECT",
+            properties={"days": types.Schema(type="INTEGER", description="Past days for new sign-ups and redemptions. Default 30. Use 730 for all time.")},
+        ),
+    ),
 ]
 
 SYSTEM_PROMPT = """You are RKM Business Intelligence — the private AI analyst for RKM Jewellers with FULL access to the live business database.
@@ -276,14 +352,21 @@ SYSTEM_PROMPT = """You are RKM Business Intelligence — the private AI analyst 
     • get_attendance_summary → per-staff attendance RATE over N days (trends, most absent)
 - LEAVE REQUESTS: approvals, types, pending (leaverequests)
 - LOCATION VIOLATIONS: staff who clocked in outside geofence
+- HOLIDAYS: company holiday calendar (yearly recurring + one-time)
+- REIMBURSEMENTS: staff expense claims — travel, food, supplies, maintenance; status and amounts
+- PAYROLL: monthly salary summary — base salary, absence deductions, net payable per staff
 - CUSTOMERS: total, new joins, repeat buyers
 - CUSTOMER FEEDBACK: satisfaction, visit-again, recommendations
 - OLD GOLD: buy-back count, value, status
 - ONLINE ORDERS: count, revenue, status breakdown
-- INVENTORY STATUS: available/sold/reserved/damaged stock
+- INVENTORY STATUS: available/sold/reserved/damaged/stolen stock counts
+- DAMAGED ITEMS: detailed damaged items — who, when, which branch, value
+- STOLEN ITEMS: stolen item count, value, branch breakdown
+- ITEM ATTENDANCE: daily physical scanning of inventory items per branch
 - PURCHASE ORDERS: supplier orders, spend, status
 - REFUNDS/RETURNS: return counts and amounts
 - BRANCHES: sales and revenue by branch
+- GOLD INVESTMENT: subscription plans — active/cancelled counts, accumulated amount, new sign-ups, redemptions
 
 ━━━ ATTENDANCE ROUTING — FOLLOW EXACTLY ━━━
 | Query type                                      | Tool to call                                   |
@@ -308,6 +391,12 @@ Always show per-branch breakdown when get_branch_attendance is called.
    - "all time" / "ever" / no period → days=730
 5. 0 results for a short period → auto-retry with days=730.
 6. Broad questions → call multiple tools in one round, compose one answer.
+7. PAYROLL: "payroll this month" / "salary summary" → get_payroll_summary(). Returns per-staff net payable.
+8. HOLIDAYS: "next holiday" / "upcoming holidays" → get_holidays(upcoming_only=True). "all holidays" → get_holidays().
+9. REIMBURSEMENTS: "expense claims" / "reimbursements pending" → get_reimbursements_summary(). Filter by status when asked.
+10. DAMAGED/STOLEN: "damaged items" → get_damaged_items(). "stolen items" / "theft" → get_stolen_items().
+11. ITEM ATTENDANCE: "item scans" / "item attendance" / "which branch is scanning" → get_item_attendance_summary().
+12. GOLD INVESTMENT: "gold plan" / "investment subscriptions" / "how many subscribers" → get_gold_investment_summary().
 
 ━━━ OUTPUT FORMAT ━━━
 - **Bold** all key numbers and names

@@ -14,7 +14,6 @@ class Settings(BaseSettings):
     VECTOR_INDEX_NAME: str = "vector_index"
     VECTOR_NUM_CANDIDATES: int = 150
     RETRIEVAL_POOL_SIZE: int = 24
-    STATIC_BASE_URL: str = "http://localhost:3000"
 
     class Config:
         env_file = ".env"
