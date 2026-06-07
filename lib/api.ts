@@ -31,8 +31,7 @@ export function isSessionExpired(): boolean {
 export function checkSessionExpiry(): boolean {
   if (isSessionExpired()) {
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('manager_session');
-      window.location.href = '/login';
+      window.dispatchEvent(new CustomEvent('rkm:session-expired'));
     }
     return true;
   }
@@ -55,8 +54,7 @@ async function request<T>(
 
   if (res.status === 401) {
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('manager_session');
-      window.location.href = '/login';
+      window.dispatchEvent(new CustomEvent('rkm:session-expired'));
     }
     throw new Error('Unauthorized');
   }
