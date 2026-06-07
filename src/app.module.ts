@@ -36,7 +36,7 @@ import { IncentiveModule } from './modules/incentives/incentive.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env.local', '.env'] }),
     EventEmitterModule.forRoot({ wildcard: false, delimiter: '.', global: true }),
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
