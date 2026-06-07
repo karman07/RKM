@@ -136,6 +136,7 @@ export interface InventoryItem {
   image_url?: string;
   pricing_breakdown?: Record<string, number>;
   sale_reference?: string;
+  payment_mode?: string;
   sale_request_status?: 'none' | 'pending' | 'approved' | 'rejected';
   sale_request_at?: string;
   sale_request_by_name?: string;
