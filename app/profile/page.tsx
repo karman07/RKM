@@ -7,6 +7,7 @@ import { Camera, MapPin, User, Mail, Phone, Home, Globe, CheckCircle2, AlertCirc
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import LogoutDialog from '../../components/LogoutDialog';
+import GoldInvestmentTracker from '../../components/GoldInvestmentTracker';
 import { API_BASE_URL, STATIC_BASE_URL } from '../constants';
 
 function staticImg(path: string | undefined | null) {
@@ -199,85 +200,73 @@ export default function ProfilePage() {
           <span className="text-[10px] font-black uppercase tracking-[0.3em]">Back to Boutique</span>
         </button>
 
+        {/* ── Investment Balance Banner ── */}
+        {goldSubs.length > 0 && (() => {
+          function computeTimeBasedBalance(sub: any): number {
+            const plan = sub.plan;
+            if (!plan) return 0;
+            const monthlyAmount = plan.monthlyAmount || 0;
+            const interestPerMonth = monthlyAmount * (plan.interestRate || 0) / 100;
+            const totalMonths = plan.durationMonths || 0;
+            const paid = sub.installmentsPaid || 0;
+            const complete = paid >= totalMonths;
+            const creditedMonths = complete ? paid : Math.max(0, paid - 1);
+            const principal = paid * monthlyAmount;
+            const interest = sub.interestStopped ? 0 : creditedMonths * interestPerMonth;
+            const redeemed = sub.amountRedeemed || 0;
+            return Math.max(0, principal + interest - redeemed);
+          }
+
+          const totalBalance = goldSubs.reduce((acc, sub) => acc + computeTimeBasedBalance(sub), 0);
+          const redeemedTotal = goldSubs.reduce((acc, sub) => acc + (sub.amountRedeemed || 0), 0);
+          const hasRedeemable = totalBalance > 0;
+          return (
+            <div className="mb-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+              <div className="relative rounded-[2.5rem] overflow-hidden p-8 md:p-10" style={{ background: 'linear-gradient(135deg, #3A0418 0%, #5C0828 55%, #7A1238 100%)' }}>
+                <div className="absolute top-0 right-0 -mr-20 -mt-20 w-72 h-72 rounded-full bg-white/5 blur-3xl" />
+                <div className="relative flex flex-col md:flex-row md:items-center gap-6 md:gap-0">
+                  <div className="flex-1">
+                    <p className="text-[9px] font-black uppercase tracking-[0.35em] text-white/50 mb-1">Investment Balance</p>
+                    <h2 className="text-4xl md:text-5xl font-serif font-black text-white mb-2">{formatINR(totalBalance)}</h2>
+                    <p className="text-sm text-white/60 font-medium">Available to redeem at any RKM Jewellers store</p>
+                    {redeemedTotal > 0 && (
+                      <p className="text-xs text-[#B8975A] font-bold mt-1">{formatINR(redeemedTotal)} already redeemed</p>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-3 md:items-end">
+                    {hasRedeemable ? (
+                      <div className="flex items-center gap-2 bg-white/10 border border-white/20 rounded-2xl px-5 py-3">
+                        <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        <span className="text-[11px] font-black uppercase tracking-widest text-white">Redeemable</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-2xl px-5 py-3">
+                        <div className="w-2 h-2 rounded-full bg-slate-400" />
+                        <span className="text-[11px] font-black uppercase tracking-widest text-white/40">Fully Redeemed</span>
+                      </div>
+                    )}
+                    <p className="text-[10px] text-white/40 font-bold text-right">Visit store with your phone number</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* ── Full-Width Gold Investment Plans ── */}
         {goldSubs.length > 0 && (
           <div className="mb-12">
             <div className="flex items-center gap-3 mb-6">
               <Gem size={20} className="text-[#7A1238]" />
-              <h2 className="text-xl font-serif font-bold text-slate-900">Your Active Investment Plans</h2>
-              <span className="text-[9px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full">
+              <h2 className="text-xl font-serif font-bold text-slate-900">Your Gold Investment Plans</h2>
+              <span className="text-[9px] font-black uppercase tracking-widest bg-[#FDF3E7] text-[#5C0828] px-2.5 py-1 rounded-full">
                 {goldSubs.length} Plan{goldSubs.length > 1 ? 's' : ''}
               </span>
             </div>
             <div className={`grid grid-cols-1 gap-6 ${goldSubs.length > 1 ? 'lg:grid-cols-2' : ''}`}>
-              {goldSubs.map((sub: any, idx: number) => {
-                const annualRate = Number(sub?.plan?.interestRate || 0);
-                const capital = Number(sub?.amountAccumulated || 0);
-                const monthlyAmount = Number(sub?.plan?.monthlyAmount || 0);
-                const durationMonths = Number(sub?.plan?.durationMonths || 0);
-                const earnedInterest = Number(sub?.interestAccumulated || 0);
-                const monthlyInterest = capital * (annualRate / 12 / 100);
-                const projectedCapital = monthlyAmount * durationMonths;
-                const projectedInterest = projectedCapital * (annualRate / 100) * (durationMonths / 12);
-                const returnProgress = projectedInterest > 0 ? Math.min(100, (earnedInterest / projectedInterest) * 100) : 0;
-                return (
-                  <div key={sub._id || idx} className="bg-white rounded-[32px] border border-emerald-100 shadow-[0_20px_50px_rgba(0,0,0,0.04)] p-8 relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-bl from-emerald-50 to-transparent rounded-[32px] pointer-events-none" />
-                    <div className="flex items-start justify-between mb-6 relative">
-                      <div>
-                        <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-400 mb-1">Gold Investment Plan</p>
-                        <h3 className="text-2xl font-serif font-black text-slate-900 leading-tight">{sub.plan?.name}</h3>
-                      </div>
-                      <span className={`text-[9px] font-black uppercase tracking-wider px-3 py-1.5 rounded-xl ${sub.status === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>
-                        {sub.status}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-                      <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
-                        <p className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-1">Monthly</p>
-                        <p className="text-base font-black text-slate-900">{formatINR(monthlyAmount)}</p>
-                      </div>
-                      <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
-                        <p className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-1">Plan Ceiling</p>
-                        <p className="text-base font-black text-emerald-700">{formatINR(projectedCapital)}</p>
-                      </div>
-                      <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
-                        <p className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-1">Duration</p>
-                        <p className="text-base font-black text-slate-900">{durationMonths} Months</p>
-                      </div>
-                      <div className="bg-emerald-50 rounded-2xl p-4 border border-emerald-100">
-                        <p className="text-[8px] font-black uppercase tracking-widest text-emerald-600 mb-1">Monthly Interest</p>
-                        <p className="text-base font-black text-[#065F46]">+{formatINR(monthlyInterest)}</p>
-                      </div>
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <div>
-                          <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-400">Total Return Progress</p>
-                          {sub.nextDueDate && (
-                            <p className="text-[9px] font-bold text-[#7A1238] uppercase tracking-wider mt-0.5">
-                              Next Due: {new Date(sub.nextDueDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                            </p>
-                          )}
-                        </div>
-                        <div className="text-right">
-                          <span className="text-lg font-black text-[#065F46]">{formatINR(earnedInterest)}</span>
-                          <p className="text-[9px] font-bold text-slate-400">of {formatINR(projectedInterest)}</p>
-                        </div>
-                      </div>
-                      <div className="h-4 bg-slate-100 rounded-full overflow-hidden mt-3">
-                        <div className="h-full bg-gradient-to-r from-emerald-400 to-[#7A1238] rounded-full transition-all duration-700 relative" style={{ width: `${returnProgress}%` }}>
-                          <div className="absolute inset-0 bg-white/20 rounded-full" />
-                        </div>
-                      </div>
-                      <div className="mt-2 flex items-center justify-between text-[9px] font-bold text-slate-400">
-                        <span>Earned: {formatINR(earnedInterest)}</span>
-                        <span>Total Target: {formatINR(projectedInterest)}</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+              {goldSubs.map((sub: any) => (
+                sub.plan ? <GoldInvestmentTracker key={sub._id} sub={sub} /> : null
+              ))}
             </div>
           </div>
         )}
@@ -311,7 +300,7 @@ export default function ProfilePage() {
               </div>
 
               <h2 className="text-2xl font-serif font-bold text-slate-900">{authState.customer.name}</h2>
-              <div className="flex items-center gap-1.5 mt-2 bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full border border-emerald-100">
+              <div className="flex items-center gap-1.5 mt-2 bg-[#FDF3E7] text-[#5C0828] px-3 py-1 rounded-full border border-[#EDEAE4]">
                 <ShieldCheck size={12} />
                 <span className="text-[9px] font-black uppercase tracking-widest">Verified Member</span>
               </div>
@@ -336,7 +325,7 @@ export default function ProfilePage() {
                     <ShoppingBag size={16} className="text-slate-300 group-hover:text-[#7A1238] transition-colors" />
                     <span className="font-bold uppercase tracking-wider group-hover:text-slate-900 transition-colors">Orders</span>
                   </div>
-                  <span className="bg-slate-50 text-slate-400 px-2.5 py-1 rounded-lg group-hover:bg-emerald-50 group-hover:text-[#7A1238] transition-colors">
+                  <span className="bg-slate-50 text-slate-400 px-2.5 py-1 rounded-lg group-hover:bg-[#FDF3E7] group-hover:text-[#7A1238] transition-colors">
                     {purchaseHistory ? (purchaseHistory.store_purchases.length + purchaseHistory.online_orders.length) : 0}
                   </span>
                 </div>
@@ -408,7 +397,7 @@ export default function ProfilePage() {
                               <button 
                                 type="button"
                                 onClick={handleVerifyEmail}
-                                className="text-[8px] font-black uppercase tracking-widest text-[#7A1238] bg-emerald-50 px-2 py-1 rounded hover:bg-[#7A1238] hover:text-white transition-all shadow-sm"
+                                className="text-[8px] font-black uppercase tracking-widest text-[#7A1238] bg-[#FDF3E7] px-2 py-1 rounded hover:bg-[#7A1238] hover:text-white transition-all shadow-sm"
                               >
                                 Verify Now
                               </button>
@@ -572,7 +561,7 @@ export default function ProfilePage() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-[8px] font-black uppercase tracking-[0.2em] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">In-Store</span>
+                            <span className="text-[8px] font-black uppercase tracking-[0.2em] bg-[#FDF3E7] text-[#5C0828] px-2 py-0.5 rounded-full">In-Store</span>
                             {item.metal && <span className="text-[8px] font-black uppercase tracking-[0.1em] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">{item.metal} {item.purity}</span>}
                           </div>
                           <h4 className="font-serif font-bold text-slate-900 mt-1 truncate">{item.product_name}</h4>
@@ -586,7 +575,7 @@ export default function ProfilePage() {
                         <div className="text-right flex-shrink-0">
                           <p className="font-serif font-bold text-lg text-slate-900">₹{item.selling_price?.toLocaleString('en-IN')}</p>
                           {item.discount_amount > 0 && (
-                            <p className="text-[9px] font-black text-emerald-600 uppercase">Disc: ₹{item.discount_amount?.toLocaleString('en-IN')}</p>
+                            <p className="text-[9px] font-black text-[#5C0828] uppercase">Disc: ₹{item.discount_amount?.toLocaleString('en-IN')}</p>
                           )}
                           {item.payment_mode && <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mt-1">{item.payment_mode}</p>}
                           {item.sold_at && (
@@ -613,12 +602,12 @@ export default function ProfilePage() {
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-[8px] font-black uppercase tracking-[0.2em] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Online Order</span>
                             <span className={`text-[8px] font-black uppercase tracking-[0.1em] px-2 py-0.5 rounded-full ${
-                              order.status === 'delivered' ? 'bg-emerald-100 text-emerald-700' :
+                              order.status === 'delivered' ? 'bg-[#FDF3E7] text-[#5C0828]' :
                               order.status === 'cancelled' ? 'bg-red-100 text-red-700' :
                               order.status === 'shipped' ? 'bg-purple-100 text-purple-700' :
                               'bg-amber-100 text-amber-700'
                             }`}>{order.status}</span>
-                            <span className={`text-[8px] font-black uppercase tracking-[0.1em] px-2 py-0.5 rounded-full ${order.payment_status === 'paid' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>{order.payment_status}</span>
+                            <span className={`text-[8px] font-black uppercase tracking-[0.1em] px-2 py-0.5 rounded-full ${order.payment_status === 'paid' ? 'bg-[#FDF3E7] text-[#5C0828]' : 'bg-slate-100 text-slate-500'}`}>{order.payment_status}</span>
                           </div>
                           <h4 className="font-serif font-bold text-slate-900 mt-1">Order #{order.order_number}</h4>
                           <p className="text-[10px] font-bold text-slate-400 mt-0.5">{order.items?.length} item{order.items?.length !== 1 ? 's' : ''}</p>
