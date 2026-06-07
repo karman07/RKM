@@ -2,6 +2,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { getProfile, UserProfile, staticUrl } from '../lib/api';
+import SessionExpiredDialog from './SessionExpiredDialog';
 
 const NAV_ITEMS = [
   {
@@ -250,6 +251,7 @@ export function SidebarInner({ children }: SidebarProps) {
           {children}
         </div>
       </div>
+      <SessionExpiredDialog />
     </div>
   );
 }

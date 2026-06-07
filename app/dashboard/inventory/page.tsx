@@ -48,7 +48,7 @@ function InventoryContent() {
 
   // Sale Request Modal
   const [saleRequestItem, setSaleRequestItem] = useState<InventoryItem | null>(null);
-  const [saleRequestSuccess, setSaleRequestSuccess] = useState('');
+  const [saleRequestSuccess, setSaleRequestSuccess] = useState(false);
 
   const loadInventory = useCallback(async (profile: UserProfile, pg = 1) => {
     if (!profile.branch?._id) return;
@@ -118,13 +118,14 @@ function InventoryContent() {
           userId={user._id}
           branchId={user.branch?._id ?? ''}
           onClose={() => setSaleRequestItem(null)}
-          onSuccess={() => {
-            setSaleRequestItem(null);
-            setSaleRequestSuccess(`Sale request for "${(saleRequestItem.product_id as any)?.name ?? saleRequestItem.unique_item_code}" submitted successfully!`);
-            if (user) loadInventory(user, page);
-            setTimeout(() => setSaleRequestSuccess(''), 5000);
-          }}
+          onSuccess={() => { setSaleRequestItem(null); setSaleRequestSuccess(true); setTimeout(() => setSaleRequestSuccess(false), 4000); }}
         />
+      )}
+      {saleRequestSuccess && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[300] px-6 py-4 rounded-2xl shadow-2xl border bg-emerald-500/95 text-white border-emerald-400 flex items-center gap-3 min-w-[280px]">
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          <p className="text-sm font-bold">Sale request submitted — awaiting manager approval.</p>
+        </div>
       )}
 
       {/* Header */}
@@ -159,15 +160,6 @@ function InventoryContent() {
           </svg>
           <span className="text-sm font-bold text-red-700">{scanError}</span>
           <button onClick={() => setScanError('')} className="ml-auto text-red-400 hover:text-red-600">
-            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M6 18L18 6M6 6l12 12" /></svg>
-          </button>
-        </div>
-      )}
-      {saleRequestSuccess && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-3xl p-5 flex items-center gap-3">
-          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="#059669" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-          <span className="text-sm font-bold text-emerald-700">{saleRequestSuccess}</span>
-          <button onClick={() => setSaleRequestSuccess('')} className="ml-auto text-emerald-400 hover:text-emerald-600">
             <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
@@ -259,22 +251,22 @@ function InventoryContent() {
           />
         </div>
         
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 md:flex md:gap-3">
+        <div className="flex gap-3 overflow-x-auto pb-1 md:pb-0">
           <select
             value={categoryFilter}
             onChange={e => { setCategoryFilter(e.target.value); setPage(1); if (user) loadInventory(user, 1); }}
-            className="px-3 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs sm:text-sm text-slate-700 focus:outline-none focus:border-[#7A1C2A] w-full md:min-w-[130px]"
+            className="px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-700 focus:outline-none focus:border-[#7A1C2A] min-w-[130px]"
           >
             <option value="">All Categories</option>
             {categories.map(c => (
               <option key={c._id} value={c._id}>{c.name}</option>
             ))}
           </select>
-
+          
           <select
             value={metalFilter}
             onChange={e => { setMetalFilter(e.target.value); setPage(1); if (user) loadInventory(user, 1); }}
-            className="px-3 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs sm:text-sm text-slate-700 focus:outline-none focus:border-[#7A1C2A] w-full md:min-w-[110px]"
+            className="px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-700 focus:outline-none focus:border-[#7A1C2A] min-w-[110px]"
           >
             <option value="">All Metals</option>
             <option value="gold">Gold</option>
@@ -285,7 +277,7 @@ function InventoryContent() {
           <select
             value={purityFilter}
             onChange={e => { setPurityFilter(e.target.value); setPage(1); if (user) loadInventory(user, 1); }}
-            className="px-3 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs sm:text-sm text-slate-700 focus:outline-none focus:border-[#7A1C2A] w-full md:min-w-[110px]"
+            className="px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-700 focus:outline-none focus:border-[#7A1C2A] min-w-[110px]"
           >
             <option value="">All Purities</option>
             {metalFilter === 'gold' && (
@@ -331,18 +323,12 @@ function InventoryContent() {
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {items.map(item => {
             const s = STATUS_MAP[item.status] ?? STATUS_MAP.available;
-            const reqStatus = item.sale_request_status;
-            const hasPendingReq = reqStatus === 'pending';
-            const hasRejectedReq = reqStatus === 'rejected';
             return (
               <div
                 key={item._id}
-                className={`bg-white border rounded-3xl p-5 shadow-sm hover:shadow-md transition-all group flex flex-col h-full min-h-[220px] ${hasPendingReq ? 'border-amber-300 ring-1 ring-amber-200' : 'border-slate-100 hover:border-[#7A1C2A]/30'}`}
+                className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm hover:shadow-md transition-all hover:border-[#7A1C2A]/30 group flex flex-col h-full min-h-[220px]"
               >
-                <div
-                  onClick={() => setViewItem(item)}
-                  className="flex items-start gap-4 mb-auto cursor-pointer"
-                >
+                <div className="flex items-start gap-4 mb-auto">
                   {item.product_id?.images?.[0] ? (
                     <img src={staticUrl(item.product_id.images[0])} alt="" className="w-16 h-16 rounded-2xl object-cover border border-slate-100 flex-shrink-0" />
                   ) : (
@@ -361,25 +347,12 @@ function InventoryContent() {
                         <span className={`w-1 h-1 rounded-full ${s.dot}`} />
                         {s.label}
                       </span>
-                      {hasPendingReq && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-100 text-amber-700">
-                          <span className="w-1 h-1 rounded-full bg-amber-500 animate-pulse" />
-                          Pending Approval
-                        </span>
-                      )}
-                      {hasRejectedReq && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-red-50 text-red-600">
-                          <span className="w-1 h-1 rounded-full bg-red-500" />
-                          Request Rejected
-                        </span>
-                      )}
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-slate-50 flex flex-col gap-3">
-                  {/* Price details */}
-                  <div>
+                <div className="mt-6 pt-4 border-t border-slate-50 flex items-end justify-between">
+                  <div className="flex-1 min-w-0">
                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Price Details</p>
                     <div className="flex flex-col gap-0.5">
                       {(() => {
@@ -399,20 +372,26 @@ function InventoryContent() {
                                 ₹{basePrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                               </span>
                             )}
-                            {adminDiscountPct > 0 && (
-                              <span className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wide text-amber-600">
-                                <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                                {adminDiscountPct}% ADMIN OFF
-                                {adminDiscountAmt > 0 && <span className="ml-1">-₹{fa(adminDiscountAmt)}</span>}
-                              </span>
-                            )}
-                            {(item.manager_discount ?? 0) > 0 && (
-                              <span className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wide text-emerald-600">
-                                <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>
-                                {item.manager_discount}% MANAGER OFF
-                                {managerDiscountAmt > 0 && <span className="ml-1">-₹{fa(managerDiscountAmt)}</span>}
-                              </span>
-                            )}
+                            <div className="min-h-[32px] flex flex-col justify-center gap-0.5">
+                              {adminDiscountPct > 0 && (
+                                <span className="inline-flex items-center justify-between gap-1 text-[9px] font-bold uppercase tracking-wide text-amber-600">
+                                  <span className="flex items-center gap-1">
+                                    <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                                    {adminDiscountPct}% ADMIN OFF
+                                  </span>
+                                  {adminDiscountAmt > 0 && <span>-₹{fa(adminDiscountAmt)}</span>}
+                                </span>
+                              )}
+                              {(item.manager_discount ?? 0) > 0 && (
+                                <span className="inline-flex items-center justify-between gap-1 text-[9px] font-bold uppercase tracking-wide text-emerald-600">
+                                  <span className="flex items-center gap-1">
+                                    <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>
+                                    {item.manager_discount}% MANAGER OFF
+                                  </span>
+                                  {managerDiscountAmt > 0 && <span>-₹{fa(managerDiscountAmt)}</span>}
+                                </span>
+                              )}
+                            </div>
                             <p className="text-lg font-black text-[#5A0F1A] mt-1 tracking-tight">₹{finalPrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
                           </>
                         );
@@ -420,8 +399,7 @@ function InventoryContent() {
                     </div>
                   </div>
 
-                  {/* Weight + Metal */}
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col items-end gap-2.5">
                     <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-100 rounded-lg">
                       <svg width="12" height="12" className="text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
@@ -433,33 +411,31 @@ function InventoryContent() {
                       <p className="text-[11px] font-bold text-slate-600 whitespace-nowrap">{item.product_id?.metal_type} · {item.product_id?.purity}</p>
                     </div>
                   </div>
+                </div>
 
-                  {/* Request Sale / Status button */}
+                {/* Action buttons */}
+                <div className="mt-4 flex gap-2">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setViewItem(item); }}
+                    className="flex-1 py-2.5 rounded-2xl border border-slate-200 text-[11px] font-black uppercase tracking-wider text-slate-600 hover:bg-slate-50 transition-all"
+                  >
+                    View
+                  </button>
                   {item.status === 'available' && (
-                    <>
-                      {hasPendingReq ? (
-                        <div className="flex items-center justify-center gap-2 py-2.5 bg-amber-50 border border-amber-200 rounded-2xl">
-                          <div className="w-3 h-3 border-2 border-amber-400/40 border-t-amber-500 rounded-full animate-spin" />
-                          <span className="text-xs font-black text-amber-700">Awaiting Approval…</span>
-                        </div>
-                      ) : hasRejectedReq ? (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setSaleRequestItem(item); }}
-                          className="w-full flex items-center justify-center gap-2 py-2.5 bg-red-50 hover:bg-[#5A0F1A] border border-red-200 hover:border-[#5A0F1A] rounded-2xl text-xs font-black text-red-600 hover:text-white transition-all"
-                        >
-                          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                          Re-submit Request
-                        </button>
-                      ) : (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setSaleRequestItem(item); }}
-                          className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#5A0F1A] hover:bg-[#7A1C2A] rounded-2xl text-xs font-black text-white transition-all shadow-sm shadow-[#5A0F1A]/20 active:scale-[0.98]"
-                        >
-                          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
-                          Request Sale
-                        </button>
-                      )}
-                    </>
+                    item.sale_request_status === 'pending' ? (
+                      <div className="flex-[2] py-2.5 rounded-2xl bg-amber-50 border border-amber-200 text-[11px] font-black uppercase tracking-wider text-amber-700 text-center flex items-center justify-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                        Pending Approval
+                      </div>
+                    ) : (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setSaleRequestItem(item); }}
+                        className="flex-[2] py-2.5 rounded-2xl bg-[#5A0F1A] hover:bg-[#7A1C2A] text-[11px] font-black uppercase tracking-wider text-white transition-all shadow-md shadow-[#5A0F1A]/20 flex items-center justify-center gap-1.5"
+                      >
+                        <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                        Request Sale
+                      </button>
+                    )
                   )}
                 </div>
               </div>

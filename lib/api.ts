@@ -29,8 +29,7 @@ export function isSessionExpired(): boolean {
 export function checkSessionExpiry(): boolean {
   if (isSessionExpired()) {
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('cashier_session');
-      window.location.href = '/login';
+      window.dispatchEvent(new CustomEvent('rkm:session-expired'));
     }
     return true;
   }
@@ -50,8 +49,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (res.status === 401) {
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('cashier_session');
-      window.location.href = '/login';
+      window.dispatchEvent(new CustomEvent('rkm:session-expired'));
     }
     throw new Error('Unauthorized');
   }
@@ -88,44 +86,7 @@ export interface UserProfile {
   isActive: boolean;
   avatar?: string;
   createdAt?: string;
-  employee_id?: string;
-  // HR fields
-  job_title?: string;
-  joining_date?: string;
-  mobile_number?: string;
-  family_contact_number?: string;
-  reporting_manager_id?: { _id: string; name: string; role: string } | string | null;
-  reporting_manager_name?: string | null;
-  custom_role?: { _id: string; name: string } | string | null;
-  base_salary?: number;
-  salary_type?: string;
-  salary_basic?: number;
-  salary_hra?: number;
-  salary_transport?: number;
-  salary_special?: number;
-  pan_card?: string;
-  aadhar_card?: string;
-  offer_letter_url?: string;
-  appointment_letter_url?: string;
-  welcome_letter_url?: string;
-  account_number?: string;
-  blank_check_url?: string;
-  custom_field_values?: Record<string, any>;
 }
-
-export interface EmployeeCustomField {
-  _id: string;
-  label: string;
-  key: string;
-  type: 'text' | 'number' | 'date' | 'file' | 'url' | 'textarea';
-  required: boolean;
-  placeholder?: string;
-  description?: string;
-  order: number;
-}
-
-export const getEmployeeCustomFields = () =>
-  request<EmployeeCustomField[]>('/employee-custom-fields');
 
 export interface Category {
   _id: string;
@@ -178,10 +139,37 @@ export interface InventoryItem {
   sale_request_status?: 'none' | 'pending' | 'approved' | 'rejected';
   sale_request_at?: string;
   sale_request_by_name?: string;
-  sale_request_rejection_reason?: string;
+  sale_request_notes?: string;
   sale_request_data?: Record<string, any>;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PaymentSplit {
+  mode: string;
+  amount: number;
+  reference?: string;
+}
+
+export interface SaleRequestData {
+  sold_customer_name: string;
+  sold_customer_phone: string;
+  sold_customer_email?: string;
+  shipping_address?: string;
+  shipping_city?: string;
+  shipping_state?: string;
+  shipping_pincode?: string;
+  sale_channel?: string;
+  payment_mode?: string;
+  is_emi?: boolean;
+  emi_provider?: string;
+  emi_tenure_months?: number;
+  emi_down_payment?: number;
+  selling_price?: number;
+  sold_at_branch_id?: string;
+  sold_by_user_id?: string;
+  notes?: string;
+  payment_splits?: PaymentSplit[];
 }
 
 export interface PaginatedResponse<T> {
@@ -395,107 +383,47 @@ export const createCustomer = (data: {
   address?: string; city?: string; state?: string; pincode?: string; country?: string;
 }) => request<FullCustomer>('/customers', { method: 'POST', body: JSON.stringify(data) });
 
-// ─── Payroll ──────────────────────────────────────────────────────────────────
+// ── Gold Investment Balance ───────────────────────────────────────────────────
 
-export interface PayrollCalendarDay {
-  date: string;
-  day: string;
-  status: string;
-  note: string | null;
-  check_in: string | null;
-  check_out: string | null;
-  is_late: boolean;
-  deducted_amount: number;
-}
-
-export interface PayrollIncentive {
+export interface GoldSubscriptionBasic {
   _id: string;
-  amount: number;
-  reason: string;
-  granted_by?: { _id: string; name: string } | string;
+  customerPhone?: string;
+  customerEmail?: string;
+  status: string;
+  plan: { name: string; durationMonths: number };
 }
 
-export interface MyPayroll {
-  base_salary: number;
-  total_working_days: number;
-  daily_rate: number;
-  summary: {
-    present: number;
-    half_day: number;
-    on_leave: number;
-    holiday: number;
-    absent: number;
-    yet_to_check_in: number;
+export const getGoldSubscriptions = (params?: { status?: string }) => {
+  const q = new URLSearchParams();
+  if (params?.status) q.set('status', params.status);
+  return request<GoldSubscriptionBasic[]>(`/gold-investment/subscriptions?${q.toString()}`);
+};
+
+export interface GoldBalance {
+  _id: string;
+  customerName: string;
+  customerPhone: string;
+  status: string;
+  amountAccumulated: number;
+  interestAccumulated: number;
+  amountRedeemed: number;
+  interestStopped: boolean;
+  availableBalance: number;
+  plan: {
+    name: string;
+    redemptionDiscount: number;
+    durationMonths: number;
   };
-  deductions: number;
-  incentives: number;
-  incentive_list: PayrollIncentive[];
-  net_payable: number;
-  calendar: PayrollCalendarDay[];
+  installmentsPaid: number;
 }
 
-export const getMyPayroll = (month: number, year: number) =>
-  request<MyPayroll>(`/payroll/mine?month=${month}&year=${year}`);
+export const getGoldBalance = (phone: string) =>
+  request<GoldBalance[]>(`/gold-investment/balance?phone=${encodeURIComponent(phone)}`);
+
+export const redeemGoldBalance = (subscriptionId: string, data: { amount: number; saleReference?: string; note?: string; staffId?: string }) =>
+  request<any>(`/gold-investment/subscriptions/${subscriptionId}/redeem`, { method: 'POST', body: JSON.stringify(data) });
 
 // ── Sale Requests ─────────────────────────────────────────────────────────────
 
-export interface PaymentSplit {
-  mode: string;
-  amount: number;
-  reference?: string;
-}
-
-export interface SaleRequestData {
-  sold_customer_name: string;
-  sold_customer_phone: string;
-  sold_customer_email?: string;
-  shipping_address?: string;
-  shipping_city?: string;
-  shipping_state?: string;
-  shipping_pincode?: string;
-  shipping_country?: string;
-  sale_channel: string;
-  payment_mode: string;
-  is_emi?: boolean;
-  emi_provider?: string;
-  emi_tenure_months?: number;
-  emi_down_payment?: number;
-  selling_price?: number;
-  sold_at_branch_id?: string;
-  sold_by_user_id?: string;
-  notes?: string;
-  payment_splits?: PaymentSplit[];
-}
-
-export interface SaleRequestItem {
-  _id: string;
-  product_id: Product;
-  unique_item_code: string;
-  barcode: string;
-  status: string;
-  selling_price: number;
-  live_selling_price?: number;
-  admin_discount: number;
-  manager_discount: number;
-  image_url?: string;
-  branch_id?: Branch | string;
-  sale_request_status: 'none' | 'pending' | 'approved' | 'rejected';
-  sale_request_at?: string;
-  sale_request_by?: { _id: string; name: string; email: string; role: string } | string;
-  sale_request_by_name?: string;
-  sale_request_notes?: string;
-  sale_request_data?: SaleRequestData;
-  sale_request_reviewed_at?: string;
-  sale_request_rejection_reason?: string;
-}
-
-export const submitSaleRequest = (itemId: string, data: SaleRequestData) =>
-  request<SaleRequestItem>(`/inventory/${itemId}/sale-request`, {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
-
-export const getMySaleRequests = (page = 1, limit = 20) =>
-  request<{ data: SaleRequestItem[]; meta: { total: number; page: number; limit: number; total_pages: number } }>(
-    `/inventory?sale_request_by_me=true&page=${page}&limit=${limit}`
-  );
+export const submitSaleRequest = (itemId: string, data: Record<string, any>) =>
+  request<any>(`/inventory/${itemId}/sale-request`, { method: 'POST', body: JSON.stringify(data) });

@@ -55,7 +55,7 @@ export default function ViewItemModal({ item, onClose }: ViewItemModalProps) {
 
           <div className="w-full bg-white border border-slate-200 p-4 rounded-2xl text-center shadow-sm">
             {item.barcode_url ? (
-              <img src={staticUrl(item.barcode_url ?? '')} alt={item.barcode} className="h-16 mx-auto mb-2 mix-blend-multiply" />
+              <img src={item.barcode_url} alt={item.barcode} className="h-16 mx-auto mb-2 mix-blend-multiply" />
             ) : (
               <div className="h-16 flex items-center justify-center mb-2">
                 <svg width="40" height="40" className="text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4h4v16H4V4zm6 0h2v16h-2V4zm4 0h1v16h-1V4zm3 0h3v16h-3V4z" /></svg>

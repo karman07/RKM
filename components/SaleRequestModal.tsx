@@ -2,7 +2,8 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   InventoryItem, SaleRequestData, PaymentSplit,
-  submitSaleRequest, searchCustomerByPhone, type FullCustomer,
+  submitSaleRequest, searchCustomerByPhone, getGoldBalance, redeemGoldBalance,
+  type FullCustomer, type GoldBalance,
 } from '../lib/api';
 
 interface Props {
@@ -26,6 +27,7 @@ const PAYMENT_MODES = [
   { value: 'cheque', label: 'Cheque' },
   { value: 'emi', label: 'EMI' },
   { value: 'gold_exchange', label: 'Gold Exchange' },
+  { value: 'investment_balance', label: 'Investment Balance' },
 ];
 
 // ─── Customer search sub-component ───────────────────────────────────────────
@@ -259,6 +261,100 @@ function PaymentSection({
   );
 }
 
+// ─── Investment Balance Lookup ────────────────────────────────────────────────
+interface InvestmentBalanceSectionProps {
+  phone: string;
+  onSelect: (sub: GoldBalance | null, amount: number) => void;
+  selectedSub: GoldBalance | null;
+  appliedAmount: number;
+}
+
+function InvestmentBalanceSection({ phone, onSelect, selectedSub, appliedAmount }: InvestmentBalanceSectionProps) {
+  const [balances, setBalances] = useState<GoldBalance[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const fmt = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
+
+  async function lookup() {
+    if (!phone.trim()) return;
+    setLoading(true);
+    try {
+      const data = await getGoldBalance(phone.trim());
+      setBalances(data.filter(b => b.availableBalance > 0));
+      setSearched(true);
+      if (data.length === 1) onSelect(data[0], Math.min(appliedAmount || data[0].availableBalance, data[0].availableBalance));
+    } catch {
+      setBalances([]);
+      setSearched(true);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 bg-[#5A0F1A]/5 border border-[#5A0F1A]/20 rounded-2xl p-4 space-y-3">
+      <p className="text-[9px] font-black uppercase tracking-widest text-[#5A0F1A]">Investment Balance Redemption</p>
+      <div className="flex gap-2">
+        <input
+          className={`${INPUT} flex-1`}
+          placeholder={phone || 'Customer phone from above'}
+          value={phone}
+          readOnly
+        />
+        <button
+          type="button"
+          onClick={lookup}
+          disabled={loading || !phone}
+          className="px-4 py-2.5 bg-[#5A0F1A] text-white text-[10px] font-black uppercase rounded-xl disabled:opacity-50 transition-all hover:bg-[#7A1C2A]"
+        >
+          {loading ? '...' : 'Lookup'}
+        </button>
+      </div>
+
+      {searched && balances.length === 0 && (
+        <p className="text-xs font-bold text-slate-500">No redeemable investment balance found for this phone number.</p>
+      )}
+
+      {balances.map(b => (
+        <div
+          key={b._id}
+          onClick={() => onSelect(selectedSub?._id === b._id ? null : b, Math.min(appliedAmount || b.availableBalance, b.availableBalance))}
+          className={`cursor-pointer rounded-xl p-3 border transition-all ${selectedSub?._id === b._id ? 'border-[#5A0F1A] bg-[#5A0F1A]/10' : 'border-slate-200 bg-white hover:border-[#5A0F1A]/40'}`}
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-bold text-slate-900">{b.plan?.name}</p>
+              <p className="text-[10px] text-slate-500">{b.status} · {b.installmentsPaid}/{b.plan?.durationMonths} payments</p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm font-black text-[#5A0F1A]">{fmt(b.availableBalance)}</p>
+              <p className="text-[9px] text-slate-400">available</p>
+            </div>
+          </div>
+        </div>
+      ))}
+
+      {selectedSub && (
+        <div className="space-y-2">
+          <label className={LABEL}>Amount to Apply (max {fmt(selectedSub.availableBalance)})</label>
+          <input
+            type="number"
+            min="1"
+            max={selectedSub.availableBalance}
+            className={INPUT}
+            value={appliedAmount}
+            onChange={e => onSelect(selectedSub, Math.min(parseFloat(e.target.value) || 0, selectedSub.availableBalance))}
+            placeholder={`Up to ${fmt(selectedSub.availableBalance)}`}
+          />
+          <p className="text-[10px] text-[#5A0F1A] font-bold">
+            {selectedSub.plan?.redemptionDiscount}% additional discount on making charges applies at store.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main modal ───────────────────────────────────────────────────────────────
 export default function SaleRequestModal({ item, userId, branchId, onClose, onSuccess }: Props) {
   const product = typeof item.product_id === 'object' ? item.product_id : ({} as any);
@@ -276,7 +372,22 @@ export default function SaleRequestModal({ item, userId, branchId, onClose, onSu
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  // Investment balance redemption state
+  const [selectedInvestmentSub, setSelectedInvestmentSub] = useState<GoldBalance | null>(null);
+  const [investmentAppliedAmount, setInvestmentAppliedAmount] = useState(0);
+
   const hasEmi = splits.some(s => s.mode === 'emi');
+  const hasInvestmentBalance = splits.some(s => s.mode === 'investment_balance');
+
+  function handleInvestmentSelect(sub: GoldBalance | null, amount: number) {
+    setSelectedInvestmentSub(sub);
+    setInvestmentAppliedAmount(amount);
+    if (sub) {
+      setSplits(prev => prev.map(s =>
+        s.mode === 'investment_balance' ? { ...s, amount: String(Math.round(amount)) } : s
+      ));
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -285,11 +396,14 @@ export default function SaleRequestModal({ item, userId, branchId, onClose, onSu
     const validSplits = splits.filter(s => parseFloat(s.amount) > 0);
     if (validSplits.length === 0) { setError('At least one payment method with amount is required'); return; }
     if (hasEmi && !emiProvider.trim()) { setError('EMI provider is required'); return; }
+    if (hasInvestmentBalance && !selectedInvestmentSub) { setError('Please select an investment subscription to redeem from'); return; }
     setError('');
     setSubmitting(true);
     try {
       const splitPayload: PaymentSplit[] = validSplits.map(s => ({
-        mode: s.mode, amount: parseFloat(s.amount), reference: s.reference || undefined,
+        mode: s.mode === 'investment_balance' ? 'investment_balance' : s.mode,
+        amount: parseFloat(s.amount),
+        reference: s.reference || undefined,
       }));
       const payload: SaleRequestData = {
         sold_customer_name: customer.name.trim(),
@@ -311,7 +425,19 @@ export default function SaleRequestModal({ item, userId, branchId, onClose, onSu
         notes: notes.trim(),
         payment_splits: splitPayload,
       };
-      await submitSaleRequest(item._id, payload);
+      const saleResult = await submitSaleRequest(item._id, payload) as any;
+
+      // Deduct investment balance after sale is recorded
+      if (hasInvestmentBalance && selectedInvestmentSub && investmentAppliedAmount > 0) {
+        const saleRef = saleResult?.unique_item_code || saleResult?._id || item.unique_item_code;
+        await redeemGoldBalance(selectedInvestmentSub._id, {
+          amount: investmentAppliedAmount,
+          saleReference: saleRef,
+          note: `Redeemed against sale of ${typeof item.product_id === 'object' ? (item.product_id as any).name : item.unique_item_code}`,
+          staffId: userId,
+        });
+      }
+
       onSuccess();
     } catch (err: any) {
       setError(err.message || 'Failed to submit request');
@@ -366,6 +492,14 @@ export default function SaleRequestModal({ item, userId, branchId, onClose, onSu
           <div>
             <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-3 pb-2 border-b border-slate-100">Payment</p>
             <PaymentSection splits={splits} onChange={setSplits} totalAmount={price} />
+            {hasInvestmentBalance && (
+              <InvestmentBalanceSection
+                phone={customer.phone}
+                onSelect={handleInvestmentSelect}
+                selectedSub={selectedInvestmentSub}
+                appliedAmount={investmentAppliedAmount}
+              />
+            )}
           </div>
 
           {/* EMI extras */}
