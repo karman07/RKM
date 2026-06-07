@@ -182,6 +182,16 @@ export class Settings {
   /** Consecutive absent days before treated as abandonment */
   @Prop({ type: Number, default: 3 })
   hr_absent_days_abandonment: number;
+
+  // ── Security ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Session expiry in hours for manager and cashier roles.
+   * After this many hours from login the session is considered expired.
+   * Default: 2 hours. Admin can change this from the Settings panel.
+   */
+  @Prop({ type: Number, min: 1, max: 24, default: 2 })
+  staff_session_expiry_hours: number;
 }
 
 export const SettingsSchema = SchemaFactory.createForClass(Settings);

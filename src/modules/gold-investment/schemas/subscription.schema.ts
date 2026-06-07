@@ -11,12 +11,17 @@ export enum SubscriptionStatus {
   PENDING = 'pending',
 }
 
+export enum PaymentEntryType {
+  AUTOPAY = 'autopay',
+  CASH = 'cash',
+  WHATSAPP_LINK = 'whatsapp_link',
+}
+
 @Schema({ timestamps: true })
 export class Subscription {
   @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'InvestmentPlan', required: true })
   plan: mongoose.Types.ObjectId;
 
-  /** Customer identifier (phone / email from the form) */
   @Prop({ required: true, trim: true })
   customerName: string;
 
@@ -26,25 +31,9 @@ export class Subscription {
   @Prop({ trim: true })
   customerPhone: string;
 
-  /** Payment rail used to initialize this plan */
-  @Prop({ enum: ['autopay', 'bank_emi'], default: 'autopay' })
-  paymentMode: 'autopay' | 'bank_emi';
-
-  /** EMI tenure selected by customer (for bank EMI mode) */
-  @Prop({ default: 0 })
-  emiTenureMonths: number;
-
-  /** Principal financed upfront through bank EMI (INR) */
-  @Prop({ default: 0 })
-  financedAmount: number;
-
   /** The Razorpay subscription id */
   @Prop({ required: true })
   razorpaySubscriptionId: string;
-
-  /** Razorpay order id for bank EMI upfront flow */
-  @Prop()
-  razorpayOrderId: string;
 
   /** Razorpay customer id (if created) */
   @Prop()
@@ -80,9 +69,77 @@ export class Subscription {
   @Prop()
   redemptionDate: Date;
 
-  /** Total installments paid */
+  /** Total amount already redeemed against jewellery purchases (INR) */
+  @Prop({ default: 0 })
+  amountRedeemed: number;
+
+  /** Audit trail of individual redemption events */
+  @Prop({
+    type: [
+      {
+        amount: { type: Number, required: true },
+        date: { type: Date, required: true },
+        saleReference: { type: String },
+        note: { type: String },
+        staffId: { type: String },
+      },
+    ],
+    default: [],
+  })
+  redemptionHistory: {
+    amount: number;
+    date: Date;
+    saleReference?: string;
+    note?: string;
+    staffId?: string;
+  }[];
+
+  /** Total installments paid (autopay charges + cash payments) */
   @Prop({ default: 0 })
   installmentsPaid: number;
+
+  /**
+   * Full payment ledger — one entry per month that was paid.
+   * Autopay entries are created via webhook; cash entries are created by manager/admin.
+   */
+  @Prop({
+    type: [
+      {
+        month: { type: Number, required: true },
+        amount: { type: Number, required: true },
+        date: { type: Date, required: true },
+        type: { type: String, enum: ['autopay', 'cash', 'whatsapp_link'], required: true },
+        razorpayPaymentId: { type: String },
+        staffId: { type: String },
+        note: { type: String },
+      },
+    ],
+    default: [],
+  })
+  paymentLedger: {
+    month: number;
+    amount: number;
+    date: Date;
+    type: 'autopay' | 'cash' | 'whatsapp_link';
+    razorpayPaymentId?: string;
+    staffId?: string;
+    note?: string;
+  }[];
+
+  /**
+   * Set to true when subscription is cancelled/halted and requires manual monthly follow-up.
+   * Manager must mark each pending month as cash paid or remind via WhatsApp.
+   */
+  @Prop({ default: false })
+  requiresManualPayment: boolean;
+
+  /** Number of WhatsApp payment reminders sent so far */
+  @Prop({ default: 0 })
+  whatsappRemindersCount: number;
+
+  /** Razorpay payment link URL generated for manual payment after cancellation */
+  @Prop()
+  manualPaymentLink: string;
 
   /** Notes / admin remarks */
   @Prop()

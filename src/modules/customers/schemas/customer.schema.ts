@@ -49,6 +49,27 @@ export class Customer {
   @Prop()
   lastContactedAt: Date;
 
+  @Prop()
+  pincode: string;
+
+  @Prop()
+  aadharCard: string;
+
+  @Prop()
+  panCard: string;
+
+  @Prop()
+  accountNumber: string;
+
+  @Prop()
+  ifscCode: string;
+
+  @Prop()
+  bankName: string;
+
+  @Prop({ type: [{ key: String, value: String }], default: [] })
+  customFields: { key: string; value: string }[];
+
   @Prop({ type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'InventoryItem' }], default: [] })
   purchase_history: mongoose.Types.ObjectId[];
 }

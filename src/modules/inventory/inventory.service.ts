@@ -453,6 +453,7 @@ export class InventoryService {
           { barcode: { $regex: search, $options: 'i' } },
           { unique_item_code: { $regex: search, $options: 'i' } },
           { sale_reference: { $regex: search, $options: 'i' } },
+          { invoice_number: { $regex: search, $options: 'i' } },
           { product_id: { $in: matchingProductIds } },
         ];
       } else {
@@ -1195,6 +1196,11 @@ export class InventoryService {
         (item as any).payment_splits = [{ mode: item.payment_mode, amount: item.selling_price, reference: '' }];
       }
 
+      // Investment balance redemption tracking
+      if (dto.investment_redeemed != null) (item as any).investment_redeemed = Number(dto.investment_redeemed) || 0;
+      if (dto.investment_sub_id) (item as any).investment_sub_id = dto.investment_sub_id;
+      if (dto.making_charges_discount != null) (item as any).making_charges_discount = Number(dto.making_charges_discount) || 0;
+
       // ─── Full Sale Traceability ─────────────────────────────────────────────
       // Record the branch where the sale happened
       const saleBranchId = dto.sold_at_branch_id || requestingUserBranchId || (item.branch_id?.toString());
@@ -1424,6 +1430,14 @@ export class InventoryService {
     id: string,
     reviewerId: string,
     reviewerRole: string,
+    overrides?: {
+      selling_price?: number;
+      manager_discount?: number;
+      investment_redeemed?: number;
+      investment_sub_id?: string;
+      making_charges_discount?: number;
+      payment_splits?: Array<{ mode: string; amount: number; reference?: string }>;
+    },
   ): Promise<InventoryItemDocument> {
     this.validateObjectId(id);
     const item = await this.inventoryModel.findById(id);
@@ -1454,6 +1468,18 @@ export class InventoryService {
       sold_by_user_id: saleData.sold_by_user_id,
       payment_splits: saleData.payment_splits,
     };
+
+    // Apply manager overrides on top of cashier-submitted data
+    if (overrides?.selling_price != null) dto.selling_price = Number(overrides.selling_price);
+    if (overrides?.investment_redeemed != null) dto.investment_redeemed = Number(overrides.investment_redeemed);
+    if (overrides?.investment_sub_id) dto.investment_sub_id = overrides.investment_sub_id;
+    if (overrides?.making_charges_discount != null) dto.making_charges_discount = Number(overrides.making_charges_discount);
+    if (overrides?.payment_splits?.length) dto.payment_splits = overrides.payment_splits;
+
+    // Set manager_discount on item before saving so it's captured
+    if (overrides?.manager_discount != null) {
+      item.manager_discount = Number(overrides.manager_discount);
+    }
 
     (item as any).sale_request_status = 'approved';
     (item as any).sale_request_reviewer = reviewerId && Types.ObjectId.isValid(reviewerId)
@@ -1661,5 +1687,165 @@ export class InventoryService {
     } catch (err) {
       throw new BadRequestException(`Razorpay Order creation failed: ${err.message}`);
     }
+  }
+
+  async getPaymentsAnalytics(days = 30) {
+    const since = new Date();
+    since.setDate(since.getDate() - days);
+    since.setHours(0, 0, 0, 0);
+
+    const baseMatch = {
+      is_deleted: { $ne: true },
+      status: InventoryStatus.SOLD,
+      sold_at: { $gte: since },
+    };
+
+    const [
+      revenueOverTime,
+      paymentModeBreakdown,
+      branchRevenue,
+      summaryStats,
+      recentTransactions,
+      revenueByDayOfWeek,
+    ] = await Promise.all([
+      // Daily revenue over time
+      this.inventoryModel.aggregate([
+        { $match: baseMatch },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$sold_at' } },
+            revenue: { $sum: '$selling_price' },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { _id: 1 } },
+      ]),
+
+      // Payment mode breakdown (using payment_splits when available)
+      this.inventoryModel.aggregate([
+        { $match: baseMatch },
+        {
+          $project: {
+            selling_price: 1,
+            splits: {
+              $cond: {
+                if: { $and: [{ $isArray: '$payment_splits' }, { $gt: [{ $size: '$payment_splits' }, 0] }] },
+                then: '$payment_splits',
+                else: [{ mode: '$payment_mode', amount: '$selling_price' }],
+              },
+            },
+          },
+        },
+        { $unwind: '$splits' },
+        {
+          $group: {
+            _id: { $toLower: { $ifNull: ['$splits.mode', 'unknown'] } },
+            total: { $sum: '$splits.amount' },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { total: -1 } },
+      ]),
+
+      // Top branches by revenue
+      this.inventoryModel.aggregate([
+        { $match: baseMatch },
+        {
+          $group: {
+            _id: '$sold_at_branch_id',
+            revenue: { $sum: '$selling_price' },
+            count: { $sum: 1 },
+          },
+        },
+        { $lookup: { from: 'branches', localField: '_id', foreignField: '_id', as: 'branch' } },
+        { $unwind: { path: '$branch', preserveNullAndEmptyArrays: true } },
+        {
+          $project: {
+            branch_name: { $ifNull: ['$branch.name', 'Unallocated'] },
+            branch_code: '$branch.code',
+            revenue: 1,
+            count: 1,
+            _id: 0,
+          },
+        },
+        { $sort: { revenue: -1 } },
+        { $limit: 10 },
+      ]),
+
+      // Summary KPIs
+      this.inventoryModel.aggregate([
+        { $match: baseMatch },
+        {
+          $group: {
+            _id: null,
+            totalRevenue: { $sum: '$selling_price' },
+            totalTransactions: { $sum: 1 },
+            avgTransactionValue: { $avg: '$selling_price' },
+            maxSale: { $max: '$selling_price' },
+            minSale: { $min: '$selling_price' },
+            totalProfit: { $sum: { $subtract: ['$selling_price', '$purchase_price'] } },
+          },
+        },
+      ]),
+
+      // Recent 20 transactions
+      this.inventoryModel
+        .find(
+          { is_deleted: { $ne: true }, status: InventoryStatus.SOLD, sold_at: { $gte: since } },
+          {
+            name: 1,
+            barcode: 1,
+            selling_price: 1,
+            payment_mode: 1,
+            payment_splits: 1,
+            sold_at: 1,
+            sold_at_branch_id: 1,
+            sold_by_user_id: 1,
+          },
+        )
+        .populate({ path: 'sold_at_branch_id', select: 'name code' })
+        .populate({ path: 'sold_by_user_id', select: 'name' })
+        .sort({ sold_at: -1 })
+        .limit(20)
+        .lean(),
+
+      // Revenue by day of week (0=Sun … 6=Sat)
+      this.inventoryModel.aggregate([
+        { $match: baseMatch },
+        {
+          $group: {
+            _id: { $dayOfWeek: '$sold_at' },
+            revenue: { $sum: '$selling_price' },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { _id: 1 } },
+      ]),
+    ]);
+
+    const summary = summaryStats[0] ?? {
+      totalRevenue: 0,
+      totalTransactions: 0,
+      avgTransactionValue: 0,
+      maxSale: 0,
+      minSale: 0,
+      totalProfit: 0,
+    };
+
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const revenueByDay = revenueByDayOfWeek.map((d: any) => ({
+      day: dayNames[d._id - 1] ?? 'Unknown',
+      revenue: d.revenue,
+      count: d.count,
+    }));
+
+    return {
+      summary,
+      revenueOverTime,
+      paymentModeBreakdown,
+      branchRevenue,
+      recentTransactions,
+      revenueByDay,
+    };
   }
 }

@@ -12,9 +12,13 @@ export class CustomersAdminController {
     return this.customersService.findAll(Number(page) || 1, Number(limit) || 20);
   }
 
-  /** Search customers by partial phone number */
+  /** Search customers by partial phone, name, or email */
   @Get('search')
-  async search(@Query('phone') phone: string) {
+  async search(@Query('phone') phone: string, @Query('q') q: string) {
+    if (q) {
+      const data = await this.customersService.searchByQuery(q);
+      return { data };
+    }
     if (!phone) return { data: [] };
     const data = await this.customersService.searchByPhone(phone);
     return { data };
@@ -53,6 +57,12 @@ export class CustomersAdminController {
     state?: string;
     pincode?: string;
     country?: string;
+    aadharCard?: string;
+    panCard?: string;
+    accountNumber?: string;
+    ifscCode?: string;
+    bankName?: string;
+    customFields?: { key: string; value: string }[];
   }) {
     if (!body?.name || !body?.phone) throw new BadRequestException('name and phone are required');
     return this.customersService.createByManager(body);

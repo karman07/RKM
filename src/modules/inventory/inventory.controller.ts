@@ -178,6 +178,12 @@ export class InventoryController {
     return this.inventoryService.getAllBranchStats();
   }
 
+  @Get('payments/analytics')
+  @Roles(UserRole.ADMIN)
+  getPaymentsAnalytics(@Query('days') days?: string) {
+    return this.inventoryService.getPaymentsAnalytics(days ? parseInt(days) : 30);
+  }
+
   @Get()
   @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER)
   findAll(@Query() query: QueryInventoryDto) {
@@ -253,10 +259,18 @@ export class InventoryController {
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   approveSaleRequest(
     @Param('id') id: string,
+    @Body() body: {
+      selling_price?: number;
+      manager_discount?: number;
+      investment_redeemed?: number;
+      investment_sub_id?: string;
+      making_charges_discount?: number;
+      payment_splits?: Array<{ mode: string; amount: number; reference?: string }>;
+    },
     @Request() req: any,
   ) {
     const userId = req.user?.userId || req.user?.sub || req.user?._id || req.user?.id;
-    return this.inventoryService.approveSaleRequest(id, userId?.toString(), req.user?.role);
+    return this.inventoryService.approveSaleRequest(id, userId?.toString(), req.user?.role, body ?? {});
   }
 
   /**

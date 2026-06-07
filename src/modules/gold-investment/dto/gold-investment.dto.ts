@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsBoolean, Min, Max, IsIn } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsBoolean, Min, Max } from 'class-validator';
 
 export class CreateInvestmentPlanDto {
   @IsString()
@@ -8,23 +8,19 @@ export class CreateInvestmentPlanDto {
   @IsOptional()
   description?: string;
 
-  /** Monthly installment amount in INR */
   @IsNumber()
   @Min(100)
   monthlyAmount: number;
 
-  /** Duration in months */
   @IsNumber()
   @Min(1)
   durationMonths: number;
 
-  /** Annual interest rate % */
   @IsNumber()
   @Min(0)
   @Max(100)
   interestRate: number;
 
-  /** Discount % customer gets on redemption */
   @IsNumber()
   @Min(0)
   @Max(100)
@@ -79,16 +75,6 @@ export class CreateSubscriptionDto {
   @IsString()
   @IsOptional()
   customerPhone?: string;
-
-  @IsString()
-  @IsOptional()
-  @IsIn(['autopay', 'bank_emi'])
-  paymentMode?: 'autopay' | 'bank_emi';
-
-  @IsNumber()
-  @IsOptional()
-  @Min(1)
-  emiTenureMonths?: number;
 }
 
 export class UpdateSubscriptionDto {
@@ -99,4 +85,37 @@ export class UpdateSubscriptionDto {
   @IsBoolean()
   @IsOptional()
   redeemed?: boolean;
+}
+
+export class RedeemBalanceDto {
+  @IsNumber()
+  @Min(1)
+  amount: number;
+
+  @IsString()
+  @IsOptional()
+  saleReference?: string;
+
+  @IsString()
+  @IsOptional()
+  note?: string;
+
+  @IsString()
+  @IsOptional()
+  staffId?: string;
+}
+
+/** Marks a specific month as paid in cash (by manager/admin) */
+export class MarkCashPaymentDto {
+  @IsNumber()
+  @Min(1)
+  month: number;
+
+  @IsString()
+  @IsOptional()
+  staffId?: string;
+
+  @IsString()
+  @IsOptional()
+  note?: string;
 }

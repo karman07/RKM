@@ -127,4 +127,13 @@ export class UpdateInventoryStatusDto {
   /** Split payment entries — overrides payment_mode when provided */
   @IsOptional()
   payment_splits?: Array<{ mode: string; amount: number; reference?: string }>;
+
+  @IsOptional()
+  investment_redeemed?: number;
+
+  @IsOptional()
+  investment_sub_id?: string;
+
+  @IsOptional()
+  making_charges_discount?: number;
 }

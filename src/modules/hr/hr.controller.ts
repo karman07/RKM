@@ -84,6 +84,17 @@ export class HrController {
     return this.hrService.getAllReimbursements({ status, branch_id, limit });
   }
 
+  /** Admin creates a reimbursement on behalf of any employee */
+  @Post('reimbursements/for/:employeeId')
+  @Roles(UserRole.ADMIN)
+  createReimbursementForEmployee(
+    @Param('employeeId') employeeId: string,
+    @Body() data: { category: string; amount: number; description: string; branch_id?: string; auto_approve?: boolean },
+    @Req() req: any,
+  ) {
+    return this.hrService.createReimbursementForEmployee(getUserId(req), employeeId, data);
+  }
+
   @Patch('reimbursements/:id/review')
   @Roles(UserRole.ADMIN)
   reviewReimbursement(

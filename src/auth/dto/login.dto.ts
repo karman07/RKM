@@ -23,4 +23,7 @@ export class LoginDto {
   @Max(180)
   @Type(() => Number)
   longitude?: number;
+
+  /** Injected server-side from request headers — not accepted from body */
+  ip_address?: string;
 }

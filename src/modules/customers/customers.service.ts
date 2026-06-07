@@ -287,6 +287,15 @@ export class CustomersService {
     return this.customerModel.find({ phone: regex }).limit(10).exec();
   }
 
+  async searchByQuery(q: string) {
+    if (!q || q.trim().length < 2) return [];
+    const escaped = q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(escaped, 'i');
+    return this.customerModel.find({
+      $or: [{ name: regex }, { phone: regex }, { email: regex }],
+    }).limit(15).exec();
+  }
+
   async createByManager(data: {
     name: string;
     phone: string;
@@ -297,6 +306,12 @@ export class CustomersService {
     state?: string;
     pincode?: string;
     country?: string;
+    aadharCard?: string;
+    panCard?: string;
+    accountNumber?: string;
+    ifscCode?: string;
+    bankName?: string;
+    customFields?: { key: string; value: string }[];
   }) {
     const existing = await this.customerModel.findOne({ phone: data.phone });
     if (existing) throw new ConflictException('A customer with this phone number already exists');

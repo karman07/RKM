@@ -98,6 +98,26 @@ export class HrService {
     return reimbursement.save();
   }
 
+  async createReimbursementForEmployee(
+    adminId: string,
+    employeeId: string,
+    data: { category: string; amount: number; description: string; branch_id?: string; auto_approve?: boolean },
+  ) {
+    const reimbursement = new this.reimbursementModel({
+      manager_id:  new Types.ObjectId(employeeId),
+      branch_id:   data.branch_id ? new Types.ObjectId(data.branch_id) : undefined,
+      category:    data.category,
+      amount:      data.amount,
+      description: data.description,
+      ...(data.auto_approve && {
+        status:       ReimbursementStatus.APPROVED,
+        reviewed_by:  new Types.ObjectId(adminId),
+        reviewed_at:  new Date(),
+      }),
+    });
+    return reimbursement.save();
+  }
+
   async getMyReimbursements(managerId: string) {
     return this.reimbursementModel
       .find({ manager_id: new Types.ObjectId(managerId) })

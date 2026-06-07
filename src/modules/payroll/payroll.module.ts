@@ -6,6 +6,7 @@ import { User, UserSchema } from '../../users/schemas/user.schema';
 import { Attendance, AttendanceSchema } from '../attendance/schemas/attendance.schema';
 import { LeaveRequest, LeaveRequestSchema } from '../hr/schemas/leave-request.schema';
 import { Holiday, HolidaySchema } from '../holidays/schemas/holiday.schema';
+import { Reimbursement, ReimbursementSchema } from '../hr/schemas/reimbursement.schema';
 import { SettingsModule } from '../settings/settings.module';
 import { IncentiveModule } from '../incentives/incentive.module';
 
@@ -16,6 +17,7 @@ import { IncentiveModule } from '../incentives/incentive.module';
       { name: Attendance.name, schema: AttendanceSchema },
       { name: LeaveRequest.name, schema: LeaveRequestSchema },
       { name: Holiday.name, schema: HolidaySchema },
+      { name: Reimbursement.name, schema: ReimbursementSchema },
     ]),
     SettingsModule,
     IncentiveModule,

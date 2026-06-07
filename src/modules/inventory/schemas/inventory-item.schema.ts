@@ -263,6 +263,18 @@ export class InventoryItem {
 
   @Prop({ trim: true, default: '' })
   deletion_notes: string;
+
+  /** Amount deducted from making charges due to investment plan redemption discount */
+  @Prop({ type: Number, default: 0 })
+  making_charges_discount: number;
+
+  /** Amount of investment balance applied to this sale */
+  @Prop({ type: Number, default: 0 })
+  investment_redeemed: number;
+
+  /** The subscription ID from which investment was redeemed */
+  @Prop({ type: String, default: null })
+  investment_sub_id: string;
 }
 
 export const InventoryItemSchema = SchemaFactory.createForClass(InventoryItem);
