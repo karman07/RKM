@@ -17,7 +17,7 @@ export class AuthController {
     private usersService: UsersService,
   ) {}
 
-  /** Step 1 — password login. Returns WebAuthn challenge or full token. */
+  /** Step 1 — password login. Always requires email + password before WebAuthn fingerprint step. */
   @Post('login')
   @HttpCode(HttpStatus.OK)
   login(@Body() loginDto: LoginDto, @Req() req: any) {

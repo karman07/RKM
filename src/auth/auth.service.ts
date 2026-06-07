@@ -86,7 +86,61 @@ export class AuthService {
     return null;
   }
 
-  /** Step 1 — password login. Returns either a WebAuthn challenge or a full token. */
+  /** Shared geofence check — throws ForbiddenException if outside radius, logs violation */
+  private async checkGeofence(user: any, latitude: number | undefined, longitude: number | undefined) {
+    const branchId = user.branch?._id || user.branch;
+    if (!branchId) throw new ForbiddenException('You are not assigned to a branch. Please contact your admin.');
+
+    const branch = await this.branchModel.findById(branchId).lean();
+    if (!branch) throw new ForbiddenException('Your assigned branch could not be found. Please contact admin.');
+
+    if (branch.latitude == null || branch.longitude == null) {
+      throw new ForbiddenException('Your branch location has not been set up yet. Please ask admin to configure the branch geofence before signing in.');
+    }
+    if (latitude == null || longitude == null) {
+      throw new ForbiddenException('Location access is required to sign in. Please allow location permissions and try again.');
+    }
+
+    const distance = haversineMeters(latitude, longitude, branch.latitude, branch.longitude);
+    const radius = branch.geofence_radius ?? 200;
+
+    if (distance > radius) {
+      try {
+        await this.locationViolationsService.create({
+          user_id: new Types.ObjectId(user._id),
+          user_name: user.name,
+          user_email: user.email,
+          user_role: user.role,
+          branch_id: new Types.ObjectId(branchId),
+          branch_name: branch.name,
+          attempted_lat: latitude,
+          attempted_lng: longitude,
+          branch_lat: branch.latitude,
+          branch_lng: branch.longitude,
+          distance_meters: Math.round(distance),
+          geofence_radius: radius,
+        });
+      } catch (e) { this.logger.error('Failed to save location violation', e); }
+
+      try {
+        await this.notificationsService.notifyAdmins(
+          '⚠️ Unauthorized Location Login Attempt',
+          `${user.name} (${user.role}) tried to sign in from ${Math.round(distance)}m away from ${branch.name}. Allowed: ${radius}m.`,
+          { type: 'location_violation', userId: String(user._id), branchId: String(branchId) },
+        );
+      } catch (e) { this.logger.error('Failed to send location violation notification', e); }
+
+      throw new ForbiddenException({
+        message: `You are ${Math.round(distance)}m away from ${branch.name}. You must be within ${radius}m to sign in.`,
+        distance: Math.round(distance), radius,
+        branchName: branch.name,
+        branchLat: branch.latitude, branchLng: branch.longitude,
+        userLat: latitude, userLng: longitude,
+      });
+    }
+  }
+
+  /** Step 1 — password login. Always requires email + password before any WebAuthn step. */
   async login(loginDto: LoginDto) {
     const user = await this.validateUser(loginDto.email, loginDto.password);
     if (!user) throw new UnauthorizedException('Invalid credentials or inactive user');
@@ -95,61 +149,10 @@ export class AuthService {
       throw new ForbiddenException('This account does not have system access. Please contact your manager.');
     }
 
-    // Geofence for non-admin/custom roles
     if (user.role !== 'admin' && user.role !== 'custom') {
-      const branchId = user.branch?._id || user.branch;
-      if (!branchId) throw new ForbiddenException('You are not assigned to a branch. Please contact your admin.');
-
-      const branch = await this.branchModel.findById(branchId).lean();
-      if (!branch) throw new ForbiddenException('Your assigned branch could not be found. Please contact admin.');
-
-      if (branch.latitude == null || branch.longitude == null) {
-        throw new ForbiddenException('Your branch location has not been set up yet. Please ask admin to configure the branch geofence before signing in.');
-      }
-      if (loginDto.latitude == null || loginDto.longitude == null) {
-        throw new ForbiddenException('Location access is required to sign in. Please allow location permissions and try again.');
-      }
-
-      const distance = haversineMeters(loginDto.latitude, loginDto.longitude, branch.latitude, branch.longitude);
-      const radius = branch.geofence_radius ?? 200;
-
-      if (distance > radius) {
-        try {
-          await this.locationViolationsService.create({
-            user_id: new Types.ObjectId(user._id),
-            user_name: user.name,
-            user_email: user.email,
-            user_role: user.role,
-            branch_id: new Types.ObjectId(branchId),
-            branch_name: branch.name,
-            attempted_lat: loginDto.latitude,
-            attempted_lng: loginDto.longitude,
-            branch_lat: branch.latitude,
-            branch_lng: branch.longitude,
-            distance_meters: Math.round(distance),
-            geofence_radius: radius,
-          });
-        } catch (e) { this.logger.error('Failed to save location violation', e); }
-
-        try {
-          await this.notificationsService.notifyAdmins(
-            '⚠️ Unauthorized Location Login Attempt',
-            `${user.name} (${user.role}) tried to sign in from ${Math.round(distance)}m away from ${branch.name}. Allowed: ${radius}m.`,
-            { type: 'location_violation', userId: String(user._id), branchId: String(branchId) },
-          );
-        } catch (e) { this.logger.error('Failed to send location violation notification', e); }
-
-        throw new ForbiddenException({
-          message: `You are ${Math.round(distance)}m away from ${branch.name}. You must be within ${radius}m to sign in.`,
-          distance: Math.round(distance), radius,
-          branchName: branch.name,
-          branchLat: branch.latitude, branchLng: branch.longitude,
-          userLat: loginDto.latitude, userLng: loginDto.longitude,
-        });
-      }
+      await this.checkGeofence(user, loginDto.latitude, loginDto.longitude);
     }
 
-    // ── WebAuthn for manager / cashier ────────────────────────────────────────
     const isStaff = STAFF_ROLES.includes(user.role);
 
     if (isStaff) {
@@ -157,7 +160,6 @@ export class AuthService {
       const existingCredential = await this.credentialModel.findOne({ user_id: userId });
 
       if (!existingCredential) {
-        // First login — must register biometric fingerprint first
         const regOptions = await this.generateRegistrationOptions(user);
         return {
           needs_webauthn_setup: true,
@@ -170,12 +172,12 @@ export class AuthService {
         };
       }
 
-      // Credential exists — generate authentication challenge
+      // Credential already registered — should not reach here in normal flow
+      // (beginWebAuthn handles this path). Still return auth challenge as fallback.
       const authOptions = await this.generateAuthenticationOptions(user);
       return {
         webauthn_required: true,
         webauthn_options: authOptions,
-        // Short-lived token to carry user identity to the verify step
         pending_token: this.jwtService.sign(
           { email: user.email, sub: user._id, role: user.role, pending: true },
           { expiresIn: '5m' },
@@ -183,7 +185,6 @@ export class AuthService {
       };
     }
 
-    // Non-staff (admin / custom) — issue token directly
     return this.issueToken(user);
   }
 
