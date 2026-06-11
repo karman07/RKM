@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { UsersModule } from './users/users.module';
@@ -33,11 +34,13 @@ import { CustomRolesModule } from './modules/custom-roles/custom-roles.module';
 import { OldGoldModule } from './modules/old-gold/old-gold.module';
 import { PayrollModule } from './modules/payroll/payroll.module';
 import { IncentiveModule } from './modules/incentives/incentive.module';
+import { SignInMonitorModule } from './modules/sign-in-monitor/sign-in-monitor.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env.local', '.env'] }),
     EventEmitterModule.forRoot({ wildcard: false, delimiter: '.', global: true }),
+    ScheduleModule.forRoot(),
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -74,6 +77,7 @@ import { IncentiveModule } from './modules/incentives/incentive.module';
     OldGoldModule,
     PayrollModule,
     IncentiveModule,
+    SignInMonitorModule,
   ],
   controllers: [AppController],
   providers: [AppService],

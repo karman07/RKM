@@ -163,4 +163,20 @@ export class UpdateSettingsDto {
   @IsNumber()
   @Min(1)
   hr_absent_days_abandonment?: number;
+
+  // ── Security ────────────────────────────────────────────────────────────────
+
+  /** Session expiry in hours for manager and cashier roles (1–24) */
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(24)
+  staff_session_expiry_hours?: number;
+
+  /** Hours after shift start within which staff must sign in (1–12). Missed sign-ins trigger an admin alert. */
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(12)
+  sign_in_window_hours?: number;
 }

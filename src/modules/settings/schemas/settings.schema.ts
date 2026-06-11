@@ -192,6 +192,15 @@ export class Settings {
    */
   @Prop({ type: Number, min: 1, max: 24, default: 2 })
   staff_session_expiry_hours: number;
+
+  /**
+   * Sign-in window in hours after shift_start_time.
+   * If a manager or cashier has not logged in within this window, admin
+   * receives a push notification flagging the breach with branch location.
+   * Default: 2 hours.
+   */
+  @Prop({ type: Number, min: 1, max: 12, default: 2 })
+  sign_in_window_hours: number;
 }
 
 export const SettingsSchema = SchemaFactory.createForClass(Settings);
