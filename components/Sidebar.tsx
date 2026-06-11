@@ -147,11 +147,6 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
               <NavIcon active={pathname === '/dashboard/inventory/sold'} color={pathname === '/dashboard/inventory/sold' ? colors.activeText : colors.textMuted}><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" /><path d="M3 6h18" /><path d="M16 10a4 4 0 0 1-8 0" /></NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] whitespace-nowrap font-bold">Sales Records</span>}
             </Link>}
-            <Link href="/dashboard/sale-approvals" onClick={onNavigate} title={isCollapsed ? "Sale Approvals" : ""} className={navClass(pathname.startsWith('/dashboard/sale-approvals'))} style={getNavStyle(pathname.startsWith('/dashboard/sale-approvals'))}>
-              {isCollapsed && pathname.startsWith('/dashboard/sale-approvals') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
-              <NavIcon active={pathname.startsWith('/dashboard/sale-approvals')} color={pathname.startsWith('/dashboard/sale-approvals') ? colors.activeText : colors.textMuted}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></NavIcon>
-              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] whitespace-nowrap font-bold">Sale Approvals</span>}
-            </Link>
             {can('inventory.allocate') && <Link href="/dashboard/inventory/allocate" onClick={onNavigate} title={isCollapsed ? "Allocate to Branch" : ""} className={navClass(pathname === '/dashboard/inventory/allocate')} style={getNavStyle(pathname === '/dashboard/inventory/allocate')}>
               {isCollapsed && pathname === '/dashboard/inventory/allocate' && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
               <NavIcon active={pathname === '/dashboard/inventory/allocate'} color={pathname === '/dashboard/inventory/allocate' ? colors.activeText : colors.textMuted}><path d="M19 11H7m12 0-4 4m4-4-4-4M3 5v14" /></NavIcon>

@@ -111,6 +111,7 @@ export default function SettingsPage() {
   const [uploadingLogo,   setUploadingLogo]   = useState(false);
   // Security
   const [staffSessionExpiry, setStaffSessionExpiry] = useState('2');
+  const [signInWindow, setSignInWindow] = useState('2');
 
   // Fetch purity lookups from database
   useEffect(() => {
@@ -209,6 +210,7 @@ export default function SettingsPage() {
     setHrCasualLeaves(String(settings.hr_casual_leaves ?? 3));
     setHrAbsentAbandonment(String(settings.hr_absent_days_abandonment ?? 3));
     setStaffSessionExpiry(String(settings.staff_session_expiry_hours ?? 2));
+    setSignInWindow(String(settings.sign_in_window_hours ?? 2));
   }, [loading, lookupsLoading, settings, purityLookups, metalConfig]);
 
   function showToast(message: string, type: 'success' | 'danger' | 'info' = 'info') {
@@ -285,6 +287,7 @@ export default function SettingsPage() {
         hr_casual_leaves:          Number(hrCasualLeaves) || 3,
         hr_absent_days_abandonment:Number(hrAbsentAbandonment) || 3,
         staff_session_expiry_hours: Math.max(1, Math.min(24, Number(staffSessionExpiry) || 2)),
+        sign_in_window_hours: Math.max(1, Math.min(12, Number(signInWindow) || 2)),
       });
 
       await fetch(`${API_BASE}/online-orders/delivery-settings`, {
@@ -1027,32 +1030,55 @@ return (
           </p>
         </div>
 
-        <div className="max-w-xs space-y-2">
-          <label className="text-[10px] font-black uppercase tracking-widest" style={{ color: colors.textHeader }}>
-            Staff Session Expiry
-          </label>
-          <div className="relative">
-            <input
-              type="number"
-              min={1}
-              max={24}
-              value={staffSessionExpiry}
-              onChange={e => setStaffSessionExpiry(e.target.value)}
-              className="w-full px-4 py-3 pr-16 rounded-xl border text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all"
-              style={{ borderColor: colors.border, background: theme === 'dark' ? '#1e293b' : '#f8fafc', color: colors.textMain }}
-            />
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[11px] font-bold opacity-40" style={{ color: colors.textMain }}>hrs</span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-md">
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-widest" style={{ color: colors.textHeader }}>
+              Staff Session Expiry
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                min={1}
+                max={24}
+                value={staffSessionExpiry}
+                onChange={e => setStaffSessionExpiry(e.target.value)}
+                className="w-full px-4 py-3 pr-16 rounded-xl border text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all"
+                style={{ borderColor: colors.border, background: theme === 'dark' ? '#1e293b' : '#f8fafc', color: colors.textMain }}
+              />
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[11px] font-bold opacity-40" style={{ color: colors.textMain }}>hrs</span>
+            </div>
+            <p className="text-[10px] opacity-50" style={{ color: colors.textMain }}>
+              1–24 hrs. Session duration after login.
+            </p>
           </div>
-          <p className="text-[10px] opacity-50" style={{ color: colors.textMain }}>
-            1–24 hours. Default: 2 hours. Applies to manager and cashier portals.
-          </p>
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-widest" style={{ color: colors.textHeader }}>
+              Sign-In Window
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                min={1}
+                max={12}
+                value={signInWindow}
+                onChange={e => setSignInWindow(e.target.value)}
+                className="w-full px-4 py-3 pr-16 rounded-xl border text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all"
+                style={{ borderColor: colors.border, background: theme === 'dark' ? '#1e293b' : '#f8fafc', color: colors.textMain }}
+              />
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[11px] font-bold opacity-40" style={{ color: colors.textMain }}>hrs</span>
+            </div>
+            <p className="text-[10px] opacity-50" style={{ color: colors.textMain }}>
+              1–12 hrs after shift start. Admin alerted if staff miss this window.
+            </p>
+          </div>
         </div>
 
         <div className="p-3 rounded-xl text-[10px] font-medium flex items-start gap-2" style={{ backgroundColor: '#fef2f2', color: '#991b1b' }}>
           <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} className="flex-shrink-0 mt-px">
             <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          Sessions already in progress will use their original expiry. The new value applies to all logins after saving.
+          Sessions already in progress use their original expiry. The sign-in window triggers a push notification to admins with the branch location when a manager or cashier has not signed in.
         </div>
       </section>
 
