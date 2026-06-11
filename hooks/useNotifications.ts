@@ -14,7 +14,7 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-const VAPID_KEY = 'BKqq3YgM04DffJri7Xxr6WJVujCDnQomMYLFjhurfKPn-p-32noPi9nxEGNCItICNDj3-YxJ510I7mhzui-CgHM';
+const VAPID_KEY = 'BBIe1hKaE3RN6Pq3Op4BpxbjvFUwYXhmlghCcvWxmcJq974DD5OO8SfChtv4OzDN3bL7IqbEne4uZGPE5iwqqbg';
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
 async function registerTokenWithBackend(token: string) {
