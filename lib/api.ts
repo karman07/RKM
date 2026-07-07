@@ -424,6 +424,75 @@ export const getGoldBalance = (phone: string) =>
 export const redeemGoldBalance = (subscriptionId: string, data: { amount: number; saleReference?: string; note?: string; staffId?: string }) =>
   request<any>(`/gold-investment/subscriptions/${subscriptionId}/redeem`, { method: 'POST', body: JSON.stringify(data) });
 
+// ── Gold Loans (read-only — cashier can view but not manage) ─────────────────
+
+export interface GLEmiEntry {
+  month: number;
+  due_date: string;
+  expected_amount: number;
+  status: 'paid' | 'missed';
+  paid_date: string | null;
+  paid_amount: number | null;
+  mode: string;
+  note: string;
+}
+
+export interface GoldLoan {
+  _id: string;
+  loan_number: string;
+  customer_id: string | { _id: string; name: string; phone?: string };
+  customer_name: string;
+  customer_phone: string;
+  total_weight_grams: number;
+  loan_amount: number;
+  interest_rate_monthly: number;
+  status: 'draft' | 'submitted' | 'active' | 'closed' | 'rejected';
+  computed_status: 'draft' | 'submitted' | 'active' | 'overdue' | 'closed' | 'rejected';
+  emiLedger: GLEmiEntry[];
+  created_by: string | { _id: string; name: string } | null;
+  submitted_by?: string | { _id: string; name: string } | null;
+  approved_by?: string | { _id: string; name: string } | null;
+  disbursed_at?: string | null;
+  principal_repaid_amount: number | null;
+  createdAt: string;
+}
+
+/** Loans for a specific customer — used by the customer 360 drawer */
+export const getGoldLoansByCustomer = (customerId: string) =>
+  request<GoldLoan[]>(`/gold-loan/customer/${customerId}`);
+
+// ── Customer Advances (read-only — cashier can view but not create/redeem) ──
+
+export interface CustomerAdvance {
+  _id: string;
+  customer: string;
+  customerName: string;
+  customerPhone: string;
+  amount: number;
+  amountRedeemed: number;
+  availableBalance: number;
+  making_charges_waiver_pct: number;
+  mode: string;
+  note: string;
+  status: 'active' | 'closed';
+  lock_in_days: number;
+  lock_in_expires_at: string | null;
+  locked: boolean;
+  createdBy?: string | { _id: string; name: string; role?: string } | null;
+  createdAt: string;
+  redemptionHistory: {
+    amount: number;
+    making_charges_discount: number;
+    date: string;
+    saleReference?: string;
+    note?: string;
+  }[];
+}
+
+/** Lists all advances recorded for a customer */
+export const getCustomerAdvances = (customerId: string) =>
+  request<CustomerAdvance[]>(`/customers/${customerId}/advances`);
+
 // ── Sale Requests ─────────────────────────────────────────────────────────────
 
 export const submitSaleRequest = (itemId: string, data: Record<string, any>) =>
