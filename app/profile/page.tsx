@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppSelector, useAppDispatch } from '../../store/store';
 import { setAuth, logout } from '../../store/authSlice';
-import { Camera, MapPin, User, Mail, Phone, Home, Globe, CheckCircle2, AlertCircle, Loader2, ChevronLeft, LogOut, ShieldCheck, CreditCard, ShoppingBag, Heart, X, Gem, Package, Store, ChevronDown, ChevronUp } from 'lucide-react';
+import { Camera, MapPin, User, Mail, Phone, Home, Globe, CheckCircle2, AlertCircle, Loader2, ChevronLeft, LogOut, ShieldCheck, CreditCard, ShoppingBag, Heart, X, Gem, Package, Store, ChevronDown, ChevronUp, UserCog } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import LogoutDialog from '../../components/LogoutDialog';
@@ -68,10 +68,32 @@ export default function ProfilePage() {
         state: authState.customer.state || '',
         country: authState.customer.country || ''
       });
-      fetchGoldSubscriptions(authState.token);
-      fetchPurchaseHistory(authState.token);
     }
   }, [authState.token, authState.customer]);
+
+  useEffect(() => {
+    if (!authState.token) return;
+    fetchGoldSubscriptions(authState.token);
+    fetchPurchaseHistory(authState.token);
+    fetchProfile(authState.token);
+    // Only re-run when the token itself changes (login/logout) — fetchProfile
+    // dispatches setAuth, which would otherwise re-trigger this on every fetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authState.token]);
+
+  const fetchProfile = async (token: string) => {
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/customers/auth/profile`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        dispatch(setAuth({ token, customer: data }));
+      }
+    } catch {
+      // Ignore — fall back to the cached profile already in Redux
+    }
+  };
 
   const fetchGoldSubscriptions = async (token: string) => {
     setSubsLoading(true);
@@ -212,7 +234,7 @@ export default function ProfilePage() {
             const complete = paid >= totalMonths;
             const creditedMonths = complete ? paid : Math.max(0, paid - 1);
             const principal = paid * monthlyAmount;
-            const interest = sub.interestStopped ? 0 : creditedMonths * interestPerMonth;
+            const interest = (sub.interestStopped ? 0 : creditedMonths * interestPerMonth) + (sub.bonusInterest || 0);
             const redeemed = sub.amountRedeemed || 0;
             return Math.max(0, principal + interest - redeemed);
           }
@@ -332,6 +354,34 @@ export default function ProfilePage() {
               </div>
             </div>
 
+            {typeof authState.customer.relationship_manager === 'object' && authState.customer.relationship_manager && (
+              <div className="bg-white rounded-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.04)] border border-slate-50 p-8 mt-6">
+                <div className="flex items-center gap-2 mb-5">
+                  <UserCog size={16} className="text-[#7A1238]" />
+                  <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-[0.2em]">Your Relationship Manager</h3>
+                </div>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-11 h-11 rounded-full bg-[#7A1238] text-white flex items-center justify-center font-serif font-bold text-sm shrink-0">
+                    {authState.customer.relationship_manager.name.charAt(0).toUpperCase()}
+                  </div>
+                  <p className="text-base font-bold text-slate-900">{authState.customer.relationship_manager.name}</p>
+                </div>
+                <div className="space-y-3">
+                  {authState.customer.relationship_manager.mobile_number && (
+                    <a href={`tel:${authState.customer.relationship_manager.mobile_number}`} className="flex items-center gap-3 text-slate-500 hover:text-[#7A1238] transition-colors">
+                      <Phone size={14} className="text-slate-300" />
+                      <span className="text-xs font-semibold">{authState.customer.relationship_manager.mobile_number}</span>
+                    </a>
+                  )}
+                  {authState.customer.relationship_manager.email && (
+                    <a href={`mailto:${authState.customer.relationship_manager.email}`} className="flex items-center gap-3 text-slate-500 hover:text-[#7A1238] transition-colors">
+                      <Mail size={14} className="text-slate-300" />
+                      <span className="text-xs font-semibold break-all">{authState.customer.relationship_manager.email}</span>
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
 
           </div>
 

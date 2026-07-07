@@ -12,6 +12,7 @@ interface Customer {
   country: string;
   profileImage?: string;
   isEmailVerified?: boolean;
+  relationship_manager?: { _id: string; name: string; email?: string; mobile_number?: string; role?: string } | string | null;
 }
 
 interface AuthState {

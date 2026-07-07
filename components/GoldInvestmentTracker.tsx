@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { CheckCircle2, Gem, TrendingUp, Sparkles, ArrowRight, Wallet, Clock, Zap, Banknote, MessageCircle, AlertCircle } from 'lucide-react';
+import { CheckCircle2, Gem, TrendingUp, Sparkles, ArrowRight, Wallet, Clock, Zap, Banknote, MessageCircle, AlertCircle, Download, Receipt, FileText } from 'lucide-react';
+import InvestmentReceiptModal from './InvestmentReceiptModal';
 
 interface PaymentLedgerEntry {
   month: number;
@@ -13,7 +14,20 @@ interface PaymentLedgerEntry {
   note?: string;
 }
 
-interface GoldSub {
+interface RedemptionEntry {
+  amount: number;
+  date: string;
+  saleReference?: string;
+  note?: string;
+}
+
+interface InterestAdjustment {
+  amount: number;
+  date: string;
+  note?: string;
+}
+
+export interface GoldSub {
   _id: string;
   status: string;
   installmentsPaid: number;
@@ -23,6 +37,11 @@ interface GoldSub {
   startedAt?: string;
   requiresManualPayment?: boolean;
   paymentLedger?: PaymentLedgerEntry[];
+  amountRedeemed?: number;
+  redemptionHistory?: RedemptionEntry[];
+  bonusInterest?: number;
+  interestAdjustments?: InterestAdjustment[];
+  interestStopped?: boolean;
   plan: {
     name: string;
     monthlyAmount: number;
@@ -30,6 +49,42 @@ interface GoldSub {
     interestRate: number;
     redemptionDiscount?: number;
   };
+}
+
+/** Escapes a single CSV field per RFC 4180 (quotes, commas, newlines). */
+function csvField(value: unknown): string {
+  const s = value == null ? '' : String(value);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function downloadStatement(sub: GoldSub, fmt: (v: number) => string) {
+  const rows: { date: string; type: string; description: string; amount: string }[] = [];
+
+  (sub.paymentLedger || []).forEach(p => {
+    rows.push({ date: p.date, type: 'Payment', description: `Month ${p.month} (${p.type})${p.note ? ` — ${p.note}` : ''}`, amount: fmt(p.amount) });
+  });
+  (sub.interestAdjustments || []).forEach(a => {
+    rows.push({ date: a.date, type: 'Bonus Interest', description: a.note || 'Credited by RKM Jewellers', amount: `+${fmt(a.amount)}` });
+  });
+  (sub.redemptionHistory || []).forEach(r => {
+    rows.push({ date: r.date, type: 'Redemption', description: `${r.saleReference ? `Bill: ${r.saleReference}` : 'Redeemed at store'}${r.note ? ` — ${r.note}` : ''}`, amount: `-${fmt(r.amount)}` });
+  });
+
+  rows.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  const header = ['Date', 'Type', 'Description', 'Amount'].map(csvField).join(',');
+  const body = rows.map(r => [r.date ? new Date(r.date).toLocaleDateString('en-IN') : '', r.type, r.description, r.amount].map(csvField).join(',')).join('\n');
+  const csv = `${header}\n${body}`;
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${sub.plan.name.replace(/\s+/g, '-').toLowerCase()}-statement.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
 }
 
 function useCountUp(target: number, duration: number, trigger: boolean) {
@@ -63,6 +118,7 @@ const paymentTypeLabel = (type: 'autopay' | 'cash' | 'whatsapp_link') => {
 export default function GoldInvestmentTracker({ sub }: { sub: GoldSub }) {
   const [started, setStarted] = useState(false);
   const [visibleMonths, setVisibleMonths] = useState(0);
+  const [showReceipt, setShowReceipt] = useState(false);
   const feedRef = useRef<HTMLDivElement>(null);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -120,8 +176,15 @@ export default function GoldInvestmentTracker({ sub }: { sub: GoldSub }) {
   const revealedInterest = creditedMonths * interestPerMonth;
   const revealedPortfolio = revealedPrincipal + revealedInterest;
 
-  const animatedPortfolio = useCountUp(Math.round(revealedPortfolio), 600, visibleMonths > 0);
-  const animatedInterest = useCountUp(Math.round(revealedInterest * 100) / 100, 500, visibleMonths > 0);
+  // What's actually left to spend — lifetime accrued value plus any bonus
+  // interest credited by the store, minus whatever has already been redeemed.
+  const bonusInterest = sub.bonusInterest || 0;
+  const redeemedTotal = sub.amountRedeemed || 0;
+  const availableBalance = Math.max(0, revealedPortfolio + bonusInterest - redeemedTotal);
+  const isFullyRedeemed = timeBasedComplete && availableBalance <= 0 && redeemedTotal > 0;
+
+  const animatedPortfolio = useCountUp(Math.round(availableBalance), 600, visibleMonths > 0);
+  const animatedInterest = useCountUp(Math.round((revealedInterest + bonusInterest) * 100) / 100, 500, visibleMonths > 0);
 
   useEffect(() => {
     const obs = new IntersectionObserver(([e]) => { if (e.isIntersecting) setStarted(true); }, { threshold: 0.2 });
@@ -178,22 +241,44 @@ export default function GoldInvestmentTracker({ sub }: { sub: GoldSub }) {
               {plan.interestRate}% p.a. · {plan.durationMonths} months
             </p>
           </div>
-          <span className="text-[7px] font-black uppercase px-3 py-1.5 rounded-full tracking-widest border"
-            style={{
-              background: 'rgba(255,255,255,0.07)',
-              borderColor: sub.status === 'active' ? 'rgba(184,151,90,0.4)' : 'rgba(255,255,255,0.2)',
-              color: sub.status === 'active' ? '#B8975A' : 'rgba(255,255,255,0.55)',
-            }}>
-            {sub.status}
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowReceipt(true)}
+              title="View printable receipt"
+              className="flex items-center gap-1.5 text-[8px] font-black uppercase px-3 py-1.5 rounded-full tracking-widest border transition-colors hover:bg-white/10"
+              style={{ background: 'rgba(255,255,255,0.07)', borderColor: 'rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.8)' }}
+            >
+              <FileText size={10} /> Receipt
+            </button>
+            <button
+              type="button"
+              onClick={() => downloadStatement(sub, fmt)}
+              title="Download statement (CSV)"
+              className="flex items-center gap-1.5 text-[8px] font-black uppercase px-3 py-1.5 rounded-full tracking-widest border transition-colors hover:bg-white/10"
+              style={{ background: 'rgba(255,255,255,0.07)', borderColor: 'rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.8)' }}
+            >
+              <Download size={10} /> Statement
+            </button>
+            <span className="text-[7px] font-black uppercase px-3 py-1.5 rounded-full tracking-widest border"
+              style={{
+                background: 'rgba(255,255,255,0.07)',
+                borderColor: sub.status === 'active' ? 'rgba(184,151,90,0.4)' : 'rgba(255,255,255,0.2)',
+                color: sub.status === 'active' ? '#B8975A' : 'rgba(255,255,255,0.55)',
+              }}>
+              {sub.status}
+            </span>
+          </div>
         </div>
 
         <div className="relative z-10 text-center">
-          <p className="text-[8px] font-black uppercase tracking-[0.3em] mb-1.5" style={{ color: 'rgba(255,255,255,0.4)' }}>Total Portfolio Value</p>
+          <p className="text-[8px] font-black uppercase tracking-[0.3em] mb-1.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
+            {isFullyRedeemed ? 'Fully Redeemed' : 'Available Balance'}
+          </p>
           <p className="text-[42px] leading-none font-serif font-black text-white tabular-nums">
             {fmt(visibleMonths > 0 ? animatedPortfolio : 0)}
           </p>
-          <div className="flex items-center justify-center gap-3 mt-3">
+          <div className="flex items-center justify-center gap-3 mt-3 flex-wrap">
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ background: 'rgba(255,255,255,0.09)' }}>
               <Wallet size={10} style={{ color: 'rgba(255,255,255,0.6)' }} />
               <span className="text-[9px] font-bold text-white">{fmt(revealedPrincipal)}</span>
@@ -202,8 +287,15 @@ export default function GoldInvestmentTracker({ sub }: { sub: GoldSub }) {
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ background: 'rgba(184,151,90,0.15)', border: '1px solid rgba(184,151,90,0.25)' }}>
               <TrendingUp size={10} style={{ color: '#B8975A' }} />
               <span className="text-[9px] font-bold" style={{ color: '#B8975A' }}>+{fmtDecimal(visibleMonths > 0 ? animatedInterest : 0)}</span>
-              <span className="text-[8px]" style={{ color: 'rgba(184,151,90,0.65)' }}>earned</span>
+              <span className="text-[8px]" style={{ color: 'rgba(184,151,90,0.65)' }}>earned{bonusInterest > 0 ? ' incl. bonus' : ''}</span>
             </div>
+            {redeemedTotal > 0 && (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)' }}>
+                <Receipt size={10} style={{ color: 'rgba(255,255,255,0.6)' }} />
+                <span className="text-[9px] font-bold text-white">{fmt(redeemedTotal)}</span>
+                <span className="text-[8px]" style={{ color: 'rgba(255,255,255,0.4)' }}>redeemed</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -385,6 +477,30 @@ export default function GoldInvestmentTracker({ sub }: { sub: GoldSub }) {
           </div>
         )}
 
+        {/* ── Redemption History (receipts) ── */}
+        {(sub.redemptionHistory?.length ?? 0) > 0 && (
+          <div>
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 mb-3 flex items-center gap-2">
+              <Receipt size={11} /> Redemption Receipts
+            </p>
+            <div className="space-y-2">
+              {sub.redemptionHistory!.map((r, i) => (
+                <div key={i} className="flex items-center justify-between rounded-2xl px-4 py-3 border" style={{ background: '#FAFAF9', borderColor: '#EDEAE4' }}>
+                  <div>
+                    <p className="text-[10px] font-black text-slate-800">{fmt(r.amount)}</p>
+                    <p className="text-[9px] text-slate-400 font-bold">
+                      {new Date(r.date).toLocaleDateString('en-IN', { dateStyle: 'medium' })}{r.saleReference ? ` · Bill: ${r.saleReference}` : ''}
+                    </p>
+                  </div>
+                  <span className="text-[8px] font-black uppercase tracking-wider px-2 py-1 rounded-lg" style={{ background: 'rgba(184,151,90,0.12)', color: '#92713A' }}>
+                    Redeemed
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* ── Maturity projection card ── */}
         <div className="rounded-2xl p-4 border" style={{ background: '#FDF3E7', borderColor: '#EEE0C8' }}>
           <div className="flex items-center justify-between">
@@ -412,6 +528,10 @@ export default function GoldInvestmentTracker({ sub }: { sub: GoldSub }) {
         </div>
 
       </div>
+
+      {showReceipt && (
+        <InvestmentReceiptModal sub={sub} balance={availableBalance} onClose={() => setShowReceipt(false)} />
+      )}
     </div>
   );
 }

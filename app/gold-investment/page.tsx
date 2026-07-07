@@ -170,7 +170,7 @@ export default function GoldInvestmentPage() {
   const fmt = (val: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(val);
 
-  const activeSub = userSubs.find(s => ['active', 'pending', 'halted'].includes(s.status));
+  const activeSubs = userSubs.filter(s => ['active', 'pending', 'halted'].includes(s.status));
 
   return (
     <div className="min-h-screen bg-[#FDFCFB]">
@@ -249,29 +249,33 @@ export default function GoldInvestmentPage() {
 
       {/* ── Plans ── */}
       <section id="plans" className="py-24 bg-white relative overflow-hidden">
-        {activeSub && (
-          <div className="max-w-xl mx-auto px-6 mb-20 animate-in fade-in slide-in-from-bottom-5 duration-700">
+        {activeSubs.length > 0 && (
+          <div className="max-w-3xl mx-auto px-6 mb-20 animate-in fade-in slide-in-from-bottom-5 duration-700">
             <h3 className="text-xl font-serif font-bold text-slate-900 mb-6 flex items-center gap-3">
-              <Gem className="text-[#5C0828]" size={24} /> Your Active Plan
+              <Gem className="text-[#5C0828]" size={24} /> Your Active Plan{activeSubs.length > 1 ? 's' : ''}
             </h3>
-            <div className="bg-[#FCFDFD] rounded-[2.5rem] p-10 border border-slate-100 shadow-sm">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h4 className="font-serif font-black text-2xl text-slate-900 mb-4">{activeSub.plan?.name}</h4>
-                  <p className="text-sm font-bold text-slate-400 mb-2">PAID: {activeSub.installmentsPaid} / {activeSub.plan?.durationMonths}</p>
-                  {activeSub.nextDueDate && (
-                    <p className="text-sm font-bold text-[#7A1238]">
-                      NEXT DUE: {new Date(activeSub.nextDueDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }).toUpperCase()}
-                    </p>
-                  )}
+            <div className="space-y-6">
+              {activeSubs.map(sub => (
+                <div key={sub._id} className="bg-[#FCFDFD] rounded-[2.5rem] p-10 border border-slate-100 shadow-sm">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h4 className="font-serif font-black text-2xl text-slate-900 mb-4">{sub.plan?.name}</h4>
+                      <p className="text-sm font-bold text-slate-400 mb-2">PAID: {sub.installmentsPaid} / {sub.plan?.durationMonths}</p>
+                      {sub.nextDueDate && (
+                        <p className="text-sm font-bold text-[#7A1238]">
+                          NEXT DUE: {new Date(sub.nextDueDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }).toUpperCase()}
+                        </p>
+                      )}
+                    </div>
+                    <div className="text-right flex flex-col items-end">
+                      <p className="font-black text-[#7A1238] text-3xl mb-4">{fmt(sub.amountAccumulated)}</p>
+                      <span className="text-[11px] font-black uppercase bg-[#5C0828]/10 text-[#5C0828] px-4 py-1.5 rounded-lg tracking-widest">
+                        {sub.status}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div className="text-right flex flex-col items-end">
-                  <p className="font-black text-[#7A1238] text-3xl mb-4">{fmt(activeSub.amountAccumulated)}</p>
-                  <span className="text-[11px] font-black uppercase bg-[#5C0828]/10 text-[#5C0828] px-4 py-1.5 rounded-lg tracking-widest">
-                    {activeSub.status}
-                  </span>
-                </div>
-              </div>
+              ))}
             </div>
           </div>
         )}
@@ -293,8 +297,7 @@ export default function GoldInvestmentPage() {
             </div>
           ) : (
             plans.map((p, index) => {
-              const isEnrolledInThis = activeSub?.plan?._id === p._id;
-              const hasOtherActivePlan = activeSub && !isEnrolledInThis;
+              const isEnrolledInThis = activeSubs.some(s => s.plan?._id === p._id);
 
               return (
                 <div
@@ -360,13 +363,11 @@ export default function GoldInvestmentPage() {
                       ) : (
                         <button
                           onClick={() => handleSubscribe(p._id)}
-                          disabled={!!subscribeLoading || !!activeSub}
-                          className={`w-full py-5 rounded-2xl text-white shadow-xl transition-all text-xs font-black uppercase tracking-[0.25em] flex items-center justify-center gap-3 disabled:opacity-30 ${activeSub ? 'bg-slate-300 cursor-not-allowed' : 'bg-[#5C0828] hover:bg-[#7A1238] shadow-[#5C0828]/10'}`}
+                          disabled={!!subscribeLoading}
+                          className="w-full py-5 rounded-2xl text-white shadow-xl transition-all text-xs font-black uppercase tracking-[0.25em] flex items-center justify-center gap-3 disabled:opacity-30 bg-[#5C0828] hover:bg-[#7A1238] shadow-[#5C0828]/10"
                         >
                           {subscribeLoading === p._id ? (
                             <><Loader2 size={16} className="animate-spin" /> Processing…</>
-                          ) : hasOtherActivePlan ? (
-                            'Plan Restricted'
                           ) : (
                             <>Enroll & Setup Autopay <ArrowRight size={18} /></>
                           )}
