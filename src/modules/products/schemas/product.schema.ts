@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+import { Document, Schema as MongooseSchema, Types } from 'mongoose';
 
 export type ProductDocument = Product & Document;
 
@@ -28,7 +28,7 @@ export class Product {
   @Prop({ required: true, unique: true, trim: true, uppercase: true })
   sku: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'Category', default: null })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Category', default: null })
   category_id: Types.ObjectId | null;
 
   @Prop({ trim: true, default: '' })
@@ -205,10 +205,10 @@ export class Product {
   images: string[];
 
   // Audit
-  @Prop({ type: Types.ObjectId, ref: 'User', default: null })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', default: null })
   created_by: Types.ObjectId | null;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', default: null })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', default: null })
   updated_by: Types.ObjectId | null;
 
   @Prop({ type: Date, default: null })
