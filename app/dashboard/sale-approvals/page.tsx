@@ -4,8 +4,9 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   getPendingSaleRequests, approveSaleRequest, rejectSaleRequest, getBranches,
   getGoldBalance, redeemGoldSubscription, getCashiers,
+  getAdvanceBalance, redeemCustomerAdvance,
   staticUrl,
-  type InventoryItem, type Branch, type GoldBalance, type Cashier,
+  type InventoryItem, type Branch, type GoldBalance, type Cashier, type CustomerAdvance,
 } from '@/lib/api';
 import BillModal from '@/components/BillModal';
 
@@ -90,7 +91,16 @@ function ApproveSaleModal({ item, onClose, onApproved, onRejected }: ApproveSale
   const [investmentApplied, setInvestmentApplied] = useState(0);
   const [loadingBalance, setLoadingBalance] = useState(false);
   const [balanceChecked, setBalanceChecked] = useState(false);
+  const [balanceError, setBalanceError] = useState('');
   const [cashiers, setCashiers] = useState<Cashier[]>([]);
+
+  // Advance balance
+  const [advances, setAdvances] = useState<CustomerAdvance[]>([]);
+  const [selectedAdvance, setSelectedAdvance] = useState<CustomerAdvance | null>(null);
+  const [advanceApplied, setAdvanceApplied] = useState(0);
+  const [loadingAdvanceBalance, setLoadingAdvanceBalance] = useState(false);
+  const [advanceBalanceChecked, setAdvanceBalanceChecked] = useState(false);
+  const [advanceBalanceError, setAdvanceBalanceError] = useState('');
 
   // Modal state
   const [approving, setApproving] = useState(false);
@@ -105,35 +115,62 @@ function ApproveSaleModal({ item, onClose, onApproved, onRejected }: ApproveSale
   const afterDiscount = Math.round(basePrice * (1 - managerDiscount / 100));
   const rdPct: number = selectedSub?.plan?.redemptionDiscount ?? 0;
   const mcDiscount = investmentApplied > 0 && rdPct > 0 ? Math.round(makingCharges * rdPct / 100) : 0;
-  const finalPrice = Math.max(0, afterDiscount - investmentApplied - mcDiscount);
+  const advWaiverPct: number = selectedAdvance?.making_charges_waiver_pct ?? 0;
+  const advMcDiscount = advanceApplied > 0 && advWaiverPct > 0 ? Math.round(makingCharges * advWaiverPct / 100) : 0;
+  const finalPrice = Math.max(0, afterDiscount - investmentApplied - mcDiscount - advanceApplied - advMcDiscount);
 
   async function checkInvestmentBalance() {
     const phone = reqData.sold_customer_phone;
     if (!phone) return;
     setLoadingBalance(true);
+    setBalanceError('');
     try {
       const data = await getGoldBalance(phone);
       const withBal = data.filter(b => b.availableBalance > 0);
       setInvestmentPlans(withBal);
       setBalanceChecked(true);
       if (withBal.length === 1) { setSelectedSub(withBal[0]); }
-    } catch {
+    } catch (e: any) {
       setInvestmentPlans([]);
       setBalanceChecked(true);
-    } finally { setLoadingBalance(false); }
+      setBalanceError(e?.message || 'Could not check investment balance — please retry.');
+    } finally {
+      setLoadingBalance(false);
+    }
+  }
+
+  async function checkAdvanceBalance() {
+    const phone = reqData.sold_customer_phone;
+    if (!phone) return;
+    setLoadingAdvanceBalance(true);
+    setAdvanceBalanceError('');
+    try {
+      const data = await getAdvanceBalance(phone);
+      const withBal = data.filter(a => a.availableBalance > 0);
+      setAdvances(withBal);
+      setAdvanceBalanceChecked(true);
+      if (withBal.length === 1) { setSelectedAdvance(withBal[0]); }
+    } catch (e: any) {
+      setAdvances([]);
+      setAdvanceBalanceChecked(true);
+      setAdvanceBalanceError(e?.message || 'Could not check advance balance — please retry.');
+    } finally {
+      setLoadingAdvanceBalance(false);
+    }
   }
 
   function buildPaymentSplits() {
     const originalSplits: any[] = reqData.payment_splits ?? [];
-    if (investmentApplied > 0 && selectedSub) {
-      const cashSplits = originalSplits.filter(s => s.mode !== 'investment_balance');
-      return [
-        { mode: 'investment_balance', amount: investmentApplied, reference: selectedSub._id },
-        ...(cashSplits.length > 0
-          ? cashSplits.map((s, i) => i === 0 ? { ...s, amount: finalPrice } : s)
-          : [{ mode: paymentMode, amount: finalPrice }]
-        ),
-      ].filter(s => s.amount > 0);
+    if ((investmentApplied > 0 && selectedSub) || (advanceApplied > 0 && selectedAdvance)) {
+      const cashSplits = originalSplits.filter(s => s.mode !== 'investment_balance' && s.mode !== 'advance_balance');
+      const splits: any[] = [];
+      if (investmentApplied > 0 && selectedSub) splits.push({ mode: 'investment_balance', amount: investmentApplied, reference: selectedSub._id });
+      if (advanceApplied > 0 && selectedAdvance) splits.push({ mode: 'advance_balance', amount: advanceApplied, reference: selectedAdvance._id });
+      splits.push(...(cashSplits.length > 0
+        ? cashSplits.map((s, i) => i === 0 ? { ...s, amount: finalPrice } : s)
+        : [{ mode: paymentMode, amount: finalPrice }]
+      ));
+      return splits.filter(s => s.amount > 0);
     }
     if (managerDiscount > 0) {
       return originalSplits.map((s, i) => i === 0 ? { ...s, amount: finalPrice } : s);
@@ -154,6 +191,9 @@ function ApproveSaleModal({ item, onClose, onApproved, onRejected }: ApproveSale
       if (investmentApplied > 0) overrides.investment_redeemed = investmentApplied;
       if (selectedSub) overrides.investment_sub_id = selectedSub._id;
       if (mcDiscount > 0) overrides.making_charges_discount = mcDiscount;
+      if (advanceApplied > 0) overrides.advance_redeemed = advanceApplied;
+      if (selectedAdvance) overrides.advance_id = selectedAdvance._id;
+      if (advMcDiscount > 0) overrides.advance_making_charges_discount = advMcDiscount;
 
       await approveSaleRequest(item._id, overrides);
 
@@ -163,6 +203,16 @@ function ApproveSaleModal({ item, onClose, onApproved, onRejected }: ApproveSale
             amount: investmentApplied,
             saleReference: item.unique_item_code,
             note: `Approved sale for ${customerName}${mcDiscount > 0 ? ` · making charges discount ₹${fmt(mcDiscount)}` : ''}`,
+          });
+        } catch { /* non-blocking */ }
+      }
+      if (advanceApplied > 0 && selectedAdvance) {
+        try {
+          await redeemCustomerAdvance(selectedAdvance._id, {
+            amount: advanceApplied,
+            making_charges_discount: advMcDiscount,
+            saleReference: item.unique_item_code,
+            note: `Approved sale for ${customerName}${advMcDiscount > 0 ? ` · making charges discount ₹${fmt(advMcDiscount)}` : ''}`,
           });
         } catch { /* non-blocking */ }
       }
@@ -203,6 +253,8 @@ function ApproveSaleModal({ item, onClose, onApproved, onRejected }: ApproveSale
     payment_splits: buildPaymentSplits(),
     investment_redeemed: investmentApplied,
     making_charges_discount: mcDiscount,
+    advance_redeemed: advanceApplied,
+    advance_making_charges_discount: advMcDiscount,
     is_emi: reqData.is_emi,
     emi_provider: reqData.emi_provider,
     emi_tenure_months: reqData.emi_tenure_months,
@@ -293,9 +345,11 @@ function ApproveSaleModal({ item, onClose, onApproved, onRejected }: ApproveSale
                       {managerDiscount > 0 && <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-md font-black">-{managerDiscount}% off</span>}
                       {investmentApplied > 0 && <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-md font-black">-₹{fmt(investmentApplied)} balance</span>}
                       {mcDiscount > 0 && <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-md font-black">-₹{fmt(mcDiscount)} making</span>}
+                      {advanceApplied > 0 && <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md font-black">-₹{fmt(advanceApplied)} advance</span>}
+                      {advMcDiscount > 0 && <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-md font-black">-₹{fmt(advMcDiscount)} making</span>}
                     </div>
                   </div>
-                  {(managerDiscount > 0 || investmentApplied > 0 || mcDiscount > 0) && (
+                  {(managerDiscount > 0 || investmentApplied > 0 || mcDiscount > 0 || advanceApplied > 0 || advMcDiscount > 0) && (
                     <div className="border-t border-slate-200 pt-1.5 space-y-0.5">
                       <div className="text-[10px] text-slate-400 font-medium flex items-center gap-1.5">
                         <span>Quoted:</span><span className="font-bold text-slate-600">₹{fmt(basePrice)}</span>
@@ -313,6 +367,16 @@ function ApproveSaleModal({ item, onClose, onApproved, onRejected }: ApproveSale
                       {mcDiscount > 0 && (
                         <div className="text-[10px] text-purple-600 font-medium flex items-center gap-1.5">
                           <span>- Making charges ({rdPct}% of ₹{fmt(makingCharges)}):</span><span className="font-bold">₹{fmt(mcDiscount)}</span>
+                        </div>
+                      )}
+                      {advanceApplied > 0 && (
+                        <div className="text-[10px] text-blue-600 font-medium flex items-center gap-1.5">
+                          <span>- Advance balance:</span><span className="font-bold">₹{fmt(advanceApplied)}</span>
+                        </div>
+                      )}
+                      {advMcDiscount > 0 && (
+                        <div className="text-[10px] text-purple-600 font-medium flex items-center gap-1.5">
+                          <span>- Advance making charges waiver ({advWaiverPct}% of ₹{fmt(makingCharges)}):</span><span className="font-bold">₹{fmt(advMcDiscount)}</span>
                         </div>
                       )}
                       <div className="text-[10px] text-[#5A0F1A] font-black flex items-center gap-1.5 border-t border-slate-100 pt-1">
@@ -448,7 +512,20 @@ function ApproveSaleModal({ item, onClose, onApproved, onRejected }: ApproveSale
                 </div>
               )}
 
-              {balanceChecked && investmentPlans.length === 0 && (
+              {balanceChecked && balanceError && (
+                <div className="flex items-center justify-between gap-3 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
+                  <p className="text-xs text-red-600 font-bold">{balanceError}</p>
+                  <button
+                    type="button"
+                    onClick={checkInvestmentBalance}
+                    className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-red-700 transition-colors whitespace-nowrap"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+
+              {balanceChecked && !balanceError && investmentPlans.length === 0 && (
                 <p className="text-xs text-slate-400 font-medium">No redeemable investment balance found for this customer.</p>
               )}
 
@@ -514,6 +591,142 @@ function ApproveSaleModal({ item, onClose, onApproved, onRejected }: ApproveSale
                         <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
                         ₹{fmt(investmentApplied)} will be deducted from investment plan on approval
                         {mcDiscount > 0 && ` · ₹${fmt(mcDiscount)} making charges discount also applied`}
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* ── Advance Balance Redemption ── */}
+            <div className="rounded-2xl border-2 border-blue-200 bg-blue-50/40 p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#1d4ed8" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 12V7H5a2 2 0 010-4h14v4M3 5v14a2 2 0 002 2h16v-5M18 12a2 2 0 000 4h4v-4h-4z" /></svg>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">Advance Balance Redemption</p>
+                </div>
+                {reqData.sold_customer_phone && !advanceBalanceChecked && (
+                  <button
+                    onClick={checkAdvanceBalance}
+                    disabled={loadingAdvanceBalance}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-black uppercase rounded-xl disabled:opacity-50 transition-all"
+                  >
+                    {loadingAdvanceBalance
+                      ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      : <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                    }
+                    Check Balance
+                  </button>
+                )}
+                {advanceBalanceChecked && (
+                  <button onClick={() => { setAdvanceBalanceChecked(false); setAdvances([]); setSelectedAdvance(null); setAdvanceApplied(0); }}
+                    className="text-[10px] font-black text-blue-600 hover:underline">Recheck</button>
+                )}
+              </div>
+
+              {!reqData.sold_customer_phone && (
+                <p className="text-xs text-slate-400 font-medium">No customer phone on record — cannot look up advance balance.</p>
+              )}
+
+              {loadingAdvanceBalance && (
+                <div className="flex items-center gap-2 text-xs text-blue-600 font-bold">
+                  <div className="w-4 h-4 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" />
+                  Checking advance balance for {reqData.sold_customer_phone}…
+                </div>
+              )}
+
+              {advanceBalanceChecked && advanceBalanceError && (
+                <div className="flex items-center justify-between gap-3 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
+                  <p className="text-xs text-red-600 font-bold">{advanceBalanceError}</p>
+                  <button
+                    type="button"
+                    onClick={checkAdvanceBalance}
+                    className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-red-700 transition-colors whitespace-nowrap"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+
+              {advanceBalanceChecked && !advanceBalanceError && advances.length === 0 && (
+                <p className="text-xs text-slate-400 font-medium">No redeemable advance balance found for this customer.</p>
+              )}
+
+              {advances.length > 1 && (
+                <div className="space-y-2">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Select advance to redeem from</p>
+                  {advances.map(a => (
+                    <button key={a._id} type="button"
+                      onClick={() => { setSelectedAdvance(a); setAdvanceApplied(0); }}
+                      className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all text-left ${selectedAdvance?._id === a._id ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white hover:border-blue-300'}`}>
+                      <div>
+                        <p className="text-sm font-black text-slate-900 flex items-center gap-1.5">
+                          {new Date(a.createdAt).toLocaleDateString('en-IN', { dateStyle: 'medium' })}
+                          {a.locked && <span className="text-[9px] font-black uppercase text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">Locked</span>}
+                        </p>
+                        <p className="text-[10px] text-slate-400">{a.making_charges_waiver_pct > 0 ? `${a.making_charges_waiver_pct}% off making charges` : 'No making charges waiver'}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-black text-blue-700">₹{fmt(a.availableBalance)}</p>
+                        <p className="text-[9px] text-slate-400 font-medium">available</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {advances.length === 1 && selectedAdvance && (
+                <div className="flex items-center justify-between bg-white rounded-xl px-4 py-3 border border-blue-200">
+                  <div>
+                    <p className="text-sm font-black text-slate-900 flex items-center gap-1.5">
+                      Advance recorded {new Date(selectedAdvance.createdAt).toLocaleDateString('en-IN', { dateStyle: 'medium' })}
+                      {selectedAdvance.locked && <span className="text-[9px] font-black uppercase text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">Locked</span>}
+                    </p>
+                    <p className="text-[10px] text-slate-400">{selectedAdvance.making_charges_waiver_pct > 0 ? `${selectedAdvance.making_charges_waiver_pct}% off making charges` : 'No making charges waiver'}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-black text-blue-700">₹{fmt(selectedAdvance.availableBalance)}</p>
+                    <p className="text-[9px] text-slate-400 font-medium">available</p>
+                  </div>
+                </div>
+              )}
+
+              {selectedAdvance?.locked && (
+                <div className="flex items-center gap-2 px-4 py-3 bg-amber-50 border border-amber-100 rounded-xl text-xs text-amber-700 font-bold">
+                  <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                  Locked until {new Date(selectedAdvance.lock_in_expires_at!).toLocaleDateString('en-IN', { dateStyle: 'medium' })} — cannot be redeemed yet.
+                </div>
+              )}
+
+              {selectedAdvance && !selectedAdvance.locked && (() => {
+                const maxApply = Math.max(0, Math.min(selectedAdvance.availableBalance, afterDiscount - investmentApplied));
+                return (
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 block">
+                      Amount to Apply (max ₹{fmt(maxApply)})
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <input type="number" min={0} max={maxApply} value={advanceApplied || ''}
+                        onChange={e => setAdvanceApplied(Math.min(parseFloat(e.target.value) || 0, maxApply))}
+                        placeholder={`0 – ${fmt(maxApply)}`}
+                        className="flex-1 bg-white border-2 border-blue-300 rounded-xl px-4 py-3 text-sm font-black text-blue-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                      />
+                      <button type="button" onClick={() => setAdvanceApplied(maxApply)}
+                        className="px-4 py-3 rounded-xl bg-blue-600 text-white text-xs font-black hover:bg-blue-700 transition-colors whitespace-nowrap">
+                        Apply Max
+                      </button>
+                      {advanceApplied > 0 && (
+                        <button type="button" onClick={() => setAdvanceApplied(0)}
+                          className="px-4 py-3 rounded-xl border border-slate-200 text-slate-500 text-xs font-black hover:bg-slate-50">
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                    {advanceApplied > 0 && (
+                      <p className="text-[10px] text-blue-700 font-bold flex items-center gap-1.5">
+                        <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                        ₹{fmt(advanceApplied)} will be deducted from advance balance on approval
+                        {advMcDiscount > 0 && ` · ₹${fmt(advMcDiscount)} making charges discount also applied`}
                       </p>
                     )}
                   </div>

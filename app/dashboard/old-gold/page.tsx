@@ -8,11 +8,13 @@ import {
   getOldGoldCustomers,
   getSettings,
   getProfile,
+  getLookupsByType,
   type OldGoldTransaction,
   type OGStatus,
   type OGCustomer,
   type AppSettings,
   type UserProfile,
+  type Lookup,
 } from '../../../lib/api';
 
 // ── Brand colors (manager theme) ──────────────────────────────────────────────
@@ -31,15 +33,7 @@ const S: Record<OGStatus, { label: string; dot: string; text: string; border: st
   reversed:           { label: 'Reversed',     dot: 'bg-rose-400',    text: 'text-rose-600',    border: 'border-rose-200',    bg: 'bg-rose-50'    },
 };
 
-const PURITY_FALLBACK = ['24K', '22K', '18K', '14K', '10K', '925', '950', '999'];
-
-function getPurities(settings: AppSettings | null) {
-  if (!settings?.purity_rates) return PURITY_FALLBACK;
-  const keys = [...new Set(Object.values(settings.purity_rates).flatMap(p => Object.keys(p)))];
-  return keys.length ? keys : PURITY_FALLBACK;
-}
-
-const STONE_TYPES = ['diamond', 'ruby', 'emerald', 'sapphire', 'pearl', 'coral', 'other'];
+// Purity / stone options are sourced entirely from the inventory lookups master (gold purity + stone types), no static lists.
 
 const CLIENT_REQUIREMENTS = [
   { value: 'cash_payout',      label: 'Cash Payout' },
@@ -101,27 +95,31 @@ interface DraftStone { stone_type: string; description: string; count: string; w
 interface DraftItem { description: string; weight_grams: string; purity: string; estimated_value: string; stones: DraftStone[] }
 
 function CreatePanel({
-  customers, settings, userBranchId, onClose, onCreate,
+  customers, settings, purityLookups, stoneTypeLookups, userBranchId, onClose, onCreate,
 }: {
   customers: OGCustomer[];
   settings: AppSettings | null;
+  purityLookups: Lookup[];
+  stoneTypeLookups: Lookup[];
   userBranchId: string | null;
   onClose: () => void;
   onCreate: (data: any) => Promise<void>;
 }) {
-  const purities = getPurities(settings);
+  const goldPurities = purityLookups.filter(l => l.metal_type === 'gold');
+  const purities = goldPurities.map(l => l.value);
+  const stoneTypes = stoneTypeLookups.length ? stoneTypeLookups : [];
 
   const [saving, setSaving]         = useState(false);
   const [customerId, setCustomerId] = useState('');
   const [search, setSearch]         = useState('');
   const [notes, setNotes]           = useState('');
   const [items, setItems]           = useState<DraftItem[]>([
-    { description: '', weight_grams: '', purity: purities[1] ?? purities[0] ?? '22K', estimated_value: '', stones: [] },
+    { description: '', weight_grams: '', purity: purities[0] ?? '', estimated_value: '', stones: [] },
   ]);
   const [clientReq, setClientReq]       = useState('');
   const [clientReqNotes, setClientReqNotes] = useState('');
   const [exchangeMetal, setExchangeMetal]   = useState('gold');
-  const [exchangePurity, setExchangePurity] = useState(purities[1] ?? purities[0] ?? '22K');
+  const [exchangePurity, setExchangePurity] = useState(purities[0] ?? '');
   const [exchangeBudget, setExchangeBudget] = useState('');
   const [exchangeItemDesc, setExchangeItemDesc] = useState('');
 
@@ -288,7 +286,7 @@ function CreatePanel({
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Gold Items</label>
-              <button onClick={() => setItems(p => [...p, { description: '', weight_grams: '', purity: '22K', estimated_value: '', stones: [] }])}
+              <button onClick={() => setItems(p => [...p, { description: '', weight_grams: '', purity: purities[0] ?? '', estimated_value: '', stones: [] }])}
                 className="text-[11px] font-black flex items-center gap-1 transition-colors"
                 style={{ color: PRIMARY }}>
                 <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
@@ -377,7 +375,7 @@ function CreatePanel({
                                 <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 block mb-0.5">Type</label>
                                 <select value={stone.stone_type} onChange={e => updateStone(i, si, 'stone_type', e.target.value)}
                                   className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs focus:outline-none bg-white">
-                                  {STONE_TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+                                  {stoneTypes.map(l => <option key={l._id} value={l.value}>{l.label}</option>)}
                                 </select>
                               </div>
                               <div>
@@ -554,6 +552,8 @@ export default function OldGoldPage() {
   const [txns, setTxns]       = useState<OldGoldTransaction[]>([]);
   const [customers, setCustomers] = useState<OGCustomer[]>([]);
   const [settings, setSettings]   = useState<AppSettings | null>(null);
+  const [purityLookups, setPurityLookups]       = useState<Lookup[]>([]);
+  const [stoneTypeLookups, setStoneTypeLookups] = useState<Lookup[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast]     = useState<{ msg: string; ok: boolean } | null>(null);
   const [filter, setFilter]   = useState<OGStatus | 'all'>('all');
@@ -579,7 +579,14 @@ export default function OldGoldPage() {
     Promise.all([
       getOldGoldCustomers().then(r => r.data).catch(() => []),
       getSettings().catch(() => null),
-    ]).then(([c, s]) => { setCustomers(c as OGCustomer[]); setSettings(s as AppSettings | null); });
+      getLookupsByType('purity').catch(() => []),
+      getLookupsByType('stone_type').catch(() => []),
+    ]).then(([c, s, purity, stoneType]) => {
+      setCustomers(c as OGCustomer[]);
+      setSettings(s as AppSettings | null);
+      setPurityLookups(purity as Lookup[]);
+      setStoneTypeLookups(stoneType as Lookup[]);
+    });
     if (openNew) setShowCreate(true);
   }, [openNew]);
 
@@ -616,6 +623,8 @@ export default function OldGoldPage() {
         <CreatePanel
           customers={customers}
           settings={settings}
+          purityLookups={purityLookups}
+          stoneTypeLookups={stoneTypeLookups}
           userBranchId={branchId}
           onClose={() => setShowCreate(false)}
           onCreate={async data => {

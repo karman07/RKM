@@ -3,11 +3,12 @@ import { useEffect, useState, useCallback, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import {
   getCustomers, searchCustomerByPhone, createCustomer,
-  getInventory, getGoldBalance,
-  type FullCustomer, type InventoryItem, type GoldBalance,
+  getInventory, getGoldBalance, getCustomerAdvances, createCustomerAdvance, getGoldLoansByCustomer,
+  type FullCustomer, type InventoryItem, type GoldBalance, type CustomerAdvance, type GoldLoan,
 } from '../../../lib/api';
 import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from 'firebase/auth';
 import { auth } from '../../../lib/firebase';
+import AdvanceReceiptModal from '../../../components/AdvanceReceiptModal';
 
 const PRIMARY   = '#7A1C2A';
 const PRIMARY_D = '#5A0F1A';
@@ -546,11 +547,25 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
 // ── Customer Drawer ───────────────────────────────────────────────────────────
 
 function CustomerDrawer({ customer, onClose }: { customer: FullCustomer; onClose: () => void }) {
-  const [tab, setTab] = useState<'purchases' | 'plans'>('purchases');
+  const [tab, setTab] = useState<'purchases' | 'plans' | 'advance' | 'loans'>('purchases');
   const [purchases, setPurchases] = useState<InventoryItem[]>([]);
   const [plans, setPlans] = useState<GoldBalance[]>([]);
+  const [advances, setAdvances] = useState<CustomerAdvance[]>([]);
+  const [loans, setLoans] = useState<GoldLoan[]>([]);
   const [loadingPurchases, setLoadingPurchases] = useState(true);
   const [loadingPlans, setLoadingPlans] = useState(true);
+  const [loadingAdvances, setLoadingAdvances] = useState(true);
+  const [loadingLoans, setLoadingLoans] = useState(true);
+  const [showAddAdvance, setShowAddAdvance] = useState(false);
+  const [advAmount, setAdvAmount] = useState('');
+  const [advWaiverPct, setAdvWaiverPct] = useState('');
+  const [advMode, setAdvMode] = useState('cash');
+  const [advNote, setAdvNote] = useState('');
+  const [advLockInDays, setAdvLockInDays] = useState(0);
+  const [advCustomLock, setAdvCustomLock] = useState(false);
+  const [savingAdvance, setSavingAdvance] = useState(false);
+  const [advanceError, setAdvanceError] = useState('');
+  const [receiptAdvance, setReceiptAdvance] = useState<CustomerAdvance | null>(null);
 
   const fmtMoney = (n: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
@@ -576,6 +591,48 @@ function CustomerDrawer({ customer, onClose }: { customer: FullCustomer; onClose
       .catch(() => setPlans([]))
       .finally(() => setLoadingPlans(false));
   }, [customer.phone]);
+
+  useEffect(() => {
+    setLoadingAdvances(true);
+    getCustomerAdvances(customer._id)
+      .then(data => setAdvances(Array.isArray(data) ? data : []))
+      .catch(() => setAdvances([]))
+      .finally(() => setLoadingAdvances(false));
+  }, [customer._id]);
+
+  useEffect(() => {
+    setLoadingLoans(true);
+    getGoldLoansByCustomer(customer._id)
+      .then(data => setLoans(Array.isArray(data) ? data : []))
+      .catch(() => setLoans([]))
+      .finally(() => setLoadingLoans(false));
+  }, [customer._id]);
+
+  async function handleAddAdvance() {
+    const amt = parseFloat(advAmount);
+    if (!amt || amt <= 0) return;
+    setAdvanceError('');
+    setSavingAdvance(true);
+    try {
+      const created = await createCustomerAdvance(customer._id, {
+        amount: amt,
+        making_charges_waiver_pct: parseFloat(advWaiverPct) || 0,
+        mode: advMode,
+        note: advNote || undefined,
+        lock_in_days: advLockInDays || 0,
+      });
+      setAdvances(prev => [created, ...prev]);
+      setShowAddAdvance(false);
+      setAdvAmount(''); setAdvWaiverPct(''); setAdvNote(''); setAdvLockInDays(0); setAdvCustomLock(false);
+      setReceiptAdvance(created);
+    } catch (e: any) {
+      setAdvanceError(e?.message || 'Failed to record advance');
+    } finally {
+      setSavingAdvance(false);
+    }
+  }
+
+  const totalAdvanceBalance = advances.reduce((s, a) => s + a.availableBalance, 0);
 
   return (
     <div className="fixed inset-0 z-50 flex" onClick={onClose}>
@@ -603,11 +660,11 @@ function CustomerDrawer({ customer, onClose }: { customer: FullCustomer; onClose
 
         {/* Tabs */}
         <div className="flex gap-1 px-6 py-3 border-b border-slate-100 bg-white sticky top-[77px] z-10">
-          {(['purchases', 'plans'] as const).map(t => (
+          {(['purchases', 'plans', 'advance', 'loans'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
               style={tab === t ? { background: PRIMARY, color: 'white' } : { color: '#94a3b8' }}>
-              {t === 'purchases' ? 'Purchase History' : 'Investment Plans'}
+              {t === 'purchases' ? 'Purchase History' : t === 'plans' ? 'Investment Plans' : t === 'advance' ? 'Advance' : 'Gold Loans'}
             </button>
           ))}
         </div>
@@ -747,8 +804,217 @@ function CustomerDrawer({ customer, onClose }: { customer: FullCustomer; onClose
               </div>
             )
           )}
+
+          {/* ADVANCE */}
+          {tab === 'advance' && (
+            <div className="space-y-4">
+              <div className="rounded-2xl p-5 border" style={{ background: `${PRIMARY}0a`, borderColor: `${PRIMARY}25` }}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: PRIMARY }}>Advance Balance</p>
+                    <p className="text-2xl font-black text-slate-900 mt-1">{fmtMoney(totalAdvanceBalance)}</p>
+                    <p className="text-[10px] text-slate-400 font-medium mt-0.5">Available to redeem</p>
+                  </div>
+                  <button
+                    onClick={() => setShowAddAdvance(v => !v)}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[11px] font-black text-white transition-all"
+                    style={{ background: PRIMARY }}
+                  >
+                    <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+                    Add Advance
+                  </button>
+                </div>
+              </div>
+
+              {showAddAdvance && (
+                <div className="border border-slate-200 rounded-2xl p-5 space-y-3">
+                  <div>
+                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Amount (₹) *</label>
+                    <input type="number" min="1" value={advAmount} onChange={e => setAdvAmount(e.target.value)}
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none" />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Making Charges Waiver (%)</label>
+                    <input type="number" min="0" max="100" step="0.1" value={advWaiverPct} onChange={e => setAdvWaiverPct(e.target.value)}
+                      placeholder="0"
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none" />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Mode</label>
+                    <select value={advMode} onChange={e => setAdvMode(e.target.value)}
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none bg-white">
+                      {['cash', 'bank_transfer', 'upi', 'cheque'].map(m => (
+                        <option key={m} value={m}>{m.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Lock-in Period</label>
+                    <div className="grid grid-cols-4 gap-2 mb-2">
+                      {[{ label: 'No Lock', days: 0 }, { label: '30 Days', days: 30 }, { label: '60 Days', days: 60 }, { label: '90 Days', days: 90 }].map(p => (
+                        <button
+                          key={p.days}
+                          type="button"
+                          onClick={() => { setAdvLockInDays(p.days); setAdvCustomLock(false); }}
+                          className="px-2 py-2 rounded-xl text-[10px] font-black uppercase tracking-wide border transition-all"
+                          style={!advCustomLock && advLockInDays === p.days ? { background: PRIMARY, color: 'white', borderColor: PRIMARY } : { background: 'white', color: '#475569', borderColor: '#e2e8f0' }}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                    <button type="button" onClick={() => setAdvCustomLock(v => !v)} className="text-[10px] font-black transition-colors" style={{ color: PRIMARY }}>
+                      {advCustomLock ? '− Hide custom days' : '+ Custom days'}
+                    </button>
+                    {advCustomLock && (
+                      <input type="number" min="0" value={advLockInDays || ''} onChange={e => setAdvLockInDays(parseInt(e.target.value) || 0)}
+                        placeholder="Number of days"
+                        className="w-full mt-2 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none" />
+                    )}
+                    <p className="text-[10px] text-slate-400 font-medium mt-1.5">
+                      {advLockInDays > 0 ? `Cannot be redeemed for ${advLockInDays} day${advLockInDays > 1 ? 's' : ''} from today.` : 'Redeemable anytime once recorded.'}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Note (optional)</label>
+                    <input value={advNote} onChange={e => setAdvNote(e.target.value)}
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none" />
+                  </div>
+                  {advanceError && <p className="text-xs text-red-600 font-bold">{advanceError}</p>}
+                  <div className="flex gap-3 pt-1">
+                    <button onClick={() => setShowAddAdvance(false)} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors">
+                      Cancel
+                    </button>
+                    <button onClick={handleAddAdvance} disabled={savingAdvance || !advAmount || parseFloat(advAmount) <= 0}
+                      className="flex-1 py-2.5 rounded-xl text-white text-sm font-black transition-colors disabled:opacity-40" style={{ background: PRIMARY }}>
+                      {savingAdvance ? 'Saving…' : 'Record Advance'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {loadingAdvances ? (
+                <div className="flex justify-center py-16">
+                  <div className="w-6 h-6 border-2 rounded-full animate-spin" style={{ borderColor: `${PRIMARY}30`, borderTopColor: PRIMARY }} />
+                </div>
+              ) : advances.length === 0 ? (
+                <div className="text-center py-16">
+                  <p className="text-slate-400 font-bold text-sm">No advances recorded</p>
+                  <p className="text-slate-300 text-xs mt-1">Record an advance payment to track it here.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {advances.map(a => {
+                    const creator = a.createdBy && typeof a.createdBy === 'object' ? a.createdBy.name : null;
+                    return (
+                    <div key={a._id} className="border border-slate-100 rounded-2xl p-4">
+                      <div className="flex items-start justify-between mb-2">
+                        <div>
+                          <p className="text-sm font-black text-slate-900">{fmtMoney(a.amount)}</p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">
+                            {fmt(a.createdAt)} · {a.mode.replace('_', ' ')}{creator && ` · by ${creator}`}
+                          </p>
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          <div className="flex items-center gap-1.5">
+                            <button onClick={() => setReceiptAdvance(a)} className="px-2 py-1 rounded-full text-[8px] font-black uppercase border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-all">
+                              Receipt
+                            </button>
+                            <span className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase border ${a.status === 'active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+                              {a.status}
+                            </span>
+                          </div>
+                          {a.locked && (
+                            <span className="px-2 py-0.5 rounded-full text-[8px] font-black uppercase border bg-amber-50 text-amber-700 border-amber-200">
+                              Locked till {fmt(a.lock_in_expires_at!)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 mb-2">
+                        <div className="rounded-xl p-2.5 bg-slate-50 border border-slate-100">
+                          <p className="text-[8px] font-black uppercase text-slate-300 mb-0.5">Redeemed</p>
+                          <p className="text-xs font-bold text-slate-800">{fmtMoney(a.amountRedeemed || 0)}</p>
+                        </div>
+                        <div className="rounded-xl p-2.5 bg-emerald-50 border border-emerald-100">
+                          <p className="text-[8px] font-black uppercase text-emerald-400 mb-0.5">Available</p>
+                          <p className="text-xs font-bold text-emerald-700">{fmtMoney(a.availableBalance)}</p>
+                        </div>
+                        <div className="rounded-xl p-2.5 bg-slate-50 border border-slate-100">
+                          <p className="text-[8px] font-black uppercase text-slate-300 mb-0.5">Waiver</p>
+                          <p className="text-xs font-bold text-slate-800">{a.making_charges_waiver_pct || 0}%</p>
+                        </div>
+                      </div>
+                      {a.note && <p className="text-[10px] text-slate-400 italic">{a.note}</p>}
+                    </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* GOLD LOANS */}
+          {tab === 'loans' && (
+            loadingLoans ? (
+              <div className="flex justify-center py-16">
+                <div className="w-6 h-6 border-2 rounded-full animate-spin" style={{ borderColor: `${PRIMARY}30`, borderTopColor: PRIMARY }} />
+              </div>
+            ) : loans.length === 0 ? (
+              <div className="text-center py-16">
+                <p className="text-slate-400 font-bold text-sm">No gold loans found</p>
+                <p className="text-slate-300 text-xs mt-1">This customer has no gold loan requests on record.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {loans.map(loan => {
+                  const paid = (loan.emiLedger || []).filter(e => e.status === 'paid').length;
+                  const missed = (loan.emiLedger || []).filter(e => e.status === 'missed').length;
+                  const creator = loan.created_by && typeof loan.created_by === 'object' ? loan.created_by.name : null;
+                  const submitter = loan.submitted_by && typeof loan.submitted_by === 'object' ? loan.submitted_by.name : null;
+                  const approver = loan.approved_by && typeof loan.approved_by === 'object' ? loan.approved_by.name : null;
+                  return (
+                    <div key={loan._id} className="border border-slate-100 rounded-2xl p-4">
+                      <div className="flex items-start justify-between mb-2">
+                        <div>
+                          <p className="text-sm font-black text-slate-900">{loan.loan_number}</p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">{loan.total_weight_grams}g pledged · {loan.interest_rate_monthly}%/mo</p>
+                        </div>
+                        <span className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase border ${statusColor(loan.computed_status)}`}>{loan.computed_status}</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 mb-2">
+                        <div className="rounded-xl p-2.5 bg-slate-50 border border-slate-100">
+                          <p className="text-[8px] font-black uppercase text-slate-300 mb-0.5">Principal</p>
+                          <p className="text-xs font-bold text-slate-800">{fmtMoney(loan.loan_amount)}</p>
+                        </div>
+                        <div className="rounded-xl p-2.5 bg-emerald-50 border border-emerald-100">
+                          <p className="text-[8px] font-black uppercase text-emerald-400 mb-0.5">EMIs Paid</p>
+                          <p className="text-xs font-bold text-emerald-700">{paid}</p>
+                        </div>
+                        <div className="rounded-xl p-2.5 bg-slate-50 border border-slate-100">
+                          <p className="text-[8px] font-black uppercase text-slate-300 mb-0.5">Missed</p>
+                          <p className="text-xs font-bold text-slate-800">{missed}</p>
+                        </div>
+                      </div>
+                      {(creator || submitter || approver) && (
+                        <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-400 font-medium">
+                          {creator && <span>Created by <span className="font-bold text-slate-600">{creator}</span></span>}
+                          {submitter && <span>Submitted by <span className="font-bold text-slate-600">{submitter}</span></span>}
+                          {approver && <span>Approved by <span className="font-bold text-slate-600">{approver}</span></span>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )
+          )}
         </div>
       </div>
+
+      {receiptAdvance && (
+        <AdvanceReceiptModal advance={receiptAdvance} onClose={() => setReceiptAdvance(null)} />
+      )}
     </div>
   );
 }

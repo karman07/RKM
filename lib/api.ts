@@ -207,11 +207,17 @@ export interface InventoryItem {
   investment_redeemed?: number;
   investment_sub_id?: string;
   making_charges_discount?: number;
+  advance_redeemed?: number;
+  advance_id?: string;
+  advance_making_charges_discount?: number;
   sale_request_status?: 'none' | 'pending' | 'approved' | 'rejected';
   sale_request_at?: string;
   sale_request_by_name?: string;
   sale_request_notes?: string;
   sale_request_data?: Record<string, any>;
+  certificate_url?: string;
+  certificate_generated_at?: string | null;
+  hallmark?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -262,6 +268,23 @@ export interface AppSettings {
   updatedAt?: string;
 }
 export const getSettings = () => request<AppSettings>('/settings');
+
+// ── Lookups ──────────────────────────────────────────────────────────────────
+
+export interface Lookup {
+  _id: string;
+  lookup_type: string;
+  label: string;
+  value: string;
+  description?: string;
+  /** For purity lookups only: which metal (gold, silver, platinum) this purity belongs to */
+  metal_type?: string;
+  is_active: boolean;
+  sort_order: number;
+}
+
+export const getLookupsByType = (type: string) =>
+  request<Lookup[]>(`/lookups/type/${type}`);
 
 // ── Auth ───────────────────────────────────────────────────────
 export const getProfile = () => request<UserProfile>('/auth/profile');
@@ -337,11 +360,35 @@ export const updateInventoryStatus = (id: string, payload: {
   making_charges_discount?: number;
   investment_redeemed?: number;
   investment_sub_id?: string;
+  advance_redeemed?: number;
+  advance_id?: string;
+  advance_making_charges_discount?: number;
 }) =>
   request<InventoryItem>(`/inventory/${id}/status`, {
     method: 'PATCH',
     body: JSON.stringify(payload),
   });
+
+/** Sends a post-sale "thank you & feedback" message to the customer via the chosen channel */
+export const notifyCustomerPostSale = (id: string, channel: 'sms' | 'whatsapp' | 'email') =>
+  request<{ sent: boolean; channel: string; message?: string }>(`/inventory/${id}/notify-customer`, {
+    method: 'POST',
+    body: JSON.stringify({ channel }),
+  });
+
+/** Fills the RKM Certificate of Authenticity PDF template (unchanged artwork) with this sold item's data */
+export const generateCertificate = (id: string) =>
+  request<{ url: string }>(`/inventory/${id}/generate-certificate`, { method: 'POST' });
+
+/** Sets/updates the BIS Hallmark HUID on a specific inventory item */
+export const updateInventoryHallmark = (id: string, hallmark: string) =>
+  request<InventoryItem>(`/inventory/${id}/hallmark`, {
+    method: 'PATCH',
+    body: JSON.stringify({ hallmark }),
+  });
+
+/** Whether MSG91 SMS is configured on the backend — used to show/hide the SMS option */
+export const getSmsStatus = () => request<{ enabled: boolean }>('/sms/status');
 
 /** Generate a unique sale invoice number: INV-YYYYMMDD-<random 4-char> */
 export function generateSaleInvoiceNumber(): string {
@@ -613,6 +660,157 @@ export const submitOldGoldTransaction = (id: string) =>
 export const getOldGoldCustomers = () =>
   request<{ data: OGCustomer[] }>('/customers?page=1&limit=500');
 
+// ── Gold Loan ────────────────────────────────────────────────────────────────
+
+export type GLStatus = 'draft' | 'submitted' | 'rejected' | 'active' | 'closed';
+export type GLComputedStatus = GLStatus | 'overdue';
+
+export interface GLStone {
+  stone_type: string;
+  description: string;
+  count: number;
+  weight: number;
+  weight_unit: string;
+  quality: string;
+  estimated_value: number;
+}
+
+export interface GLItem {
+  description: string;
+  weight_grams: number;
+  purity: string;
+  gold_rate_per_gram: number;
+  estimated_value: number;
+  stones: GLStone[];
+  stones_value: number;
+}
+
+export interface GLEmiEntry {
+  month: number;
+  due_date: string;
+  expected_amount: number;
+  status: 'paid' | 'missed';
+  paid_date: string | null;
+  paid_amount: number | null;
+  mode: string;
+  marked_by: string | { _id: string; name: string; role: string };
+  marked_at: string;
+  note: string;
+}
+
+export interface GoldLoan {
+  _id: string;
+  loan_number: string;
+  customer_id: string | { _id: string; name: string; phone?: string };
+  customer_name: string;
+  customer_phone: string;
+  branch_id: string | { _id: string; name: string };
+  items: GLItem[];
+  total_weight_grams: number;
+  total_pledged_value: number;
+  loan_amount: number;
+  interest_rate_monthly: number;
+  tenure_months: number;
+  status: GLStatus;
+  computed_status: GLComputedStatus;
+  emiLedger: GLEmiEntry[];
+  notes: string;
+  rejection_reason: string;
+  created_by: string | { _id: string; name: string };
+  submitted_by?: string | { _id: string; name: string } | null;
+  approved_by?: string | { _id: string; name: string } | null;
+  disbursed_at?: string | null;
+  closed_at?: string | null;
+  principal_repaid_amount: number | null;
+  final_interest_amount: number | null;
+  form_url?: string;
+  form_generated_at?: string | null;
+  signed_form_url?: string;
+  signed_form_uploaded_by?: string | { _id: string; name: string } | null;
+  signed_form_uploaded_at?: string | null;
+  closure_certificate_url?: string;
+  closure_certificate_generated_at?: string | null;
+  signed_closure_certificate_url?: string;
+  signed_closure_certificate_uploaded_by?: string | { _id: string; name: string } | null;
+  signed_closure_certificate_uploaded_at?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const getGoldLoans = () => request<GoldLoan[]>('/gold-loan');
+
+/** Loans for a specific customer — used by the customer 360 drawer */
+export const getGoldLoansByCustomer = (customerId: string) =>
+  request<GoldLoan[]>(`/gold-loan/customer/${customerId}`);
+
+type GLDraftItemInput = Pick<GLItem, 'description' | 'weight_grams' | 'purity'> & {
+  estimated_value?: number;
+  stones?: Array<Pick<GLStone, 'stone_type' | 'description' | 'count' | 'weight' | 'weight_unit' | 'quality'> & { estimated_value?: number }>;
+};
+
+export const createGoldLoan = (data: {
+  customer_id: string;
+  branch_id?: string;
+  items: GLDraftItemInput[];
+  loan_amount: number;
+  interest_rate_monthly: number;
+  tenure_months: number;
+  notes?: string;
+}) => request<GoldLoan>('/gold-loan', { method: 'POST', body: JSON.stringify(data) });
+
+export const submitGoldLoan = (id: string) =>
+  request<GoldLoan>(`/gold-loan/${id}/submit`, { method: 'POST' });
+
+export const markGoldLoanEmi = (id: string, data: {
+  month: number;
+  status: 'paid' | 'missed';
+  paid_amount?: number;
+  mode?: string;
+  note?: string;
+}) => request<GoldLoan>(`/gold-loan/${id}/mark-emi`, { method: 'POST', body: JSON.stringify(data) });
+
+/** Generates (or regenerates) the printable Gold Loan Pledge Agreement for a loan. */
+export const generateGoldLoanForm = (id: string) =>
+  request<{ url: string }>(`/gold-loan/${id}/generate-form`, { method: 'POST' });
+
+/** Uploads a scan of the physically signed pledge agreement (image or PDF, max 10 MB). */
+export const uploadGoldLoanSignedForm = async (id: string, file: File): Promise<GoldLoan> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const token = getToken();
+  const res = await fetch(`${API_BASE}/gold-loan/${id}/signed-form`, {
+    method: 'POST',
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).message || 'Signed form upload failed');
+  }
+  return res.json();
+};
+
+/** Generates (or regenerates) the printable Loan Closure Certificate — only for closed loans. */
+export const generateGoldLoanClosureCertificate = (id: string) =>
+  request<{ url: string }>(`/gold-loan/${id}/generate-closure-certificate`, { method: 'POST' });
+
+/** Uploads a scan of the physically signed closure certificate (image or PDF, max 10 MB). */
+export const uploadGoldLoanSignedClosureCertificate = async (id: string, file: File): Promise<GoldLoan> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const token = getToken();
+  const res = await fetch(`${API_BASE}/gold-loan/${id}/signed-closure-certificate`, {
+    method: 'POST',
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).message || 'Signed closure certificate upload failed');
+  }
+  return res.json();
+};
+
 // ── Customer Management ───────────────────────────────────────────────────────
 
 export interface FullCustomer {
@@ -843,6 +1041,59 @@ export interface GoldBalance {
 export const getGoldBalance = (phone: string) =>
   request<GoldBalance[]>(`/gold-investment/balance?phone=${encodeURIComponent(phone)}`);
 
+// ── Customer Advances ────────────────────────────────────────────────────────
+
+export interface CustomerAdvance {
+  _id: string;
+  customer: string;
+  customerName: string;
+  customerPhone: string;
+  amount: number;
+  amountRedeemed: number;
+  availableBalance: number;
+  making_charges_waiver_pct: number;
+  mode: string;
+  note: string;
+  status: 'active' | 'closed';
+  lock_in_days: number;
+  lock_in_expires_at: string | null;
+  locked: boolean;
+  createdBy?: string | { _id: string; name: string; role?: string } | null;
+  createdAt: string;
+  redemptionHistory: {
+    amount: number;
+    making_charges_discount: number;
+    date: string;
+    saleReference?: string;
+    note?: string;
+  }[];
+}
+
+/** Lists all advances recorded for a customer */
+export const getCustomerAdvances = (customerId: string) =>
+  request<CustomerAdvance[]>(`/customers/${customerId}/advances`);
+
+/** Records a new advance payment taken from a customer */
+export const createCustomerAdvance = (customerId: string, data: {
+  amount: number;
+  making_charges_waiver_pct?: number;
+  mode?: string;
+  note?: string;
+  lock_in_days?: number;
+}) => request<CustomerAdvance>(`/customers/${customerId}/advances`, { method: 'POST', body: JSON.stringify(data) });
+
+/** Looks up active advance balances for a customer by phone — used at time of sale */
+export const getAdvanceBalance = (phone: string) =>
+  request<CustomerAdvance[]>(`/customers/advances/balance?phone=${encodeURIComponent(phone)}`);
+
+/** Redeems (applies) an amount from an advance against a sale */
+export const redeemCustomerAdvance = (id: string, data: {
+  amount: number;
+  making_charges_discount?: number;
+  saleReference?: string;
+  note?: string;
+}) => request<CustomerAdvance>(`/customers/advances/${id}/redeem`, { method: 'POST', body: JSON.stringify(data) });
+
 // ── Sale Requests ─────────────────────────────────────────────────────────────
 
 export const getBranches = () => request<Branch[]>('/branches');
@@ -862,6 +1113,9 @@ export const approveSaleRequest = (id: string, overrides?: {
   investment_redeemed?: number;
   investment_sub_id?: string;
   making_charges_discount?: number;
+  advance_redeemed?: number;
+  advance_id?: string;
+  advance_making_charges_discount?: number;
   payment_splits?: Array<{ mode: string; amount: number; reference?: string }>;
 }) =>
   request<InventoryItem>(`/inventory/${id}/sale-request/approve`, {

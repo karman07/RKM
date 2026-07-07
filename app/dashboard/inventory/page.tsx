@@ -8,7 +8,8 @@ import BillModal from '../../../components/BillModal';
 import {
   getProfile, getInventory, updateInventoryStatus, updateManagerDiscount, getCashiers,
   generateSaleInvoiceNumber, staticUrl, searchCustomers, getGoldBalance, redeemGoldSubscription,
-  InventoryItem, UserProfile, Cashier, createPaymentOrder, FullCustomer, GoldBalance,
+  getAdvanceBalance, redeemCustomerAdvance, generateCertificate, updateInventoryHallmark,
+  InventoryItem, UserProfile, Cashier, createPaymentOrder, FullCustomer, GoldBalance, CustomerAdvance,
 } from '../../../lib/api';
 import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth';
 import { auth } from '../../../lib/firebase';
@@ -210,6 +211,14 @@ export function InventoryPageContent() {
   const [selectedInvestmentSub, setSelectedInvestmentSub] = useState<GoldBalance | null>(null);
   const [investmentApplied, setInvestmentApplied] = useState(0);
   const [loadingInvestment, setLoadingInvestment] = useState(false);
+  const [investmentError, setInvestmentError] = useState('');
+
+  // Advance balance
+  const [advances, setAdvances] = useState<CustomerAdvance[]>([]);
+  const [selectedAdvance, setSelectedAdvance] = useState<CustomerAdvance | null>(null);
+  const [advanceApplied, setAdvanceApplied] = useState(0);
+  const [loadingAdvance, setLoadingAdvance] = useState(false);
+  const [advanceError, setAdvanceError] = useState('');
   const [selling, setSelling] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
   const [otp, setOtp] = useState('');
@@ -240,6 +249,42 @@ export function InventoryPageContent() {
 
   // Bill modal state
   const [bill, setBill] = useState<InventoryItem | null>(null);
+
+  // Certificate of Authenticity generation state
+  const [certGeneratingId, setCertGeneratingId] = useState<string | null>(null);
+
+  async function handleGenerateCertificate(item: InventoryItem) {
+    setCertGeneratingId(item._id);
+    try {
+      const res = await generateCertificate(item._id);
+      window.open(staticUrl(res.url), '_blank');
+      toast.success('Certificate generated');
+    } catch (e: any) {
+      toast.error(e.message || 'Certificate generation failed');
+    } finally {
+      setCertGeneratingId(null);
+    }
+  }
+
+  // Hallmark modal state
+  const [hallmarkItem, setHallmarkItem] = useState<InventoryItem | null>(null);
+  const [hallmarkValue, setHallmarkValue] = useState('');
+  const [savingHallmark, setSavingHallmark] = useState(false);
+
+  async function handleSaveHallmark() {
+    if (!hallmarkItem) return;
+    setSavingHallmark(true);
+    try {
+      await updateInventoryHallmark(hallmarkItem._id, hallmarkValue.trim());
+      setHallmarkItem(null);
+      toast.success('Hallmark updated');
+      if (user?.branch?._id) fetchInventory(user.branch._id, page);
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to update hallmark');
+    } finally {
+      setSavingHallmark(false);
+    }
+  }
 
   function fetchInventory(branchId: string, p = 1) {
     const params: Record<string, string> = { branch_id: branchId, limit: '20', page: String(p) };
@@ -358,14 +403,39 @@ export function InventoryPageContent() {
     setInvestmentPlans([]);
     setSelectedInvestmentSub(null);
     setInvestmentApplied(0);
+    setInvestmentError('');
     try {
       const full = `${countryCode}${phone}`;
       const data = await getGoldBalance(full);
       const withBalance = (Array.isArray(data) ? data : []).filter(b => b.availableBalance > 0);
       setInvestmentPlans(withBalance);
       if (withBalance.length === 1) setSelectedInvestmentSub(withBalance[0]);
-    } catch { setInvestmentPlans([]); }
-    finally { setLoadingInvestment(false); }
+    } catch (e: any) {
+      setInvestmentPlans([]);
+      setInvestmentError(e?.message || 'Could not check investment balance — please retry.');
+    } finally {
+      setLoadingInvestment(false);
+    }
+  }
+
+  async function fetchAdvanceBalance(phone: string, countryCode: string) {
+    setLoadingAdvance(true);
+    setAdvances([]);
+    setSelectedAdvance(null);
+    setAdvanceApplied(0);
+    setAdvanceError('');
+    try {
+      const full = `${countryCode}${phone}`;
+      const data = await getAdvanceBalance(full);
+      const withBalance = (Array.isArray(data) ? data : []).filter(a => a.availableBalance > 0);
+      setAdvances(withBalance);
+      if (withBalance.length === 1) setSelectedAdvance(withBalance[0]);
+    } catch (e: any) {
+      setAdvances([]);
+      setAdvanceError(e?.message || 'Could not check advance balance — please retry.');
+    } finally {
+      setLoadingAdvance(false);
+    }
   }
 
   const handleVerifyOTP = async () => {
@@ -375,6 +445,7 @@ export function InventoryPageContent() {
       await verificationId.confirm(otp);
       setPhoneVerified(true);
       fetchInvestmentBalance(sellForm.customer_phone, sellForm.customer_country_code);
+      fetchAdvanceBalance(sellForm.customer_phone, sellForm.customer_country_code);
     } catch (err: any) {
       setOtpError('Invalid OTP. Please try again.');
     }
@@ -395,18 +466,23 @@ export function InventoryPageContent() {
         }
         const saleInvoiceNumber = generateSaleInvoiceNumber();
 
-        // Compute making charges discount from plan's redemptionDiscount
+        // Compute making charges discount from plan's redemptionDiscount / advance's waiver %
         const pb = (sellItem as any).pricing_breakdown ?? (typeof sellItem.product_id === 'object' ? (sellItem.product_id as any).pricing_breakdown : null);
         const makingCharges = pb?.making_charges ?? 0;
         const redemptionDiscountPct = selectedInvestmentSub?.plan?.redemptionDiscount ?? 0;
         const makingChargesDiscount = investmentApplied > 0 ? Math.round(makingCharges * redemptionDiscountPct / 100) : 0;
+        const advanceWaiverPct = selectedAdvance?.making_charges_waiver_pct ?? 0;
+        const advanceMakingChargesDiscount = advanceApplied > 0 ? Math.round(makingCharges * advanceWaiverPct / 100) : 0;
         const basePrice = Math.round((sellItem.selling_price || sellItem.live_selling_price || 0) * (1 - sellForm.discount / 100));
-        const finalPrice = Math.max(0, basePrice - investmentApplied - makingChargesDiscount);
+        const finalPrice = Math.max(0, basePrice - investmentApplied - makingChargesDiscount - advanceApplied - advanceMakingChargesDiscount);
 
         // Build payment splits
         const paymentSplits: { mode: string; amount: number; reference?: string }[] = [];
         if (investmentApplied > 0) {
           paymentSplits.push({ mode: 'investment_balance', amount: investmentApplied, reference: selectedInvestmentSub?._id });
+        }
+        if (advanceApplied > 0) {
+          paymentSplits.push({ mode: 'advance_balance', amount: advanceApplied, reference: selectedAdvance?._id });
         }
         if (finalPrice > 0) {
           paymentSplits.push({ mode: sellForm.payment_mode, amount: finalPrice });
@@ -432,6 +508,9 @@ export function InventoryPageContent() {
           investment_redeemed: investmentApplied > 0 ? investmentApplied : undefined,
           investment_sub_id: selectedInvestmentSub?._id,
           making_charges_discount: makingChargesDiscount > 0 ? makingChargesDiscount : undefined,
+          advance_redeemed: advanceApplied > 0 ? advanceApplied : undefined,
+          advance_id: selectedAdvance?._id,
+          advance_making_charges_discount: advanceMakingChargesDiscount > 0 ? advanceMakingChargesDiscount : undefined,
         });
         // Deduct investment balance after sale is recorded
         if (selectedInvestmentSub && investmentApplied > 0) {
@@ -446,6 +525,22 @@ export function InventoryPageContent() {
             });
           } catch (e) {
             toast.error('Sale recorded but investment balance deduction failed — please do it manually.');
+          }
+        }
+        // Deduct advance balance after sale is recorded
+        if (selectedAdvance && advanceApplied > 0) {
+          try {
+            const productName = typeof sellItem.product_id === 'object' ? (sellItem.product_id as any).name : sellItem.unique_item_code;
+            const noteparts = [`Redeemed against sale of ${productName} (${saleInvoiceNumber})`];
+            if (advanceMakingChargesDiscount > 0) noteparts.push(`Making charges discount: ₹${advanceMakingChargesDiscount.toLocaleString('en-IN')} (${advanceWaiverPct}% off)`);
+            await redeemCustomerAdvance(selectedAdvance._id, {
+              amount: advanceApplied,
+              making_charges_discount: advanceMakingChargesDiscount,
+              saleReference: saleInvoiceNumber,
+              note: noteparts.join(' | '),
+            });
+          } catch (e) {
+            toast.error('Sale recorded but advance balance deduction failed — please do it manually.');
           }
         }
         const populatedUpdated = {
@@ -464,6 +559,9 @@ export function InventoryPageContent() {
         setInvestmentPlans([]);
         setSelectedInvestmentSub(null);
         setInvestmentApplied(0);
+        setAdvances([]);
+        setSelectedAdvance(null);
+        setAdvanceApplied(0);
         setSelling(false);
         setItems((prev) => prev.map((i) => i._id === populatedUpdated._id ? populatedUpdated : i));
       } catch (err: any) {
@@ -1005,6 +1103,16 @@ export function InventoryPageContent() {
                               </svg>
                               View Bill
                             </button>
+                            <button
+                              onClick={() => handleGenerateCertificate(item)}
+                              disabled={certGeneratingId === item._id}
+                              className="px-4 py-2 bg-white hover:bg-amber-50 text-amber-700 border border-amber-200 hover:border-amber-300 rounded-full text-[10px] font-black uppercase tracking-widest transition-all shadow-sm hover:shadow-[0_4px_10px_rgba(180,130,20,0.15)] active:scale-95 flex items-center gap-1.5 disabled:opacity-50"
+                            >
+                              <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              Certificate
+                            </button>
                           </>
                         )}
                         {item.status !== 'available' && (
@@ -1019,6 +1127,16 @@ export function InventoryPageContent() {
                             View
                           </button>
                         )}
+                        <button
+                          onClick={() => { setHallmarkItem(item); setHallmarkValue(item.hallmark || ''); }}
+                          title={item.hallmark ? `Hallmark: ${item.hallmark}` : 'Set Hallmark'}
+                          className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all shadow-sm active:scale-95 flex items-center gap-1.5 border ${item.hallmark ? 'bg-violet-50 hover:bg-violet-600 text-violet-700 hover:text-white border-violet-200' : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300'}`}
+                        >
+                          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5.586a1 1 0 01.707.293l7.414 7.414a1 1 0 010 1.414l-7.586 7.586a1 1 0 01-1.414 0L3.293 12.293A1 1 0 013 11.586V6a3 3 0 013-3z" />
+                          </svg>
+                          Hallmark
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -1073,6 +1191,7 @@ export function InventoryPageContent() {
             if (c.isPhoneVerified && parsedPhone.length === 10) {
               setPhoneVerified(true);
               fetchInvestmentBalance(parsedPhone, parsedCc);
+              fetchAdvanceBalance(parsedPhone, parsedCc);
             }
             setShowCustomerPicker(false);
           }}
@@ -1137,7 +1256,9 @@ export function InventoryPageContent() {
                     const mc = pb?.making_charges ?? 0;
                     const rdPct = selectedInvestmentSub?.plan?.redemptionDiscount ?? 0;
                     const mcDiscount = investmentApplied > 0 && rdPct > 0 ? Math.round(mc * rdPct / 100) : 0;
-                    const final = Math.max(0, base - investmentApplied - mcDiscount);
+                    const advWaiverPct = selectedAdvance?.making_charges_waiver_pct ?? 0;
+                    const advMcDiscount = advanceApplied > 0 && advWaiverPct > 0 ? Math.round(mc * advWaiverPct / 100) : 0;
+                    const final = Math.max(0, base - investmentApplied - mcDiscount - advanceApplied - advMcDiscount);
                     return (
                       <div className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-4 shadow-sm space-y-1.5">
                         <div className="flex justify-between items-center">
@@ -1146,9 +1267,11 @@ export function InventoryPageContent() {
                             {sellForm.discount > 0 && <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-md font-black">-{sellForm.discount}% off</span>}
                             {investmentApplied > 0 && <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-md font-black">-₹{investmentApplied.toLocaleString('en-IN')} balance</span>}
                             {mcDiscount > 0 && <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-md font-black">-₹{mcDiscount.toLocaleString('en-IN')} making</span>}
+                            {advanceApplied > 0 && <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md font-black">-₹{advanceApplied.toLocaleString('en-IN')} advance</span>}
+                            {advMcDiscount > 0 && <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-md font-black">-₹{advMcDiscount.toLocaleString('en-IN')} making</span>}
                           </div>
                         </div>
-                        {(investmentApplied > 0 || mcDiscount > 0) && (
+                        {(investmentApplied > 0 || mcDiscount > 0 || advanceApplied > 0 || advMcDiscount > 0) && (
                           <div className="border-t border-slate-200 pt-1.5 space-y-0.5">
                             <div className="text-[10px] text-slate-400 font-medium flex items-center gap-1.5">
                               <span>Item price:</span><span className="font-bold text-slate-600">₹{base.toLocaleString('en-IN')}</span>
@@ -1161,6 +1284,16 @@ export function InventoryPageContent() {
                             {mcDiscount > 0 && (
                               <div className="text-[10px] text-purple-600 font-medium flex items-center gap-1.5">
                                 <span>- Making charges discount ({rdPct}% of ₹{mc.toLocaleString('en-IN')}):</span><span className="font-bold">₹{mcDiscount.toLocaleString('en-IN')}</span>
+                              </div>
+                            )}
+                            {advanceApplied > 0 && (
+                              <div className="text-[10px] text-blue-600 font-medium flex items-center gap-1.5">
+                                <span>- Advance balance:</span><span className="font-bold">₹{advanceApplied.toLocaleString('en-IN')}</span>
+                              </div>
+                            )}
+                            {advMcDiscount > 0 && (
+                              <div className="text-[10px] text-purple-600 font-medium flex items-center gap-1.5">
+                                <span>- Advance making charges waiver ({advWaiverPct}% of ₹{mc.toLocaleString('en-IN')}):</span><span className="font-bold">₹{advMcDiscount.toLocaleString('en-IN')}</span>
                               </div>
                             )}
                             <div className="text-[10px] text-[#5A0F1A] font-black flex items-center gap-1.5 border-t border-slate-100 pt-1">
@@ -1193,7 +1326,7 @@ export function InventoryPageContent() {
                         <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
                       </div>
                     </div>
-                    <input type="tel" value={sellForm.customer_phone || ''} onChange={(e) => { setSellForm({ ...sellForm, customer_phone: e.target.value.replace(/\D/g, '').slice(0, 10) }); setPhoneVerified(false); setOtpSent(false); setOtpError(''); setInvestmentPlans([]); setSelectedInvestmentSub(null); setInvestmentApplied(0); }}
+                    <input type="tel" value={sellForm.customer_phone || ''} onChange={(e) => { setSellForm({ ...sellForm, customer_phone: e.target.value.replace(/\D/g, '').slice(0, 10) }); setPhoneVerified(false); setOtpSent(false); setOtpError(''); setInvestmentPlans([]); setSelectedInvestmentSub(null); setInvestmentApplied(0); setAdvances([]); setSelectedAdvance(null); setAdvanceApplied(0); }}
                       disabled={phoneVerified || otpSent}
                       className="flex-1 bg-transparent px-3 sm:px-5 py-4 text-base sm:text-lg font-black tracking-wider text-slate-900 disabled:text-slate-400 focus:outline-none min-w-0" placeholder="Mobile Number" />
                   </div>
@@ -1326,7 +1459,20 @@ export function InventoryPageContent() {
                     </div>
                   )}
 
-                  {!loadingInvestment && investmentPlans.length === 0 && (
+                  {!loadingInvestment && investmentError && (
+                    <div className="flex items-center justify-between gap-3 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
+                      <p className="text-xs text-red-600 font-bold">{investmentError}</p>
+                      <button
+                        type="button"
+                        onClick={() => fetchInvestmentBalance(sellForm.customer_phone, sellForm.customer_country_code)}
+                        className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-red-700 transition-colors whitespace-nowrap"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  )}
+
+                  {!loadingInvestment && !investmentError && investmentPlans.length === 0 && (
                     <p className="text-xs text-slate-400 font-medium">No redeemable investment balance found for this customer.</p>
                   )}
 
@@ -1394,6 +1540,127 @@ export function InventoryPageContent() {
                               <p className="text-[10px] text-amber-700 font-bold flex items-center gap-1.5">
                                 <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
                                 ₹{investmentApplied.toLocaleString('en-IN')} will be deducted from investment balance on sale confirmation
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* ── Advance Balance Redemption ── */}
+              {phoneVerified && (
+                <div className="rounded-2xl border-2 border-blue-200 bg-blue-50/40 p-5 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#1d4ed8" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M21 12V7H5a2 2 0 010-4h14v4M3 5v14a2 2 0 002 2h16v-5M18 12a2 2 0 000 4h4v-4h-4z" />
+                    </svg>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">Advance Balance Redemption</p>
+                  </div>
+
+                  {loadingAdvance && (
+                    <div className="flex items-center gap-2 text-xs text-blue-600 font-bold">
+                      <div className="w-4 h-4 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" />
+                      Checking advance balance…
+                    </div>
+                  )}
+
+                  {!loadingAdvance && advanceError && (
+                    <div className="flex items-center justify-between gap-3 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
+                      <p className="text-xs text-red-600 font-bold">{advanceError}</p>
+                      <button
+                        type="button"
+                        onClick={() => fetchAdvanceBalance(sellForm.customer_phone, sellForm.customer_country_code)}
+                        className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-red-700 transition-colors whitespace-nowrap"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  )}
+
+                  {!loadingAdvance && !advanceError && advances.length === 0 && (
+                    <p className="text-xs text-slate-400 font-medium">No redeemable advance balance found for this customer.</p>
+                  )}
+
+                  {!loadingAdvance && advances.length > 0 && (
+                    <>
+                      {advances.length > 1 && (
+                        <div className="space-y-2">
+                          <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Select advance to redeem from</p>
+                          {advances.map(a => (
+                            <button key={a._id} type="button"
+                              onClick={() => { setSelectedAdvance(a); setAdvanceApplied(0); }}
+                              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all text-left ${selectedAdvance?._id === a._id ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white hover:border-blue-300'}`}>
+                              <div>
+                                <p className="text-sm font-black text-slate-900 flex items-center gap-1.5">
+                                  {new Date(a.createdAt).toLocaleDateString('en-IN', { dateStyle: 'medium' })}
+                                  {a.locked && <span className="text-[9px] font-black uppercase text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">Locked</span>}
+                                </p>
+                                {a.making_charges_waiver_pct > 0 && <p className="text-[10px] text-slate-400">{a.making_charges_waiver_pct}% making charges waiver</p>}
+                              </div>
+                              <div className="text-right">
+                                <p className="text-sm font-black text-blue-700">₹{a.availableBalance.toLocaleString('en-IN')}</p>
+                                <p className="text-[9px] text-slate-400 font-medium">available</p>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {advances.length === 1 && selectedAdvance && (
+                        <div className="flex items-center justify-between bg-white rounded-xl px-4 py-3 border border-blue-200">
+                          <div>
+                            <p className="text-sm font-black text-slate-900 flex items-center gap-1.5">
+                              Advance recorded {new Date(selectedAdvance.createdAt).toLocaleDateString('en-IN', { dateStyle: 'medium' })}
+                              {selectedAdvance.locked && <span className="text-[9px] font-black uppercase text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">Locked</span>}
+                            </p>
+                            {selectedAdvance.making_charges_waiver_pct > 0 && <p className="text-[10px] text-slate-400">{selectedAdvance.making_charges_waiver_pct}% making charges waiver</p>}
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-black text-blue-700">₹{selectedAdvance.availableBalance.toLocaleString('en-IN')}</p>
+                            <p className="text-[9px] text-slate-400 font-medium">available</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {selectedAdvance?.locked && (
+                        <div className="flex items-center gap-2 px-4 py-3 bg-amber-50 border border-amber-100 rounded-xl text-xs text-amber-700 font-bold">
+                          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                          Locked until {new Date(selectedAdvance.lock_in_expires_at!).toLocaleDateString('en-IN', { dateStyle: 'medium' })} — cannot be redeemed yet.
+                        </div>
+                      )}
+
+                      {selectedAdvance && !selectedAdvance.locked && (() => {
+                        const basePrice = Math.round((sellItem.selling_price || sellItem.live_selling_price || 0) * (1 - sellForm.discount / 100));
+                        const maxApply = Math.max(0, Math.min(selectedAdvance.availableBalance, basePrice - investmentApplied));
+                        return (
+                          <div className="space-y-2">
+                            <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 block">
+                              Amount to Apply (max ₹{maxApply.toLocaleString('en-IN')})
+                            </label>
+                            <div className="flex items-center gap-3">
+                              <input type="number" min={0} max={maxApply} value={advanceApplied || ''}
+                                onChange={e => setAdvanceApplied(Math.min(parseFloat(e.target.value) || 0, maxApply))}
+                                placeholder={`0 – ${maxApply.toLocaleString('en-IN')}`}
+                                className="flex-1 bg-white border-2 border-blue-300 rounded-xl px-4 py-3 text-sm font-black text-blue-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                              />
+                              <button type="button" onClick={() => setAdvanceApplied(maxApply)}
+                                className="px-4 py-3 rounded-xl bg-blue-600 text-white text-xs font-black hover:bg-blue-700 transition-colors whitespace-nowrap">
+                                Apply Max
+                              </button>
+                              {advanceApplied > 0 && (
+                                <button type="button" onClick={() => setAdvanceApplied(0)}
+                                  className="px-4 py-3 rounded-xl border border-slate-200 text-slate-500 text-xs font-black hover:bg-slate-50 transition-colors">
+                                  Clear
+                                </button>
+                              )}
+                            </div>
+                            {advanceApplied > 0 && (
+                              <p className="text-[10px] text-blue-700 font-bold flex items-center gap-1.5">
+                                <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                ₹{advanceApplied.toLocaleString('en-IN')} will be deducted from advance balance on sale confirmation
                               </p>
                             )}
                           </div>
@@ -1472,6 +1739,41 @@ export function InventoryPageContent() {
               </button>
               <button onClick={handleStolen} disabled={stealing || !stolenForm.reason.trim()} className="px-8 py-3.5 bg-stone-600 hover:bg-stone-700 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-md disabled:opacity-50">
                 {stealing ? 'Processing...' : 'Confirm Stolen'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Hallmark Modal ── */}
+      {hallmarkItem && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8">
+            <div className="flex justify-between items-start mb-6">
+              <div>
+                <h2 className="text-xl font-black text-slate-900">BIS Hallmark (HUID)</h2>
+                <p className="text-sm text-slate-500 font-medium">{(hallmarkItem.product_id as any)?.name}</p>
+              </div>
+              <button onClick={() => setHallmarkItem(null)} className="p-2 hover:bg-slate-50 rounded-xl text-slate-500">
+                <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div>
+              <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Hallmark (HUID)</label>
+              <input
+                type="text"
+                autoFocus
+                value={hallmarkValue}
+                onChange={(e) => setHallmarkValue(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#7A1C2A] transition-all"
+                placeholder="e.g. AZ1234567"
+              />
+              <p className="text-[10px] text-slate-400 mt-2">Printed on the sale bill and Certificate of Authenticity when set.</p>
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => setHallmarkItem(null)} className="flex-1 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-600">Cancel</button>
+              <button onClick={handleSaveHallmark} disabled={savingHallmark} className="flex-1 py-3 bg-[#7A1C2A] hover:bg-[#5A0F1A] text-white rounded-2xl text-sm font-black uppercase tracking-wider transition-colors disabled:opacity-60">
+                {savingHallmark ? 'Saving...' : 'Save'}
               </button>
             </div>
           </div>
