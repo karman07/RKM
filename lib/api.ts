@@ -344,6 +344,9 @@ export interface InventoryItem {
   sale_request_reviewer?: User | string | null;
   sale_request_reviewed_at?: string;
   sale_request_rejection_reason?: string;
+  certificate_url?: string;
+  certificate_generated_at?: string | null;
+  hallmark?: string;
   createdAt: string;
 }
 
@@ -369,6 +372,7 @@ export interface Customer {
   ifscCode?: string;
   bankName?: string;
   customFields?: { key: string; value: string }[];
+  relationship_manager?: { _id: string; name: string; email?: string; mobile_number?: string; role?: string } | string | null;
 }
 
 export interface PaginatedResponse<T> {
@@ -379,6 +383,28 @@ export interface PaginatedResponse<T> {
     limit: number;
     total_pages: number;
   };
+}
+
+/**
+ * Walks every page of a paginated endpoint and returns the full result set.
+ * Use this (instead of guessing a "big enough" limit) wherever a page needs
+ * to filter/search/export the *entire* dataset rather than one page of it.
+ */
+export async function fetchAllPages<T>(
+  fetchPage: (page: number, limit: number) => Promise<PaginatedResponse<T>>,
+  pageSize = 200,
+): Promise<T[]> {
+  const first = await fetchPage(1, pageSize);
+  const all = [...first.data];
+  const total = first.meta?.total ?? all.length;
+  let page = 2;
+  while (all.length < total) {
+    const next = await fetchPage(page, pageSize);
+    if (!next.data.length) break;
+    all.push(...next.data);
+    page += 1;
+  }
+  return all;
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -668,6 +694,7 @@ export const addInventoryItem = (data: {
   selling_price?: number;
   admin_discount?: number;
   branch_id?: string;
+  hallmark?: string;
 }) =>
   request<{ inserted: number; items: InventoryItem[] }>('/inventory', {
     method: 'POST',
@@ -687,6 +714,13 @@ export const updateInventoryDiscount = (id: string, discounts: { admin_discount?
   request<InventoryItem>(`/inventory/${id}/discount`, {
     method: 'PATCH',
     body: JSON.stringify(discounts),
+  });
+
+/** Sets/updates the BIS Hallmark HUID on a specific inventory item */
+export const updateInventoryHallmark = (id: string, hallmark: string) =>
+  request<InventoryItem>(`/inventory/${id}/hallmark`, {
+    method: 'PATCH',
+    body: JSON.stringify({ hallmark }),
   });
 
 export const deleteInventoryItem = (id: string, reason: string, notes?: string) =>
@@ -764,6 +798,10 @@ export const updateInventoryStatus = (
     method: 'PATCH',
     body: JSON.stringify(payload),
   });
+
+/** Fills the RKM Certificate of Authenticity PDF template (unchanged artwork) with this sold item's data */
+export const generateCertificate = (id: string) =>
+  request<{ url: string }>(`/inventory/${id}/generate-certificate`, { method: 'POST' });
 
 export const adjustStock = (payload: {
   product_id: string;
@@ -861,16 +899,6 @@ export const publishPurchaseOrder = (id: string) =>
 export const generatePoInvoiceNumber = () =>
   request<{ invoice_number: string }>('/purchase-orders/generate-invoice-number');
 
-/** Generate a unique sale invoice number: INV-YYYYMMDD-<random 4-char> */
-export function generateSaleInvoiceNumber(): string {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
-  return `INV-${y}${m}${d}-${rand}`;
-}
-
 // ─── Branches ─────────────────────────────────────────────────────────────────
 
 export const getBranches = () => request<Branch[]>('/branches');
@@ -920,6 +948,7 @@ export interface AppSettings {
   half_day_threshold_time?: string;
   whatsapp_notifications_enabled?: boolean;
   email_notifications_enabled?: boolean;
+  sms_notifications_enabled?: boolean;
   email_triggers?: Record<string, boolean>;
   // ─── Company / HR ───────────────────────────────────────────────────────────
   company_name?: string;
@@ -1004,6 +1033,34 @@ export const updateSettings = (data: Partial<AppSettings>) =>
     method: 'PUT',
     body: JSON.stringify(data),
   });
+
+// ── SMS (MSG91) ──────────────────────────────────────────────────────────────
+
+export interface SmsLog {
+  _id: string;
+  phone: string;
+  message: string;
+  status: 'sent' | 'failed';
+  error?: string;
+  trigger: 'manual_thank_you' | 'sale_completed' | 'sale_returned' | 'otp' | 'manual';
+  sale_reference?: string;
+  createdAt: string;
+}
+
+export interface SmsStats {
+  sentCount: number;
+  failedCount: number;
+  recent: SmsLog[];
+}
+
+/** Whether MSG91 is configured on the backend */
+export const getSmsStatus = () => request<{ enabled: boolean }>('/sms/status');
+
+/** MSG91 account balance/credits remaining */
+export const getSmsBalance = () => request<any>('/sms/balance');
+
+/** Sent/failed counts + recent message log */
+export const getSmsStats = () => request<SmsStats>('/sms/stats');
 
 /**
  * Triggers a server-side resync of selling_price for ALL available inventory items
@@ -1185,6 +1242,12 @@ export const getCustomers = (page: number = 1, limit: number = 20) =>
 export const getCustomerById = (id: string) => request<Customer>(`/customers/${id}`);
 export const searchCustomersByPhone = (phone: string) =>
   request<{ data: Customer[] }>(`/customers/search?phone=${encodeURIComponent(phone)}`);
+export const createCustomer = (data: {
+  name: string; phone: string; email?: string; gender?: string;
+  address?: string; city?: string; state?: string; pincode?: string; country?: string;
+  aadharCard?: string; panCard?: string; accountNumber?: string; ifscCode?: string; bankName?: string;
+  customFields?: { key: string; value: string }[];
+}) => request<Customer>('/customers', { method: 'POST', body: JSON.stringify(data) });
 
 // ─── WhatsApp API Helpers ─────────────────────────────────────────────────────
 
@@ -1488,6 +1551,13 @@ export interface GoldSubscription {
   requiresManualPayment: boolean;
   whatsappRemindersCount: number;
   manualPaymentLink?: string;
+  bonusInterest?: number;
+  interestAdjustments?: {
+    amount: number;
+    date: string;
+    note?: string;
+    staffId?: string;
+  }[];
   createdAt: string;
 }
 
@@ -1543,6 +1613,11 @@ export async function redeemSubscription(id: string, data: { amount: number; sal
 
 export async function markGoldCashPayment(id: string, data: { month: number; staffId?: string; note?: string }): Promise<GoldSubscription> {
   return request<GoldSubscription>(`/gold-investment/subscriptions/${id}/mark-payment`, { method: 'POST', body: JSON.stringify(data) });
+}
+
+/** Admin-only: manually credit bonus interest onto a subscription's balance */
+export async function addInterestToSubscription(id: string, data: { amount: number; note?: string; staffId?: string }): Promise<GoldSubscription> {
+  return request<GoldSubscription>(`/gold-investment/subscriptions/${id}/add-interest`, { method: 'POST', body: JSON.stringify(data) });
 }
 
 export async function sendGoldReminder(id: string): Promise<{ sent: boolean; message: string }> {
@@ -1915,6 +1990,13 @@ export interface OldGoldTransaction {
   melt_authorized_at?: string | null;
   settled_at?: string | null;
   reversed_at?: string | null;
+  /** URL of the last system-generated buy-back declaration form PDF */
+  form_url?: string;
+  form_generated_at?: string | null;
+  /** URL of the admin-uploaded scan of the physically signed form */
+  signed_form_url?: string;
+  signed_form_uploaded_by?: string | { _id: string; name: string } | null;
+  signed_form_uploaded_at?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1958,6 +2040,340 @@ export const settleOldGoldTransaction = (id: string, data: { settlement_amount: 
 
 export const reverseOldGoldTransaction = (id: string) =>
   request<OldGoldTransaction>(`/old-gold/${id}/reverse`, { method: 'POST' });
+
+/** Generates (or regenerates) the printable Old Gold Sale Declaration Form for a transaction. */
+export const generateOldGoldForm = (id: string) =>
+  request<{ url: string }>(`/old-gold/${id}/generate-form`, { method: 'POST' });
+
+/** Uploads a scan of the physically signed buy-back form (image or PDF, max 10 MB). */
+export const uploadOldGoldSignedForm = async (id: string, file: File): Promise<OldGoldTransaction> => {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${API_BASE}/old-gold/${id}/signed-form`, {
+    method: 'POST',
+    headers: authHeadersMultipart(),
+    body: form,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).message || 'Signed form upload failed');
+  }
+  return res.json();
+};
+
+// ── Gold Loan ────────────────────────────────────────────────────────────────
+
+export type GLStatus = 'draft' | 'submitted' | 'rejected' | 'active' | 'closed';
+export type GLComputedStatus = GLStatus | 'overdue';
+
+export interface GLStone {
+  stone_type: string;
+  description: string;
+  count: number;
+  weight: number;
+  weight_unit: string;
+  quality: string;
+  estimated_value: number;
+}
+
+export interface GLItem {
+  description: string;
+  weight_grams: number;
+  purity: string;
+  gold_rate_per_gram: number;
+  estimated_value: number;
+  stones: GLStone[];
+  stones_value: number;
+}
+
+export interface GLEmiEntry {
+  month: number;
+  due_date: string;
+  expected_amount: number;
+  status: 'paid' | 'missed';
+  paid_date: string | null;
+  paid_amount: number | null;
+  mode: string;
+  marked_by: string | { _id: string; name: string; role: string };
+  marked_at: string;
+  note: string;
+}
+
+export interface GoldLoan {
+  _id: string;
+  loan_number: string;
+  customer_id: string | { _id: string; name: string; phone?: string };
+  customer_name: string;
+  customer_phone: string;
+  branch_id: string | { _id: string; name: string };
+  items: GLItem[];
+  total_weight_grams: number;
+  total_pledged_value: number;
+  loan_amount: number;
+  interest_rate_monthly: number;
+  tenure_months: number;
+  status: GLStatus;
+  computed_status: GLComputedStatus;
+  emiLedger: GLEmiEntry[];
+  notes: string;
+  rejection_reason: string;
+  created_by: string | { _id: string; name: string; role: string };
+  submitted_by?: string | { _id: string; name: string } | null;
+  approved_by?: string | { _id: string; name: string } | null;
+  rejected_by?: string | { _id: string; name: string } | null;
+  closed_by?: string | { _id: string; name: string } | null;
+  submitted_at?: string | null;
+  approved_at?: string | null;
+  rejected_at?: string | null;
+  disbursed_at?: string | null;
+  closed_at?: string | null;
+  principal_repaid_amount: number | null;
+  final_interest_amount: number | null;
+  closure_notes: string;
+  form_url?: string;
+  form_generated_at?: string | null;
+  signed_form_url?: string;
+  signed_form_uploaded_by?: string | { _id: string; name: string } | null;
+  signed_form_uploaded_at?: string | null;
+  closure_certificate_url?: string;
+  closure_certificate_generated_at?: string | null;
+  signed_closure_certificate_url?: string;
+  signed_closure_certificate_uploaded_by?: string | { _id: string; name: string } | null;
+  signed_closure_certificate_uploaded_at?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const getGoldLoans = () => request<GoldLoan[]>('/gold-loan');
+
+export const getGoldLoan = (id: string) => request<GoldLoan>(`/gold-loan/${id}`);
+
+export const getGoldLoansByCustomer = (customerId: string) =>
+  request<GoldLoan[]>(`/gold-loan/customer/${customerId}`);
+
+type GLDraftItemInput = Pick<GLItem, 'description' | 'weight_grams' | 'purity'> & {
+  estimated_value?: number;
+  stones?: Array<Pick<GLStone, 'stone_type' | 'description' | 'count' | 'weight' | 'weight_unit' | 'quality'> & { estimated_value?: number }>;
+};
+
+export const createGoldLoan = (data: {
+  customer_id: string;
+  branch_id?: string;
+  items: GLDraftItemInput[];
+  loan_amount: number;
+  interest_rate_monthly: number;
+  tenure_months: number;
+  notes?: string;
+}) => request<GoldLoan>('/gold-loan', { method: 'POST', body: JSON.stringify(data) });
+
+export const editGoldLoan = (id: string, data: Partial<{
+  items: GLDraftItemInput[];
+  loan_amount: number;
+  interest_rate_monthly: number;
+  tenure_months: number;
+  notes: string;
+}>) => request<GoldLoan>(`/gold-loan/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+
+export const submitGoldLoan = (id: string) =>
+  request<GoldLoan>(`/gold-loan/${id}/submit`, { method: 'POST' });
+
+export const approveGoldLoan = (id: string) =>
+  request<GoldLoan>(`/gold-loan/${id}/approve`, { method: 'POST' });
+
+export const rejectGoldLoan = (id: string, reason: string) =>
+  request<GoldLoan>(`/gold-loan/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) });
+
+export const markGoldLoanEmi = (id: string, data: {
+  month: number;
+  status: 'paid' | 'missed';
+  paid_amount?: number;
+  mode?: string;
+  note?: string;
+}) => request<GoldLoan>(`/gold-loan/${id}/mark-emi`, { method: 'POST', body: JSON.stringify(data) });
+
+export const closeGoldLoan = (id: string, data: {
+  principal_repaid_amount: number;
+  final_interest_amount?: number;
+  closure_notes?: string;
+}) => request<GoldLoan>(`/gold-loan/${id}/close`, { method: 'POST', body: JSON.stringify(data) });
+
+/** Generates (or regenerates) the printable Gold Loan Pledge Agreement for a loan. */
+export const generateGoldLoanForm = (id: string) =>
+  request<{ url: string }>(`/gold-loan/${id}/generate-form`, { method: 'POST' });
+
+/** Uploads a scan of the physically signed pledge agreement (image or PDF, max 10 MB). */
+export const uploadGoldLoanSignedForm = async (id: string, file: File): Promise<GoldLoan> => {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${API_BASE}/gold-loan/${id}/signed-form`, {
+    method: 'POST',
+    headers: authHeadersMultipart(),
+    body: form,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).message || 'Signed form upload failed');
+  }
+  return res.json();
+};
+
+/** Downloads the full loan catalog as an Excel workbook. */
+export const exportGoldLoanCatalog = () =>
+  downloadReportFile('/gold-loan/export/catalog', {}, 'gold-loan-catalog.xlsx');
+
+/** Generates (or regenerates) the printable Loan Closure Certificate — only for closed loans. */
+export const generateGoldLoanClosureCertificate = (id: string) =>
+  request<{ url: string }>(`/gold-loan/${id}/generate-closure-certificate`, { method: 'POST' });
+
+/** Uploads a scan of the physically signed closure certificate (image or PDF, max 10 MB). */
+export const uploadGoldLoanSignedClosureCertificate = async (id: string, file: File): Promise<GoldLoan> => {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${API_BASE}/gold-loan/${id}/signed-closure-certificate`, {
+    method: 'POST',
+    headers: authHeadersMultipart(),
+    body: form,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).message || 'Signed closure certificate upload failed');
+  }
+  return res.json();
+};
+
+// ── Customer Advances ────────────────────────────────────────────────────────
+
+export interface CustomerAdvance {
+  _id: string;
+  customer: string;
+  customerName: string;
+  customerPhone: string;
+  amount: number;
+  amountRedeemed: number;
+  availableBalance: number;
+  making_charges_waiver_pct: number;
+  mode: string;
+  note: string;
+  status: 'active' | 'closed';
+  lock_in_days: number;
+  lock_in_expires_at: string | null;
+  locked: boolean;
+  createdBy?: string | { _id: string; name: string; role?: string } | null;
+  createdAt: string;
+  redemptionHistory: {
+    amount: number;
+    making_charges_discount: number;
+    date: string;
+    saleReference?: string;
+    note?: string;
+  }[];
+}
+
+/** Lists all advances recorded for a customer (360 page ledger) */
+export const getCustomerAdvances = (customerId: string) =>
+  request<CustomerAdvance[]>(`/customers/${customerId}/advances`);
+
+/** Records a new advance payment taken from a customer */
+export const createCustomerAdvance = (customerId: string, data: {
+  amount: number;
+  making_charges_waiver_pct?: number;
+  mode?: string;
+  note?: string;
+  lock_in_days?: number;
+}) => request<CustomerAdvance>(`/customers/${customerId}/advances`, { method: 'POST', body: JSON.stringify(data) });
+
+/** Looks up active advance balances for a customer by phone — used at time of sale */
+export const getAdvanceBalance = (phone: string) =>
+  request<CustomerAdvance[]>(`/customers/advances/balance?phone=${encodeURIComponent(phone)}`);
+
+/** Redeems (applies) an amount from an advance against a sale */
+export const redeemCustomerAdvance = (id: string, data: {
+  amount: number;
+  making_charges_discount?: number;
+  saleReference?: string;
+  note?: string;
+}) => request<CustomerAdvance>(`/customers/advances/${id}/redeem`, { method: 'POST', body: JSON.stringify(data) });
+
+export interface AdvanceAnalytics {
+  totalReceived: number;
+  count: number;
+  byMode: { _id: string; total: number; count: number }[];
+  recent: CustomerAdvance[];
+}
+
+/** Aggregate advance-deposit stats for the Payments analytics page */
+export const getAdvanceAnalytics = (days = 30) =>
+  request<AdvanceAnalytics>(`/customers/advances/analytics?days=${days}`);
+
+// ── Reports ──────────────────────────────────────────────────────────────────
+
+export interface DateRangeParams {
+  from?: string;
+  to?: string;
+}
+
+function toQuery(params: object): string {
+  const q = new URLSearchParams();
+  Object.entries(params as Record<string, string | undefined>).forEach(([k, v]) => { if (v) q.set(k, v); });
+  const s = q.toString();
+  return s ? `?${s}` : '';
+}
+
+export const getReportOverview = (p: DateRangeParams = {}) =>
+  request<any>(`/reports/overview${toQuery(p)}`);
+
+export const getReportProfitLoss = (p: DateRangeParams = {}) =>
+  request<any>(`/reports/profit-loss${toQuery(p)}`);
+
+export const getReportCashFlow = (p: DateRangeParams & { groupBy?: 'day' | 'week' | 'month' } = {}) =>
+  request<any>(`/reports/cash-flow${toQuery(p)}`);
+
+export const getReportBalanceSheet = (asOf?: string) =>
+  request<any>(`/reports/balance-sheet${toQuery({ asOf })}`);
+
+export const getReportSales = (p: DateRangeParams & { groupBy?: 'item' | 'customer' | 'salesperson' | 'branch' } = {}) =>
+  request<any>(`/reports/sales${toQuery(p)}`);
+
+export const getReportOldGold = (p: DateRangeParams = {}) =>
+  request<any>(`/reports/old-gold${toQuery(p)}`);
+
+export const getReportGoldInvestment = (p: DateRangeParams = {}) =>
+  request<any>(`/reports/gold-investment${toQuery(p)}`);
+
+export const getReportPurchases = (p: DateRangeParams & { groupBy?: 'vendor' | 'status' } = {}) =>
+  request<any>(`/reports/purchases${toQuery(p)}`);
+
+export const getReportPurchaseRegister = (p: DateRangeParams = {}) =>
+  request<any>(`/reports/purchase-register${toQuery(p)}`);
+
+export const getReportInventoryValuation = () =>
+  request<any>('/reports/inventory-valuation');
+
+export const getReportReceivables = () =>
+  request<any>('/reports/receivables');
+
+export const getReportSalesRegister = (p: DateRangeParams = {}) =>
+  request<any>(`/reports/sales-register${toQuery(p)}`);
+
+export const getReportRefunds = (p: DateRangeParams = {}) =>
+  request<any>(`/reports/refunds${toQuery(p)}`);
+
+/** Fetches a server-rendered PDF or Excel file and triggers a browser download. */
+export async function downloadReportFile(path: string, params: Record<string, string | undefined>, filename: string): Promise<void> {
+  const res = await fetch(`${API_BASE}${path}${toQuery(params)}`, {
+    headers: authHeadersMultipart(),
+  });
+  if (!res.ok) throw new Error('Failed to generate file');
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
 
 // ── Analytics AI ──────────────────────────────────────────────────────────────
 

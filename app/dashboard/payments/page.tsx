@@ -7,11 +7,12 @@ import {
 } from 'recharts';
 import {
   TrendingUp, CreditCard, DollarSign, ShoppingBag,
-  ArrowUpRight, Calendar, Building2, Banknote, Repeat,
+  ArrowUpRight, Calendar, Building2, Banknote, Repeat, Download, Loader2,
 } from 'lucide-react';
 import { useAppTheme } from '@/components/AppThemeContext';
 import { APP_THEME } from '@/lib/theme-constants';
-import { API_BASE } from '@/lib/api';
+import { API_BASE, getInventory, fetchAllPages, getAdvanceAnalytics, type InventoryItem, type AdvanceAnalytics } from '@/lib/api';
+import { downloadCsv } from '@/lib/export-utils';
 
 const PAYMENT_COLORS: Record<string, string> = {
   cash: '#10b981',
@@ -22,11 +23,21 @@ const PAYMENT_COLORS: Record<string, string> = {
   cheque: '#ec4899',
   neft: '#f59e0b',
   rtgs: '#84cc16',
+  investment_balance: '#a855f7',
+  advance_balance: '#0ea5e9',
   unknown: '#94a3b8',
 };
 
 function modeColor(mode: string) {
   return PAYMENT_COLORS[mode?.toLowerCase()] ?? '#94a3b8';
+}
+
+/** Turns a raw payment-mode string (e.g. "advance_balance") into a readable label */
+function modeLabel(mode: string) {
+  if (!mode) return 'Unknown';
+  if (mode.toLowerCase() === 'investment_balance') return 'Investment Balance';
+  if (mode.toLowerCase() === 'advance_balance') return 'Advance Balance';
+  return mode.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
 const PALETTE = ['#3b82f6', '#8b5cf6', '#10b981', '#f97316', '#ec4899', '#06b6d4', '#f59e0b', '#84cc16'];
@@ -51,8 +62,14 @@ export default function PaymentsPage() {
   const { theme } = useAppTheme();
   const colors = APP_THEME[theme];
   const [data, setData] = useState<any>(null);
+  const [advanceData, setAdvanceData] = useState<AdvanceAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(30);
+  const [exporting, setExporting] = useState(false);
+
+  useEffect(() => {
+    getAdvanceAnalytics(days).then(setAdvanceData).catch(() => setAdvanceData(null));
+  }, [days]);
 
   useEffect(() => {
     setLoading(true);
@@ -65,6 +82,36 @@ export default function PaymentsPage() {
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [days]);
+
+  async function handleExportHistory() {
+    setExporting(true);
+    try {
+      const since = new Date();
+      since.setDate(since.getDate() - days);
+      const rows = await fetchAllPages<InventoryItem>(
+        (page, limit) => getInventory({ status: 'sold', sold_after: since.toISOString(), limit: String(limit), page: String(page) }),
+        200,
+      );
+      downloadCsv(`payment-history-${days}d`, rows, [
+        { header: 'Date', accessor: (r: any) => (r.sold_at ? new Date(r.sold_at).toLocaleDateString('en-IN') : '') },
+        { header: 'Item', accessor: (r: any) => (typeof r.product_id === 'object' ? r.product_id?.name : '') || r.barcode || '' },
+        { header: 'SKU', accessor: (r: any) => (typeof r.product_id === 'object' ? r.product_id?.sku : '') || '' },
+        { header: 'Reason', accessor: () => 'Item Sale' },
+        { header: 'Customer', accessor: (r: any) => r.sold_customer_name || 'Walk-in Customer' },
+        { header: 'Phone', accessor: (r: any) => r.sold_customer_phone || '' },
+        { header: 'Branch', accessor: (r: any) => (typeof r.sold_at_branch_id === 'object' ? r.sold_at_branch_id?.name : '') || '' },
+        { header: 'Cashier', accessor: (r: any) => (typeof r.sold_by_user_id === 'object' ? r.sold_by_user_id?.name : '') || '' },
+        { header: 'Payment Mode', accessor: (r: any) => (Array.isArray(r.payment_splits) && r.payment_splits.length ? r.payment_splits.map((s: any) => s.mode).join(' + ') : r.payment_mode) || '' },
+        { header: 'Cost', accessor: (r: any) => r.purchase_price ?? 0 },
+        { header: 'Amount Received', accessor: (r: any) => r.selling_price ?? 0 },
+        { header: 'Profit', accessor: (r: any) => (r.selling_price ?? 0) - (r.purchase_price ?? 0) },
+      ]);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const summary = data?.summary ?? {};
   const revenueOverTime = data?.revenueOverTime ?? [];
@@ -103,23 +150,32 @@ export default function PaymentsPage() {
           <h1 className="text-4xl font-black tracking-tight text-slate-900 leading-none">Payment Intelligence</h1>
           <p className="text-sm font-bold text-slate-400 mt-2 uppercase tracking-[0.2em]">Revenue Received · Mode Breakdown · Branch Performance</p>
         </div>
-        <div
-          className="flex items-center gap-1 p-1.5 rounded-2xl border shadow-sm"
-          style={{ backgroundColor: colors.bg, borderColor: colors.border }}
-        >
-          {[7, 30, 90, 365].map(d => (
-            <button
-              key={d}
-              onClick={() => setDays(d)}
-              className={`px-5 py-2.5 text-[11px] font-black uppercase tracking-widest rounded-xl transition-all ${
-                days === d
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-                  : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              {d === 7 ? '1W' : d === 30 ? '1M' : d === 90 ? '3M' : '1Y'}
-            </button>
-          ))}
+        <div className="flex items-center gap-3 flex-wrap">
+          <div
+            className="flex items-center gap-1 p-1.5 rounded-2xl border shadow-sm"
+            style={{ backgroundColor: colors.bg, borderColor: colors.border }}
+          >
+            {[7, 30, 90, 365].map(d => (
+              <button
+                key={d}
+                onClick={() => setDays(d)}
+                className={`px-5 py-2.5 text-[11px] font-black uppercase tracking-widest rounded-xl transition-all ${
+                  days === d
+                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
+                    : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                {d === 7 ? '1W' : d === 30 ? '1M' : d === 90 ? '3M' : '1Y'}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={handleExportHistory}
+            disabled={exporting}
+            className="inline-flex items-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-blue-500/20 transition-all disabled:opacity-60"
+          >
+            {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />} Download History
+          </button>
         </div>
       </div>
 
@@ -151,13 +207,50 @@ export default function PaymentsPage() {
         />
         <KpiCard
           title="Top Mode"
-          value={paymentModes[0]?._id?.toUpperCase() ?? '—'}
+          value={paymentModes[0] ? modeLabel(paymentModes[0]._id) : '—'}
           sub={paymentModes[0] ? fmtFull(paymentModes[0].total) : ''}
           icon={<Banknote className="w-5 h-5" />}
           accent="#f97316"
           colors={colors}
         />
       </div>
+
+      {/* Advance Deposits — money received in advance, not yet part of sale revenue */}
+      {advanceData && advanceData.count > 0 && (
+        <div
+          className="p-8 rounded-[2.5rem] border shadow-2xl shadow-slate-200/40"
+          style={{ backgroundColor: colors.bg, borderColor: colors.border }}
+        >
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h3 className="text-xl font-black text-slate-900">Advance Deposits</h3>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                Received from customers ahead of a sale · not counted in Total Revenue
+              </p>
+            </div>
+            <Banknote className="w-5 h-5" style={{ color: PAYMENT_COLORS.advance_balance }} />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Total Received</p>
+              <p className="text-2xl font-black text-slate-900">{fmtFull(advanceData.totalReceived)}</p>
+              <p className="text-[11px] font-bold text-slate-400 mt-0.5">{advanceData.count} advance{advanceData.count !== 1 ? 's' : ''} taken</p>
+            </div>
+            <div className="sm:col-span-2">
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">By Mode</p>
+              <div className="flex flex-wrap gap-2">
+                {advanceData.byMode.map((m, i) => (
+                  <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-full border" style={{ borderColor: colors.border }}>
+                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: modeColor(m._id) }} />
+                    <span className="text-[11px] font-bold text-slate-600">{modeLabel(m._id)}</span>
+                    <span className="text-[11px] font-black text-slate-900">{fmtFull(m.total)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Revenue Over Time + Payment Mode Pie */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -273,7 +366,7 @@ export default function PaymentsPage() {
               <div key={i} className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: modeColor(m._id) }} />
-                  <span className="text-[12px] font-black text-slate-700 capitalize">{m._id || 'Unknown'}</span>
+                  <span className="text-[12px] font-black text-slate-700">{modeLabel(m._id)}</span>
                 </div>
                 <div className="text-right">
                   <span className="text-[12px] font-black text-slate-900">{fmtFull(m.total)}</span>
@@ -399,31 +492,36 @@ export default function PaymentsPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-slate-50">
-                {['Item', 'Branch', 'Cashier', 'Amount', 'Mode', 'Date'].map(h => (
-                  <th key={h} className="text-left text-[10px] font-black uppercase tracking-widest text-slate-400 pb-3 pr-6 last:pr-0">{h}</th>
+                {['Received For (Reason)', 'Customer', 'Branch', 'Cashier', 'Cost', 'Amount Received', 'Profit', 'Mode', 'Date'].map(h => (
+                  <th key={h} className="text-left text-[10px] font-black uppercase tracking-widest text-slate-400 pb-3 pr-6 last:pr-0 whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {recentTx.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="text-center text-sm text-slate-400 py-10 font-bold">No transactions in this period</td>
+                  <td colSpan={9} className="text-center text-sm text-slate-400 py-10 font-bold">No transactions in this period</td>
                 </tr>
               )}
               {recentTx.map((tx: any, i: number) => {
                 const modes = Array.isArray(tx.payment_splits) && tx.payment_splits.length > 0
-                  ? tx.payment_splits.map((s: any) => s.mode).join(' + ')
-                  : tx.payment_mode || '—';
+                  ? tx.payment_splits.map((s: any) => modeLabel(s.mode)).join(' + ')
+                  : (tx.payment_mode ? modeLabel(tx.payment_mode) : '—');
                 const branch = typeof tx.sold_at_branch_id === 'object' ? tx.sold_at_branch_id?.name : '—';
                 const cashier = typeof tx.sold_by_user_id === 'object' ? tx.sold_by_user_id?.name : '—';
+                const itemName = (typeof tx.product_id === 'object' ? tx.product_id?.name : '') || tx.barcode || '—';
+                const profit = (tx.selling_price ?? 0) - (tx.purchase_price ?? 0);
                 const date = tx.sold_at ? new Date(tx.sold_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '—';
                 const topMode = (Array.isArray(tx.payment_splits) && tx.payment_splits[0]?.mode) || tx.payment_mode || 'unknown';
                 return (
                   <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60 transition-colors group">
-                    <td className="py-4 pr-6 text-sm font-bold text-slate-800 truncate max-w-[160px]">{tx.name || tx.barcode || '—'}</td>
+                    <td className="py-4 pr-6 text-sm font-bold text-slate-800 truncate max-w-[160px]">Sale: {itemName}</td>
+                    <td className="py-4 pr-6 text-sm font-semibold text-slate-500 truncate max-w-[140px]">{tx.sold_customer_name || 'Walk-in Customer'}</td>
                     <td className="py-4 pr-6 text-sm font-semibold text-slate-500 truncate max-w-[120px]">{branch}</td>
                     <td className="py-4 pr-6 text-sm font-semibold text-slate-500 truncate max-w-[120px]">{cashier}</td>
+                    <td className="py-4 pr-6 text-sm font-bold text-slate-500">{fmtFull(tx.purchase_price)}</td>
                     <td className="py-4 pr-6 text-sm font-black text-slate-900">{fmtFull(tx.selling_price)}</td>
+                    <td className="py-4 pr-6 text-sm font-black text-emerald-600">{fmtFull(profit)}</td>
                     <td className="py-4 pr-6">
                       <span
                         className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wide text-white"
@@ -432,7 +530,7 @@ export default function PaymentsPage() {
                         {modes}
                       </span>
                     </td>
-                    <td className="py-4 text-[12px] font-bold text-slate-400">{date}</td>
+                    <td className="py-4 text-[12px] font-bold text-slate-400 whitespace-nowrap">{date}</td>
                   </tr>
                 );
               })}

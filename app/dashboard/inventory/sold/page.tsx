@@ -1,15 +1,17 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { getInventory, getMe, getUsers, updateInventoryStatus, staticUrl, type InventoryItem, type User } from '@/lib/api';
+import { getInventory, getMe, getUsers, getBranches, updateInventoryStatus, fetchAllPages, staticUrl, type InventoryItem, type User, type Branch } from '@/lib/api';
 import BillModal from '@/components/BillModal';
 import UserHistoryDrawer from '@/components/UserHistoryDrawer';
 import dynamic from 'next/dynamic';
-import { 
+import {
   Store, User as UserIcon, ShieldCheck, CreditCard,
-  Globe, LayoutDashboard, Search, Printer, 
-  FileEdit, ChevronRight, TrendingUp, BarChart3
+  Globe, LayoutDashboard, Search, Printer,
+  FileEdit, ChevronRight, TrendingUp, BarChart3, Download, Loader2
 } from 'lucide-react';
+import DatePicker from '@/components/DatePicker';
+import { downloadCsv } from '@/lib/export-utils';
 
 
 const Line = dynamic(() => import('react-chartjs-2').then(mod => mod.Line), { ssr: false });
@@ -108,6 +110,12 @@ export default function SoldInventoryPage() {
   const [selectedBillDate, setSelectedBillDate] = useState<string>('');
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [historyUser, setHistoryUser] = useState<User | null>(null);
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [branchFilter, setBranchFilter] = useState('all');
+  const [modeFilter, setModeFilter] = useState('all');
 
   // Helper: find full User object from a populated sold_by field
   function resolveUser(populated: any): User | null {
@@ -124,14 +132,16 @@ export default function SoldInventoryPage() {
     async function load() {
       setLoading(true);
       try {
-        const [meRes, invRes, usersRes] = await Promise.all([
+        const [meRes, soldItems, usersRes, branchesRes] = await Promise.all([
           getMe().catch(() => null),
-          getInventory({ status: 'sold', limit: '200', page: '1' }),
+          fetchAllPages<InventoryItem>((page, limit) => getInventory({ status: 'sold', limit: String(limit), page: String(page) }), 200),
           getUsers(undefined, 1, 300).catch(() => ({ data: [] })),
+          getBranches().catch(() => []),
         ]);
         setUser(meRes);
-        setItems(invRes.data);
+        setItems(soldItems);
         setAllUsers((usersRes as any).data || []);
+        setBranches(branchesRes);
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : 'Failed to load artisan records');
       } finally {
@@ -175,15 +185,51 @@ export default function SoldInventoryPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  const paymentModes = useMemo(
+    () => Array.from(new Set(items.map(i => i.payment_mode).filter((m): m is string => Boolean(m)))).sort(),
+    [items],
+  );
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return items;
     return items.filter((item) => {
+      if (fromDate && (!item.sold_at || item.sold_at.slice(0, 10) < fromDate)) return false;
+      if (toDate && (!item.sold_at || item.sold_at.slice(0, 10) > toDate)) return false;
+      if (branchFilter !== 'all') {
+        const branchId = typeof item.sold_at_branch_id === 'object' ? item.sold_at_branch_id?._id : item.sold_at_branch_id;
+        if (branchId !== branchFilter) return false;
+      }
+      if (modeFilter !== 'all' && item.payment_mode !== modeFilter) return false;
+      if (!q) return true;
       const productName = typeof item.product_id === 'object' ? item.product_id.name : '';
       const haystack = [item.unique_item_code, item.barcode, item.sale_reference, (item as any).invoice_number, productName, item.sold_customer_name, item.sold_customer_phone, item.sale_channel, item.payment_mode].filter(Boolean).join(' ').toLowerCase();
       return haystack.includes(q);
     });
-  }, [items, search]);
+  }, [items, search, fromDate, toDate, branchFilter, modeFilter]);
+
+  function handleExportHistory() {
+    setExporting(true);
+    try {
+      downloadCsv('customer-purchase-history', filtered, [
+        { header: 'Date', accessor: (r) => (r.sold_at ? new Date(r.sold_at).toLocaleDateString('en-IN') : '') },
+        { header: 'Item', accessor: (r) => (typeof r.product_id === 'object' ? r.product_id?.name : '') || 'Artisan Work' },
+        { header: 'SKU', accessor: (r) => (typeof r.product_id === 'object' ? (r.product_id as any)?.sku : '') || '' },
+        { header: 'Item Code', accessor: 'unique_item_code' },
+        { header: 'Invoice', accessor: (r) => (r as any).sale_reference || '' },
+        { header: 'Customer', accessor: (r) => r.sold_customer_name || 'Walk-in Customer' },
+        { header: 'Phone', accessor: (r) => r.sold_customer_phone || '' },
+        { header: 'Branch', accessor: (r) => (typeof r.sold_at_branch_id === 'object' ? (r.sold_at_branch_id as any)?.name : '') || 'Direct Sale' },
+        { header: 'Cashier', accessor: (r) => (typeof r.sold_by_user_id === 'object' ? (r.sold_by_user_id as any)?.name : '') || '' },
+        { header: 'Channel', accessor: (r) => r.sale_channel || 'store' },
+        { header: 'Payment Mode', accessor: (r) => r.payment_mode || '' },
+        { header: 'Cost', accessor: (r) => r.purchase_price ?? 0 },
+        { header: 'Price', accessor: (r) => r.selling_price ?? 0 },
+        { header: 'Profit', accessor: (r) => (r.selling_price ?? 0) - (r.purchase_price ?? 0) },
+      ]);
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const chartData = useMemo(() => {
     if (!items.length) return null;
@@ -238,20 +284,64 @@ export default function SoldInventoryPage() {
 
   return (
     <div className="animate-[fadeRise_400ms_ease-out] pb-20">
-      <div className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
+      <div className="mb-6 flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">Artisan Transaction Ledger</h1>
           <p className="text-sm font-medium text-slate-500 mt-1">Authorized compliance and masterpiece settlement records.</p>
         </div>
-        <div className="relative group">
+        <button
+          onClick={handleExportHistory}
+          disabled={exporting || filtered.length === 0}
+          className="inline-flex items-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-blue-500/20 transition-all disabled:opacity-60 self-start md:self-auto"
+        >
+          {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />} Download History ({filtered.length})
+        </button>
+      </div>
+
+      <div className="mb-10 flex flex-wrap items-center gap-3 p-4 rounded-[2rem] border border-slate-100 bg-white shadow-sm">
+        <div className="relative group flex-1 min-w-[220px]">
           <input
-            className="w-full md:w-80 pl-10 pr-4 py-3 border border-slate-200 rounded-2xl text-sm bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all shadow-sm group-hover:shadow-md"
+            className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search master records..."
           />
-          <svg className="absolute left-3.5 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+          <svg className="absolute left-3.5 top-3 text-slate-400 group-focus-within:text-blue-600 transition-colors" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
         </div>
+        <select
+          value={branchFilter}
+          onChange={e => setBranchFilter(e.target.value)}
+          className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-black uppercase tracking-wide text-slate-600 outline-none focus:ring-2 focus:ring-blue-500 max-w-[200px]"
+        >
+          <option value="all">All Branches</option>
+          {branches.map(b => <option key={b._id} value={b._id}>{b.name}</option>)}
+        </select>
+        <select
+          value={modeFilter}
+          onChange={e => setModeFilter(e.target.value)}
+          className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-black uppercase tracking-wide text-slate-600 outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="all">All Payment Modes</option>
+          {paymentModes.map(m => <option key={m} value={m}>{m.toUpperCase()}</option>)}
+        </select>
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200">
+          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">From</span>
+          <DatePicker value={fromDate} max={toDate} onChange={setFromDate} allowClear placeholder="Any" />
+          <span className="text-slate-300">—</span>
+          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">To</span>
+          <DatePicker value={toDate} min={fromDate} onChange={setToDate} allowClear placeholder="Any" align="right" />
+        </div>
+        {(search || branchFilter !== 'all' || modeFilter !== 'all' || fromDate || toDate) && (
+          <button
+            onClick={() => { setSearch(''); setBranchFilter('all'); setModeFilter('all'); setFromDate(''); setToDate(''); }}
+            className="px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-all"
+          >
+            Clear Filters
+          </button>
+        )}
+        <p className="ml-auto text-[11px] font-bold text-slate-400 whitespace-nowrap">
+          {loading ? 'Loading…' : `${items.length} total records loaded · showing ${filtered.length}`}
+        </p>
       </div>
 
       {/* Staff Performance Leaderboards */}

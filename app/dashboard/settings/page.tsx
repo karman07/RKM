@@ -4,7 +4,7 @@ import { updateSettings, syncAllInventoryPrices, getLookups, uploadCompanyLogo, 
 import { useSettings } from '@/components/SettingsContext';
 import { useAppTheme } from '@/components/AppThemeContext';
 import { APP_THEME } from '@/lib/theme-constants';
-import { MessageCircle, Mail, Bell, AlertCircle } from 'lucide-react';
+import { MessageCircle, Mail, Bell, AlertCircle, MessageSquare } from 'lucide-react';
 
 // ─── Static metadata for each pricing category ────────────────────────────────
 
@@ -82,6 +82,7 @@ export default function SettingsPage() {
   // Notification channel
   const [waEnabled, setWaEnabled] = useState(true);
   const [emailEnabled, setEmailEnabled] = useState(true);
+  const [smsEnabled, setSmsEnabled] = useState(true);
 
   // Work schedule
   const [shiftStart, setShiftStart]         = useState('09:00');
@@ -186,6 +187,7 @@ export default function SettingsPage() {
     setStoneRefundPct(settings.stone_refund_percentage != null ? String(settings.stone_refund_percentage) : '50');
     setWaEnabled((settings as any).whatsapp_notifications_enabled !== false);
     setEmailEnabled((settings as any).email_notifications_enabled !== false);
+    setSmsEnabled((settings as any).sms_notifications_enabled !== false);
     setShiftStart(settings.shift_start_time ?? '09:00');
     setShiftEnd(settings.shift_end_time ?? '18:00');
     setGraceMinutes(String(settings.late_grace_minutes ?? 5));
@@ -264,6 +266,7 @@ export default function SettingsPage() {
         stone_refund_percentage: Number(stoneRefundPct) || 50,
         whatsapp_notifications_enabled: waEnabled,
         email_notifications_enabled: emailEnabled,
+        sms_notifications_enabled: smsEnabled,
         shift_start_time: shiftStart,
         shift_end_time: shiftEnd,
         late_grace_minutes: Number(graceMinutes) || 5,
@@ -1091,17 +1094,17 @@ return (
           </p>
         </div>
 
-        {/* Both-off warning */}
-        {!waEnabled && !emailEnabled && (
+        {/* All-off warning */}
+        {!waEnabled && !emailEnabled && !smsEnabled && (
           <div className="flex items-center gap-3 px-4 py-3.5 bg-red-50 border border-red-200 rounded-2xl">
             <AlertCircle size={16} className="text-red-500 flex-shrink-0" />
             <p className="text-[12px] font-bold text-red-700">
-              Both channels are disabled — customers will not receive any notifications on purchase or return.
+              All channels are disabled — customers will not receive any notifications on purchase or return.
             </p>
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {/* WhatsApp toggle card */}
           <div className={`rounded-2xl border-2 p-5 transition-all ${waEnabled ? 'border-blue-200 bg-blue-50/30' : 'border-slate-100'}`}
             style={!waEnabled ? { borderColor: colors.border, backgroundColor: theme === 'light' ? '#f8fafc' : '#0c1626' } : {}}>
@@ -1157,16 +1160,47 @@ return (
                 : 'No emails will be sent for any sale events.'}
             </p>
           </div>
+
+          {/* SMS toggle card */}
+          <div className={`rounded-2xl border-2 p-5 transition-all ${smsEnabled ? 'border-blue-200 bg-blue-50/30' : 'border-slate-100'}`}
+            style={!smsEnabled ? { borderColor: colors.border, backgroundColor: theme === 'light' ? '#f8fafc' : '#0c1626' } : {}}>
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${smsEnabled ? 'bg-blue-100' : 'bg-slate-100'}`}>
+                  <MessageSquare size={20} className={smsEnabled ? 'text-blue-600' : 'text-slate-400'} />
+                </div>
+                <div>
+                  <p className="text-[13px] font-black" style={{ color: colors.textMain }}>SMS</p>
+                  <p className={`text-[10px] font-bold uppercase tracking-wider mt-0.5 ${smsEnabled ? 'text-blue-600' : 'text-slate-400'}`}>
+                    {smsEnabled ? 'Active' : 'Blocked'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSmsEnabled(v => !v)}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ${smsEnabled ? 'bg-blue-600' : 'bg-slate-200'}`}>
+                <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform duration-200 ${smsEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+              </button>
+            </div>
+            <p className="text-[11px] leading-relaxed" style={{ color: colors.textMuted }}>
+              {smsEnabled
+                ? 'Purchase confirmations and return notices sent via SMS (requires MSG91).'
+                : 'No SMS messages will be sent for any sale events.'}
+            </p>
+          </div>
         </div>
 
         {/* Live summary */}
         <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border" style={{ borderColor: colors.border, backgroundColor: theme === 'light' ? '#f8fafc' : '#0c1626' }}>
           <Bell size={13} className="text-slate-400 flex-shrink-0" />
           <p className="text-[11px] font-bold" style={{ color: colors.textMuted }}>
-            {waEnabled && emailEnabled && 'Customers will receive notifications via both WhatsApp and Email'}
-            {waEnabled && !emailEnabled && 'Customers will only receive WhatsApp messages'}
-            {!waEnabled && emailEnabled && 'Customers will only receive Emails'}
-            {!waEnabled && !emailEnabled && 'All automated notifications are currently blocked'}
+            {(() => {
+              const active = [waEnabled && 'WhatsApp', emailEnabled && 'Email', smsEnabled && 'SMS'].filter(Boolean) as string[];
+              if (active.length === 0) return 'All automated notifications are currently blocked';
+              if (active.length === 1) return `Customers will only receive ${active[0]} messages`;
+              if (active.length === 2) return `Customers will receive notifications via ${active[0]} and ${active[1]}`;
+              return `Customers will receive notifications via ${active[0]}, ${active[1]} and ${active[2]}`;
+            })()}
           </p>
         </div>
       </section>

@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { staticUrl, getSettings, updateInventoryStatus, type InventoryItem, type AppSettings } from '@/lib/api';
+import { downloadElementAsPdf, shareElementAsPdf } from '@/lib/pdf-utils';
 
 interface TaxEntry { name: string; percentage: number }
 
@@ -221,6 +223,35 @@ function RefundModal({ items, onClose, onSuccess }: { items: InventoryItem[]; on
 
 export default function BillModal({ items, date, onClose, onRefunded }: BillModalProps) {
   const [showRefundModal, setShowRefundModal] = useState(false);
+  const [generatingPdf, setGeneratingPdf] = useState<'download' | 'share' | null>(null);
+
+  const handleDownload = async () => {
+    setGeneratingPdf('download');
+    try {
+      await downloadElementAsPdf('printable-bill', `Invoice-${saleRef}.pdf`);
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to generate PDF');
+    } finally {
+      setGeneratingPdf(null);
+    }
+  };
+
+  const handleShare = async () => {
+    setGeneratingPdf('share');
+    try {
+      const shared = await shareElementAsPdf(
+        'printable-bill',
+        `Invoice-${saleRef}.pdf`,
+        `Invoice ${saleRef}`,
+        `Tax invoice ${saleRef} from RKM Jewellers`,
+      );
+      if (!shared) toast.info('Direct sharing isn\'t supported on this browser — the invoice PDF was downloaded instead.');
+    } catch (e: any) {
+      if (e?.name !== 'AbortError') toast.error(e?.message || 'Failed to share invoice');
+    } finally {
+      setGeneratingPdf(null);
+    }
+  };
 
   const handlePrint = () => {
     const billEl = document.getElementById('printable-bill');
@@ -312,6 +343,17 @@ ${billEl.outerHTML}
     const totalTaxAmt = taxBreakdown.reduce((s, t) => s + t.amount, 0);
     const finalSelling = item.selling_price ?? grossPrice;
 
+    // What was actually collected for this item. Different sale flows store
+    // `selling_price` differently (some net out investment/making-charge
+    // deductions, some don't) — `payment_splits` is the one authoritative
+    // record of what was actually charged, so prefer it when present.
+    const itemSplits = (item as any).payment_splits;
+    const payable = Array.isArray(itemSplits) && itemSplits.length > 0
+      ? itemSplits.reduce((s: number, sp: any) => s + (sp.amount || 0), 0)
+      : Math.max(0, finalSelling
+          - ((item as any).investment_redeemed ?? 0) - ((item as any).making_charges_discount ?? 0)
+          - ((item as any).advance_redeemed ?? 0) - ((item as any).advance_making_charges_discount ?? 0));
+
     return {
       item, product, pb,
       metalPrice, stonePrice, makingCharge, extraTotal,
@@ -319,6 +361,7 @@ ${billEl.outerHTML}
       totalTaxAmt, taxBreakdown,
       combinedDisAmt: parseFloat((((item.admin_discount ?? 0) + (item.manager_discount ?? 0)) * grossPrice / 100).toFixed(2)),
       finalSelling,
+      payable,
       netWeight:   product?.net_weight ?? 0,
       grossWeight: product?.gross_weight ?? 0,
       stoneWeight: product?.stone_weight ?? 0,
@@ -355,7 +398,17 @@ ${billEl.outerHTML}
   const totalTaxable = itemRows.reduce((a, r) => a + r.taxable, 0);
 
   const customer = items[0];
-  // Invoice number: prefer sale_reference (the generated INV-... number), fallback to unique_item_code
+
+  // Investment redemption totals across all items
+  const totalInvestmentRedeemed = items.reduce((s, it) => s + ((it as any).investment_redeemed ?? 0), 0);
+  const totalMakingDiscount = items.reduce((s, it) => s + ((it as any).making_charges_discount ?? 0), 0);
+  // Advance redemption totals across all items
+  const totalAdvanceRedeemed = items.reduce((s, it) => s + ((it as any).advance_redeemed ?? 0), 0);
+  const totalAdvanceMakingDiscount = items.reduce((s, it) => s + ((it as any).advance_making_charges_discount ?? 0), 0);
+  // What the customer actually paid/owes, from the authoritative per-item payable figures.
+  const totalPayable = itemRows.reduce((a, r) => a + r.payable, 0);
+
+  // Invoice number: prefer sale_reference (the generated SALE-... number), fallback to unique_item_code
   const invoiceNumber = customer?.sale_reference ?? null;
   const saleRef  = invoiceNumber ?? customer?.unique_item_code ?? '—';
   const billNo   = invoiceNumber ?? `DOC/SAL/${saleRef}`;
@@ -403,9 +456,29 @@ ${billEl.outerHTML}
               Refund
             </button>
           )}
-          <button onClick={handlePrint} className="flex items-center gap-2 px-5 py-2 rounded-full bg-white text-black text-xs font-bold uppercase tracking-widest border border-white hover:bg-gray-100 transition-all shadow-lg">
+          <button
+            onClick={handleDownload}
+            disabled={generatingPdf !== null}
+            className="flex items-center gap-2 px-5 py-2 rounded-full bg-white text-black text-xs font-bold uppercase tracking-widest border border-white hover:bg-gray-100 transition-all shadow-lg disabled:opacity-60"
+          >
+            {generatingPdf === 'download'
+              ? <div className="w-3.5 h-3.5 border-2 border-black/20 border-t-black rounded-full animate-spin" />
+              : <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" /></svg>}
+            {generatingPdf === 'download' ? 'Generating…' : 'Download PDF'}
+          </button>
+          <button
+            onClick={handleShare}
+            disabled={generatingPdf !== null}
+            className="flex items-center gap-2 px-5 py-2 rounded-full bg-white/10 text-white text-xs font-bold uppercase tracking-widest border border-white/30 hover:bg-white/20 transition-all shadow-lg disabled:opacity-60"
+          >
+            {generatingPdf === 'share'
+              ? <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              : <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342a3 3 0 100-2.684m0 2.684a3 3 0 100 2.684m0-2.684l6.632 3.316m0-6.316a3 3 0 105.368-2.684 3 3 0 00-5.368 2.684zm0 6.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>}
+            {generatingPdf === 'share' ? 'Preparing…' : 'Share'}
+          </button>
+          <button onClick={handlePrint} className="flex items-center gap-2 px-5 py-2 rounded-full bg-white/10 text-white text-xs font-bold uppercase tracking-widest border border-white/30 hover:bg-white/20 transition-all shadow-lg">
             <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6v-8z" /></svg>
-            Print / Save PDF
+            Print
           </button>
           <button onClick={onClose} className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all">
             <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M18 6L6 18M6 6l12 12" /></svg>
@@ -526,6 +599,9 @@ ${billEl.outerHTML}
                           <div style={{ fontWeight: 700, fontSize: '9.5px', lineHeight: 1.3 }}>{row.product?.name ?? 'Jewellery Item'}</div>
                           <div style={{ color: '#555', fontSize: '8px', marginTop: '1px' }}>{row.metalType.toUpperCase()} {row.purity} • SKU: {row.product?.sku ?? row.item.unique_item_code}</div>
                           <div style={{ color: '#888', fontSize: '7.5px' }}>ID: {row.item.unique_item_code}</div>
+                          {row.item.hallmark && (
+                            <div style={{ color: '#888', fontSize: '7.5px' }}>Hallmark: {row.item.hallmark}</div>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -614,7 +690,7 @@ ${billEl.outerHTML}
                     <tr>
                       <td style={{ padding: '4px 0', fontWeight: 700 }}>{customer?.payment_mode?.toUpperCase() ?? 'CASH'}</td>
                       <td style={{ padding: '4px 0', color: '#555', fontFamily: 'monospace', fontSize: '9px' }}>{saleRef}</td>
-                      <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: 700 }}>₹{fmt(totalFinal)}</td>
+                      <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: 700 }}>₹{fmt(totalPayable)}</td>
                     </tr>
                   );
                 })()}
@@ -622,7 +698,7 @@ ${billEl.outerHTML}
             </table>
             <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid #ddd', paddingTop: '6px' }}>
               <span>Total Amount Paid</span>
-              <span>₹{fmt(totalFinal)}</span>
+              <span>₹{fmt(totalPayable)}</span>
             </div>
 
             {/* Tax breakup */}
@@ -651,10 +727,14 @@ ${billEl.outerHTML}
                 totalMgrDis > 0 && { label: 'Additional Discount (Manager)', value: `- ₹${fmt(totalMgrDis)}`, bold: false },
                 { label: 'Taxable Value', value: `₹${fmt(totalTaxable)}`, bold: false },
                 { label: 'Total Tax (GST)', value: `₹${fmt(grandTotalTax)}`, bold: false },
+                totalInvestmentRedeemed > 0 && { label: 'Investment Balance Applied', value: `- ₹${fmt(totalInvestmentRedeemed)}`, bold: false, color: '#7A1C2A' },
+                totalMakingDiscount > 0 && { label: 'Making Charges Discount (Scheme)', value: `- ₹${fmt(totalMakingDiscount)}`, bold: false, color: '#7A1C2A' },
+                totalAdvanceRedeemed > 0 && { label: 'Advance Payment Applied', value: `- ₹${fmt(totalAdvanceRedeemed)}`, bold: false, color: '#7A1C2A' },
+                totalAdvanceMakingDiscount > 0 && { label: 'Making Charges Discount (Advance)', value: `- ₹${fmt(totalAdvanceMakingDiscount)}`, bold: false, color: '#7A1C2A' },
               ].filter(Boolean).map((row: any, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '2.5px 0', borderBottom: '1px solid #eee' }}>
-                  <span style={{ color: '#555' }}>{row.label}</span>
-                  <span style={{ fontWeight: row.bold ? 700 : 400 }}>{row.value}</span>
+                  <span style={{ color: row.color ?? '#555' }}>{row.label}</span>
+                  <span style={{ fontWeight: row.bold ? 700 : 400, color: row.color ?? 'inherit' }}>{row.value}</span>
                 </div>
               ))}
             </div>
@@ -663,10 +743,10 @@ ${billEl.outerHTML}
             <div style={{ marginTop: '8px', padding: '10px 14px', background: '#fff', color: '#000', border: '1px solid #000', borderRadius: '2px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 900, fontSize: '14px' }}>
                 <span>Total Amount to Pay</span>
-                <span>₹{fmt(totalFinal)}</span>
+                <span>₹{fmt(totalPayable)}</span>
               </div>
               <div style={{ marginTop: '4px', fontSize: '8px', color: '#333', fontStyle: 'italic' }}>
-                Rupees {inWords(totalFinal)}
+                Rupees {inWords(totalPayable)}
               </div>
             </div>
           </div>

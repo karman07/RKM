@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
+import InvestmentReceiptModal from '@/components/InvestmentReceiptModal';
 import {
   getInvestmentPlans, createInvestmentPlan, updateInvestmentPlan, deleteInvestmentPlan,
   getSubscriptions, createSubscription, updateSubscription, getGoldStats,
-  markGoldCashPayment, sendGoldReminder,
-  InvestmentPlan, GoldSubscription, GoldStats,
+  markGoldCashPayment, sendGoldReminder, addInterestToSubscription, getMe,
+  InvestmentPlan, GoldSubscription, GoldStats, User,
 } from '@/lib/api';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -72,6 +74,18 @@ export default function GoldInvestmentDashboard() {
   const [reminderLoading, setReminderLoading] = useState(false);
   const [reminderMsg, setReminderMsg] = useState('');
 
+  // Current admin (gates the "Add Interest" action to admins only)
+  const [me, setMe] = useState<User | null>(null);
+
+  // Receipt
+  const [showReceipt, setShowReceipt] = useState(false);
+
+  // Add interest
+  const [showAddInterest, setShowAddInterest] = useState(false);
+  const [interestAmount, setInterestAmount] = useState('');
+  const [interestNote, setInterestNote] = useState('');
+  const [interestLoading, setInterestLoading] = useState(false);
+
   const loadAll = async () => {
     setLoading(true);
     try {
@@ -89,6 +103,7 @@ export default function GoldInvestmentDashboard() {
   };
 
   useEffect(() => { loadAll(); }, [statusFilter]);
+  useEffect(() => { getMe().then(setMe).catch(() => setMe(null)); }, []);
 
   // ── Plan CRUD ──────────────────────────────────────────────────────────────
 
@@ -126,6 +141,10 @@ export default function GoldInvestmentDashboard() {
     setReminderMsg('');
     setMarkingMonth(null);
     setCashNote('');
+    setShowAddInterest(false);
+    setInterestAmount('');
+    setInterestNote('');
+    setShowReceipt(false);
   };
 
   const saveNote = async () => {
@@ -146,7 +165,7 @@ export default function GoldInvestmentDashboard() {
     const paid = sub.installmentsPaid || 0;
     const creditedMonths = paid >= totalMonths ? paid : Math.max(0, paid - 1);
     const principal = paid * monthlyAmount;
-    const interest = sub.interestStopped ? 0 : creditedMonths * interestPerMonth;
+    const interest = (sub.interestStopped ? 0 : creditedMonths * interestPerMonth) + (sub.bonusInterest || 0);
     return Math.max(0, principal + interest - (sub.amountRedeemed || 0));
   };
 
@@ -160,8 +179,31 @@ export default function GoldInvestmentDashboard() {
       setMarkingMonth(null);
       setCashNote('');
       await loadAll();
+      toast.success('Payment recorded');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to record payment');
     } finally {
       setCashLoading(false);
+    }
+  };
+
+  const handleAddInterest = async () => {
+    if (!selectedSub) return;
+    const amt = parseFloat(interestAmount);
+    if (!amt || amt <= 0) return;
+    setInterestLoading(true);
+    try {
+      const updated = await addInterestToSubscription(selectedSub._id, { amount: amt, note: interestNote });
+      setSelectedSub(updated);
+      setShowAddInterest(false);
+      setInterestAmount('');
+      setInterestNote('');
+      await loadAll();
+      toast.success('Interest credited');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to credit interest');
+    } finally {
+      setInterestLoading(false);
     }
   };
 
@@ -321,7 +363,7 @@ export default function GoldInvestmentDashboard() {
                     </div>
                     <div>
                       <p className="text-[8px] font-black text-blue-400 uppercase mb-1">Interest</p>
-                      <p className="text-sm font-bold text-blue-600">{fmt((() => { const paid = s.installmentsPaid || 0; const total = s.plan?.durationMonths || 0; const ipm = (s.plan?.monthlyAmount || 0) * (s.plan?.interestRate || 0) / 100; const cm = paid >= total ? paid : Math.max(0, paid - 1); return s.interestStopped ? 0 : cm * ipm; })())}</p>
+                      <p className="text-sm font-bold text-blue-600">{fmt((() => { const paid = s.installmentsPaid || 0; const total = s.plan?.durationMonths || 0; const ipm = (s.plan?.monthlyAmount || 0) * (s.plan?.interestRate || 0) / 100; const cm = paid >= total ? paid : Math.max(0, paid - 1); return (s.interestStopped ? 0 : cm * ipm) + (s.bonusInterest || 0); })())}</p>
                     </div>
                     <div>
                       <p className="text-[8px] font-black text-emerald-500 uppercase mb-1">Balance</p>
@@ -410,7 +452,15 @@ export default function GoldInvestmentDashboard() {
                   <h2 className="text-xl font-bold font-serif text-slate-900">{selectedSub.customerName}</h2>
                   <p className="text-xs text-slate-400 font-bold">{selectedSub.plan?.name} · {selectedSub.customerPhone}</p>
                 </div>
-                <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase border ${statusColor[selectedSub.status]}`}>{selectedSub.status}</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowReceipt(true)}
+                    className="px-3 py-1 rounded-full text-[9px] font-black uppercase border border-slate-200 text-slate-600 hover:bg-slate-50 transition-all"
+                  >
+                    View Receipt
+                  </button>
+                  <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase border ${statusColor[selectedSub.status]}`}>{selectedSub.status}</span>
+                </div>
               </div>
               {/* Drawer sub-tabs */}
               <div className="flex gap-1 bg-slate-50 p-1 rounded-xl w-fit">
@@ -449,7 +499,7 @@ export default function GoldInvestmentDashboard() {
                       const totalMonths = selectedSub.plan?.durationMonths || 0;
                       const ipm = (selectedSub.plan?.monthlyAmount || 0) * (selectedSub.plan?.interestRate || 0) / 100;
                       const cm = paid >= totalMonths ? paid : Math.max(0, paid - 1);
-                      const interest = fmt(selectedSub.interestStopped ? 0 : cm * ipm);
+                      const interest = fmt((selectedSub.interestStopped ? 0 : cm * ipm) + (selectedSub.bonusInterest || 0));
                       return [
                         { l: 'Phone', v: selectedSub.customerPhone || '-' },
                         { l: 'Email', v: selectedSub.customerEmail || '-' },
@@ -477,6 +527,40 @@ export default function GoldInvestmentDashboard() {
                         {reminderLoading ? 'Sending…' : 'Send WhatsApp Reminder'}
                       </button>
                       {reminderMsg && <p className="text-[10px] text-amber-800 mt-2 font-bold">{reminderMsg}</p>}
+                    </div>
+                  )}
+
+                  {/* Add Interest (admin only) */}
+                  {me?.role === 'admin' && (
+                    <div className="border border-amber-100 rounded-2xl p-4 bg-amber-50/60">
+                      {!showAddInterest ? (
+                        <button onClick={() => setShowAddInterest(true)} className="w-full py-2.5 border-2 border-amber-500 text-amber-600 text-[10px] font-black uppercase rounded-xl hover:bg-amber-500 hover:text-white transition-all">
+                          + Add Interest
+                        </button>
+                      ) : (
+                        <div className="space-y-3">
+                          <p className="text-[9px] font-black uppercase tracking-widest text-amber-700">Credit Bonus Interest</p>
+                          <input
+                            type="number" min="0.01" step="0.01" value={interestAmount}
+                            onChange={e => setInterestAmount(e.target.value)}
+                            placeholder="Interest amount to credit"
+                            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-amber-500 bg-white"
+                          />
+                          <input
+                            type="text" value={interestNote} onChange={e => setInterestNote(e.target.value)}
+                            placeholder="Note (optional)"
+                            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-amber-500 bg-white"
+                          />
+                          <div className="flex gap-3">
+                            <button onClick={() => setShowAddInterest(false)} className="flex-1 py-2.5 border border-slate-200 text-slate-600 text-[10px] font-black uppercase rounded-xl hover:bg-slate-50 transition-all">
+                              Cancel
+                            </button>
+                            <button onClick={handleAddInterest} disabled={interestLoading || !interestAmount} className="flex-1 py-2.5 bg-amber-500 text-white text-[10px] font-black uppercase rounded-xl hover:bg-amber-600 disabled:opacity-50 transition-all">
+                              {interestLoading ? 'Crediting...' : 'Confirm Credit'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -617,6 +701,10 @@ export default function GoldInvestmentDashboard() {
             </div>
           </div>
         </div>
+      )}
+
+      {showReceipt && selectedSub && (
+        <InvestmentReceiptModal sub={selectedSub} balance={computeAvailableBalance(selectedSub)} onClose={() => setShowReceipt(false)} />
       )}
     </div>
   );

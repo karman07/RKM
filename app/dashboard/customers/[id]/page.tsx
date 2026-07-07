@@ -3,15 +3,23 @@
 import { useState, useEffect, use } from 'react';
 import {
   getCustomerById, getInventory, getSubscriptions, redeemSubscription,
-  type Customer, type InventoryItem, type GoldSubscription, staticUrl,
+  markGoldCashPayment, addInterestToSubscription, getMe, getGoldLoansByCustomer,
+  getCustomerAdvances, createCustomerAdvance, redeemCustomerAdvance,
+  type Customer, type InventoryItem, type GoldSubscription, type User as AdminUser, type GoldLoan,
+  type CustomerAdvance, staticUrl,
 } from '@/lib/api';
+import { downloadCsv } from '@/lib/export-utils';
 import { useAppTheme } from '@/components/AppThemeContext';
 import { APP_THEME } from '@/lib/theme-constants';
 import BillModal from '@/components/BillModal';
+import InvestmentReceiptModal from '@/components/InvestmentReceiptModal';
+import AdvanceReceiptModal from '@/components/AdvanceReceiptModal';
 import Link from 'next/link';
+import { toast } from 'sonner';
 import {
   Users, Mail, Phone, MapPin, ChevronLeft, Calendar, ShoppingBag,
-  CreditCard, Target, ShieldCheck, TrendingUp, Package, Gem,
+  CreditCard, Target, ShieldCheck, TrendingUp, Package, Gem, Download, Loader2, Plus, Wallet, X,
+  Receipt, Lock,
 } from 'lucide-react';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -19,9 +27,14 @@ import {
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
 
+function fmtDate(d?: string | null) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 function computeTimeBasedBalance(sub: GoldSubscription) {
   const plan = sub.plan;
-  if (!plan) return { principal: 0, interest: 0, balance: 0, displayedPaid: 0 };
+  if (!plan) return { principal: 0, interest: 0, bonusInterest: 0, balance: 0, displayedPaid: 0 };
   const monthlyAmount = plan.monthlyAmount || 0;
   const interestPerMonth = monthlyAmount * (plan.interestRate || 0) / 100;
   const totalMonths = plan.durationMonths || 0;
@@ -29,10 +42,11 @@ function computeTimeBasedBalance(sub: GoldSubscription) {
   const displayedPaid = sub.installmentsPaid || 0;
   const creditedMonths = displayedPaid >= totalMonths ? displayedPaid : Math.max(0, displayedPaid - 1);
   const principal = displayedPaid * monthlyAmount;
-  const interest = sub.interestStopped ? 0 : creditedMonths * interestPerMonth;
+  const bonusInterest = sub.bonusInterest || 0;
+  const interest = (sub.interestStopped ? 0 : creditedMonths * interestPerMonth) + bonusInterest;
   const redeemed = sub.amountRedeemed || 0;
   const balance = Math.max(0, principal + interest - redeemed);
-  return { principal, interest, balance, displayedPaid };
+  return { principal, interest, bonusInterest, balance, displayedPaid };
 }
 
 const statusColors: Record<string, string> = {
@@ -43,21 +57,428 @@ const statusColors: Record<string, string> = {
   pending: 'bg-slate-50 text-slate-500 border-slate-200',
 };
 
+const glStatusColors: Record<string, string> = {
+  draft: 'bg-slate-50 text-slate-500 border-slate-200',
+  submitted: 'bg-blue-50 text-blue-700 border-blue-200',
+  active: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  overdue: 'bg-orange-50 text-orange-700 border-orange-200',
+  closed: 'bg-violet-50 text-violet-700 border-violet-200',
+  rejected: 'bg-rose-50 text-rose-600 border-rose-200',
+};
+
+function glComputedStatus(loan: GoldLoan): string {
+  if (loan.status !== 'active' || !loan.disbursed_at) return loan.status;
+  const hasMissed = (loan.emiLedger || []).some(e => e.status === 'missed');
+  return hasMissed ? 'overdue' : 'active';
+}
+
+// ── Gold Loan Card ─────────────────────────────────────────────────────────────
+
+function personName(u: string | { _id: string; name: string; role?: string } | null | undefined) {
+  if (!u) return null;
+  return typeof u === 'object' ? u.name : null;
+}
+
+function GoldLoanCard({ loan }: { loan: GoldLoan }) {
+  const status = glComputedStatus(loan);
+  const paid = (loan.emiLedger || []).filter(e => e.status === 'paid').length;
+  const missed = (loan.emiLedger || []).filter(e => e.status === 'missed').length;
+
+  const audit = [
+    { label: 'Created by', value: personName(loan.created_by) },
+    { label: 'Submitted by', value: personName(loan.submitted_by) },
+    { label: 'Approved by', value: personName(loan.approved_by) },
+  ].filter(a => a.value);
+
+  return (
+    <div className="bg-white border border-slate-100 rounded-[28px] p-6 shadow-sm">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <p className="text-sm font-black text-slate-900">{loan.loan_number}</p>
+          <p className="text-[10px] text-slate-400 mt-0.5">{loan.total_weight_grams}g pledged &middot; {loan.interest_rate_monthly}%/mo</p>
+        </div>
+        <span className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${glStatusColors[status] || glStatusColors.draft}`}>
+          {status}
+        </span>
+      </div>
+      <div className="flex items-center gap-4 mb-3">
+        <div>
+          <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Principal</p>
+          <p className="text-lg font-bold text-slate-900">{fmt(loan.loan_amount)}</p>
+        </div>
+        {loan.status === 'active' && (
+          <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400">
+            <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-lg border border-emerald-100">{paid} paid</span>
+            {missed > 0 && <span className="px-2 py-0.5 bg-red-50 text-red-600 rounded-lg border border-red-100">{missed} missed</span>}
+          </div>
+        )}
+        {loan.status === 'closed' && (
+          <p className="text-[10px] font-bold text-violet-600">Closed {fmt(loan.principal_repaid_amount ?? 0)} repaid</p>
+        )}
+      </div>
+      {audit.length > 0 && (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 mb-3 pb-3 border-b border-slate-50 text-[10px] text-slate-400 font-medium">
+          {audit.map((a, i) => (
+            <span key={i}><span className="text-slate-300">{a.label}:</span> <span className="font-bold text-slate-600">{a.value}</span></span>
+          ))}
+        </div>
+      )}
+      {loan.emiLedger?.length > 0 && (
+        <div className="border-t border-slate-50 pt-3 space-y-1.5">
+          {loan.emiLedger.slice(-3).reverse().map((e, i) => (
+            <div key={i} className="flex items-center justify-between text-[11px]">
+              <span className="text-slate-400">Month {e.month}</span>
+              <span className={e.status === 'paid' ? 'text-emerald-600 font-bold' : 'text-red-600 font-bold'}>
+                {e.status === 'paid' ? `Paid ${fmt(e.paid_amount ?? 0)}` : 'Missed'}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Advance Card ───────────────────────────────────────────────────────────────
+
+function creatorName(createdBy: CustomerAdvance['createdBy']) {
+  if (!createdBy) return null;
+  return typeof createdBy === 'object' ? createdBy.name : null;
+}
+
+function productLabel(item: InventoryItem) {
+  return typeof item.product_id === 'object' ? item.product_id.name : item.unique_item_code;
+}
+
+function AdvanceCard({ advance, orders, onChanged }: { advance: CustomerAdvance; orders: InventoryItem[]; onChanged: (updated: CustomerAdvance) => void }) {
+  const [showRedeem, setShowRedeem] = useState(false);
+  const [redeemAmount, setRedeemAmount] = useState('');
+  const [redeemRef, setRedeemRef] = useState('');
+  const [manualRef, setManualRef] = useState(false);
+  const [redeemNote, setRedeemNote] = useState('');
+  const [redeemLoading, setRedeemLoading] = useState(false);
+  const [showReceipt, setShowReceipt] = useState(false);
+  const creator = creatorName(advance.createdBy);
+  const redeemableSales = orders.filter(o => o.sale_reference);
+
+  async function handleRedeem() {
+    const amt = parseFloat(redeemAmount);
+    if (!amt || amt <= 0) return;
+    if (amt > advance.availableBalance + 0.5) { alert(`Exceeds available balance of ${fmt(advance.availableBalance)}`); return; }
+    if (!confirm(`Redeem ${fmt(amt)} for ${advance.customerName}?`)) return;
+    setRedeemLoading(true);
+    try {
+      const makingChargesDiscount = Math.round(amt * (advance.making_charges_waiver_pct || 0) / 100);
+      const updated = await redeemCustomerAdvance(advance._id, {
+        amount: amt, making_charges_discount: makingChargesDiscount, saleReference: redeemRef, note: redeemNote,
+      });
+      onChanged(updated);
+      setShowRedeem(false);
+      setRedeemAmount(''); setRedeemRef(''); setManualRef(false); setRedeemNote('');
+      toast.success('Redemption recorded');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to redeem balance');
+    } finally {
+      setRedeemLoading(false);
+    }
+  }
+
+  return (
+    <div className="bg-white border border-slate-100 rounded-[24px] overflow-hidden shadow-sm">
+      <div className="flex items-center justify-between px-6 py-5 border-b border-slate-50">
+        <div>
+          <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-0.5">
+            Advance recorded {new Date(advance.createdAt).toLocaleDateString('en-IN', { dateStyle: 'medium' })}
+            {creator && ` · by ${creator}`}
+          </p>
+          <p className="text-2xl font-serif font-bold text-slate-900">{fmt(advance.amount)}</p>
+          {advance.making_charges_waiver_pct > 0 && (
+            <p className="text-[10px] font-bold text-blue-600 mt-0.5">{advance.making_charges_waiver_pct}% making charges waiver on redemption</p>
+          )}
+        </div>
+        <div className="flex flex-col items-end gap-1.5">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowReceipt(true)}
+              className="px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-all flex items-center gap-1"
+            >
+              <Receipt className="w-3 h-3" /> Receipt
+            </button>
+            <span className={`px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border ${advance.status === 'active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+              {advance.status}
+            </span>
+          </div>
+          {advance.locked && (
+            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border bg-amber-50 text-amber-700 border-amber-200">
+              <Lock className="w-2.5 h-2.5" /> Locked until {fmtDate(advance.lock_in_expires_at)}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 divide-x divide-slate-50 border-b border-slate-50">
+        {[
+          { label: 'Amount', value: fmt(advance.amount) },
+          { label: 'Redeemed', value: fmt(advance.amountRedeemed || 0) },
+          { label: 'Available', value: fmt(advance.availableBalance), highlight: true },
+        ].map((s, i) => (
+          <div key={i} className="px-5 py-4">
+            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">{s.label}</p>
+            <p className={`text-sm font-black ${s.highlight ? 'text-blue-600' : 'text-slate-900'}`}>{s.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {advance.note && (
+        <p className="px-6 pt-4 text-[10px] text-slate-400 font-medium italic">{advance.note}</p>
+      )}
+
+      {(advance.redemptionHistory?.length ?? 0) > 0 && (
+        <div className="px-6 pt-4 pb-2">
+          <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-3">Redemption History</p>
+          <div className="space-y-2">
+            {advance.redemptionHistory.map((r, i) => (
+              <div key={i} className="flex items-center justify-between bg-slate-50 rounded-xl px-4 py-3 border border-slate-100">
+                <div>
+                  <p className="text-xs font-bold text-slate-900">
+                    {fmt(r.amount)}
+                    {r.making_charges_discount > 0 && <span className="text-[10px] font-bold text-blue-600"> · {fmt(r.making_charges_discount)} making charges waived</span>}
+                  </p>
+                  <p className="text-[9px] text-slate-400">{new Date(r.date).toLocaleDateString('en-IN', { dateStyle: 'medium' })}{r.saleReference ? ` · Bill: ${r.saleReference}` : ''}</p>
+                  {r.note && <p className="text-[9px] text-slate-400 italic">{r.note}</p>}
+                </div>
+                <span className="text-[8px] font-black uppercase text-emerald-600 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-lg">Redeemed</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {advance.status === 'active' && advance.availableBalance > 0 && advance.locked && (
+        <div className="px-6 pb-6 pt-2">
+          <div className="flex items-center gap-2 px-4 py-3 bg-amber-50 border border-amber-100 rounded-2xl text-xs text-amber-700 font-bold">
+            <Lock className="w-3.5 h-3.5 flex-shrink-0" />
+            Locked until {fmtDate(advance.lock_in_expires_at)} — cannot be redeemed yet.
+          </div>
+        </div>
+      )}
+
+      {advance.status === 'active' && advance.availableBalance > 0 && !advance.locked && (
+        <div className="px-6 pb-6 pt-2">
+          {!showRedeem ? (
+            <button
+              onClick={() => setShowRedeem(true)}
+              className="w-full py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest border-2 border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white transition-all"
+            >
+              Process Redemption
+            </button>
+          ) : (
+            <div className="border border-blue-200 rounded-2xl p-5 bg-blue-50/40 space-y-3">
+              <p className="text-[9px] font-black uppercase tracking-widest text-blue-700">Process Redemption</p>
+              <input
+                type="number" min="1" max={advance.availableBalance} value={redeemAmount}
+                onChange={e => setRedeemAmount(e.target.value)}
+                placeholder={`Amount to redeem (max ${fmt(advance.availableBalance)})`}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-blue-500 bg-white"
+              />
+              {!manualRef ? (
+                <div className="space-y-1.5">
+                  <select
+                    value={redeemRef}
+                    onChange={e => {
+                      if (e.target.value === '__manual__') { setManualRef(true); setRedeemRef(''); }
+                      else setRedeemRef(e.target.value);
+                    }}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-blue-500 bg-white"
+                  >
+                    <option value="">Link to a sale (optional)</option>
+                    {redeemableSales.map(o => (
+                      <option key={o._id} value={o.sale_reference}>
+                        {o.sale_reference} · {productLabel(o)} · {fmt(o.selling_price)} · {fmtDate(o.sold_at)}
+                      </option>
+                    ))}
+                    <option value="__manual__">Other / not in system — enter manually</option>
+                  </select>
+                  {redeemableSales.length === 0 && (
+                    <p className="text-[10px] text-slate-400 font-medium px-1">No recorded sales found for this customer yet.</p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <input
+                    type="text" value={redeemRef} onChange={e => setRedeemRef(e.target.value)}
+                    placeholder="Bill / sale reference"
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-blue-500 bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => { setManualRef(false); setRedeemRef(''); }}
+                    className="text-[10px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-700 px-1"
+                  >
+                    ← Pick from recorded sales instead
+                  </button>
+                </div>
+              )}
+              <input
+                type="text" value={redeemNote} onChange={e => setRedeemNote(e.target.value)}
+                placeholder="Note (optional)"
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-blue-500 bg-white"
+              />
+              <div className="flex gap-3">
+                <button onClick={() => setShowRedeem(false)} className="flex-1 py-2.5 border border-slate-200 text-slate-600 text-[10px] font-black uppercase rounded-xl hover:bg-slate-50 transition-all">
+                  Cancel
+                </button>
+                <button onClick={handleRedeem} disabled={redeemLoading || !redeemAmount} className="flex-1 py-2.5 bg-blue-600 text-white text-[10px] font-black uppercase rounded-xl hover:bg-blue-700 disabled:opacity-50 transition-all">
+                  {redeemLoading ? 'Processing...' : 'Confirm Redemption'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {showReceipt && (
+        <AdvanceReceiptModal advance={advance} onClose={() => setShowReceipt(false)} />
+      )}
+    </div>
+  );
+}
+
+// ── Add Advance Modal ────────────────────────────────────────────────────────
+
+const LOCK_IN_PRESETS = [
+  { label: 'No Lock', days: 0 },
+  { label: '30 Days', days: 30 },
+  { label: '60 Days', days: 60 },
+  { label: '90 Days', days: 90 },
+];
+
+function AddAdvanceModal({ onClose, onCreate }: { onClose: () => void; onCreate: (data: { amount: number; making_charges_waiver_pct?: number; mode?: string; note?: string; lock_in_days?: number }) => Promise<void> }) {
+  const [amount, setAmount] = useState('');
+  const [waiverPct, setWaiverPct] = useState('');
+  const [mode, setMode] = useState('cash');
+  const [note, setNote] = useState('');
+  const [lockInDays, setLockInDays] = useState(0);
+  const [customLock, setCustomLock] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  async function submit() {
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0) return;
+    setSaving(true);
+    try {
+      await onCreate({ amount: amt, making_charges_waiver_pct: parseFloat(waiverPct) || 0, mode, note: note || undefined, lock_in_days: lockInDays || 0 });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md space-y-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-black text-slate-900">Record Advance Payment</h3>
+            <p className="text-sm text-slate-400 mt-0.5">Waiver % applies to making charges when redeemed</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Amount (₹) *</label>
+            <input type="number" min="1" value={amount} onChange={e => setAmount(e.target.value)}
+              className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-200" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Making Charges Waiver (%)</label>
+            <input type="number" min="0" max="100" step="0.1" value={waiverPct} onChange={e => setWaiverPct(e.target.value)}
+              placeholder="0"
+              className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-200" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Mode</label>
+            <select value={mode} onChange={e => setMode(e.target.value)}
+              className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-200">
+              {['cash', 'bank_transfer', 'upi', 'cheque'].map(m => (
+                <option key={m} value={m}>{m.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Lock-in Period</label>
+            <div className="grid grid-cols-4 gap-2 mb-2">
+              {LOCK_IN_PRESETS.map(p => (
+                <button
+                  key={p.days}
+                  type="button"
+                  onClick={() => { setLockInDays(p.days); setCustomLock(false); }}
+                  className={`px-2 py-2 rounded-xl text-[10px] font-black uppercase tracking-wide border transition-all ${!customLock && lockInDays === p.days ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'}`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <button type="button" onClick={() => setCustomLock(v => !v)} className="text-[10px] font-black text-blue-700 hover:text-blue-800 transition-colors">
+              {customLock ? '− Hide custom days' : '+ Custom days'}
+            </button>
+            {customLock && (
+              <input type="number" min="0" value={lockInDays || ''} onChange={e => setLockInDays(parseInt(e.target.value) || 0)}
+                placeholder="Number of days"
+                className="w-full mt-2 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-200" />
+            )}
+            <p className="text-[10px] text-slate-400 font-medium mt-1.5">
+              {lockInDays > 0 ? `Cannot be redeemed for ${lockInDays} day${lockInDays > 1 ? 's' : ''} from today.` : 'Redeemable anytime once recorded.'}
+            </p>
+          </div>
+          <div>
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Note (optional)</label>
+            <textarea rows={2} value={note} onChange={e => setNote(e.target.value)}
+              className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 resize-none" />
+          </div>
+        </div>
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-2xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors">Cancel</button>
+          <button onClick={submit} disabled={saving || !amount || parseFloat(amount) <= 0}
+            className="flex-1 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-black transition-colors disabled:opacity-40">
+            {saving ? 'Saving...' : 'Record Advance'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Gold Investment Card ──────────────────────────────────────────────────────
 
-function GoldInvestmentCard({ sub, onRedeemed }: { sub: GoldSubscription; onRedeemed: (updated: GoldSubscription) => void }) {
-  const { principal, interest, balance, displayedPaid } = computeTimeBasedBalance(sub);
+function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSubscription; orders: InventoryItem[]; onRedeemed: (updated: GoldSubscription) => void; isAdmin: boolean }) {
+  const { principal, interest, bonusInterest, balance, displayedPaid } = computeTimeBasedBalance(sub);
   const plan = sub.plan;
   const totalMonths = plan?.durationMonths || 0;
   const monthlyAmount = plan?.monthlyAmount || 0;
   const totalProjected = totalMonths * monthlyAmount + totalMonths * (monthlyAmount * (plan?.interestRate || 0) / 100);
   const progressPct = totalMonths > 0 ? (displayedPaid / totalMonths) * 100 : 0;
+  const canAddPayment = displayedPaid < totalMonths && sub.status !== 'completed' && sub.status !== 'cancelled';
+  const redeemableSales = orders.filter(o => o.sale_reference);
 
   const [showRedeem, setShowRedeem] = useState(false);
   const [redeemAmount, setRedeemAmount] = useState('');
   const [redeemRef, setRedeemRef] = useState('');
+  const [manualRef, setManualRef] = useState(false);
   const [redeemNote, setRedeemNote] = useState('');
   const [redeemLoading, setRedeemLoading] = useState(false);
+
+  const [showPayment, setShowPayment] = useState(false);
+  const [paymentNote, setPaymentNote] = useState('');
+  const [paymentLoading, setPaymentLoading] = useState(false);
+
+  const [showInterest, setShowInterest] = useState(false);
+  const [interestAmount, setInterestAmount] = useState('');
+  const [interestNote, setInterestNote] = useState('');
+  const [interestLoading, setInterestLoading] = useState(false);
+
+  const [showReceipt, setShowReceipt] = useState(false);
 
   async function handleRedeem() {
     const amt = parseFloat(redeemAmount);
@@ -69,9 +490,44 @@ function GoldInvestmentCard({ sub, onRedeemed }: { sub: GoldSubscription; onRede
       const updated = await redeemSubscription(sub._id, { amount: amt, saleReference: redeemRef, note: redeemNote });
       onRedeemed(updated);
       setShowRedeem(false);
-      setRedeemAmount(''); setRedeemRef(''); setRedeemNote('');
+      setRedeemAmount(''); setRedeemRef(''); setManualRef(false); setRedeemNote('');
+      toast.success('Redemption recorded');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to redeem balance');
     } finally {
       setRedeemLoading(false);
+    }
+  }
+
+  async function handleAddPayment() {
+    setPaymentLoading(true);
+    try {
+      const updated = await markGoldCashPayment(sub._id, { month: displayedPaid + 1, note: paymentNote });
+      onRedeemed(updated);
+      setShowPayment(false);
+      setPaymentNote('');
+      toast.success('Payment recorded');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to record payment');
+    } finally {
+      setPaymentLoading(false);
+    }
+  }
+
+  async function handleAddInterest() {
+    const amt = parseFloat(interestAmount);
+    if (!amt || amt <= 0) return;
+    setInterestLoading(true);
+    try {
+      const updated = await addInterestToSubscription(sub._id, { amount: amt, note: interestNote });
+      onRedeemed(updated);
+      setShowInterest(false);
+      setInterestAmount(''); setInterestNote('');
+      toast.success('Interest credited');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to credit interest');
+    } finally {
+      setInterestLoading(false);
     }
   }
 
@@ -94,9 +550,17 @@ function GoldInvestmentCard({ sub, onRedeemed }: { sub: GoldSubscription; onRede
               {plan?.interestRate}% p.a. · {totalMonths} months
             </p>
           </div>
-          <span className={`px-3 py-1.5 rounded-full text-[8px] font-black uppercase tracking-widest border ${statusColors[sub.status] || statusColors.pending}`}>
-            {sub.status}
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowReceipt(true)}
+              className="px-3 py-1.5 rounded-full text-[8px] font-black uppercase tracking-widest border border-white/20 bg-white/10 text-white hover:bg-white/20 transition-all"
+            >
+              View Receipt
+            </button>
+            <span className={`px-3 py-1.5 rounded-full text-[8px] font-black uppercase tracking-widest border ${statusColors[sub.status] || statusColors.pending}`}>
+              {sub.status}
+            </span>
+          </div>
         </div>
 
         {/* Balance */}
@@ -117,12 +581,13 @@ function GoldInvestmentCard({ sub, onRedeemed }: { sub: GoldSubscription; onRede
         {[
           { label: 'Paid Months', value: `${displayedPaid} / ${totalMonths}` },
           { label: 'Principal', value: fmt(principal) },
-          { label: 'Interest Earned', value: fmt(interest), highlight: true },
+          { label: 'Interest Earned', value: fmt(interest), highlight: true, sub: bonusInterest > 0 ? `incl. ${fmt(bonusInterest)} bonus` : undefined },
           { label: 'Redeemed', value: fmt(sub.amountRedeemed || 0) },
         ].map((s, i) => (
           <div key={i} className="px-5 py-4">
             <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">{s.label}</p>
             <p className={`text-sm font-black ${s.highlight ? 'text-amber-500' : 'text-slate-900'}`}>{s.value}</p>
+            {s.sub && <p className="text-[8px] font-bold text-amber-500/70 mt-0.5">{s.sub}</p>}
           </div>
         ))}
       </div>
@@ -161,6 +626,44 @@ function GoldInvestmentCard({ sub, onRedeemed }: { sub: GoldSubscription; onRede
         </div>
       )}
 
+      {/* Payment History (receipts) */}
+      {(sub.paymentLedger?.length ?? 0) > 0 && (
+        <div className="px-8 pb-5">
+          <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-3">Payment History</p>
+          <div className="space-y-2">
+            {[...sub.paymentLedger].sort((a, b) => b.month - a.month).map((p, i) => (
+              <div key={i} className="flex items-center justify-between bg-slate-50 rounded-xl px-4 py-3 border border-slate-100">
+                <div>
+                  <p className="text-xs font-bold text-slate-900">Month {p.month} · {fmt(p.amount)}</p>
+                  <p className="text-[9px] text-slate-400">{new Date(p.date).toLocaleDateString('en-IN', { dateStyle: 'medium' })}</p>
+                  {p.note && <p className="text-[9px] text-slate-400 italic">{p.note}</p>}
+                </div>
+                <span className="text-[8px] font-black uppercase text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-lg">{p.type.replace('_', ' ')}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Interest Adjustments (admin bonus credits) */}
+      {(sub.interestAdjustments?.length ?? 0) > 0 && (
+        <div className="px-8 pb-5">
+          <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-3">Interest Adjustments</p>
+          <div className="space-y-2">
+            {sub.interestAdjustments!.map((a, i) => (
+              <div key={i} className="flex items-center justify-between bg-amber-50/60 rounded-xl px-4 py-3 border border-amber-100">
+                <div>
+                  <p className="text-xs font-bold text-slate-900">+{fmt(a.amount)}</p>
+                  <p className="text-[9px] text-slate-400">{new Date(a.date).toLocaleDateString('en-IN', { dateStyle: 'medium' })}</p>
+                  {a.note && <p className="text-[9px] text-slate-400 italic">{a.note}</p>}
+                </div>
+                <span className="text-[8px] font-black uppercase text-amber-600 bg-amber-100/70 border border-amber-200 px-2 py-0.5 rounded-lg">Bonus Interest</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Redemption History */}
       {(sub.redemptionHistory?.length ?? 0) > 0 && (
         <div className="px-8 pb-5">
@@ -177,6 +680,74 @@ function GoldInvestmentCard({ sub, onRedeemed }: { sub: GoldSubscription; onRede
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Add Payment */}
+      {canAddPayment && (
+        <div className="px-8 pb-4">
+          {!showPayment ? (
+            <button
+              onClick={() => setShowPayment(true)}
+              className="w-full py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest border-2 border-emerald-600 text-emerald-600 hover:bg-emerald-600 hover:text-white transition-all flex items-center justify-center gap-1.5"
+            >
+              <Plus size={12} /> Add Payment (Month {displayedPaid + 1})
+            </button>
+          ) : (
+            <div className="border border-emerald-200 rounded-2xl p-5 bg-emerald-50/40 space-y-3">
+              <p className="text-[9px] font-black uppercase tracking-widest text-emerald-700">Record Cash Payment — Month {displayedPaid + 1} ({fmt(monthlyAmount)})</p>
+              <input
+                type="text" value={paymentNote} onChange={e => setPaymentNote(e.target.value)}
+                placeholder="Note (optional)"
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-emerald-500 bg-white"
+              />
+              <div className="flex gap-3">
+                <button onClick={() => setShowPayment(false)} className="flex-1 py-2.5 border border-slate-200 text-slate-600 text-[10px] font-black uppercase rounded-xl hover:bg-slate-50 transition-all">
+                  Cancel
+                </button>
+                <button onClick={handleAddPayment} disabled={paymentLoading} className="flex-1 py-2.5 bg-emerald-600 text-white text-[10px] font-black uppercase rounded-xl hover:bg-emerald-700 disabled:opacity-50 transition-all">
+                  {paymentLoading ? 'Recording...' : 'Confirm Payment'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Add Interest (admin only) */}
+      {isAdmin && (
+        <div className="px-8 pb-4">
+          {!showInterest ? (
+            <button
+              onClick={() => setShowInterest(true)}
+              className="w-full py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest border-2 border-amber-500 text-amber-600 hover:bg-amber-500 hover:text-white transition-all flex items-center justify-center gap-1.5"
+            >
+              <Plus size={12} /> Add Interest
+            </button>
+          ) : (
+            <div className="border border-amber-200 rounded-2xl p-5 bg-amber-50/40 space-y-3">
+              <p className="text-[9px] font-black uppercase tracking-widest text-amber-700">Credit Bonus Interest</p>
+              <input
+                type="number" min="0.01" step="0.01" value={interestAmount}
+                onChange={e => setInterestAmount(e.target.value)}
+                placeholder="Interest amount to credit"
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-amber-500 bg-white"
+              />
+              <input
+                type="text" value={interestNote} onChange={e => setInterestNote(e.target.value)}
+                placeholder="Note (optional)"
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-amber-500 bg-white"
+              />
+              <div className="flex gap-3">
+                <button onClick={() => setShowInterest(false)} className="flex-1 py-2.5 border border-slate-200 text-slate-600 text-[10px] font-black uppercase rounded-xl hover:bg-slate-50 transition-all">
+                  Cancel
+                </button>
+                <button onClick={handleAddInterest} disabled={interestLoading || !interestAmount} className="flex-1 py-2.5 bg-amber-500 text-white text-[10px] font-black uppercase rounded-xl hover:bg-amber-600 disabled:opacity-50 transition-all">
+                  {interestLoading ? 'Crediting...' : 'Confirm Credit'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -199,11 +770,44 @@ function GoldInvestmentCard({ sub, onRedeemed }: { sub: GoldSubscription; onRede
                 placeholder={`Amount to redeem (max ${fmt(balance)})`}
                 className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-blue-500 bg-white"
               />
-              <input
-                type="text" value={redeemRef} onChange={e => setRedeemRef(e.target.value)}
-                placeholder="Bill / sale reference (optional)"
-                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-blue-500 bg-white"
-              />
+              {!manualRef ? (
+                <div className="space-y-1.5">
+                  <select
+                    value={redeemRef}
+                    onChange={e => {
+                      if (e.target.value === '__manual__') { setManualRef(true); setRedeemRef(''); }
+                      else setRedeemRef(e.target.value);
+                    }}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-blue-500 bg-white"
+                  >
+                    <option value="">Link to a sale (optional)</option>
+                    {redeemableSales.map(o => (
+                      <option key={o._id} value={o.sale_reference}>
+                        {o.sale_reference} · {productLabel(o)} · {fmt(o.selling_price)} · {fmtDate(o.sold_at)}
+                      </option>
+                    ))}
+                    <option value="__manual__">Other / not in system — enter manually</option>
+                  </select>
+                  {redeemableSales.length === 0 && (
+                    <p className="text-[10px] text-slate-400 font-medium px-1">No recorded sales found for this customer yet.</p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <input
+                    type="text" value={redeemRef} onChange={e => setRedeemRef(e.target.value)}
+                    placeholder="Bill / sale reference"
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-blue-500 bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => { setManualRef(false); setRedeemRef(''); }}
+                    className="text-[10px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-700 px-1"
+                  >
+                    ← Pick from recorded sales instead
+                  </button>
+                </div>
+              )}
               <input
                 type="text" value={redeemNote} onChange={e => setRedeemNote(e.target.value)}
                 placeholder="Note (optional)"
@@ -221,6 +825,10 @@ function GoldInvestmentCard({ sub, onRedeemed }: { sub: GoldSubscription; onRede
           )}
         </div>
       )}
+
+      {showReceipt && (
+        <InvestmentReceiptModal sub={sub} balance={balance} onClose={() => setShowReceipt(false)} />
+      )}
     </div>
   );
 }
@@ -232,8 +840,14 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [orders, setOrders] = useState<InventoryItem[]>([]);
   const [goldSubs, setGoldSubs] = useState<GoldSubscription[]>([]);
+  const [goldLoans, setGoldLoans] = useState<GoldLoan[]>([]);
+  const [advances, setAdvances] = useState<CustomerAdvance[]>([]);
+  const [showAddAdvance, setShowAddAdvance] = useState(false);
+  const [newAdvanceReceipt, setNewAdvanceReceipt] = useState<CustomerAdvance | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedBill, setSelectedBill] = useState<InventoryItem | null>(null);
+  const [me, setMe] = useState<AdminUser | null>(null);
+  const [exporting, setExporting] = useState(false);
   const { theme } = useAppTheme();
   const colors = APP_THEME[theme];
 
@@ -247,15 +861,21 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
         if (c.phone) query.sold_customer_phone = c.phone;
         else if (c.email) query.sold_customer_email = c.email;
 
-        const [sales, subs] = await Promise.all([
+        const [sales, subs, loans, advs, meRes] = await Promise.all([
           getInventory(query),
           c.phone || c.email
             ? getSubscriptions({ phone: c.phone, email: c.email }).catch(() => [])
             : Promise.resolve([]),
+          getGoldLoansByCustomer(c._id).catch(() => []),
+          getCustomerAdvances(c._id).catch(() => []),
+          getMe().catch(() => null),
         ]);
 
         setOrders(sales.data || []);
         setGoldSubs((subs as GoldSubscription[]).filter(s => s.status !== 'pending'));
+        setGoldLoans(loans as GoldLoan[]);
+        setAdvances(advs as CustomerAdvance[]);
+        setMe(meRes);
       } catch (err) {
         console.error(err);
       } finally {
@@ -267,6 +887,105 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
 
   function handleSubRedeemed(updated: GoldSubscription) {
     setGoldSubs(prev => prev.map(s => s._id === updated._id ? updated : s));
+  }
+
+  function handleAdvanceChanged(updated: CustomerAdvance) {
+    setAdvances(prev => prev.map(a => a._id === updated._id ? updated : a));
+  }
+
+  async function handleCreateAdvance(data: { amount: number; making_charges_waiver_pct?: number; mode?: string; note?: string; lock_in_days?: number }) {
+    if (!customer) return;
+    try {
+      const created = await createCustomerAdvance(customer._id, data);
+      setAdvances(prev => [created, ...prev]);
+      setShowAddAdvance(false);
+      setNewAdvanceReceipt(created);
+      toast.success('Advance recorded');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to record advance');
+    }
+  }
+
+  function handleExportHistory() {
+    if (!customer) return;
+    setExporting(true);
+    try {
+      type Row = { date: string; type: string; description: string; amount: number; reference: string };
+      const rows: Row[] = [];
+
+      orders.forEach(o => {
+        const product = typeof o.product_id === 'object' ? o.product_id?.name : '';
+        rows.push({
+          date: o.sold_at || '',
+          type: 'Purchase',
+          description: `${product || 'Jewellery Item'} (${o.unique_item_code})`,
+          amount: o.selling_price || 0,
+          reference: (o as any).sale_reference || '',
+        });
+      });
+
+      goldSubs.forEach(sub => {
+        const planName = sub.plan?.name || 'Gold Savings Plan';
+        (sub.paymentLedger || []).forEach(p => {
+          rows.push({ date: p.date, type: 'Investment Payment', description: `${planName} — Month ${p.month} (${p.type})`, amount: p.amount, reference: sub._id });
+        });
+        (sub.interestAdjustments || []).forEach(a => {
+          rows.push({ date: a.date, type: 'Bonus Interest', description: `${planName}${a.note ? ` — ${a.note}` : ''}`, amount: a.amount, reference: sub._id });
+        });
+        (sub.redemptionHistory || []).forEach(r => {
+          rows.push({ date: r.date, type: 'Investment Redemption', description: `${planName}${r.note ? ` — ${r.note}` : ''}`, amount: -r.amount, reference: r.saleReference || sub._id });
+        });
+      });
+
+      advances.forEach(a => {
+        rows.push({
+          date: a.createdAt,
+          type: 'Advance Received',
+          description: `Advance payment (${a.mode.replace('_', ' ')})${a.note ? ` — ${a.note}` : ''}`,
+          amount: a.amount,
+          reference: a._id,
+        });
+        (a.redemptionHistory || []).forEach(r => {
+          rows.push({
+            date: r.date,
+            type: 'Advance Redemption',
+            description: `Advance redeemed${r.making_charges_discount > 0 ? ` — ₹${r.making_charges_discount} making charges waived` : ''}${r.note ? ` (${r.note})` : ''}`,
+            amount: -r.amount,
+            reference: r.saleReference || a._id,
+          });
+        });
+      });
+
+      goldLoans.forEach(loan => {
+        if (loan.disbursed_at) {
+          rows.push({ date: loan.disbursed_at, type: 'Loan Disbursement', description: `Gold Loan ${loan.loan_number}`, amount: loan.loan_amount, reference: loan.loan_number });
+        }
+        (loan.emiLedger || []).forEach(e => {
+          rows.push({
+            date: e.paid_date || e.due_date,
+            type: e.status === 'paid' ? 'Loan EMI Paid' : 'Loan EMI Missed',
+            description: `Gold Loan ${loan.loan_number} — Month ${e.month}${e.note ? ` (${e.note})` : ''}`,
+            amount: e.status === 'paid' ? (e.paid_amount || 0) : 0,
+            reference: loan.loan_number,
+          });
+        });
+        if (loan.status === 'closed' && loan.closed_at) {
+          rows.push({ date: loan.closed_at, type: 'Loan Closed', description: `Gold Loan ${loan.loan_number} — principal repaid ${loan.principal_repaid_amount ?? 0}`, amount: -(loan.principal_repaid_amount ?? 0), reference: loan.loan_number });
+        }
+      });
+
+      rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      downloadCsv(`${customer.name.replace(/\s+/g, '-').toLowerCase()}-history`, rows, [
+        { header: 'Date', accessor: r => (r.date ? new Date(r.date).toLocaleDateString('en-IN') : '') },
+        { header: 'Type', accessor: 'type' },
+        { header: 'Description', accessor: 'description' },
+        { header: 'Amount', accessor: 'amount' },
+        { header: 'Reference', accessor: 'reference' },
+      ]);
+    } finally {
+      setExporting(false);
+    }
   }
 
   if (loading) {
@@ -291,6 +1010,9 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
 
   const totalSpent = orders.reduce((sum, item) => sum + (item.selling_price || 0), 0);
   const totalInvestmentBalance = goldSubs.reduce((acc, sub) => acc + computeTimeBasedBalance(sub).balance, 0);
+  const totalAdvanceBalance = advances.reduce((acc, a) => acc + a.availableBalance, 0);
+  const activeAdvances = advances.filter(a => a.status === 'active');
+  const totalValue = totalSpent + totalInvestmentBalance + totalAdvanceBalance;
 
   return (
     <div className="p-8 max-w-[1600px] mx-auto animate-in fade-in slide-in-from-bottom-5 duration-700">
@@ -331,13 +1053,20 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
             </div>
           </div>
         </div>
+        <button
+          onClick={handleExportHistory}
+          disabled={exporting}
+          className="inline-flex items-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-blue-500/20 transition-all disabled:opacity-60 self-start"
+        >
+          {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />} Download Full History
+        </button>
       </div>
 
       {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
 
         {/* Left Column */}
-        <div className="lg:col-span-5 xl:col-span-4 space-y-6">
+        <div className="lg:col-span-5 xl:col-span-4 space-y-6 min-w-0">
 
           {/* Stat Cards */}
           <div className="flex flex-col sm:flex-row gap-5">
@@ -348,9 +1077,9 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
                 <ShoppingBag size={12} /> Purchases
               </div>
             </div>
-            <div className="bg-white border border-slate-100 rounded-[32px] p-6 shadow-sm flex-[1.4] min-w-[200px] relative overflow-hidden group">
+            <div className="bg-white border border-slate-100 rounded-[32px] p-6 shadow-sm flex-[1.4] min-w-0 relative overflow-hidden group">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 relative z-10">Total Spent</p>
-              <h4 className="text-2xl font-serif font-bold text-slate-900 relative z-10 whitespace-nowrap leading-tight">
+              <h4 className="text-xl sm:text-2xl font-serif font-bold text-slate-900 relative z-10 leading-tight break-words">
                 {fmt(totalSpent)}
               </h4>
               <div className="mt-4 flex items-center gap-1.5 text-[10px] font-bold text-blue-600 relative z-10">
@@ -359,6 +1088,33 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
               <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-blue-50 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
             </div>
           </div>
+
+          {/* Total Value — spend + unredeemed investment + unredeemed advance */}
+          {(totalInvestmentBalance > 0 || totalAdvanceBalance > 0) && (
+            <div className="rounded-[32px] p-6 shadow-sm bg-white border border-slate-100">
+              <p className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-400 mb-2">Total Value</p>
+              <h4 className="text-2xl sm:text-3xl font-serif font-bold text-slate-900 mb-1">{fmt(totalValue)}</h4>
+              <p className="text-[10px] text-slate-400 font-bold mb-4">Spend + unredeemed investment &amp; advance balances</p>
+              <div className="space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400 font-medium">Total Spent</span>
+                  <span className="font-black text-slate-700">{fmt(totalSpent)}</span>
+                </div>
+                {totalInvestmentBalance > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400 font-medium">Investment (unredeemed)</span>
+                    <span className="font-black text-blue-600">{fmt(totalInvestmentBalance)}</span>
+                  </div>
+                )}
+                {totalAdvanceBalance > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400 font-medium">Advance (unredeemed)</span>
+                    <span className="font-black text-blue-600">{fmt(totalAdvanceBalance)}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Investment Balance summary card — only if has plans */}
           {goldSubs.length > 0 && (
@@ -378,6 +1134,32 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
               </div>
             </div>
           )}
+
+          {/* Advance Balance summary card */}
+          <div className="rounded-[32px] p-6 shadow-sm bg-white border border-blue-100">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center">
+                  <Wallet size={14} className="text-white" />
+                </div>
+                <p className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-400">Advance Balance</p>
+              </div>
+              <button
+                onClick={() => setShowAddAdvance(true)}
+                className="flex items-center gap-1 text-[10px] font-black text-blue-700 hover:text-blue-800 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add
+              </button>
+            </div>
+            <p className="text-3xl font-bold text-slate-900 mb-0.5">{fmt(totalAdvanceBalance)}</p>
+            <p className="text-[10px] font-bold text-blue-500 mb-4">Available to redeem</p>
+            {advances.length > 0 && (
+              <div className="flex items-center gap-3 text-[9px] font-bold text-slate-400">
+                <span className="px-2 py-0.5 bg-slate-50 rounded-lg border border-slate-100">{advances.length} advance{advances.length > 1 ? 's' : ''}</span>
+                <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-lg border border-emerald-100">{activeAdvances.length} active</span>
+              </div>
+            )}
+          </div>
 
           {/* Contact Card */}
           <div className="bg-white border border-slate-100 rounded-[28px] p-8 shadow-sm">
@@ -426,6 +1208,50 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
               )}
             </div>
           </div>
+
+          {/* Relationship Manager — the staff member who registered this customer */}
+          {typeof customer.relationship_manager === 'object' && customer.relationship_manager && (
+            <div className="bg-white border border-slate-100 rounded-[28px] p-8 shadow-sm">
+              <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-[0.25em] pb-5 mb-6 border-b border-slate-50">
+                Relationship Manager
+              </h3>
+              <div className="flex items-center gap-4 mb-5">
+                <div className="w-11 h-11 rounded-2xl bg-blue-600 flex items-center justify-center shrink-0 text-white font-black text-sm">
+                  {customer.relationship_manager.name.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-slate-900">{customer.relationship_manager.name}</p>
+                  {customer.relationship_manager.role && (
+                    <p className="text-[9px] font-black text-blue-600 uppercase tracking-widest mt-0.5">{customer.relationship_manager.role}</p>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-4">
+                {customer.relationship_manager.mobile_number && (
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center shrink-0">
+                      <Phone size={15} className="text-slate-400" />
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Phone</p>
+                      <p className="text-sm font-bold text-slate-900">{customer.relationship_manager.mobile_number}</p>
+                    </div>
+                  </div>
+                )}
+                {customer.relationship_manager.email && (
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center shrink-0">
+                      <Mail size={15} className="text-slate-400" />
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Email</p>
+                      <p className="text-sm font-bold text-slate-900 break-all">{customer.relationship_manager.email}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* KYC & Bank Card — only shown if any KYC/bank field is present */}
           {(customer.aadharCard || customer.panCard || customer.accountNumber || (customer.customFields?.length ?? 0) > 0) && (
@@ -506,6 +1332,24 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
         {/* Right Column */}
         <div className="lg:col-span-7 xl:col-span-8 space-y-8">
 
+          {/* Advances */}
+          {advances.length > 0 && (
+            <div>
+              <div className="flex items-center gap-3 mb-5">
+                <Wallet size={18} style={{ color: '#7A1238' }} />
+                <h3 className="text-xl font-serif font-bold text-slate-900">Advances</h3>
+                <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-[#FDF3E7] text-[#5C0828] border border-[#EEE0C8]">
+                  {advances.length} Record{advances.length > 1 ? 's' : ''}
+                </span>
+              </div>
+              <div className="space-y-5">
+                {advances.map(advance => (
+                  <AdvanceCard key={advance._id} advance={advance} orders={orders} onChanged={handleAdvanceChanged} />
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Gold Investment Plans */}
           {goldSubs.length > 0 && (
             <div>
@@ -518,7 +1362,25 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
               </div>
               <div className="space-y-5">
                 {goldSubs.map(sub => (
-                  <GoldInvestmentCard key={sub._id} sub={sub} onRedeemed={handleSubRedeemed} />
+                  <GoldInvestmentCard key={sub._id} sub={sub} orders={orders} onRedeemed={handleSubRedeemed} isAdmin={me?.role === 'admin'} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Gold Loans */}
+          {goldLoans.length > 0 && (
+            <div>
+              <div className="flex items-center gap-3 mb-5">
+                <ShieldCheck size={18} style={{ color: '#7A1238' }} />
+                <h3 className="text-xl font-serif font-bold text-slate-900">Gold Loans</h3>
+                <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-[#FDF3E7] text-[#5C0828] border border-[#EEE0C8]">
+                  {goldLoans.length} Loan{goldLoans.length > 1 ? 's' : ''}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                {goldLoans.map(loan => (
+                  <GoldLoanCard key={loan._id} loan={loan} />
                 ))}
               </div>
             </div>
@@ -617,6 +1479,14 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
           date={selectedBill.sold_at ? new Date(selectedBill.sold_at).toLocaleDateString('en-IN', { dateStyle: 'long' }) : new Date().toLocaleDateString('en-IN', { dateStyle: 'long' })}
           onClose={() => setSelectedBill(null)}
         />
+      )}
+
+      {showAddAdvance && (
+        <AddAdvanceModal onClose={() => setShowAddAdvance(false)} onCreate={handleCreateAdvance} />
+      )}
+
+      {newAdvanceReceipt && (
+        <AdvanceReceiptModal advance={newAdvanceReceipt} onClose={() => setNewAdvanceReceipt(null)} />
       )}
     </div>
   );

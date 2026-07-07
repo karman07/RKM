@@ -14,10 +14,11 @@ import {
   staticUrl,
   updateInventoryStatus,
   updateInventoryDiscount,
+  generateCertificate,
+  updateInventoryHallmark,
   getInventoryStats,
   getSettings,
   getCashiersByBranch,
-  generateSaleInvoiceNumber,
   getSuppliers,
   type InventoryItem,
   type Lookup,
@@ -79,6 +80,7 @@ interface AddForm {
   reason: string;
   count: string;
   branch_id: string;
+  hallmark: string;
 }
 
 const emptyAddForm: AddForm = {
@@ -88,6 +90,7 @@ const emptyAddForm: AddForm = {
   reason: '',
   count: '1',
   branch_id: '',
+  hallmark: '',
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -128,6 +131,40 @@ export default function InventoryPage() {
   const [deleteModal, setDeleteModal] = useState<InventoryItem | null>(null);
   const [deleteForm, setDeleteForm] = useState({ reason: '', notes: '' });
   const [deleting, setDeleting] = useState(false);
+  const [certGeneratingId, setCertGeneratingId] = useState<string | null>(null);
+
+  async function handleGenerateCertificate(item: InventoryItem) {
+    setCertGeneratingId(item._id);
+    try {
+      const res = await generateCertificate(item._id);
+      window.open(staticUrl(res.url), '_blank');
+      showToast('Certificate generated', 'success');
+    } catch (e: any) {
+      showToast(e.message || 'Certificate generation failed', 'danger');
+    } finally {
+      setCertGeneratingId(null);
+    }
+  }
+
+  // ── Hallmark modal ────────────────────────────────────────────────────────
+  const [hallmarkModal, setHallmarkModal] = useState<InventoryItem | null>(null);
+  const [hallmarkValue, setHallmarkValue] = useState('');
+  const [savingHallmark, setSavingHallmark] = useState(false);
+
+  async function handleSaveHallmark() {
+    if (!hallmarkModal) return;
+    setSavingHallmark(true);
+    try {
+      await updateInventoryHallmark(hallmarkModal._id, hallmarkValue.trim());
+      setHallmarkModal(null);
+      showToast('Hallmark updated', 'success');
+      load();
+    } catch (e: any) {
+      showToast(e.message || 'Failed to update hallmark', 'danger');
+    } finally {
+      setSavingHallmark(false);
+    }
+  }
 
   // ── Status modal ──────────────────────────────────────────────────────────
   const [statusModal, setStatusModal] = useState<InventoryItem | null>(null);
@@ -264,6 +301,7 @@ export default function InventoryPage() {
         reason:              addForm.reason,
         count:               Number(addForm.count),
         branch_id:           addForm.branch_id || undefined,
+        hallmark:            Number(addForm.count) === 1 ? (addForm.hallmark.trim() || undefined) : undefined,
       });
 
       setAddModal(false);
@@ -684,6 +722,23 @@ export default function InventoryPage() {
                               <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M12 20h9M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" /></svg>
                             </button>
                           )}
+                          {item.status === 'sold' && (
+                            <button
+                              onClick={() => handleGenerateCertificate(item)}
+                              disabled={certGeneratingId === item._id}
+                              title="Certificate of Authenticity"
+                              className="p-1.5 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-600 hover:text-white transition-all active:scale-90 shadow-sm disabled:opacity-50"
+                            >
+                              <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            </button>
+                          )}
+                          <button
+                            onClick={() => { setHallmarkModal(item); setHallmarkValue(item.hallmark || ''); }}
+                            title={item.hallmark ? `Hallmark: ${item.hallmark}` : 'Set Hallmark'}
+                            className={`p-1.5 rounded-lg transition-all active:scale-90 shadow-sm ${item.hallmark ? 'bg-violet-100 text-violet-700 hover:bg-violet-600 hover:text-white' : 'bg-slate-50 text-slate-500 hover:bg-slate-600 hover:text-white'}`}
+                          >
+                            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5.586a1 1 0 01.707.293l7.414 7.414a1 1 0 010 1.414l-7.586 7.586a1 1 0 01-1.414 0L3.293 12.293A1 1 0 013 11.586V6a3 3 0 013-3z" /></svg>
+                          </button>
                           <button onClick={() => setDeleteModal(item)} title="Remove Item" className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition-all active:scale-90 shadow-sm">
                             <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                           </button>
@@ -886,6 +941,22 @@ export default function InventoryPage() {
               </select>
             </div>
 
+            {/* Hallmark — only meaningful for a single physical item, since the HUID is unique per piece */}
+            {Number(addForm.count) === 1 && (
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                  Hallmark (HUID) <span className="text-slate-300 font-medium normal-case">(Optional)</span>
+                </label>
+                <input
+                  type="text"
+                  className="w-full px-5 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-medium focus:ring-2 focus:ring-blue-500"
+                  value={addForm.hallmark}
+                  onChange={e => setAddForm({ ...addForm, hallmark: e.target.value })}
+                  placeholder="e.g. AZ1234567"
+                />
+              </div>
+            )}
+
 
             <div className="md:col-span-2 space-y-1.5">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ingress Reason <span className="text-red-500">*</span></label>
@@ -965,6 +1036,36 @@ export default function InventoryPage() {
                 catch (e: any) { showToast(e.message, 'danger'); } finally { setDeleting(false); }
               }} disabled={deleting || !deleteForm.reason} className="flex-[2] py-4 rounded-2xl bg-red-600 text-white text-[11px] font-bold uppercase tracking-widest shadow-xl disabled:opacity-60">
                 {deleting ? 'Removing...' : 'Confirm Remove'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ──────────────────── HALLMARK MODAL ─────────────────────────────── */}
+      {hallmarkModal && (
+        <Modal open onClose={() => setHallmarkModal(null)} title="BIS Hallmark (HUID)" width="max-w-lg">
+          <div className="p-2 space-y-5">
+            <div className="p-5 rounded-2xl bg-white border border-violet-50 space-y-2 shadow-sm">
+              <div className="flex justify-between text-[11px] font-bold uppercase tracking-widest text-violet-600"><span>Item Code</span><span>{hallmarkModal.unique_item_code}</span></div>
+              <div className="flex justify-between text-[11px] font-black text-violet-800 tracking-tight"><span>Product</span><span>{typeof hallmarkModal.product_id === 'object' ? hallmarkModal.product_id.name : 'Unknown'}</span></div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Hallmark (HUID)</label>
+              <input
+                type="text"
+                autoFocus
+                className="w-full px-5 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-medium focus:ring-2 focus:ring-violet-500"
+                value={hallmarkValue}
+                onChange={e => setHallmarkValue(e.target.value)}
+                placeholder="e.g. AZ1234567"
+              />
+              <p className="text-[10px] text-slate-400">Printed on the sale bill and Certificate of Authenticity when set.</p>
+            </div>
+            <div className="pt-2 flex gap-4">
+              <button onClick={() => setHallmarkModal(null)} className="flex-1 py-4 rounded-2xl border border-slate-200 text-[11px] font-bold uppercase tracking-widest text-slate-400">Cancel</button>
+              <button onClick={handleSaveHallmark} disabled={savingHallmark} className="flex-[2] py-4 rounded-2xl bg-violet-600 text-white text-[11px] font-bold uppercase tracking-widest shadow-xl disabled:opacity-60">
+                {savingHallmark ? 'Saving...' : 'Save Hallmark'}
               </button>
             </div>
           </div>
@@ -1109,7 +1210,6 @@ export default function InventoryPage() {
             <button onClick={() => setStatusModal(null)} className="flex-1 py-4 rounded-2xl border border-slate-200 text-[11px] font-bold uppercase tracking-widest text-slate-400">Cancel</button>
             <button onClick={async () => {
               try {
-                const invoiceRef = newStatus === 'sold' ? generateSaleInvoiceNumber() : undefined;
                 const splits = paymentSplits.filter(s => parseFloat(s.amount) > 0).map(s => ({
                   mode: s.mode, amount: parseFloat(s.amount), reference: s.reference || undefined,
                 }));
@@ -1130,7 +1230,6 @@ export default function InventoryPage() {
                     sold_at_branch_id: soldAtBranchId || undefined,
                     sold_by_user_id: soldByUserId || undefined,
                     selling_price: Number(newSellingPrice) || statusModal!.selling_price,
-                    ...(invoiceRef ? { sale_reference: invoiceRef } : {}),
                   } : {}),
                   selling_price: Number(newSellingPrice) || statusModal!.selling_price,
                 });
