@@ -119,3 +119,18 @@ export class MarkCashPaymentDto {
   @IsOptional()
   note?: string;
 }
+
+/** Manually credits bonus interest onto a subscription's balance (admin only) */
+export class AddInterestDto {
+  @IsNumber()
+  @Min(0.01)
+  amount: number;
+
+  @IsString()
+  @IsOptional()
+  note?: string;
+
+  @IsString()
+  @IsOptional()
+  staffId?: string;
+}

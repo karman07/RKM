@@ -190,6 +190,25 @@ export class OldGoldTransaction {
   @Prop({ type: Date, default: null }) melt_authorized_at: Date | null;
   @Prop({ type: Date, default: null }) settled_at:   Date | null;
   @Prop({ type: Date, default: null }) reversed_at:  Date | null;
+
+  // ── Buy-back form (generated PDF + signed record) ────────────────────────────
+
+  /** URL of the last system-generated Old Gold Purchase Form PDF */
+  @Prop({ trim: true, default: '' })
+  form_url: string;
+
+  @Prop({ type: Date, default: null })
+  form_generated_at: Date | null;
+
+  /** URL of the admin-uploaded scanned/signed copy of the form */
+  @Prop({ trim: true, default: '' })
+  signed_form_url: string;
+
+  @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null })
+  signed_form_uploaded_by: mongoose.Types.ObjectId | null;
+
+  @Prop({ type: Date, default: null })
+  signed_form_uploaded_at: Date | null;
 }
 
 export const OldGoldTransactionSchema =

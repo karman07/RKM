@@ -15,6 +15,7 @@ import {
   UpdateSubscriptionDto,
   RedeemBalanceDto,
   MarkCashPaymentDto,
+  AddInterestDto,
 } from './dto/gold-investment.dto';
 
 @Injectable()
@@ -89,16 +90,17 @@ export class GoldInvestmentService {
     if (!plan) throw new NotFoundException('Investment plan not found');
     if (!plan.isActive) throw new BadRequestException('This plan is no longer active');
 
-    const existingActive = await this.subModel.findOne({
+    const existingActiveForPlan = await this.subModel.findOne({
       $or: [
         { customerEmail: dto.customerEmail },
         { customerPhone: dto.customerPhone },
       ],
+      plan: plan._id,
       status: { $in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.HALTED] },
     }).exec();
 
-    if (existingActive) {
-      throw new BadRequestException('You already have an active gold investment subscription. You cannot set up another one until the current one completes.');
+    if (existingActiveForPlan) {
+      throw new BadRequestException('You already have an active subscription for this plan. You cannot set up another one until it completes.');
     }
 
     // Clean up any abandoned pending subscriptions
@@ -560,9 +562,28 @@ export class GoldInvestmentService {
   // BALANCE & REDEMPTION
   // ─────────────────────────────────────────────────────────────────
 
+  /** No plan — regardless of duration or status — can be redeemed before this many months from start. */
+  private static readonly MIN_REDEMPTION_LOCK_MONTHS = 8;
+
+  /** Full calendar months elapsed since the subscription started. */
+  private monthsSinceStart(startedAt?: Date): number {
+    if (!startedAt) return 0;
+    const start = new Date(startedAt);
+    const now = new Date();
+    let months = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
+    if (now.getDate() < start.getDate()) months -= 1;
+    return Math.max(0, months);
+  }
+
+  private isPastRedemptionLockIn(sub: any): boolean {
+    return this.monthsSinceStart(sub.startedAt) >= GoldInvestmentService.MIN_REDEMPTION_LOCK_MONTHS;
+  }
+
   private computeAvailableBalance(sub: any): number {
     const plan = sub.plan as any;
     if (!plan) return 0;
+    if (!this.isPastRedemptionLockIn(sub)) return 0;
+
     const monthlyAmount = plan.monthlyAmount || 0;
     const interestPerMonth = monthlyAmount * (plan.interestRate || 0) / 100;
     const totalMonths = plan.durationMonths || 0;
@@ -571,7 +592,7 @@ export class GoldInvestmentService {
     const creditedMonths = paid >= totalMonths ? paid : Math.max(0, paid - 1);
 
     const principal = paid * monthlyAmount;
-    const interest = sub.interestStopped ? 0 : creditedMonths * interestPerMonth;
+    const interest = (sub.interestStopped ? 0 : creditedMonths * interestPerMonth) + (sub.bonusInterest || 0);
     const redeemed = sub.amountRedeemed || 0;
 
     return Math.max(0, principal + interest - redeemed);
@@ -598,6 +619,14 @@ export class GoldInvestmentService {
     const sub = await this.subModel.findById(id).populate('plan').exec();
     if (!sub) throw new NotFoundException('Subscription not found');
 
+    const monthsElapsed = this.monthsSinceStart(sub.startedAt);
+    if (monthsElapsed < GoldInvestmentService.MIN_REDEMPTION_LOCK_MONTHS) {
+      const remaining = GoldInvestmentService.MIN_REDEMPTION_LOCK_MONTHS - monthsElapsed;
+      throw new BadRequestException(
+        `This plan has a minimum lock-in of ${GoldInvestmentService.MIN_REDEMPTION_LOCK_MONTHS} months and cannot be redeemed yet. ${remaining} month${remaining !== 1 ? 's' : ''} remaining.`,
+      );
+    }
+
     const available = this.computeAvailableBalance(sub.toObject());
     if (dto.amount > available + 0.5) {
       throw new BadRequestException(`Redemption amount (₹${dto.amount}) exceeds available balance (₹${available.toFixed(0)})`);
@@ -620,6 +649,26 @@ export class GoldInvestmentService {
       sub.redeemed = true;
       sub.redemptionDate = new Date();
     }
+
+    await sub.save();
+    return sub.populate('plan');
+  }
+
+  /** Manually credit bonus interest onto a subscription's balance (admin only) */
+  async addInterest(id: string, dto: AddInterestDto) {
+    const sub = await this.subModel.findById(id).populate('plan').exec();
+    if (!sub) throw new NotFoundException('Subscription not found');
+
+    sub.bonusInterest = (sub.bonusInterest || 0) + dto.amount;
+    sub.interestAdjustments = [
+      ...(sub.interestAdjustments || []),
+      {
+        amount: dto.amount,
+        date: new Date(),
+        note: dto.note,
+        staffId: dto.staffId,
+      },
+    ];
 
     await sub.save();
     return sub.populate('plan');

@@ -6,13 +6,18 @@ import {
   Body,
   Param,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
   Req,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { OldGoldService } from './old-gold.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
 import { Permission } from '../../auth/decorators/permissions.decorator';
 import { OG } from './old-gold.permissions';
+import { multerDocConfig } from '../uploads/multer.config';
 
 /**
  * All routes are protected by JwtAuthGuard (authentication) and
@@ -90,5 +95,27 @@ export class OldGoldController {
   @Permission(OG.REVERSE_SETTLEMENT)
   reverse(@Param('id') id: string, @Req() req: any) {
     return this.service.reverseSettlement(id, req.user);
+  }
+
+  // ── Buy-back form ─────────────────────────────────────────────────────────────
+
+  /** Generates (or regenerates) the printable Old Gold Sale Declaration Form */
+  @Post(':id/generate-form')
+  @Permission(OG.MANAGE_FORM)
+  generateForm(@Param('id') id: string, @Req() req: any) {
+    return this.service.generateForm(id, req.user);
+  }
+
+  /** Uploads a scan of the physically signed form for record-keeping */
+  @Post(':id/signed-form')
+  @Permission(OG.MANAGE_FORM)
+  @UseInterceptors(FileInterceptor('file', multerDocConfig('old-gold-forms')))
+  uploadSignedForm(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: any,
+  ) {
+    if (!file) throw new BadRequestException('No file uploaded');
+    return this.service.attachSignedForm(id, file, req.user);
   }
 }

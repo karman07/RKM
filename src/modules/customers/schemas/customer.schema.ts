@@ -72,6 +72,10 @@ export class Customer {
 
   @Prop({ type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'InventoryItem' }], default: [] })
   purchase_history: mongoose.Types.ObjectId[];
+
+  /** Staff member (admin/manager/cashier) who registered this customer — set once at creation, never reassigned automatically */
+  @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null })
+  relationship_manager: mongoose.Types.ObjectId | null;
 }
 
 export const CustomerSchema = SchemaFactory.createForClass(Customer);

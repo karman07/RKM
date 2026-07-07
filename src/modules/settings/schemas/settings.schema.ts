@@ -106,6 +106,10 @@ export class Settings {
   @Prop({ type: Boolean, default: true })
   email_notifications_enabled: boolean;
 
+  /** Whether SMS notifications (MSG91) are enabled for automated sale events */
+  @Prop({ type: Boolean, default: true })
+  sms_notifications_enabled: boolean;
+
   /** Toggle individual email triggers */
   @Prop({
     type: Object,

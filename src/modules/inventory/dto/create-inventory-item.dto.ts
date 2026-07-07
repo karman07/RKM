@@ -45,6 +45,11 @@ export class CreateInventoryItemDto {
   @IsEnum(ItemLocation)
   location?: ItemLocation;
 
+  /** BIS Hallmark HUID — only meaningful when adding a single item (count = 1) */
+  @IsOptional()
+  @IsString()
+  hallmark?: string;
+
   @IsOptional()
   @IsNumber()
   @Min(0)

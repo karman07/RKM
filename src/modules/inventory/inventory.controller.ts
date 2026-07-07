@@ -14,12 +14,14 @@ import {
   Post as PostMethod,
 } from '@nestjs/common';
 import { InventoryService } from './inventory.service';
+import { CertificateService } from './certificate.service';
 import { CreateInventoryItemDto } from './dto/create-inventory-item.dto';
 import { UpdateInventoryStatusDto } from './dto/update-inventory-status.dto';
 import { DeleteInventoryItemDto } from './dto/delete-inventory-item.dto';
 import { BulkDeleteInventoryDto } from './dto/bulk-delete-inventory.dto';
 import { QueryInventoryDto } from './dto/query-inventory.dto';
 import { UpdateInventoryDiscountDto } from './dto/update-inventory-discount.dto';
+import { UpdateInventoryHallmarkDto } from './dto/update-inventory-hallmark.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -28,7 +30,10 @@ import { UserRole } from '../../users/schemas/user.schema';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('inventory')
 export class InventoryController {
-  constructor(private readonly inventoryService: InventoryService) {}
+  constructor(
+    private readonly inventoryService: InventoryService,
+    private readonly certificateService: CertificateService,
+  ) {}
 
   @Post()
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
@@ -220,6 +225,30 @@ export class InventoryController {
   }
 
   /**
+   * POST /inventory/:id/notify-customer
+   * Manager (or admin) chooses how to send a post-sale "thank you & feedback" message.
+   */
+  @Post(':id/notify-customer')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  notifyCustomer(
+    @Param('id') id: string,
+    @Body() body: { channel: 'sms' | 'whatsapp' | 'email' },
+  ) {
+    return this.inventoryService.notifyCustomerPostSale(id, body.channel);
+  }
+
+  /**
+   * POST /inventory/:id/generate-certificate
+   * Fills the RKM "Certificate of Authenticity" PDF template (unchanged artwork)
+   * with this sold item's product/sale/branch data and returns its static URL.
+   */
+  @Post(':id/generate-certificate')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  generateCertificate(@Param('id') id: string) {
+    return this.certificateService.generate(id);
+  }
+
+  /**
    * PATCH /inventory/:id/discount
    * Admin: can set 0–100 %.
    * Manager: capped at item.max_manager_discount (enforced in service).
@@ -232,6 +261,16 @@ export class InventoryController {
     @Request() req: any,
   ) {
     return this.inventoryService.updateDiscount(id, dto, req.user.role);
+  }
+
+  /**
+   * PATCH /inventory/:id/hallmark
+   * Sets/updates the BIS Hallmark HUID for this specific physical item.
+   */
+  @Patch(':id/hallmark')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  updateHallmark(@Param('id') id: string, @Body() dto: UpdateInventoryHallmarkDto) {
+    return this.inventoryService.updateHallmark(id, dto.hallmark ?? '');
   }
 
   /**

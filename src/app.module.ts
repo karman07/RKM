@@ -35,6 +35,9 @@ import { OldGoldModule } from './modules/old-gold/old-gold.module';
 import { PayrollModule } from './modules/payroll/payroll.module';
 import { IncentiveModule } from './modules/incentives/incentive.module';
 import { SignInMonitorModule } from './modules/sign-in-monitor/sign-in-monitor.module';
+import { ReportsModule } from './modules/reports/reports.module';
+import { GoldLoanModule } from './modules/gold-loan/gold-loan.module';
+import { SmsModule } from './modules/sms/sms.module';
 
 @Module({
   imports: [
@@ -78,6 +81,9 @@ import { SignInMonitorModule } from './modules/sign-in-monitor/sign-in-monitor.m
     PayrollModule,
     IncentiveModule,
     SignInMonitorModule,
+    ReportsModule,
+    GoldLoanModule,
+    SmsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

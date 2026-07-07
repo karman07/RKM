@@ -75,6 +75,11 @@ export class UpdateSettingsDto {
   @IsBoolean()
   email_notifications_enabled?: boolean;
 
+  /** Enable or disable SMS notifications (MSG91) for automated sale events */
+  @IsOptional()
+  @IsBoolean()
+  sms_notifications_enabled?: boolean;
+
   /** Toggle individual email event triggers */
   @IsOptional()
   @IsObject()

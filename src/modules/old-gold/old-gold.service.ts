@@ -12,6 +12,7 @@ import {
   OGStatus,
 } from './schemas/old-gold-transaction.schema';
 import { OG } from './old-gold.permissions';
+import { OldGoldFormService } from './old-gold-form.service';
 
 function nextTxnNumber(count: number): string {
   const year = new Date().getFullYear();
@@ -23,6 +24,7 @@ export class OldGoldService {
   constructor(
     @InjectModel(OldGoldTransaction.name)
     private model: Model<OldGoldTransactionDocument>,
+    private readonly formService: OldGoldFormService,
   ) {}
 
   // ── List ──────────────────────────────────────────────────────────────────────
@@ -199,6 +201,25 @@ export class OldGoldService {
       reversed_by: user.userId,
       reversed_at: new Date(),
     });
+  }
+
+  // ── Buy-back form (generate + signed copy) ───────────────────────────────────
+
+  /** Generates a fresh copy of the printable Old Gold Sale Declaration Form */
+  async generateForm(id: string, user: any) {
+    await this.findOne(id, user); // enforces branch-scoped access
+    return this.formService.generate(id);
+  }
+
+  /** Attaches an admin-uploaded scan of the physically signed form */
+  async attachSignedForm(id: string, file: Express.Multer.File, user: any) {
+    await this.findOne(id, user); // enforces branch-scoped access
+    const doc = await this.model.findById(id);
+    if (!doc) throw new NotFoundException('Transaction not found');
+    doc.signed_form_url = `/static/old-gold-forms/${file.filename}`;
+    doc.signed_form_uploaded_by = new Types.ObjectId(user.userId);
+    doc.signed_form_uploaded_at = new Date();
+    return doc.save();
   }
 
   // ── Private helpers ───────────────────────────────────────────────────────────

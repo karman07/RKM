@@ -15,9 +15,16 @@ const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
     'old-gold.create',
     'old-gold.edit',
     'old-gold.submit',
+    'gold-loan.view-branch',
+    'gold-loan.create',
+    'gold-loan.edit',
+    'gold-loan.submit',
+    'gold-loan.mark-emi',
+    'gold-loan.manage-form',
   ],
   cashier: [
     'old-gold.view-branch',
+    'gold-loan.view-branch',
   ],
 };
 

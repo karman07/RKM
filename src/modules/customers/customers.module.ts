@@ -4,7 +4,9 @@ import { JwtModule } from '@nestjs/jwt';
 import { CustomersController } from './customers.controller';
 import { CustomersAdminController } from './customers-admin.controller';
 import { CustomersService } from './customers.service';
+import { CustomerAdvanceService } from './customer-advance.service';
 import { Customer, CustomerSchema } from './schemas/customer.schema';
+import { CustomerAdvance, CustomerAdvanceSchema } from './schemas/customer-advance.schema';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PassportModule } from '@nestjs/passport';
 import { CustomerJwtStrategy } from './customer-jwt.strategy';
@@ -15,6 +17,7 @@ import { OnlineOrder, OnlineOrderSchema } from '../online-orders/schemas/online-
   imports: [
     MongooseModule.forFeature([
       { name: Customer.name, schema: CustomerSchema },
+      { name: CustomerAdvance.name, schema: CustomerAdvanceSchema },
       { name: InventoryItem.name, schema: InventoryItemSchema },
       { name: OnlineOrder.name, schema: OnlineOrderSchema },
     ]),
@@ -29,7 +32,7 @@ import { OnlineOrder, OnlineOrderSchema } from '../online-orders/schemas/online-
     PassportModule.register({ defaultStrategy: 'customer-jwt' }),
   ],
   controllers: [CustomersController, CustomersAdminController],
-  providers: [CustomersService, CustomerJwtStrategy],
-  exports: [CustomersService],
+  providers: [CustomersService, CustomerAdvanceService, CustomerJwtStrategy],
+  exports: [CustomersService, CustomerAdvanceService],
 })
 export class CustomersModule {}

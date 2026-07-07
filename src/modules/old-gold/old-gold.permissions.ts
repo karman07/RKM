@@ -51,6 +51,9 @@ export const OG = {
 
   /** Access and modify Old Gold module settings */
   MANAGE_SETTINGS: 'old-gold.settings',
+
+  /** Generate the printable buy-back form and upload/view the signed copy */
+  MANAGE_FORM: 'old-gold.manage-form',
 } as const;
 
 export type OGPermission = (typeof OG)[keyof typeof OG];
@@ -73,4 +76,5 @@ export const OG_PERMISSION_ITEMS: { key: OGPermission; label: string }[] = [
   { key: OG.OVERRIDE_VALUATION, label: 'Override Valuation Rules' },
   { key: OG.REVERSE_SETTLEMENT, label: 'Reverse Settlements' },
   { key: OG.MANAGE_SETTINGS,    label: 'Manage Old Gold Settings' },
+  { key: OG.MANAGE_FORM,        label: 'Generate & Upload Buy-Back Form' },
 ];

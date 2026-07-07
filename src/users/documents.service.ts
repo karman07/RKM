@@ -57,6 +57,14 @@ function numWord(n: number): string {
               'Eight','Nine','Ten','Eleven','Twelve'];
   return w[n] ?? String(n);
 }
+function spellNum(n: number): string {
+  const w: Record<number, string> = {
+    1:'One', 2:'Two', 3:'Three', 4:'Four', 5:'Five', 6:'Six', 7:'Seven',
+    8:'Eight', 9:'Nine', 10:'Ten', 15:'Fifteen', 20:'Twenty', 30:'Thirty',
+    45:'Forty-Five', 60:'Sixty', 90:'Ninety', 180:'One Hundred Eighty',
+  };
+  return w[n] ?? String(n);
+}
 
 interface CompanyInfo {
   name: string; tagline: string; address: string;
@@ -313,18 +321,15 @@ export class DocumentsService {
   private offerLetter(doc: any, user: UserDocument, co: CompanyInfo, hr: any): void {
     const br      = user.branch as any;
     const name    = user.name;
-    const first   = name.split(' ')[0];
     const role    = (user as any).job_title || (user.role === 'custom' ? 'Staff Member' : titleCase(user.role));
     const branch  = br?.name || co.name;
     const joining = fmt(user.joining_date);
     const gross     = (user as any).base_salary ?? 0;
     const ctc       = gross * 12;
-    // Prefer per-employee stored components; fall back to settings % calculation
-    const basic     = (user as any).salary_basic     || Math.round(gross * hr.basicPct / 100);
-    const hra       = (user as any).salary_hra       || Math.round(gross * hr.hraPct / 100);
-    const transport = (user as any).salary_transport  || Math.round(gross * hr.transportPct / 100);
-    const special   = (user as any).salary_special   || Math.max(0, gross - basic - hra - transport); // remainder
     const empId   = (user as any).employee_id || '';
+    const managerName = (user as any).reporting_manager_name
+      || ((user as any).reporting_manager_id?.name)
+      || 'the Reporting Manager/Management';
 
     // Date (right-aligned)
     doc.fillColor(GRAY).font('Helvetica').fontSize(9.5)
@@ -342,172 +347,174 @@ export class DocumentsService {
 
     // Subject
     doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(10)
-       .text('Subject: Offer of Employment', MX, doc.y, { width: CW });
+       .text('SUBJECT: OFFER OF EMPLOYMENT', MX, doc.y, { width: CW });
     doc.moveDown(0.7);
 
     body(doc,
-      `Dear ${first},\n\n` +
-      `We are pleased to offer you employment with ${co.name} as ${role}. Your employment shall ` +
-      `commence from ${joining}, subject to the terms and conditions mentioned below.`);
-
-    lightRule(doc, doc.y); doc.moveDown(0.6);
-
-    // ── Terms and Conditions header ──────────────────────────────────────────
-    doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(11.5)
-       .text('Terms and Conditions of Employment', MX, doc.y,
-             { width: CW, align: 'center', characterSpacing: 0.3 });
-    doc.moveDown(0.3);
-    goldRule(doc, doc.y, 0.6);
-    doc.moveDown(0.5);
-
-    body(doc,
-      `The following outlines the terms and conditions of employment with ${co.name}. ` +
-      `The Company reserves the right to change these terms and conditions as necessary, with due notice.`);
+      `Dear ${name},\n\n` +
+      `We are pleased to offer you the position of ${role} with ${co.name}. Based on your qualifications, ` +
+      `skills, and experience, we believe that you will be a valuable addition to our organization and ` +
+      `contribute significantly to our continued growth and success.\n\n` +
+      `You will be based at our ${branch} office and will report directly to ${managerName} or any other ` +
+      `person authorized by the Company from time to time.\n\n` +
+      `We look forward to a long and mutually beneficial professional association and are confident that ` +
+      `this opportunity will support your personal and professional development.`);
 
     doc.moveDown(0.2);
 
-    // ── 18 Clauses ──────────────────────────────────────────────────────────
+    // ── 15 Clauses ──────────────────────────────────────────────────────────
 
-    sHead(doc, '1', 'POSITION & REPORTING');
-    const managerName = (user as any).reporting_manager_name
-      || ((user as any).reporting_manager_id?.name)
-      || 'the management or any authorized representative of the Company';
+    sHead(doc, '1', 'COMMENCEMENT OF EMPLOYMENT');
     body(doc,
-      `You will be appointed as ${role} at ${branch} and shall report directly to ${managerName}.`);
+      `Your employment is proposed to commence on ${joining}.\n\n` +
+      `You shall faithfully perform the duties and responsibilities assigned to you and devote your full ` +
+      `professional time, attention, and abilities to the business and interests of the Company.`);
 
-    sHead(doc, '2', 'PLACE OF WORK');
-    body(doc,
-      `Your initial place of work shall be ${branch}. The Company reserves the right to transfer ` +
-      `you to any branch or location as required by business needs.`);
-
-    sHead(doc, '3', 'PROBATION');
-    body(doc,
-      `You will be on probation for ${hr.probationMonths} months from the date of joining. ` +
-      `During the probation period, either party may terminate employment by giving ${hr.probationNoticeDays} days written notice. ` +
-      `Confirmation of employment will be based on satisfactory performance and conduct during this period.`);
-
-    sHead(doc, '4', 'SALARY & COMPENSATION');
+    sHead(doc, '2', 'COMPENSATION & BENEFITS');
     if (gross > 0) {
-      body(doc, `Your total Cost to Company (CTC) shall be ${inr(ctc)} per annum.\n\nSalary Structure:`);
-      const salaryBullets = [
-        `Gross Monthly Salary: ${inr(gross)}`,
-        `Basic Salary (${hr.basicPct}%): ${inr(basic)}`,
-        `House Rent Allowance — HRA (${hr.hraPct}%): ${inr(hra)}`,
-        `Transport / Conveyance Allowance (${hr.transportPct}%): ${inr(transport)}`,
-      ];
-      if (special > 0) {
-        salaryBullets.push(`Special / Other Allowance: ${inr(special)}`);
-      }
-      salaryBullets.push(
-        'Statutory deductions such as PF, ESI, Professional Tax, TDS, or any other applicable deductions shall be made as per law.',
-        'Salary shall be paid on a monthly basis through bank transfer.',
-        'Performance incentives, bonuses, increments, or commissions shall be purely at the discretion of the management.',
-      );
-      bullets(doc, salaryBullets);
+      body(doc,
+        `Your total compensation package shall be ${inr(ctc)} per annum on a Cost to Company (CTC) basis.\n\n` +
+        `A detailed compensation structure will be shared with you at the time of joining.\n\n` +
+        `You shall also be entitled to leave, benefits, and other employment-related privileges in accordance ` +
+        `with the Company's policies as amended from time to time.\n\n` +
+        `All statutory deductions including PF, ESI, Professional Tax, TDS, or any other applicable deductions ` +
+        `shall be made in accordance with applicable laws.`);
     } else {
       body(doc,
-        `Your total Cost to Company (CTC) shall be INR __________ per annum, as mutually agreed. ` +
-        `All statutory deductions (PF, ESI, Professional Tax, TDS) shall apply as per law. ` +
-        `Salary will be paid monthly by bank transfer. Incentives and bonuses are at management's discretion.`);
+        `Your total compensation package shall be ₹___________ per annum (Rupees ` +
+        `__________________________ Only) on a Cost to Company (CTC) basis.\n\n` +
+        `A detailed compensation structure will be shared with you at the time of joining.\n\n` +
+        `You shall also be entitled to leave, benefits, and other employment-related privileges in accordance ` +
+        `with the Company's policies as amended from time to time.\n\n` +
+        `All statutory deductions including PF, ESI, Professional Tax, TDS, or any other applicable deductions ` +
+        `shall be made in accordance with applicable laws.`);
     }
 
-    sHead(doc, '5', 'WORKING HOURS');
+    sHead(doc, '3', 'PROBATION PERIOD');
     body(doc,
-      `Employees shall work as per the business requirements of ${co.name}. Additional hours ` +
-      `may be required during festivals, exhibitions, wedding seasons, stock audits, and peak business periods.`);
+      `You will be on probation for a period of ${spellNum(hr.probationMonths)} (${hr.probationMonths}) ` +
+      `months from the date of joining.\n\n` +
+      `During the probation period, your performance, attendance, conduct, and suitability for the position ` +
+      `will be reviewed by the Company.\n\n` +
+      `Upon satisfactory completion of the probation period, your employment may be confirmed in writing at ` +
+      `the sole discretion of the Company.\n\n` +
+      `The Company reserves the right to extend the probation period if deemed necessary.`);
 
-    sHead(doc, '6', 'LEAVE, ATTENDANCE & WEEKLY OFF POLICY');
+    sHead(doc, '4', 'DOCUMENTS REQUIRED AT THE TIME OF JOINING');
+    body(doc, 'You shall submit the following documents at the time of reporting:');
     bullets(doc, [
-      `Employees are entitled to only ${hr.casualLeaves} (${numWord(hr.casualLeaves)}) Casual Leave${hr.casualLeaves !== 1 ? 's' : ''} per calendar year.`,
-      'Saturday and Sunday are regular working days.',
-      'The last Monday of every month shall be the designated weekly off.',
-      'Any other leave category shall be governed by company policy and communicated during joining formalities.',
-      'All leave requests require prior approval from management.',
-      'Unauthorized absence may result in salary deduction and disciplinary action.',
-      `Continuous absence for more than ${hr.absentAbandonment} consecutive working days without approval may be treated as abandonment of employment.`,
+      'Copy of PAN Card',
+      'Copy of Aadhaar Card',
+      'Two Passport Size Photographs',
+      'Educational Qualification Certificates',
+      'Previous Employment Documents (if applicable)',
+      'Salary Slips/Relieving Letter (if applicable)',
+      'Any additional documents required by the Company',
     ]);
+    body(doc, 'Failure to provide the required documents may result in withdrawal of this offer.');
 
-    sHead(doc, '7', 'CONFIDENTIALITY & NON-DISCLOSURE (NDA)');
+    sHead(doc, '5', 'CONFIDENTIALITY & NON-DISCLOSURE');
     body(doc,
-      `The Employee shall maintain complete confidentiality regarding customer data, supplier information, ` +
-      `designs, pricing, business plans, financial information, stock records, employee information, and ` +
-      `all proprietary information of ${co.name} during and after employment.`);
+      `During the course of your employment, you may have access to confidential information relating to the ` +
+      `Company, its clients, employees, vendors, finances, business strategies, pricing, operations, systems, ` +
+      `databases, and trade practices.\n\n` +
+      `You shall maintain complete confidentiality of such information and shall not disclose, copy, ` +
+      `distribute, or use any confidential information for personal benefit or for the benefit of any third ` +
+      `party during or after your employment without prior written authorization from the Company.`);
 
-    sHead(doc, '8', 'COMPANY PROPERTY & ASSETS');
+    sHead(doc, '6', 'COMPANY POLICIES & CODE OF CONDUCT');
     body(doc,
-      `All assets provided by the Company, including laptops, computers, mobile phones, SIM cards, ID cards, ` +
-      `keys, documents, software access, inventory records, and any other equipment remain the exclusive ` +
-      `property of ${co.name}.`);
+      `You shall comply with all Company policies, procedures, rules, regulations, disciplinary standards, ` +
+      `and code of conduct communicated by the Company from time to time.\n\n` +
+      `Any violation of Company policies may result in disciplinary action, including termination of employment.`);
 
-    sHead(doc, '9', 'RETURN OF COMPANY ASSETS');
+    sHead(doc, '7', 'WORKING HOURS, ATTENDANCE & LEAVE');
     body(doc,
-      `Upon resignation, termination, or whenever requested by the Company, all Company assets must be returned ` +
-      `immediately and in good condition. Final settlement, relieving letter, and experience certificate may ` +
-      `be withheld until clearance is completed.`);
+      `You shall adhere to the Company's working hours, attendance requirements, reporting structure, and ` +
+      `leave procedures.\n\n` +
+      `Unauthorized absence, habitual late attendance, misconduct, or failure to follow reporting requirements ` +
+      `may result in disciplinary action, salary deductions, or termination of employment as per Company policy.`);
 
-    sHead(doc, '10', 'JEWELLERY STOCK & INVENTORY RESPONSIBILITY');
+    sHead(doc, '8', 'TRANSFERABILITY');
     body(doc,
-      `Employees handling jewellery, precious metals, diamonds, gemstones, cash, or inventory must strictly ` +
-      `follow all security and inventory procedures. Any loss caused by negligence, misconduct, fraud, or ` +
-      `unauthorized handling may lead to disciplinary and legal action, and recovery of damages up to ` +
-      `${inr(hr.fineAmount)} or the actual loss amount, whichever is higher.`);
+      `The Company reserves the right to transfer, assign, or relocate you to any department, branch office, ` +
+      `project site, client location, subsidiary, affiliate, or associated entity based on business ` +
+      `requirements.\n\n` +
+      `Such transfer shall not constitute a change in employment status.`);
 
-    sHead(doc, '11', 'CODE OF CONDUCT');
+    sHead(doc, '9', 'COMPANY PROPERTY & ASSETS');
     body(doc,
-      `Employees shall maintain professionalism, honesty, integrity, discipline, and proper conduct while ` +
-      `representing the Company. Any form of harassment, discrimination, or workplace violence is strictly prohibited.`);
+      `All assets, documents, laptops, computers, mobile devices, access credentials, software, identity ` +
+      `cards, records, databases, files, and other materials provided by the Company shall remain the ` +
+      `exclusive property of the Company.\n\n` +
+      `You shall exercise reasonable care in safeguarding Company property and shall immediately return all ` +
+      `Company property upon request or upon cessation of employment.`);
 
-    sHead(doc, '12', 'DATA SECURITY');
+    sHead(doc, '10', 'INTELLECTUAL PROPERTY');
     body(doc,
-      `Employees shall not share passwords, customer information, internal documents, or confidential ` +
-      `business data with any unauthorized person inside or outside the organization.`);
+      `Any work product, reports, designs, databases, presentations, ideas, developments, inventions, ` +
+      `processes, documents, software, content, marketing materials, or intellectual property created, ` +
+      `developed, or contributed by you during your employment and relating to the Company's business shall ` +
+      `remain the sole and exclusive property of the Company.`);
 
-    sHead(doc, '13', 'BACKGROUND VERIFICATION');
+    sHead(doc, '11', 'BACKGROUND VERIFICATION');
     body(doc,
-      `This offer is subject to successful verification of identity, address, educational qualifications, ` +
-      `employment history, and any other documents required by the Company.`);
+      `This offer is contingent upon successful verification of all information, qualifications, experience, ` +
+      `references, and documents submitted by you.\n\n` +
+      `Any misrepresentation, concealment of information, false declaration, or discrepancy identified during ` +
+      `or after verification may result in withdrawal of this offer or termination of employment without notice.`);
 
-    sHead(doc, '14', 'PERFORMANCE REVIEW');
+    sHead(doc, '12', 'TERMINATION OF EMPLOYMENT & NOTICE PERIOD');
     body(doc,
-      `Performance shall be reviewed periodically. Salary revisions, incentives, promotions, and career ` +
-      `growth shall depend upon performance and management approval.`);
+      `Either party may terminate the employment relationship by providing ${spellNum(hr.noticeDays)} ` +
+      `(${hr.noticeDays}) days' prior written notice to the other party.\n\n` +
+      `If the Employee resigns and fails to serve the required notice period, the Employee shall be liable to ` +
+      `pay an amount equivalent to the gross salary for the unserved portion of the notice period, and the ` +
+      `Company shall have the right to adjust such amount against any dues payable to the Employee.\n\n` +
+      `The Company reserves the right to waive the notice period partially or fully, or to accept payment in ` +
+      `lieu of notice.\n\n` +
+      `The Company may terminate employment with immediate effect without notice in cases involving ` +
+      `misconduct, fraud, theft, dishonesty, breach of confidentiality, insubordination, violation of Company ` +
+      `policies, or any act causing financial or reputational loss to the Company.`);
 
-    sHead(doc, '15', 'TERMINATION');
+    sHead(doc, '13', 'RECOVERY OF COMPANY DUES');
     body(doc,
-      `Either party may terminate employment by giving ${hr.noticeDays} days written notice or salary in ` +
-      `lieu thereof, subject to Company approval.`);
-    body(doc,
-      `The Company may terminate employment immediately in cases of misconduct, theft, fraud, breach of ` +
-      `confidentiality, dishonesty, harassment, criminal activity, or violation of Company policies.`);
+      `The Company shall have the right to recover any outstanding dues from the Employee, including notice ` +
+      `pay, advances, loans, damages resulting from negligence or misconduct, loss of Company property, or ` +
+      `any other lawful dues recoverable under applicable laws.\n\n` +
+      `Such recoveries may be adjusted against salary, incentives, reimbursements, bonuses, or final ` +
+      `settlement payable to the Employee.`);
 
-    sHead(doc, '16', 'RESIGNATION & EXIT FORMALITIES');
+    sHead(doc, '14', 'GOVERNING LAW');
     body(doc,
-      `The Employee shall complete all handovers, return company property, and obtain departmental clearances ` +
-      `before final settlement. Experience certificates and relieving letters will be issued only after ` +
-      `completion of all formalities.`);
+      `This offer and any employment arising from it shall be governed by and construed in accordance with ` +
+      `the laws of India. Any disputes arising out of this employment shall be subject to the jurisdiction of ` +
+      `the courts having jurisdiction over the location of the Company's registered office.`);
 
-    sHead(doc, '17', 'INTELLECTUAL PROPERTY');
+    sHead(doc, '15', 'ACCEPTANCE OF OFFER');
     body(doc,
-      `Any designs, ideas, documents, processes, databases, marketing materials, or work products created ` +
-      `during employment related to Company business shall remain the sole property of ${co.name}.`);
+      `You are requested to confirm your acceptance of this offer by signing and returning a copy of this ` +
+      `letter on or before ${fmt(undefined)}.\n\n` +
+      `Upon joining, you will be required to execute the Company's Employment Agreement and comply with all ` +
+      `Company policies and procedures applicable from time to time.`);
 
-    sHead(doc, '18', 'GOVERNING LAW');
-    body(doc, `This employment shall be governed by the laws of India.`);
+    body(doc,
+      `We are delighted to extend this opportunity to you and look forward to welcoming you to the team. ` +
+      `We wish you a successful and rewarding career with ${co.name}.`);
 
     // ── Acceptance block ──────────────────────────────────────────────────────
-    // Pre-check: ensure the full acceptance block (~195 pt) fits on this page.
+    // Pre-check: ensure the full acceptance block (~210 pt) fits on this page.
     // If not, start a fresh page so we never overflow mid-signature.
-    if (doc.y + 195 > PH - BOT_PAD) doc.addPage();
+    if (doc.y + 210 > PH - BOT_PAD) doc.addPage();
 
     doc.moveDown(0.5);
     goldRule(doc, doc.y, 1.0);
     doc.moveDown(0.8);
 
-    doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(11)
-       .text('ACCEPTANCE', { width: CW, align: 'center', characterSpacing: 1.2 });
+    body(doc, 'Yours sincerely,');
     doc.moveDown(0.6);
 
-    body(doc, 'I hereby accept the terms and conditions stated in this Offer Letter.');
+    body(doc, 'I have read, understood, and accepted the terms and conditions of employment stated in this Offer Letter.');
     doc.moveDown(1.2);
 
     // Two-column signature — NO stale-y captures; all positions taken fresh
@@ -518,7 +525,7 @@ export class DocumentsService {
     doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(9.5)
        .text(`For ${co.name}`, MX, r1y, { width: half, lineBreak: false });
     doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(9.5)
-       .text('Employee Acceptance', MX + half + 20, r1y, { width: half, lineBreak: false });
+       .text('Acceptance of Offer', MX + half + 20, r1y, { width: half, lineBreak: false });
 
     // Move past title line + signature space
     doc.y = r1y + 14 + 32; // title height + 32 pt for handwritten signature room
@@ -543,6 +550,9 @@ export class DocumentsService {
     sigRow(doc, 'Name');
     sigRow(doc, 'Designation');
     sigRow(doc, 'Date', fmtShort(new Date()));
+    doc.moveDown(0.4);
+    sigRow(doc, 'Joining Date', joining);
+    sigRow(doc, 'Employee Name', name);
   }
 
   // ════════════════════════════════════════════════════════════════════════════
@@ -557,9 +567,7 @@ export class DocumentsService {
     const joining = fmt(user.joining_date);
     const gross     = (user as any).base_salary ?? 0;
     const basic     = Math.round(gross * hr.basicPct / 100);
-    const hra       = Math.round(gross * hr.hraPct / 100);
-    const transport = Math.round(gross * hr.transportPct / 100);
-    const special   = gross - basic - hra - transport;
+    const allowances = Math.max(0, gross - basic);
     const empId   = (user as any).employee_id || '';
 
     doc.fillColor(GRAY).font('Helvetica').fontSize(9.5)
@@ -573,76 +581,176 @@ export class DocumentsService {
     doc.moveDown(0.6);
 
     doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(10)
-       .text(`Subject: Letter of Appointment — ${role}`, MX, doc.y, { width: CW });
+       .text(`Subject: Appointment as ${role}`, MX, doc.y, { width: CW });
     doc.moveDown(0.7);
 
     body(doc,
-      `Dear ${first},\n\nWith reference to your application and the subsequent selection process, we are ` +
-      `pleased to appoint you as ${role} at ${co.name}, ${branch}, effective ${joining}. ` +
-      `Your appointment is subject to the terms and conditions set forth herein.`);
-
-    lightRule(doc, doc.y); doc.moveDown(0.6);
-
-    // ── Terms and Conditions header ──────────────────────────────────────────
-    doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(11.5)
-       .text('Terms and Conditions of Employment', MX, doc.y,
-             { width: CW, align: 'center', characterSpacing: 0.3 });
-    doc.moveDown(0.3);
-    goldRule(doc, doc.y, 0.6);
-    doc.moveDown(0.5);
-
-    body(doc,
-      `The following outlines the terms and conditions of employment with ${co.name}. ` +
-      `The Company reserves the right to change these terms and conditions as necessary, with due notice.`);
+      `Dear ${first},\n\n` +
+      `With reference to your application and the subsequent selection process, we are pleased to appoint ` +
+      `you as ${role} with ${co.name}, effective ${joining}, on the terms and conditions set forth below.\n\n` +
+      `We are confident that your skills, dedication, and professional conduct will contribute positively to ` +
+      `the continued growth and success of the Company.`);
 
     doc.moveDown(0.2);
 
-    sHead(doc, '1', 'TERMS OF APPOINTMENT');
+    sHead(doc, '1', 'APPOINTMENT DETAILS');
     drawTable(doc, [
-      ['Designation',       role],
-      ['Reporting To',      (user as any).reporting_manager_name || (user as any).reporting_manager_id?.name || 'Management'],
-      ['Branch / Location', branch],
-      ['Employee ID',       empId || '—'],
-      ['Date of Joining',   joining],
-      ['Gross Monthly',           gross > 0 ? inr(gross) : 'As agreed'],
-      ['Basic Salary',            gross > 0 ? `${inr(basic)} (${hr.basicPct}%)` : '—'],
-      ['HRA',                     gross > 0 ? `${inr(hra)} (${hr.hraPct}%)` : '—'],
-      ['Transport Allowance',     gross > 0 ? `${inr(transport)} (${hr.transportPct}%)` : '—'],
-      ...(gross > 0 && special > 0 ? [['Special Allowance', inr(special)] as [string,string]] : []),
-      ['Probation Period',        `${hr.probationMonths} months (${hr.probationNoticeDays}-day notice during probation)`],
-      ['Working Hours',           '9:00 AM – 6:00 PM  (Mon – Sat; last Monday off)'],
-      ['Post-Confirmation Notice', `${hr.noticeDays} days written notice on both sides`],
+      ['Employee Name',        name],
+      ['Employee ID',          empId || '—'],
+      ['Designation',          role],
+      ['Location',             branch],
+      ['Date of Joining',      joining],
+      ['Reporting Time',       '9:00 AM'],
+      ['Probation Period',     `${hr.probationMonths} Months`],
+      ['Notice Period',        `${hr.noticeDays} Days`],
+      ['Gross Monthly Salary', gross > 0 ? inr(gross) : 'As agreed'],
+      ['Basic Salary',         gross > 0 ? inr(basic) : '—'],
+      ['Allowances',           gross > 0 ? inr(allowances) : '—'],
     ]);
 
-    sHead(doc, '2', 'GENERAL CONDITIONS');
-    bullets(doc, [
-      `Probation: ${hr.probationMonths} months; either party may terminate with ${hr.probationNoticeDays} days' written notice.`,
-      `After confirmation: ${hr.noticeDays} days' written notice on both sides.`,
-      'You are bound by the Company\'s Code of Conduct, NDA, and all HR policies from Day 1.',
-      `Leave: ${hr.casualLeaves} Casual Leave${hr.casualLeaves !== 1 ? 's' : ''} per year. Saturday & Sunday working; last Monday of each month is the weekly off.`,
-      'Salary deductions as per applicable Indian laws (PF, ESI, TDS, PT).',
-      "Incentives and bonuses are at management's sole discretion.",
-      `Loss of Company property through negligence may result in recovery up to ${inr(hr.fineAmount)}.`,
-      'All Company assets and credentials must be returned in full upon exit.',
-    ]);
-
-    sHead(doc, '3', 'CONFIDENTIALITY');
+    sHead(doc, '2', 'PROBATION');
     body(doc,
-      `You shall maintain strict confidentiality of all proprietary information of ${co.name} — ` +
-      `including customer data, pricing, designs, stock, and financials — during and after employment.`);
+      `You shall be on probation for a period of ${spellNum(hr.probationMonths)} (${hr.probationMonths}) ` +
+      `months from the date of joining.\n\n` +
+      `During the probation period, your performance, conduct, attendance, integrity, discipline, and ` +
+      `overall suitability for employment shall be continuously assessed by the Company.\n\n` +
+      `The Company reserves the right to extend the probation period if deemed necessary.\n\n` +
+      `During the probation period, the Company may terminate your employment at its sole discretion ` +
+      `without notice, notice pay, or compensation if your performance, conduct, attendance, integrity, or ` +
+      `suitability is found to be unsatisfactory.\n\n` +
+      `If the Employee wishes to resign during probation, a ${hr.probationNoticeDays}-day prior written ` +
+      `notice or salary in lieu thereof shall be required, subject to management approval.\n\n` +
+      `Completion of the probation period shall not automatically result in confirmation of employment. ` +
+      `Confirmation shall be effective only upon issuance of a written confirmation letter by the Company.`);
 
-    sHead(doc, '4', 'INTELLECTUAL PROPERTY');
+    sHead(doc, '3', 'DUTIES AND RESPONSIBILITIES');
     body(doc,
-      `All work products, designs, and materials created during employment remain the exclusive property of ${co.name}.`);
+      `You shall faithfully, diligently, and efficiently perform all duties assigned to you by the Company.\n\n` +
+      `You shall comply with all lawful instructions, policies, procedures, and operational guidelines ` +
+      `issued by the Company from time to time.\n\n` +
+      `You shall devote your full working time, attention, and abilities to the Company's business and shall ` +
+      `not engage in any other employment, business activity, consultancy, or profession without prior ` +
+      `written approval.`);
 
-    sHead(doc, '5', 'GOVERNING LAW');
-    body(doc, 'This appointment shall be governed by the laws of India.');
+    sHead(doc, '4', 'WORKING HOURS, ATTENDANCE & DISCIPLINE');
+    body(doc,
+      `Your working hours shall be as prescribed by the Company and may be revised from time to time based ` +
+      `on business requirements.\n\n` +
+      `You may be required to work beyond normal working hours during festivals, audits, stock verification, ` +
+      `inventory checks, exhibitions, or other business exigencies.\n\n` +
+      `Employees are expected to maintain punctuality, regular attendance, and professional conduct at all times.\n\n` +
+      `Habitual absenteeism, late attendance, misconduct, or failure to follow reporting procedures may ` +
+      `result in disciplinary action.`);
 
-    // Pre-check space for the acceptance block (~140 pt)
-    if (doc.y + 140 > PH - BOT_PAD) doc.addPage();
+    sHead(doc, '5', 'LEAVE POLICY');
+    body(doc,
+      `Leave entitlement shall be governed by the Company's leave policy as amended from time to time.\n\n` +
+      `All leave requests must be approved by the authorized reporting manager or management.\n\n` +
+      `Unauthorized absence or absence without approval may result in salary deductions and disciplinary action.\n\n` +
+      `Continuous absence for more than ${spellNum(hr.absentAbandonment).toLowerCase()} (${hr.absentAbandonment}) ` +
+      `consecutive working days without approval may be treated as abandonment of employment.`);
+
+    sHead(doc, '6', 'COMPENSATION & BENEFITS');
+    body(doc,
+      `Your compensation shall be as specified above and shall be subject to applicable statutory ` +
+      `deductions, including PF, ESI, Professional Tax, TDS, or any other deductions required by law.\n\n` +
+      `Salary shall be paid through bank transfer subject to attendance, compliance with Company policies, ` +
+      `and completion of payroll requirements.\n\n` +
+      `Any incentive, commission, bonus, ex-gratia payment, increment, or performance reward shall be ` +
+      `entirely at the sole discretion of the management and shall not constitute a guaranteed entitlement.`);
+
+    sHead(doc, '7', 'CONFIDENTIALITY & NON-DISCLOSURE');
+    body(doc,
+      `You shall maintain strict confidentiality regarding all information relating to customers, suppliers, ` +
+      `pricing, inventory, stock records, financial information, business plans, employee information, ` +
+      `operational procedures, and any other proprietary information of the Company.\n\n` +
+      `Such information shall not be disclosed, copied, transmitted, or used for personal benefit or for the ` +
+      `benefit of any third party during or after your employment.\n\n` +
+      `Any breach of confidentiality shall be treated as serious misconduct and may result in disciplinary ` +
+      `and legal action.`);
+
+    sHead(doc, '8', 'COMPANY PROPERTY & ASSETS');
+    body(doc,
+      `All Company property including cash, jewellery inventory, documents, records, keys, passwords, ` +
+      `software access, systems, computers, mobile devices, ID cards, and other assets entrusted to you ` +
+      `shall remain the exclusive property of the Company.\n\n` +
+      `You shall exercise due care in safeguarding Company property and shall return all such assets ` +
+      `immediately upon demand or upon cessation of employment.`);
+
+    sHead(doc, '9', 'CASH, STOCK & INVENTORY RESPONSIBILITY');
+    body(doc,
+      `As a ${role}, you shall be responsible for handling cash transactions, billing records, customer ` +
+      `payments, and related Company assets with utmost care and accuracy.\n\n` +
+      `Any shortage, discrepancy, loss, negligence, unauthorized handling, fraud, or misconduct resulting in ` +
+      `financial loss to the Company may lead to disciplinary action, recovery of losses as permissible ` +
+      `under applicable law, and legal proceedings where appropriate.`);
+
+    sHead(doc, '10', 'CODE OF CONDUCT');
+    body(doc,
+      `You shall maintain the highest standards of honesty, integrity, professionalism, discipline, and ` +
+      `ethical behaviour while representing the Company.\n\n` +
+      `Any act of misconduct, insubordination, theft, fraud, harassment, violence, misrepresentation, ` +
+      `conflict of interest, or violation of Company policies may result in disciplinary action, including ` +
+      `immediate termination.`);
+
+    sHead(doc, '11', 'INTELLECTUAL PROPERTY');
+    body(doc,
+      `Any reports, documents, databases, processes, designs, ideas, records, training materials, marketing ` +
+      `content, or work products created, developed, or contributed by you during your employment and ` +
+      `relating to the Company's business shall remain the sole and exclusive property of ${co.name}.`);
+
+    sHead(doc, '12', 'TRANSFERABILITY');
+    body(doc,
+      `The Company reserves the right to transfer, assign, or relocate you to any department, branch, ` +
+      `location, project, client site, or associated business entity based on operational and business ` +
+      `requirements.\n\n` +
+      `Such transfer shall not constitute a change in employment status.`);
+
+    sHead(doc, '13', 'NOTICE PERIOD & TERMINATION');
+    body(doc,
+      `Upon confirmation of employment, either party may terminate the employment relationship by providing ` +
+      `${spellNum(hr.noticeDays)} (${hr.noticeDays}) days' prior written notice or salary in lieu of such notice.\n\n` +
+      `The Company reserves the right to waive, shorten, or require the Employee to serve the notice period ` +
+      `in full or in part.\n\n` +
+      `If the Employee resigns, abandons employment, or leaves the services of the Company without serving ` +
+      `the required notice period, the Employee shall be liable to pay an amount equivalent to the gross ` +
+      `salary for the unserved portion of the notice period.\n\n` +
+      `The Company shall have the right to recover or adjust such amount against any salary, incentives, ` +
+      `bonus, reimbursements, leave encashment, or final settlement payable to the Employee.\n\n` +
+      `The Company reserves the right to terminate employment with immediate effect without notice or ` +
+      `compensation in cases involving misconduct, fraud, theft, dishonesty, breach of confidentiality, ` +
+      `criminal activity, wilful negligence, or serious violation of Company policies.`);
+
+    sHead(doc, '14', 'RECOVERY OF DUES');
+    body(doc,
+      `The Company shall have the right to recover any outstanding dues, advances, shortages, damages, ` +
+      `notice pay, losses attributable to negligence, or unreturned Company property from any amount ` +
+      `payable to the Employee, subject to applicable laws.`);
+
+    sHead(doc, '15', 'GOVERNING LAW');
+    body(doc,
+      `This Appointment Letter shall be governed by and construed in accordance with the laws of India.\n\n` +
+      `Any dispute arising out of or relating to this employment shall be subject to the exclusive ` +
+      `jurisdiction of the courts having jurisdiction over the location of the Company's registered office.`);
+
+    // ── Acceptance block ──────────────────────────────────────────────────────
+    // Pre-check space for the acceptance block (~210 pt)
+    if (doc.y + 210 > PH - BOT_PAD) doc.addPage();
 
     doc.moveDown(0.5);
-    body(doc, 'Please sign and return a duplicate copy of this letter as your acceptance.');
+    goldRule(doc, doc.y, 1.0);
+    doc.moveDown(0.8);
+
+    doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(11)
+       .text('ACCEPTANCE', { width: CW, align: 'center', characterSpacing: 1.2 });
+    doc.moveDown(0.6);
+
+    body(doc,
+      'Please sign and return a copy of this Appointment Letter as confirmation of your acceptance of the ' +
+      'above terms and conditions.');
+    body(doc,
+      "I have read, understood, and accepted the terms and conditions contained in this Appointment Letter " +
+      "and agree to comply with the Company's policies, procedures, rules, and regulations.");
     doc.moveDown(1.2);
 
     const half = (CW - 20) / 2;
@@ -669,7 +777,10 @@ export class DocumentsService {
     doc.y = r2y + 16;
     doc.moveDown(0.8);
     sigRow(doc, 'Name');
+    sigRow(doc, 'Designation');
     sigRow(doc, 'Date');
+    doc.moveDown(0.4);
+    sigRow(doc, 'Employee Name', name);
   }
 
   // ════════════════════════════════════════════════════════════════════════════
@@ -678,11 +789,14 @@ export class DocumentsService {
   private welcomeLetter(doc: any, user: UserDocument, co: CompanyInfo, hr: any): void {
     const br      = user.branch as any;
     const name    = user.name;
-    const first   = name.split(' ')[0];
     const role    = (user as any).job_title || (user.role === 'custom' ? 'Team Member' : titleCase(user.role));
     const branch  = br?.name || co.name;
     const joining = fmt(user.joining_date);
     const empId   = (user as any).employee_id || '';
+    const department = (user as any).department || '—';
+    const managerName = (user as any).reporting_manager_name
+      || ((user as any).reporting_manager_id?.name)
+      || 'Management';
 
     doc.fillColor(GRAY).font('Helvetica').fontSize(9.5)
        .text(`Date: ${fmtShort(new Date())}`, MX, doc.y, { width: CW, align: 'right' });
@@ -690,70 +804,82 @@ export class DocumentsService {
 
     doc.fillColor(GRAY).font('Helvetica').fontSize(9.5).text('To,', MX, doc.y, { width: CW });
     doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(11).text(name, MX, doc.y, { width: CW });
-    if (empId) doc.fillColor(LGRAY).font('Helvetica').fontSize(8.5)
-                  .text(`Employee ID: ${empId}`, MX, doc.y, { width: CW });
+    doc.fillColor(LGRAY).font('Helvetica').fontSize(8.5)
+       .text(`Employee ID: ${empId || '—'}`, MX, doc.y, { width: CW });
     doc.moveDown(0.6);
 
     doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(10)
-       .text('Subject: Welcome to the Team', MX, doc.y, { width: CW });
+       .text(`Subject: Welcome to the ${co.name} Family`, MX, doc.y, { width: CW });
     doc.moveDown(0.7);
 
     body(doc,
-      `Dear ${first},\n\nOn behalf of the entire team at ${co.name}, we are thrilled to welcome you aboard! ` +
-      `We are excited about the energy, perspective, and skills you bring to our organisation. ` +
-      `Your journey with us begins on ${joining}, and we couldn't be more pleased to have you with us.`);
-
-    body(doc,
-      `You have joined a team that holds integrity, craftsmanship, and a deep passion for jewellery at its ` +
-      `core. Over the years, we have built a culture of trust, collaboration, and excellence — values we ` +
-      `know you share. We are confident you will thrive and contribute greatly to our continued success.`);
+      `Dear ${name},\n\n` +
+      `It is with great pleasure that we welcome you to ${co.name}.\n\n` +
+      `We are delighted that you have chosen to be a part of our organization as ${role}. Your experience, ` +
+      `skills, and enthusiasm will undoubtedly contribute to our continued success, and we are excited to ` +
+      `have you join our growing team.\n\n` +
+      `At ${co.name}, we believe that our people are the foundation of our achievements. We strive to create ` +
+      `a professional, collaborative, and growth-oriented work environment where every employee is valued, ` +
+      `respected, and empowered to succeed.\n\n` +
+      `We are confident that your journey with us will be both rewarding and fulfilling, and we look forward ` +
+      `to supporting your professional growth while achieving new milestones together.`);
 
     lightRule(doc, doc.y); doc.moveDown(0.5);
 
-    sHead(doc, '1', 'YOUR DETAILS AT A GLANCE');
+    sHead(doc, '1', 'YOUR EMPLOYMENT DETAILS');
     drawTable(doc, [
-      ['Employee Name',   name],
-      ['Employee ID',     empId || '—'],
-      ['Designation',     role],
-      ['Branch',          branch],
-      ['Date of Joining', joining],
-      ['Report Time',     '9:00 AM sharp'],
-      ['Weekly Off',      'Last Monday of every month'],
+      ['Employee Name',      name],
+      ['Employee ID',        empId || '—'],
+      ['Designation',        role],
+      ['Department',         department],
+      ['Location',           branch],
+      ['Reporting Manager',  managerName],
+      ['Date of Joining',    joining],
+      ['Reporting Time',     '9:00 AM sharp'],
     ]);
 
-    sHead(doc, '2', 'WHAT TO BRING ON YOUR FIRST DAY');
+    sHead(doc, '2', 'YOUR FIRST DAY');
+    body(doc,
+      `To ensure a smooth onboarding experience, please report to the Human Resources Department at the ` +
+      `designated reporting time.\n\nDuring your induction, you will:`);
     bullets(doc, [
-      'A copy of this Welcome Letter',
-      'Government-issued Photo ID — Aadhaar Card and PAN Card (originals + photocopies)',
-      '2 recent passport-sized photographs',
-      'Original educational and experience certificates for verification',
-      'Bank account details and a cancelled cheque for payroll setup',
-      'Any other documents communicated by HR',
+      'Complete joining formalities and employee registration.',
+      'Meet your reporting manager and team members.',
+      'Receive an overview of the Company, its culture, and operations.',
+      'Be guided through workplace policies, systems, and procedures relevant to your role.',
+      'Receive access credentials and other resources required to perform your responsibilities.',
     ]);
 
-    sHead(doc, '3', 'QUICK REMINDERS');
-    bullets(doc, [
-      `Probation period: ${hr.probationMonths} months. Confirmation depends on performance and conduct.`,
-      `Leave: ${hr.casualLeaves} Casual Leave${hr.casualLeaves !== 1 ? 's' : ''} per year. Saturday & Sunday are working days; the last Monday of each month is your weekly off.`,
-      'Report to your Branch Manager on Day 1 and complete all joining formalities with HR.',
-      'Read and sign the Company\'s Code of Conduct, NDA, and HR policies on Day 1.',
-      'Don\'t hesitate to ask questions — our team is here to help you settle in!',
-    ]);
+    sHead(doc, '3', 'DOCUMENTS REQUIRED');
+    body(doc,
+      `Kindly ensure that all documents requested by the Company have been submitted as per the joining ` +
+      `requirements communicated to you.`);
+
+    sHead(doc, '4', 'A NOTE FROM US');
+    body(doc,
+      `As you begin this new chapter, we encourage you to embrace opportunities, share ideas, collaborate ` +
+      `openly, and contribute positively to our workplace culture.\n\n` +
+      `Your success is important to us, and we are committed to providing you with the support, resources, ` +
+      `and opportunities needed to help you grow and excel in your role.\n\n` +
+      `Please note that your employment shall continue to be governed by the terms outlined in your Offer ` +
+      `Letter, Appointment Letter, Company Policies, and other applicable guidelines communicated by the ` +
+      `Company from time to time.`);
 
     body(doc,
-      `Once again, welcome to ${co.name}. We look forward to seeing you grow and achieve great things with us.`);
+      `Once again, welcome to ${co.name}. We are excited to have you on board and look forward to a ` +
+      `successful and rewarding journey together.\n\nWe wish you every success in your new role.`);
 
     doc.moveDown(1.6);
     doc.fillColor(GRAY).font('Helvetica').fontSize(9.5)
-       .text('Warm regards,', MX, doc.y, { width: CW });
+       .text('Warm Regards,', MX, doc.y, { width: CW });
     doc.moveDown(0.4);
-    doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(12)
-       .text(co.name, MX, doc.y, { width: CW });
+    doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(11)
+       .text(`For ${co.name}`, MX, doc.y, { width: CW });
     doc.fillColor(GOLD).font('Helvetica').fontSize(9.5)
        .text('Human Resources Department', MX, doc.y, { width: CW });
-    if (co.phone) doc.fillColor(LGRAY).font('Helvetica').fontSize(9)
-                     .text(`Tel: ${co.phone}`, MX, doc.y, { width: CW });
-    if (co.email) doc.fillColor(LGRAY).font('Helvetica').fontSize(9)
-                     .text(`Email: ${co.email}`, MX, doc.y, { width: CW });
+    doc.fillColor(LGRAY).font('Helvetica').fontSize(9)
+       .text(`Contact: ${co.phone || '___________________'}`, MX, doc.y, { width: CW });
+    doc.fillColor(LGRAY).font('Helvetica').fontSize(9)
+       .text(`Email: ${co.email || '_____________________'}`, MX, doc.y, { width: CW });
   }
 }

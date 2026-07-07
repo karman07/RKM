@@ -33,6 +33,9 @@ import {
   SALE_RESERVED_EVENT,
 } from '../whatsapp/events/whatsapp.events.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
+import { SmsService } from '../sms/sms.service.js';
+import { EmailService } from '../email/email.service.js';
+import { WhatsAppService } from '../whatsapp/services/whatsapp.service.js';
 
 // Allowed status transitions
 const STATUS_TRANSITIONS: Record<InventoryStatus, InventoryStatus[]> = {
@@ -61,6 +64,9 @@ export class InventoryService {
     private readonly eventEmitter: EventEmitter2,
     private readonly configService: ConfigService,
     private readonly notificationsService: NotificationsService,
+    private readonly smsService: SmsService,
+    private readonly emailService: EmailService,
+    private readonly whatsappService: WhatsAppService,
   ) {
     this.razorpay = new Razorpay({
       key_id: this.configService.get<string>('RAZORPAY_ID'),
@@ -265,6 +271,8 @@ export class InventoryService {
       const itemDto = {
         ...dto,
         count: 1, // Each single item has count = 1
+        // A hallmark HUID is unique per physical piece — never duplicate it across a batch add.
+        hallmark: count === 1 ? dto.hallmark : undefined,
       };
       const saved = await this.addSingleItem(itemDto);
       results.push(saved);
@@ -1201,6 +1209,11 @@ export class InventoryService {
       if (dto.investment_sub_id) (item as any).investment_sub_id = dto.investment_sub_id;
       if (dto.making_charges_discount != null) (item as any).making_charges_discount = Number(dto.making_charges_discount) || 0;
 
+      // Customer advance redemption tracking
+      if (dto.advance_redeemed != null) (item as any).advance_redeemed = Number(dto.advance_redeemed) || 0;
+      if (dto.advance_id) (item as any).advance_id = dto.advance_id;
+      if (dto.advance_making_charges_discount != null) (item as any).advance_making_charges_discount = Number(dto.advance_making_charges_discount) || 0;
+
       // ─── Full Sale Traceability ─────────────────────────────────────────────
       // Record the branch where the sale happened
       const saleBranchId = dto.sold_at_branch_id || requestingUserBranchId || (item.branch_id?.toString());
@@ -1436,6 +1449,9 @@ export class InventoryService {
       investment_redeemed?: number;
       investment_sub_id?: string;
       making_charges_discount?: number;
+      advance_redeemed?: number;
+      advance_id?: string;
+      advance_making_charges_discount?: number;
       payment_splits?: Array<{ mode: string; amount: number; reference?: string }>;
     },
   ): Promise<InventoryItemDocument> {
@@ -1474,6 +1490,9 @@ export class InventoryService {
     if (overrides?.investment_redeemed != null) dto.investment_redeemed = Number(overrides.investment_redeemed);
     if (overrides?.investment_sub_id) dto.investment_sub_id = overrides.investment_sub_id;
     if (overrides?.making_charges_discount != null) dto.making_charges_discount = Number(overrides.making_charges_discount);
+    if (overrides?.advance_redeemed != null) dto.advance_redeemed = Number(overrides.advance_redeemed);
+    if (overrides?.advance_id) dto.advance_id = overrides.advance_id;
+    if (overrides?.advance_making_charges_discount != null) dto.advance_making_charges_discount = Number(overrides.advance_making_charges_discount);
     if (overrides?.payment_splits?.length) dto.payment_splits = overrides.payment_splits;
 
     // Set manager_discount on item before saving so it's captured
@@ -1638,6 +1657,18 @@ export class InventoryService {
     return item.save();
   }
 
+  /** Sets/updates the BIS Hallmark HUID on an inventory item — usable on items in any status. */
+  async updateHallmark(id: string, hallmark: string): Promise<InventoryItemDocument> {
+    this.validateObjectId(id);
+    const item = await this.inventoryModel.findByIdAndUpdate(
+      id,
+      { hallmark: hallmark?.trim() ?? '' },
+      { new: true },
+    );
+    if (!item) throw new NotFoundException(`Inventory item ${id} not found`);
+    return item;
+  }
+
   private generateBarcode(): string {
     const timestamp = Date.now();
     const random = Math.floor(Math.random() * 100000)
@@ -1793,16 +1824,21 @@ export class InventoryService {
         .find(
           { is_deleted: { $ne: true }, status: InventoryStatus.SOLD, sold_at: { $gte: since } },
           {
-            name: 1,
             barcode: 1,
+            unique_item_code: 1,
+            product_id: 1,
             selling_price: 1,
+            purchase_price: 1,
             payment_mode: 1,
             payment_splits: 1,
             sold_at: 1,
             sold_at_branch_id: 1,
             sold_by_user_id: 1,
+            sold_customer_name: 1,
+            sold_customer_phone: 1,
           },
         )
+        .populate({ path: 'product_id', select: 'name sku' })
         .populate({ path: 'sold_at_branch_id', select: 'name code' })
         .populate({ path: 'sold_by_user_id', select: 'name' })
         .sort({ sold_at: -1 })
@@ -1847,5 +1883,87 @@ export class InventoryService {
       recentTransactions,
       revenueByDay,
     };
+  }
+
+  // ── Post-sale "Thank You & Feedback" notification ─────────────────────────────
+
+  /** Sends a manager-chosen thank-you / feedback-request message for a completed sale. */
+  async notifyCustomerPostSale(
+    id: string,
+    channel: 'sms' | 'whatsapp' | 'email',
+  ): Promise<{ sent: boolean; channel: string; message?: string }> {
+    this.validateObjectId(id);
+    const item = await this.inventoryModel.findById(id).populate('product_id').exec();
+    if (!item) throw new NotFoundException(`Inventory item ${id} not found`);
+    if (item.status !== InventoryStatus.SOLD) {
+      throw new BadRequestException('The customer can only be notified once the item is sold');
+    }
+
+    const phone = item.sold_customer_phone;
+    const email = item.sold_customer_email;
+    const name = item.sold_customer_name || 'Customer';
+    const itemName = (item as any).product_id?.name || item.unique_item_code;
+    const cfg = await this.settingsService.get();
+    const companyName = cfg.company_name || 'RKM Jewellers';
+
+    const channelEnabled: Record<'sms' | 'whatsapp' | 'email', boolean> = {
+      sms: (cfg as any).sms_notifications_enabled !== false,
+      whatsapp: (cfg as any).whatsapp_notifications_enabled !== false,
+      email: (cfg as any).email_notifications_enabled !== false,
+    };
+    if (!channelEnabled[channel]) {
+      throw new BadRequestException(`${channel.toUpperCase()} notifications are disabled in Settings — ask an admin to enable this channel`);
+    }
+
+    if (channel === 'sms') {
+      if (!phone) throw new BadRequestException('No phone number on record for this sale');
+      const message = `Thank you for shopping with ${companyName}! We hope you love your ${itemName}. We'd love to hear your feedback — your experience means a lot to us.`;
+      await this.smsService.sendSms(phone, message, {
+        trigger: 'manual_thank_you',
+        saleReference: item.sale_reference,
+      });
+      return { sent: true, channel };
+    }
+
+    if (channel === 'whatsapp') {
+      if (!phone) throw new BadRequestException('No phone number on record for this sale');
+      const customer = await this.customersService.findByPhone(phone);
+      if (!customer) {
+        throw new BadRequestException('No customer record found for this phone number to send WhatsApp');
+      }
+      const result = await this.whatsappService.sendMessageToCustomer((customer as any)._id.toString(), {
+        templateName: 'sale_confirmation',
+        params: [name, item.sale_reference || item.unique_item_code, itemName, String(item.selling_price ?? '')],
+        triggerEvent: 'manual_thank_you',
+      });
+      if (!result.queued) throw new BadRequestException(result.message);
+      return { sent: true, channel, message: result.message };
+    }
+
+    if (channel === 'email') {
+      if (!email) throw new BadRequestException('No email on record for this sale');
+      const html = this.emailService.buildSaleConfirmationHtml({
+        customerName: name,
+        itemName,
+        itemCode: item.unique_item_code,
+        saleReference: item.sale_reference,
+        amount: item.selling_price,
+        paymentMode: item.payment_mode,
+        fromName: companyName,
+      });
+      const result = await this.emailService.sendMail({
+        to: email,
+        toName: name,
+        subject: `Thank You for Your Purchase — ${companyName}`,
+        html,
+        trigger: 'manual',
+        saleReference: item.sale_reference,
+        itemId: id,
+      });
+      if (!result.success) throw new BadRequestException(result.error || 'Failed to send email');
+      return { sent: true, channel };
+    }
+
+    throw new BadRequestException('Invalid channel — must be sms, whatsapp, or email');
   }
 }

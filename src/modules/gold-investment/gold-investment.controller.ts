@@ -17,6 +17,7 @@ import {
   UpdateSubscriptionDto,
   RedeemBalanceDto,
   MarkCashPaymentDto,
+  AddInterestDto,
 } from './dto/gold-investment.dto';
 
 @Controller('gold-investment')
@@ -159,6 +160,14 @@ export class GoldInvestmentController {
   @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER)
   getCustomerBalance(@Query('phone') phone: string) {
     return this.svc.getCustomerBalance(phone);
+  }
+
+  /** Manually credit bonus interest onto a subscription's balance (admin only) */
+  @Post('subscriptions/:id/add-interest')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  addInterest(@Param('id') id: string, @Body() dto: AddInterestDto) {
+    return this.svc.addInterest(id, dto);
   }
 
   // ── DASHBOARD STATS ──────────────────────────────────────────────

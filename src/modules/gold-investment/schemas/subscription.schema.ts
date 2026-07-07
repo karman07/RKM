@@ -148,6 +148,29 @@ export class Subscription {
   /** Auto-stop interest after cancellation */
   @Prop({ default: false })
   interestStopped: boolean;
+
+  /** Extra interest credited manually by an admin, on top of the plan's auto-accrued interest */
+  @Prop({ default: 0 })
+  bonusInterest: number;
+
+  /** Audit trail of manual interest credits applied by an admin */
+  @Prop({
+    type: [
+      {
+        amount: { type: Number, required: true },
+        date: { type: Date, required: true },
+        note: { type: String },
+        staffId: { type: String },
+      },
+    ],
+    default: [],
+  })
+  interestAdjustments: {
+    amount: number;
+    date: Date;
+    note?: string;
+    staffId?: string;
+  }[];
 }
 
 export const SubscriptionSchema = SchemaFactory.createForClass(Subscription);

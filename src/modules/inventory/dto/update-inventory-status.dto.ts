@@ -136,4 +136,13 @@ export class UpdateInventoryStatusDto {
 
   @IsOptional()
   making_charges_discount?: number;
+
+  @IsOptional()
+  advance_redeemed?: number;
+
+  @IsOptional()
+  advance_id?: string;
+
+  @IsOptional()
+  advance_making_charges_discount?: number;
 }

@@ -92,8 +92,9 @@ export class CustomersService {
     // Check if customer exists strictly based on phone to prevent email collisions
     if (!decodedToken.phone_number) throw new UnauthorizedException('A verified mobile number is strictly required for authentication');
 
-    const customer = await this.customerModel.findOne({ phone: decodedToken.phone_number });
-    
+    const customer = await this.customerModel.findOne({ phone: decodedToken.phone_number })
+      .populate('relationship_manager', 'name email mobile_number role');
+
     if (!customer) {
       // Frontend needs to register
       return {
@@ -164,7 +165,7 @@ export class CustomersService {
   }
 
   async findById(id: string) {
-    return this.customerModel.findById(id).exec();
+    return this.customerModel.findById(id).populate('relationship_manager', 'name email mobile_number role').exec();
   }
 
   async findByPhone(phone: string) {
@@ -174,7 +175,8 @@ export class CustomersService {
   async findAll(page: number = 1, limit: number = 20) {
     const skip = (page - 1) * limit;
     const [data, total] = await Promise.all([
-      this.customerModel.find().sort({ createdAt: -1 }).skip(skip).limit(limit).exec(),
+      this.customerModel.find().sort({ createdAt: -1 }).skip(skip).limit(limit)
+        .populate('relationship_manager', 'name email mobile_number role').exec(),
       this.customerModel.countDocuments().exec()
     ]);
 
@@ -312,7 +314,7 @@ export class CustomersService {
     ifscCode?: string;
     bankName?: string;
     customFields?: { key: string; value: string }[];
-  }) {
+  }, createdByUserId?: string) {
     const existing = await this.customerModel.findOne({ phone: data.phone });
     if (existing) throw new ConflictException('A customer with this phone number already exists');
     const customer = new this.customerModel({
@@ -320,8 +322,10 @@ export class CustomersService {
       isPhoneVerified: true,
       isEmailVerified: !!data.email,
       isActive: true,
+      relationship_manager: createdByUserId && Types.ObjectId.isValid(createdByUserId) ? createdByUserId : null,
     });
-    return customer.save();
+    await customer.save();
+    return customer.populate('relationship_manager', 'name email mobile_number role');
   }
 
   async ensureCustomerExists(details: {

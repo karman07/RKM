@@ -44,6 +44,10 @@ export class InventoryItem {
   @Prop({ type: String, enum: ItemLocation, default: ItemLocation.STORE })
   location: ItemLocation;
 
+  /** BIS Hallmark Unique Identification Number (HUID) — unique per physical piece, set by admin/manager */
+  @Prop({ trim: true, default: '' })
+  hallmark: string;
+
   @Prop({ type: String, enum: InventoryStatus, default: InventoryStatus.AVAILABLE })
   status: InventoryStatus;
 
@@ -275,6 +279,25 @@ export class InventoryItem {
   /** The subscription ID from which investment was redeemed */
   @Prop({ type: String, default: null })
   investment_sub_id: string;
+
+  /** Amount of customer advance balance applied to this sale */
+  @Prop({ type: Number, default: 0 })
+  advance_redeemed: number;
+
+  /** The CustomerAdvance record from which the advance was redeemed */
+  @Prop({ type: String, default: null })
+  advance_id: string;
+
+  /** Amount deducted from making charges due to advance redemption waiver */
+  @Prop({ type: Number, default: 0 })
+  advance_making_charges_discount: number;
+
+  // ─── Certificate of Authenticity ─────────────────────────────────────────────
+  @Prop({ trim: true, default: '' })
+  certificate_url: string;
+
+  @Prop({ type: Date, default: null })
+  certificate_generated_at: Date | null;
 }
 
 export const InventoryItemSchema = SchemaFactory.createForClass(InventoryItem);
