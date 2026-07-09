@@ -33,6 +33,7 @@ export default function ProfilePage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyTab, setHistoryTab] = useState<'all' | 'store' | 'online'>('all');
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
+  const [customFieldDefs, setCustomFieldDefs] = useState<{ _id: string; key: string; label: string; type: string }[]>([]);
 
   const [form, setForm] = useState({
     name: '',
@@ -76,6 +77,7 @@ export default function ProfilePage() {
     fetchGoldSubscriptions(authState.token);
     fetchPurchaseHistory(authState.token);
     fetchProfile(authState.token);
+    fetchCustomFieldDefs(authState.token);
     // Only re-run when the token itself changes (login/logout) — fetchProfile
     // dispatches setAuth, which would otherwise re-trigger this on every fetch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -92,6 +94,17 @@ export default function ProfilePage() {
       }
     } catch {
       // Ignore — fall back to the cached profile already in Redux
+    }
+  };
+
+  const fetchCustomFieldDefs = async (token: string) => {
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/customers/auth/custom-fields`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) setCustomFieldDefs(await res.json());
+    } catch {
+      // Ignore — additional-info section just won't render
     }
   };
 
@@ -379,6 +392,27 @@ export default function ProfilePage() {
                       <span className="text-xs font-semibold break-all">{authState.customer.relationship_manager.email}</span>
                     </a>
                   )}
+                </div>
+              </div>
+            )}
+
+            {(authState.customer.customFields?.length ?? 0) > 0 && (
+              <div className="bg-white rounded-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.04)] border border-slate-50 p-8 mt-6">
+                <div className="flex items-center gap-2 mb-5">
+                  <ShieldCheck size={16} className="text-[#7A1238]" />
+                  <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-[0.2em]">Additional Information</h3>
+                </div>
+                <div className="space-y-4">
+                  {authState.customer.customFields!.map((f, i) => {
+                    const def = customFieldDefs.find(d => d.key === f.key);
+                    const label = def?.label ?? f.key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                    return (
+                      <div key={i} className="flex items-center justify-between gap-4">
+                        <span className="text-xs font-semibold text-slate-400">{label}</span>
+                        <span className="text-sm font-bold text-slate-900 text-right">{f.value}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

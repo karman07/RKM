@@ -13,6 +13,7 @@ interface Customer {
   profileImage?: string;
   isEmailVerified?: boolean;
   relationship_manager?: { _id: string; name: string; email?: string; mobile_number?: string; role?: string } | string | null;
+  customFields?: { key: string; value: string }[];
 }
 
 interface AuthState {
