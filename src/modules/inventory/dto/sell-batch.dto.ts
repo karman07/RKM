@@ -1,23 +1,31 @@
-import { IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength, IsNumber, Min, IsBoolean, IsMongoId } from 'class-validator';
-import { InventoryStatus } from '../schemas/inventory-item.schema';
+import { Type } from 'class-transformer';
+import {
+  IsArray, ArrayMinSize, ValidateNested, IsMongoId, IsOptional, IsString,
+  MaxLength, IsNumber, Min, IsBoolean,
+} from 'class-validator';
 
-export class UpdateInventoryStatusDto {
-  @IsEnum(InventoryStatus)
-  @IsNotEmpty()
-  status: InventoryStatus;
+export class SellBatchItemDto {
+  @IsMongoId()
+  id: string;
 
   @IsOptional()
   @IsNumber()
   @Min(0)
   selling_price?: number;
+}
 
-  /** Shared invoice/sale reference — lets multiple items in one bill share the same reference */
+/** One checkout for multiple inventory items — shares a sale_reference and payment split across all of them. */
+export class SellBatchDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => SellBatchItemDto)
+  items: SellBatchItemDto[];
+
   @IsOptional()
   @IsString()
   sale_reference?: string;
 
-  // ─── Traceability: who sold it and at which branch ──────────────────────────
-  /** The user (cashier/manager/admin) who is recording this sale */
   @IsOptional()
   @IsMongoId()
   sold_by_user_id?: string;
@@ -26,12 +34,10 @@ export class UpdateInventoryStatusDto {
   @IsMongoId()
   sold_by_manager_id?: string;
 
-  /** The branch at which this item is being sold */
   @IsOptional()
   @IsMongoId({ message: 'A valid Branch must be selected to complete the sale' })
   sold_at_branch_id?: string;
 
-  // ─── Customer details (required on SOLD) ────────────────────────────────────
   @IsOptional()
   @IsString()
   @MaxLength(120)
@@ -101,38 +107,12 @@ export class UpdateInventoryStatusDto {
   @Min(0)
   emi_down_payment?: number;
 
-  // ─── Damage tracking ────────────────────────────────────────────────────────
-  /** Required when status is set to 'damaged' */
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  damage_reason?: string;
-
-  // ─── Return / Refund Valuation ───────────────────────────────────────────────
-  /** Manager's proposed refund value for the returned item */
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  return_proposed_value?: number;
-
-  /** Notes from the manager about the return */
-  @IsOptional()
-  @IsString()
-  @MaxLength(1000)
-  return_manager_notes?: string;
-
-  @IsOptional()
-  @IsString()
-  razorpay_order_id?: string;
-
-  @IsOptional()
-  @IsString()
-  razorpay_payment_id?: string;
-
-  /** Split payment entries — overrides payment_mode when provided */
+  /** Shared payment split across the whole bill (all items) */
   @IsOptional()
   payment_splits?: Array<{ mode: string; amount: number; reference?: string }>;
 
+  // Bill-level investment/advance redemption bookkeeping — applied once, attributed
+  // to the first item in the batch so the balance isn't decremented more than once.
   @IsOptional()
   investment_redeemed?: number;
 

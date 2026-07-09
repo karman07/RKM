@@ -31,6 +31,7 @@ import { EmailModule } from './modules/email/email.module';
 import { HolidaysModule } from './modules/holidays/holidays.module';
 import { LocationViolationsModule } from './modules/location-violations/location-violations.module';
 import { CustomRolesModule } from './modules/custom-roles/custom-roles.module';
+import { CustomFieldsModule } from './modules/custom-fields/custom-fields.module';
 import { OldGoldModule } from './modules/old-gold/old-gold.module';
 import { PayrollModule } from './modules/payroll/payroll.module';
 import { IncentiveModule } from './modules/incentives/incentive.module';
@@ -77,6 +78,7 @@ import { SmsModule } from './modules/sms/sms.module';
     HolidaysModule,
     LocationViolationsModule,
     CustomRolesModule,
+    CustomFieldsModule,
     OldGoldModule,
     PayrollModule,
     IncentiveModule,

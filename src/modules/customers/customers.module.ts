@@ -12,6 +12,7 @@ import { PassportModule } from '@nestjs/passport';
 import { CustomerJwtStrategy } from './customer-jwt.strategy';
 import { InventoryItem, InventoryItemSchema } from '../inventory/schemas/inventory-item.schema';
 import { OnlineOrder, OnlineOrderSchema } from '../online-orders/schemas/online-order.schema';
+import { CustomFieldsModule } from '../custom-fields/custom-fields.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { OnlineOrder, OnlineOrderSchema } from '../online-orders/schemas/online-
       inject: [ConfigService],
     }),
     PassportModule.register({ defaultStrategy: 'customer-jwt' }),
+    CustomFieldsModule,
   ],
   controllers: [CustomersController, CustomersAdminController],
   providers: [CustomersService, CustomerAdvanceService, CustomerJwtStrategy],

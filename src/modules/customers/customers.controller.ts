@@ -4,10 +4,15 @@ import { RegisterCustomerDto, LoginCustomerDto } from './dto/register-customer.d
 import { CustomerJwtAuthGuard } from './customer-jwt-auth.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { multerConfig } from '../uploads/multer.config';
+import { CustomFieldsService } from '../custom-fields/custom-fields.service';
+import { CustomFieldEntity } from '../custom-fields/schemas/custom-field.schema';
 
 @Controller('customers/auth')
 export class CustomersController {
-  constructor(private readonly customersService: CustomersService) {}
+  constructor(
+    private readonly customersService: CustomersService,
+    private readonly customFieldsService: CustomFieldsService,
+  ) {}
 
   @Post('login')
   async login(@Body() loginDto: LoginCustomerDto) {
@@ -23,6 +28,13 @@ export class CustomersController {
   @Get('profile')
   async getProfile(@Request() req: any) {
     return req.user;
+  }
+
+  /** Admin-defined custom field definitions (entity=customer) — labels for the customer's own customFields values. */
+  @UseGuards(CustomerJwtAuthGuard)
+  @Get('custom-fields')
+  async getCustomFieldDefinitions() {
+    return this.customFieldsService.findAll(CustomFieldEntity.CUSTOMER);
   }
 
   @UseGuards(CustomerJwtAuthGuard)

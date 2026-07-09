@@ -17,6 +17,7 @@ import { InventoryService } from './inventory.service';
 import { CertificateService } from './certificate.service';
 import { CreateInventoryItemDto } from './dto/create-inventory-item.dto';
 import { UpdateInventoryStatusDto } from './dto/update-inventory-status.dto';
+import { SellBatchDto } from './dto/sell-batch.dto';
 import { DeleteInventoryItemDto } from './dto/delete-inventory-item.dto';
 import { BulkDeleteInventoryDto } from './dto/bulk-delete-inventory.dto';
 import { QueryInventoryDto } from './dto/query-inventory.dto';
@@ -225,6 +226,20 @@ export class InventoryController {
   }
 
   /**
+   * POST /inventory/sell-batch
+   * Sells several inventory items as one bill (shared sale_reference + payment split).
+   * Direct sale — admin/manager only; cashiers must go through sale-request-batch instead.
+   */
+  @Post('sell-batch')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  sellBatch(@Body() dto: SellBatchDto, @Request() req: any) {
+    const userId = req.user?.userId || req.user?.sub || req.user?._id || req.user?.id;
+    const userBranchId = req.user?.branch?._id || req.user?.branch || undefined;
+    const userRole = req.user?.role;
+    return this.inventoryService.sellBatch(dto, userId?.toString(), userBranchId?.toString(), userRole);
+  }
+
+  /**
    * POST /inventory/:id/notify-customer
    * Manager (or admin) chooses how to send a post-sale "thank you & feedback" message.
    */
@@ -325,6 +340,62 @@ export class InventoryController {
   ) {
     const userId = req.user?.userId || req.user?.sub || req.user?._id || req.user?.id;
     return this.inventoryService.rejectSaleRequest(id, userId?.toString(), body.reason ?? '');
+  }
+
+  /**
+   * POST /inventory/sale-request-batch
+   * Cashier submits a multi-item cart as one batch sale request for admin/manager approval.
+   */
+  @Post('sale-request-batch')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER)
+  @HttpCode(HttpStatus.CREATED)
+  submitSaleRequestBatch(
+    @Body() body: { items: Array<{ id: string; selling_price?: number }>; requestData: Record<string, any> },
+    @Request() req: any,
+  ) {
+    const userId = req.user?.userId || req.user?.sub || req.user?._id || req.user?.id;
+    const userName = req.user?.name || req.user?.email || 'Cashier';
+    return this.inventoryService.submitSaleRequestBatch(body.items, body.requestData ?? {}, userId?.toString(), userName);
+  }
+
+  /**
+   * PATCH /inventory/sale-request-batch/:batchId/approve
+   * Admin or Manager approves every item in a cashier's multi-item batch request at once.
+   */
+  @Patch('sale-request-batch/:batchId/approve')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  approveSaleRequestBatch(
+    @Param('batchId') batchId: string,
+    @Body() body: {
+      item_prices?: Array<{ id: string; selling_price: number }>;
+      manager_discount?: number;
+      investment_redeemed?: number;
+      investment_sub_id?: string;
+      making_charges_discount?: number;
+      advance_redeemed?: number;
+      advance_id?: string;
+      advance_making_charges_discount?: number;
+      payment_splits?: Array<{ mode: string; amount: number; reference?: string }>;
+    },
+    @Request() req: any,
+  ) {
+    const userId = req.user?.userId || req.user?.sub || req.user?._id || req.user?.id;
+    return this.inventoryService.approveSaleRequestBatch(batchId, userId?.toString(), req.user?.role, body ?? {});
+  }
+
+  /**
+   * PATCH /inventory/sale-request-batch/:batchId/reject
+   * Admin or Manager rejects every item in a cashier's multi-item batch request at once.
+   */
+  @Patch('sale-request-batch/:batchId/reject')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  rejectSaleRequestBatch(
+    @Param('batchId') batchId: string,
+    @Body() body: { reason?: string },
+    @Request() req: any,
+  ) {
+    const userId = req.user?.userId || req.user?.sub || req.user?._id || req.user?.id;
+    return this.inventoryService.rejectSaleRequestBatch(batchId, userId?.toString(), body.reason ?? '');
   }
 
   /**

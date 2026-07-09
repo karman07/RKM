@@ -119,6 +119,10 @@ export class User {
 
   @Prop({ type: String, required: false })
   blank_check_url?: string;
+
+  /** Values for admin-defined employee custom fields, keyed by EmployeeCustomField.key */
+  @Prop({ type: mongoose.Schema.Types.Mixed, default: {} })
+  custom_field_values?: Record<string, any>;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

@@ -23,6 +23,7 @@ import { PricingService } from '../products/pricing.service.js';
 import { BarcodeService } from '../uploads/barcode.service.js';
 import { CreateInventoryItemDto } from './dto/create-inventory-item.dto.js';
 import { UpdateInventoryStatusDto } from './dto/update-inventory-status.dto.js';
+import { SellBatchDto } from './dto/sell-batch.dto.js';
 import { QueryInventoryDto } from './dto/query-inventory.dto.js';
 import { UpdateInventoryDiscountDto } from './dto/update-inventory-discount.dto.js';
 import { BranchesService } from '../branches/branches.service.js';
@@ -1191,15 +1192,24 @@ export class InventoryService {
       if (dto.selling_price != null) {
         item.selling_price = dto.selling_price;
       }
-      // Split payments — normalise and store; derive primary payment_mode from first split
+      // Split payments — normalise and store.
       if (Array.isArray(dto.payment_splits) && dto.payment_splits.length > 0) {
         (item as any).payment_splits = dto.payment_splits.map(s => ({
           mode: s.mode?.trim() ?? 'cash',
           amount: Number(s.amount) || 0,
           reference: s.reference?.trim() ?? '',
         }));
-        // Keep payment_mode consistent with first split for backwards compat
-        item.payment_mode = dto.payment_splits[0]?.mode?.trim() ?? item.payment_mode;
+        // item.payment_mode was already set above from dto.payment_mode (required & validated) —
+        // that's the customer's actual chosen method for the bill. Don't overwrite it with a
+        // split's mode: investment/advance redemption splits are always listed first when
+        // present, so blindly taking payment_splits[0] here used to stamp the bill's payment
+        // mode as "investment_balance"/"advance_balance" instead of the real cash/card/upi
+        // method. Only fall back to a split when payment_mode is somehow still unset, and skip
+        // the internal balance-redemption modes since they aren't real payment methods.
+        if (!item.payment_mode) {
+          const realSplit = dto.payment_splits.find(s => s.mode && !['investment_balance', 'advance_balance'].includes(s.mode));
+          item.payment_mode = (realSplit ?? dto.payment_splits[0])?.mode?.trim() ?? item.payment_mode;
+        }
       } else {
         (item as any).payment_splits = [{ mode: item.payment_mode, amount: item.selling_price, reference: '' }];
       }
@@ -1246,9 +1256,9 @@ export class InventoryService {
         item.sold_by_user_id = new Types.ObjectId(sellerUserId) as any;
       }
 
-      // Auto-generate a unique sale reference
+      // Auto-generate a unique sale reference, unless a shared one was supplied (multi-item bill)
       if (!item.sale_reference) {
-        item.sale_reference = this.generateSaleReference();
+        item.sale_reference = dto.sale_reference?.trim() || this.generateSaleReference();
       }
     }
 
@@ -1348,6 +1358,65 @@ export class InventoryService {
     }
 
     return savedItem;
+  }
+
+  // ─── Batch Sell (multi-item bill, direct — admin/manager only) ─────────────
+
+  /**
+   * Sells several inventory items as one bill: they all share the same sale_reference
+   * and payment_splits. Investment/advance redemption bookkeeping (a bill-level side
+   * effect orchestrated by the caller) is attributed only to the first item so the
+   * underlying balance isn't decremented once per item.
+   */
+  async sellBatch(
+    dto: SellBatchDto,
+    requestingUserId?: string,
+    requestingUserBranchId?: string,
+    requestingUserRole?: string,
+  ): Promise<InventoryItemDocument[]> {
+    if (!dto.items?.length) throw new BadRequestException('At least one item is required');
+
+    const sharedReference = dto.sale_reference?.trim() || this.generateSaleReference();
+    const results: InventoryItemDocument[] = [];
+
+    for (let i = 0; i < dto.items.length; i++) {
+      const it = dto.items[i];
+      const itemDto: UpdateInventoryStatusDto = {
+        status: InventoryStatus.SOLD,
+        selling_price: it.selling_price,
+        sale_reference: sharedReference,
+        sold_by_user_id: dto.sold_by_user_id,
+        sold_by_manager_id: dto.sold_by_manager_id,
+        sold_at_branch_id: dto.sold_at_branch_id,
+        sold_customer_name: dto.sold_customer_name,
+        sold_customer_phone: dto.sold_customer_phone,
+        sold_customer_email: dto.sold_customer_email,
+        shipping_address: dto.shipping_address,
+        shipping_city: dto.shipping_city,
+        shipping_state: dto.shipping_state,
+        shipping_pincode: dto.shipping_pincode,
+        shipping_country: dto.shipping_country,
+        sale_channel: dto.sale_channel,
+        payment_mode: dto.payment_mode,
+        is_emi: dto.is_emi,
+        emi_tenure_months: dto.emi_tenure_months,
+        emi_provider: dto.emi_provider,
+        emi_down_payment: dto.emi_down_payment,
+        payment_splits: dto.payment_splits,
+      };
+      if (i === 0) {
+        itemDto.investment_redeemed = dto.investment_redeemed;
+        itemDto.investment_sub_id = dto.investment_sub_id;
+        itemDto.making_charges_discount = dto.making_charges_discount;
+        itemDto.advance_redeemed = dto.advance_redeemed;
+        itemDto.advance_id = dto.advance_id;
+        itemDto.advance_making_charges_discount = dto.advance_making_charges_discount;
+      }
+      const updated = await this.updateStatus(it.id, itemDto, requestingUserId, requestingUserBranchId, requestingUserRole);
+      results.push(updated);
+    }
+
+    return results;
   }
 
   // ─── Propose Return Valuation (Manager) ──────────────────────────────────────────────
@@ -1483,6 +1552,8 @@ export class InventoryService {
       sold_at_branch_id: saleData.sold_at_branch_id,
       sold_by_user_id: saleData.sold_by_user_id,
       payment_splits: saleData.payment_splits,
+      // Shared across a batch request so every item in the same cashier bill approves onto one reference
+      sale_reference: saleData.sale_reference,
     };
 
     // Apply manager overrides on top of cashier-submitted data
@@ -1572,6 +1643,107 @@ export class InventoryService {
       data: items,
       meta: { total, page: Number(page), limit: Number(limit), total_pages: Math.ceil(total / limit) },
     };
+  }
+
+  // ─── Batch Sale Request (cashier's multi-item cart → one approval unit) ────
+
+  /**
+   * Cashier submits several items as one cart. Every item gets its own pending
+   * sale_request, tagged with a shared batch_id and sale_reference inside
+   * sale_request_data so the approver's UI can group and act on them as one bill.
+   */
+  async submitSaleRequestBatch(
+    items: Array<{ id: string; selling_price?: number }>,
+    sharedRequestData: Record<string, any>,
+    requestingUserId: string,
+    requestingUserName: string,
+  ): Promise<InventoryItemDocument[]> {
+    if (!items?.length) throw new BadRequestException('At least one item is required');
+
+    const batchId = new Types.ObjectId().toString();
+    const sharedReference = sharedRequestData.sale_reference?.trim?.() || this.generateSaleReference();
+
+    const results: InventoryItemDocument[] = [];
+    for (const it of items) {
+      const requestData = {
+        ...sharedRequestData,
+        selling_price: it.selling_price,
+        batch_id: batchId,
+        batch_size: items.length,
+        sale_reference: sharedReference,
+      };
+      results.push(await this.submitSaleRequest(it.id, requestData, requestingUserId, requestingUserName));
+    }
+    return results;
+  }
+
+  /**
+   * Approves every item in a cashier's batch request as one action. `item_prices` carries
+   * each item's manager-adjusted final price (mirrors sellBatch's per-item pricing); discount
+   * applies to every item, while investment/advance redemption bookkeeping is attributed only
+   * to the first item so the underlying balance isn't decremented once per item — same rule
+   * as sellBatch uses for a direct multi-item sale.
+   */
+  async approveSaleRequestBatch(
+    batchId: string,
+    reviewerId: string,
+    reviewerRole: string,
+    overrides?: {
+      item_prices?: Array<{ id: string; selling_price: number }>;
+      manager_discount?: number;
+      investment_redeemed?: number;
+      investment_sub_id?: string;
+      making_charges_discount?: number;
+      advance_redeemed?: number;
+      advance_id?: string;
+      advance_making_charges_discount?: number;
+      payment_splits?: Array<{ mode: string; amount: number; reference?: string }>;
+    },
+  ): Promise<InventoryItemDocument[]> {
+    const items = await this.inventoryModel.find({
+      'sale_request_data.batch_id': batchId,
+      sale_request_status: 'pending',
+    });
+    if (!items.length) throw new NotFoundException('No pending requests found for this batch');
+
+    const results: InventoryItemDocument[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const priceOverride = overrides?.item_prices?.find(p => p.id === item._id.toString());
+      const perItemOverrides: Parameters<typeof this.approveSaleRequest>[3] = {
+        payment_splits: overrides?.payment_splits,
+      };
+      if (priceOverride) perItemOverrides.selling_price = priceOverride.selling_price;
+      if (overrides?.manager_discount != null) perItemOverrides.manager_discount = overrides.manager_discount;
+      if (i === 0) {
+        if (overrides?.investment_redeemed != null) perItemOverrides.investment_redeemed = overrides.investment_redeemed;
+        if (overrides?.investment_sub_id) perItemOverrides.investment_sub_id = overrides.investment_sub_id;
+        if (overrides?.making_charges_discount != null) perItemOverrides.making_charges_discount = overrides.making_charges_discount;
+        if (overrides?.advance_redeemed != null) perItemOverrides.advance_redeemed = overrides.advance_redeemed;
+        if (overrides?.advance_id) perItemOverrides.advance_id = overrides.advance_id;
+        if (overrides?.advance_making_charges_discount != null) perItemOverrides.advance_making_charges_discount = overrides.advance_making_charges_discount;
+      }
+      results.push(await this.approveSaleRequest(item._id.toString(), reviewerId, reviewerRole, perItemOverrides));
+    }
+    return results;
+  }
+
+  async rejectSaleRequestBatch(
+    batchId: string,
+    reviewerId: string,
+    rejectionReason: string,
+  ): Promise<InventoryItemDocument[]> {
+    const items = await this.inventoryModel.find({
+      'sale_request_data.batch_id': batchId,
+      sale_request_status: 'pending',
+    });
+    if (!items.length) throw new NotFoundException('No pending requests found for this batch');
+
+    const results: InventoryItemDocument[] = [];
+    for (const item of items) {
+      results.push(await this.rejectSaleRequest(item._id.toString(), reviewerId, rejectionReason));
+    }
+    return results;
   }
 
   // ─── Get Returned Items ─────────────────────────────────────────────────────

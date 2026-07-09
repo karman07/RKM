@@ -11,10 +11,15 @@ import { v4 as uuidv4 } from 'uuid';
 import { User, UserDocument, UserRole } from './schemas/user.schema';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { CustomFieldsService } from '../modules/custom-fields/custom-fields.service';
+import { CustomFieldEntity } from '../modules/custom-fields/schemas/custom-field.schema';
 
 @Injectable()
 export class UsersService implements OnModuleInit {
-  constructor(@InjectModel(User.name) private userModel: Model<UserDocument>) {}
+  constructor(
+    @InjectModel(User.name) private userModel: Model<UserDocument>,
+    private readonly customFieldsService: CustomFieldsService,
+  ) {}
 
   async onModuleInit() {
     await this.backfillEmployeeIds();
@@ -151,6 +156,30 @@ export class UsersService implements OnModuleInit {
       .exec();
     if (!user) throw new NotFoundException(`User ${id} not found`);
     return user;
+  }
+
+  /** Self-service update of admin-defined custom field values (any authenticated role) */
+  async updateCustomFieldValues(id: string, values: Record<string, any>): Promise<UserDocument> {
+    const defs = await this.customFieldsService.findAll(CustomFieldEntity.EMPLOYEE);
+    const missingRequired = defs.filter(d => d.required && !String(values?.[d.key] ?? '').trim());
+    if (missingRequired.length) {
+      throw new ConflictException(`Missing required field(s): ${missingRequired.map(d => d.label).join(', ')}`);
+    }
+
+    const allowedKeys = new Set(defs.map(d => d.key));
+    const user = await this.userModel.findById(id).exec();
+    if (!user) throw new NotFoundException(`User ${id} not found`);
+
+    const merged = { ...(user.custom_field_values || {}) };
+    for (const [key, value] of Object.entries(values || {})) {
+      if (allowedKeys.has(key)) merged[key] = value;
+    }
+
+    const updated = await this.userModel
+      .findByIdAndUpdate(id, { custom_field_values: merged }, { new: true })
+      .select('-password')
+      .exec();
+    return updated!;
   }
 
   async generateEmployeeIdForUser(id: string): Promise<UserDocument> {

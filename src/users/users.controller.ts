@@ -95,6 +95,12 @@ export class UsersController {
     return this.usersService.findById(id);
   }
 
+  // ─── Any authenticated staff member: fill in their own admin-defined custom field values ───
+  @Patch('me/custom-fields')
+  updateOwnCustomFields(@Body() body: { values: Record<string, any> }, @Request() req) {
+    return this.usersService.updateCustomFieldValues(req.user.userId, body.values);
+  }
+
   // ─── Admin: Update any user; Manager: Update cashiers + workers ────────────
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
