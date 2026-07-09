@@ -40,6 +40,16 @@ function inWords(n: number): string {
   return result.trim() + ' Only';
 }
 
+// investment_balance/advance_balance are internal balance-redemption bookkeeping modes, not
+// real payment methods a customer paid with — give them readable labels everywhere a mode
+// name is shown, instead of the raw snake_case value.
+function friendlyPaymentMode(mode?: string | null): string {
+  if (!mode) return 'CASH';
+  if (mode === 'investment_balance') return 'INVESTMENT PLAN';
+  if (mode === 'advance_balance') return 'ADVANCE PAYMENT';
+  return mode.toUpperCase().replace(/_/g, ' ');
+}
+
 // ── Refund Modal ─────────────────────────────────────────────────────────────
 function RefundModal({ items, onClose, onSuccess }: { items: InventoryItem[]; onClose: () => void; onSuccess: () => void }) {
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -405,8 +415,23 @@ ${billEl.outerHTML}
   // Advance redemption totals across all items
   const totalAdvanceRedeemed = items.reduce((s, it) => s + ((it as any).advance_redeemed ?? 0), 0);
   const totalAdvanceMakingDiscount = items.reduce((s, it) => s + ((it as any).advance_making_charges_discount ?? 0), 0);
-  // What the customer actually paid/owes, from the authoritative per-item payable figures.
-  const totalPayable = itemRows.reduce((a, r) => a + r.payable, 0);
+  // What the customer actually paid/owes. payment_splits is a bill-level concept — every item
+  // in a multi-item bill carries an identical copy of the same array — so read it once here
+  // rather than summing itemRows.payable across items, which would multiply the total by the
+  // item count. Only fall back to each item's own computed payable when no splits exist at all
+  // (older records sold before payment_splits was recorded).
+  const sharedPaymentSplits: { mode: string; amount: number; reference?: string }[] = (customer as any)?.payment_splits ?? [];
+  const totalPayable = sharedPaymentSplits.length > 0
+    ? sharedPaymentSplits.reduce((s, sp) => s + (sp.amount || 0), 0)
+    : itemRows.reduce((a, r) => a + r.payable, 0);
+  // Header "Mode" summary — read from payment_splits (the authoritative record) rather than
+  // item.payment_mode, which historically could get stamped with an internal redemption mode
+  // name (see backend fix) on older records. Joins every split when there's more than one.
+  const modeDisplay = sharedPaymentSplits.length > 1
+    ? sharedPaymentSplits.map(sp => `${friendlyPaymentMode(sp.mode)} ₹${fmt(sp.amount ?? 0)}`).join(' + ')
+    : sharedPaymentSplits.length === 1
+      ? friendlyPaymentMode(sharedPaymentSplits[0].mode)
+      : friendlyPaymentMode(customer?.payment_mode);
 
   // Invoice number: prefer sale_reference (the generated SALE-... number), fallback to unique_item_code
   const invoiceNumber = customer?.sale_reference ?? null;
@@ -516,13 +541,7 @@ ${billEl.outerHTML}
                 {invoiceNumber ? `INVOICE NO: ${invoiceNumber}` : `REF: ${saleRef}`}
               </div>
               <div><b>Date:</b> {date}</div>
-              <div><b>Mode:</b> {(() => {
-                const splits = (customer as any)?.payment_splits;
-                if (Array.isArray(splits) && splits.length > 1) {
-                  return splits.map((s: any) => `${(s.mode ?? 'CASH').toUpperCase()} ₹${fmt(s.amount ?? 0)}`).join(' + ');
-                }
-                return customer?.payment_mode?.toUpperCase() ?? 'CASH';
-              })()}</div>
+              <div><b>Mode:</b> {modeDisplay}</div>
             </div>
             <div style={{ marginTop: '6px', padding: '2px 10px', background: '#fff', color: '#000', border: '1px solid #000', fontSize: '8px', fontWeight: 700, display: 'inline-block', letterSpacing: '1.5px' }}>
               CUSTOMER COPY
@@ -680,7 +699,7 @@ ${billEl.outerHTML}
                   if (Array.isArray(splits) && splits.length > 0) {
                     return splits.map((s: any, i: number) => (
                       <tr key={i} style={{ borderBottom: '1px dotted #eee' }}>
-                        <td style={{ padding: '4px 0', fontWeight: 700 }}>{(s.mode ?? 'cash').toUpperCase()}</td>
+                        <td style={{ padding: '4px 0', fontWeight: 700 }}>{friendlyPaymentMode(s.mode)}</td>
                         <td style={{ padding: '4px 0', color: '#555', fontFamily: 'monospace', fontSize: '8.5px' }}>{s.reference || saleRef}</td>
                         <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: 700 }}>₹{fmt(s.amount ?? 0)}</td>
                       </tr>
@@ -688,7 +707,7 @@ ${billEl.outerHTML}
                   }
                   return (
                     <tr>
-                      <td style={{ padding: '4px 0', fontWeight: 700 }}>{customer?.payment_mode?.toUpperCase() ?? 'CASH'}</td>
+                      <td style={{ padding: '4px 0', fontWeight: 700 }}>{friendlyPaymentMode(customer?.payment_mode)}</td>
                       <td style={{ padding: '4px 0', color: '#555', fontFamily: 'monospace', fontSize: '9px' }}>{saleRef}</td>
                       <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: 700 }}>₹{fmt(totalPayable)}</td>
                     </tr>

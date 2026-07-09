@@ -72,6 +72,103 @@ function glComputedStatus(loan: GoldLoan): string {
   return hasMissed ? 'overdue' : 'active';
 }
 
+// ── Account Statement (unified credit/debit ledger) ────────────────────────────
+// Credit = money the store received from the customer.
+// Debit  = money/value the store gave out to (or on behalf of) the customer.
+
+type LedgerRow = {
+  date: string;
+  type: string;
+  description: string;
+  direction: 'credit' | 'debit';
+  amount: number;
+  reference: string;
+};
+
+function buildLedgerRows(
+  orders: InventoryItem[],
+  goldSubs: GoldSubscription[],
+  advances: CustomerAdvance[],
+  goldLoans: GoldLoan[],
+): (LedgerRow & { balance: number })[] {
+  const rows: LedgerRow[] = [];
+
+  orders.forEach(o => {
+    const product = typeof o.product_id === 'object' ? o.product_id?.name : '';
+    rows.push({
+      date: o.sold_at || '',
+      type: 'Purchase',
+      description: `${product || 'Jewellery Item'} (${o.unique_item_code})`,
+      direction: 'credit',
+      amount: o.selling_price || 0,
+      reference: (o as any).sale_reference || '',
+    });
+  });
+
+  goldSubs.forEach(sub => {
+    const planName = sub.plan?.name || 'Gold Savings Plan';
+    (sub.paymentLedger || []).forEach(p => {
+      rows.push({ date: p.date, type: 'Investment Payment', description: `${planName} — Month ${p.month} (${p.type})`, direction: 'credit', amount: p.amount, reference: sub._id });
+    });
+    (sub.interestAdjustments || []).forEach(a => {
+      rows.push({ date: a.date, type: 'Bonus Interest', description: `${planName}${a.note ? ` — ${a.note}` : ''}`, direction: 'debit', amount: a.amount, reference: sub._id });
+    });
+    (sub.redemptionHistory || []).forEach(r => {
+      rows.push({ date: r.date, type: 'Investment Redemption', description: `${planName}${r.note ? ` — ${r.note}` : ''}`, direction: 'debit', amount: r.amount, reference: r.saleReference || sub._id });
+    });
+  });
+
+  advances.forEach(a => {
+    rows.push({
+      date: a.createdAt,
+      type: 'Advance Received',
+      description: `Advance payment (${a.mode.replace('_', ' ')})${a.note ? ` — ${a.note}` : ''}`,
+      direction: 'credit',
+      amount: a.amount,
+      reference: a._id,
+    });
+    (a.redemptionHistory || []).forEach(r => {
+      rows.push({
+        date: r.date,
+        type: 'Advance Redemption',
+        description: `Advance redeemed${r.making_charges_discount > 0 ? ` — ₹${r.making_charges_discount} making charges waived` : ''}${r.note ? ` (${r.note})` : ''}`,
+        direction: 'debit',
+        amount: r.amount,
+        reference: r.saleReference || a._id,
+      });
+    });
+  });
+
+  goldLoans.forEach(loan => {
+    if (loan.disbursed_at) {
+      rows.push({ date: loan.disbursed_at, type: 'Loan Disbursement', description: `Gold Loan ${loan.loan_number}`, direction: 'debit', amount: loan.loan_amount, reference: loan.loan_number });
+    }
+    (loan.emiLedger || []).forEach(e => {
+      if (e.status === 'paid') {
+        rows.push({
+          date: e.paid_date || e.due_date,
+          type: 'Loan EMI Paid',
+          description: `Gold Loan ${loan.loan_number} — Month ${e.month}${e.note ? ` (${e.note})` : ''}`,
+          direction: 'credit',
+          amount: e.paid_amount || 0,
+          reference: loan.loan_number,
+        });
+      }
+    });
+    if (loan.status === 'closed' && loan.closed_at) {
+      rows.push({ date: loan.closed_at, type: 'Loan Closed', description: `Gold Loan ${loan.loan_number} — principal repaid`, direction: 'credit', amount: loan.principal_repaid_amount ?? 0, reference: loan.loan_number });
+    }
+  });
+
+  rows.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  let balance = 0;
+  return rows.map(r => {
+    balance += r.direction === 'credit' ? r.amount : -r.amount;
+    return { ...r, balance };
+  });
+}
+
 // ── Gold Loan Card ─────────────────────────────────────────────────────────────
 
 function personName(u: string | { _id: string; name: string; role?: string } | null | undefined) {
@@ -833,6 +930,265 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
   );
 }
 
+// ── Batch Redeem Panel ───────────────────────────────────────────────────────
+// Lets staff check several advances and/or investment plans at once and redeem
+// them together against a single sale/bill, instead of processing each one by one.
+
+function BatchRedeemPanel({
+  advances, goldSubs, orders, onAdvanceChanged, onSubRedeemed,
+}: {
+  advances: CustomerAdvance[];
+  goldSubs: GoldSubscription[];
+  orders: InventoryItem[];
+  onAdvanceChanged: (updated: CustomerAdvance) => void;
+  onSubRedeemed: (updated: GoldSubscription) => void;
+}) {
+  const redeemableAdvances = advances.filter(a => a.status === 'active' && a.availableBalance > 0 && !a.locked);
+  const redeemableSubs = goldSubs
+    .map(sub => ({ sub, balance: computeTimeBasedBalance(sub).balance }))
+    .filter(x => x.balance > 0 && x.sub.status !== 'cancelled' && x.sub.status !== 'completed');
+  const redeemableSales = orders.filter(o => o.sale_reference);
+
+  const [open, setOpen] = useState(false);
+  const [saleRef, setSaleRef] = useState('');
+  const [manualRef, setManualRef] = useState(false);
+  const [advanceAmounts, setAdvanceAmounts] = useState<Record<string, number>>({});
+  const [subAmounts, setSubAmounts] = useState<Record<string, number>>({});
+  const [note, setNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  if (redeemableAdvances.length + redeemableSubs.length < 2) return null;
+
+  const selectedSale = redeemableSales.find(o => o.sale_reference === saleRef);
+  const cap = selectedSale ? (selectedSale.selling_price ?? Infinity) : Infinity;
+  const totalAdvance = Object.values(advanceAmounts).reduce((s, n) => s + (n || 0), 0);
+  const totalSub = Object.values(subAmounts).reduce((s, n) => s + (n || 0), 0);
+  const totalSelected = totalAdvance + totalSub;
+
+  function toggleAdvance(id: string) {
+    setAdvanceAmounts(prev => {
+      if (id in prev) { const next = { ...prev }; delete next[id]; return next; }
+      return { ...prev, [id]: 0 };
+    });
+  }
+  function toggleSub(id: string) {
+    setSubAmounts(prev => {
+      if (id in prev) { const next = { ...prev }; delete next[id]; return next; }
+      return { ...prev, [id]: 0 };
+    });
+  }
+  function selectAll() {
+    setAdvanceAmounts(Object.fromEntries(redeemableAdvances.map(a => [a._id, 0])));
+    setSubAmounts(Object.fromEntries(redeemableSubs.map(x => [x.sub._id, 0])));
+  }
+  function clearAll() {
+    setAdvanceAmounts({});
+    setSubAmounts({});
+  }
+  function applyMax() {
+    let remaining = cap === Infinity ? Infinity : Math.max(0, cap);
+    const nextA: Record<string, number> = {};
+    for (const a of redeemableAdvances) {
+      if (!(a._id in advanceAmounts)) continue;
+      const amt = Math.max(0, Math.min(a.availableBalance, remaining));
+      nextA[a._id] = amt;
+      remaining -= amt;
+    }
+    const nextS: Record<string, number> = {};
+    for (const { sub, balance } of redeemableSubs) {
+      if (!(sub._id in subAmounts)) continue;
+      const amt = Math.max(0, Math.min(balance, remaining));
+      nextS[sub._id] = amt;
+      remaining -= amt;
+    }
+    setAdvanceAmounts(nextA);
+    setSubAmounts(nextS);
+  }
+
+  async function handleSubmit() {
+    if (totalSelected <= 0) return;
+    if (!confirm(`Redeem ${fmt(totalSelected)} across ${Object.values(advanceAmounts).filter(v => v > 0).length + Object.values(subAmounts).filter(v => v > 0).length} source(s)${saleRef ? ` against ${saleRef}` : ''}?`)) return;
+    setSubmitting(true);
+    try {
+      await Promise.all([
+        ...Object.entries(advanceAmounts).filter(([, amt]) => amt > 0).map(async ([id, amt]) => {
+          const advance = advances.find(a => a._id === id);
+          const mcDiscount = advance ? Math.round(amt * (advance.making_charges_waiver_pct || 0) / 100) : 0;
+          const updated = await redeemCustomerAdvance(id, {
+            amount: amt, making_charges_discount: mcDiscount, saleReference: saleRef || undefined, note: note || undefined,
+          });
+          onAdvanceChanged(updated);
+        }),
+        ...Object.entries(subAmounts).filter(([, amt]) => amt > 0).map(async ([id, amt]) => {
+          const updated = await redeemSubscription(id, { amount: amt, saleReference: saleRef || undefined, note: note || undefined });
+          onSubRedeemed(updated);
+        }),
+      ]);
+      toast.success('Batch redemption recorded');
+      setAdvanceAmounts({});
+      setSubAmounts({});
+      setNote('');
+      setSaleRef('');
+      setOpen(false);
+    } catch (e: any) {
+      toast.error(e?.message || 'Batch redemption failed — some entries may not have been applied');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="bg-white border-2 border-blue-100 rounded-[24px] overflow-hidden shadow-sm">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-6 py-5 hover:bg-blue-50/40 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <Wallet size={18} className="text-blue-600" />
+          <div className="text-left">
+            <p className="text-sm font-black text-slate-900">Redeem Multiple at Once</p>
+            <p className="text-[10px] text-slate-400 font-medium">Combine several advances / investment plans against one sale</p>
+          </div>
+        </div>
+        <span className="text-[10px] font-black uppercase tracking-widest text-blue-600">{open ? 'Close' : 'Open'}</span>
+      </button>
+
+      {open && (
+        <div className="px-6 pb-6 space-y-4 border-t border-blue-50 pt-5">
+          <div className="flex items-center justify-between">
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Select sources to redeem</p>
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={selectAll} className="text-[10px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-700 underline underline-offset-2">Select All</button>
+              <button type="button" onClick={clearAll} className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 underline underline-offset-2">Clear</button>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            {redeemableAdvances.map(a => {
+              const checked = a._id in advanceAmounts;
+              const amt = advanceAmounts[a._id] ?? 0;
+              return (
+                <div key={a._id} className={`rounded-xl border-2 transition-all ${checked ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white hover:border-blue-300'}`}>
+                  <label className="w-full flex items-center gap-3 px-4 py-3 cursor-pointer">
+                    <input type="checkbox" checked={checked} onChange={() => toggleAdvance(a._id)} className="w-4 h-4 rounded accent-blue-600 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-black text-slate-900">Advance · {new Date(a.createdAt).toLocaleDateString('en-IN', { dateStyle: 'medium' })}</p>
+                      {a.making_charges_waiver_pct > 0 && <p className="text-[10px] text-slate-400">{a.making_charges_waiver_pct}% making charges waiver</p>}
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-sm font-black text-blue-700">{fmt(a.availableBalance)}</p>
+                      <p className="text-[9px] text-slate-400 font-medium">available</p>
+                    </div>
+                  </label>
+                  {checked && (
+                    <div className="px-4 pb-3">
+                      <input type="number" min={0} max={a.availableBalance} value={amt || ''}
+                        onChange={e => setAdvanceAmounts(prev => ({ ...prev, [a._id]: Math.min(parseFloat(e.target.value) || 0, a.availableBalance) }))}
+                        placeholder={`Amount to apply (max ${fmt(a.availableBalance)})`}
+                        className="w-full bg-white border-2 border-blue-300 rounded-xl px-4 py-2.5 text-sm font-black text-blue-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {redeemableSubs.map(({ sub, balance }) => {
+              const checked = sub._id in subAmounts;
+              const amt = subAmounts[sub._id] ?? 0;
+              return (
+                <div key={sub._id} className={`rounded-xl border-2 transition-all ${checked ? 'border-amber-500 bg-amber-50' : 'border-slate-200 bg-white hover:border-amber-300'}`}>
+                  <label className="w-full flex items-center gap-3 px-4 py-3 cursor-pointer">
+                    <input type="checkbox" checked={checked} onChange={() => toggleSub(sub._id)} className="w-4 h-4 rounded accent-amber-600 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-black text-slate-900">{sub.plan?.name || 'Gold Savings Plan'}</p>
+                      <p className="text-[10px] text-slate-400">{sub.installmentsPaid} months paid</p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-sm font-black text-amber-700">{fmt(balance)}</p>
+                      <p className="text-[9px] text-slate-400 font-medium">available</p>
+                    </div>
+                  </label>
+                  {checked && (
+                    <div className="px-4 pb-3">
+                      <input type="number" min={0} max={balance} value={amt || ''}
+                        onChange={e => setSubAmounts(prev => ({ ...prev, [sub._id]: Math.min(parseFloat(e.target.value) || 0, balance) }))}
+                        placeholder={`Amount to apply (max ${fmt(balance)})`}
+                        className="w-full bg-white border-2 border-amber-300 rounded-xl px-4 py-2.5 text-sm font-black text-amber-800 focus:outline-none focus:border-amber-500 shadow-sm"
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {(Object.keys(advanceAmounts).length > 0 || Object.keys(subAmounts).length > 0) && (
+            <button type="button" onClick={applyMax}
+              className="px-4 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black hover:bg-blue-700 transition-colors whitespace-nowrap">
+              Apply Max Across Selected{selectedSale ? ` (up to ${fmt(cap)})` : ''}
+            </button>
+          )}
+
+          {!manualRef ? (
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 block">Link to a sale (optional)</label>
+              <select
+                value={saleRef}
+                onChange={e => {
+                  if (e.target.value === '__manual__') { setManualRef(true); setSaleRef(''); }
+                  else setSaleRef(e.target.value);
+                }}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-blue-500 bg-white"
+              >
+                <option value="">No specific sale</option>
+                {redeemableSales.map(o => (
+                  <option key={o._id} value={o.sale_reference}>
+                    {o.sale_reference} · {productLabel(o)} · {fmt(o.selling_price)} · {fmtDate(o.sold_at)}
+                  </option>
+                ))}
+                <option value="__manual__">Other / not in system — enter manually</option>
+              </select>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <input
+                type="text" value={saleRef} onChange={e => setSaleRef(e.target.value)}
+                placeholder="Bill / sale reference"
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-blue-500 bg-white"
+              />
+              <button type="button" onClick={() => { setManualRef(false); setSaleRef(''); }}
+                className="text-[10px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-700 px-1">
+                ← Pick from recorded sales instead
+              </button>
+            </div>
+          )}
+
+          <input
+            type="text" value={note} onChange={e => setNote(e.target.value)}
+            placeholder="Note (optional)"
+            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-blue-500 bg-white"
+          />
+
+          {totalSelected > 0 && (
+            <p className="text-[10px] text-blue-700 font-bold flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              {fmt(totalSelected)} will be redeemed across {Object.values(advanceAmounts).filter(v => v > 0).length + Object.values(subAmounts).filter(v => v > 0).length} source(s)
+            </p>
+          )}
+
+          <button
+            onClick={handleSubmit}
+            disabled={submitting || totalSelected <= 0}
+            className="w-full py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-all"
+          >
+            {submitting ? 'Processing…' : `Confirm Batch Redemption${totalSelected > 0 ? ` · ${fmt(totalSelected)}` : ''}`}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function CustomerDetailPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
@@ -910,77 +1266,15 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
     if (!customer) return;
     setExporting(true);
     try {
-      type Row = { date: string; type: string; description: string; amount: number; reference: string };
-      const rows: Row[] = [];
-
-      orders.forEach(o => {
-        const product = typeof o.product_id === 'object' ? o.product_id?.name : '';
-        rows.push({
-          date: o.sold_at || '',
-          type: 'Purchase',
-          description: `${product || 'Jewellery Item'} (${o.unique_item_code})`,
-          amount: o.selling_price || 0,
-          reference: (o as any).sale_reference || '',
-        });
-      });
-
-      goldSubs.forEach(sub => {
-        const planName = sub.plan?.name || 'Gold Savings Plan';
-        (sub.paymentLedger || []).forEach(p => {
-          rows.push({ date: p.date, type: 'Investment Payment', description: `${planName} — Month ${p.month} (${p.type})`, amount: p.amount, reference: sub._id });
-        });
-        (sub.interestAdjustments || []).forEach(a => {
-          rows.push({ date: a.date, type: 'Bonus Interest', description: `${planName}${a.note ? ` — ${a.note}` : ''}`, amount: a.amount, reference: sub._id });
-        });
-        (sub.redemptionHistory || []).forEach(r => {
-          rows.push({ date: r.date, type: 'Investment Redemption', description: `${planName}${r.note ? ` — ${r.note}` : ''}`, amount: -r.amount, reference: r.saleReference || sub._id });
-        });
-      });
-
-      advances.forEach(a => {
-        rows.push({
-          date: a.createdAt,
-          type: 'Advance Received',
-          description: `Advance payment (${a.mode.replace('_', ' ')})${a.note ? ` — ${a.note}` : ''}`,
-          amount: a.amount,
-          reference: a._id,
-        });
-        (a.redemptionHistory || []).forEach(r => {
-          rows.push({
-            date: r.date,
-            type: 'Advance Redemption',
-            description: `Advance redeemed${r.making_charges_discount > 0 ? ` — ₹${r.making_charges_discount} making charges waived` : ''}${r.note ? ` (${r.note})` : ''}`,
-            amount: -r.amount,
-            reference: r.saleReference || a._id,
-          });
-        });
-      });
-
-      goldLoans.forEach(loan => {
-        if (loan.disbursed_at) {
-          rows.push({ date: loan.disbursed_at, type: 'Loan Disbursement', description: `Gold Loan ${loan.loan_number}`, amount: loan.loan_amount, reference: loan.loan_number });
-        }
-        (loan.emiLedger || []).forEach(e => {
-          rows.push({
-            date: e.paid_date || e.due_date,
-            type: e.status === 'paid' ? 'Loan EMI Paid' : 'Loan EMI Missed',
-            description: `Gold Loan ${loan.loan_number} — Month ${e.month}${e.note ? ` (${e.note})` : ''}`,
-            amount: e.status === 'paid' ? (e.paid_amount || 0) : 0,
-            reference: loan.loan_number,
-          });
-        });
-        if (loan.status === 'closed' && loan.closed_at) {
-          rows.push({ date: loan.closed_at, type: 'Loan Closed', description: `Gold Loan ${loan.loan_number} — principal repaid ${loan.principal_repaid_amount ?? 0}`, amount: -(loan.principal_repaid_amount ?? 0), reference: loan.loan_number });
-        }
-      });
-
-      rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      const rows = [...buildLedgerRows(orders, goldSubs, advances, goldLoans)].reverse();
 
       downloadCsv(`${customer.name.replace(/\s+/g, '-').toLowerCase()}-history`, rows, [
         { header: 'Date', accessor: r => (r.date ? new Date(r.date).toLocaleDateString('en-IN') : '') },
         { header: 'Type', accessor: 'type' },
         { header: 'Description', accessor: 'description' },
-        { header: 'Amount', accessor: 'amount' },
+        { header: 'Credit', accessor: r => (r.direction === 'credit' ? r.amount : '') },
+        { header: 'Debit', accessor: r => (r.direction === 'debit' ? r.amount : '') },
+        { header: 'Balance', accessor: 'balance' },
         { header: 'Reference', accessor: 'reference' },
       ]);
     } finally {
@@ -1013,6 +1307,10 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
   const totalAdvanceBalance = advances.reduce((acc, a) => acc + a.availableBalance, 0);
   const activeAdvances = advances.filter(a => a.status === 'active');
   const totalValue = totalSpent + totalInvestmentBalance + totalAdvanceBalance;
+
+  const ledgerRows = buildLedgerRows(orders, goldSubs, advances, goldLoans);
+  const totalCredit = ledgerRows.filter(r => r.direction === 'credit').reduce((s, r) => s + r.amount, 0);
+  const totalDebit = ledgerRows.filter(r => r.direction === 'debit').reduce((s, r) => s + r.amount, 0);
 
   return (
     <div className="p-8 max-w-[1600px] mx-auto animate-in fade-in slide-in-from-bottom-5 duration-700">
@@ -1257,7 +1555,7 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
           {(customer.aadharCard || customer.panCard || customer.accountNumber || (customer.customFields?.length ?? 0) > 0) && (
             <div className="bg-white border border-slate-100 rounded-[28px] p-8 shadow-sm">
               <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-[0.25em] pb-5 mb-6 border-b border-slate-50">
-                KYC &amp; Bank Details
+                Additional Details
               </h3>
               <div className="space-y-4">
 
@@ -1331,6 +1629,75 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
 
         {/* Right Column */}
         <div className="lg:col-span-7 xl:col-span-8 space-y-8">
+
+          {/* Account Statement — unified credit/debit ledger */}
+          <div className="bg-white border border-slate-100 rounded-[28px] shadow-sm overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-4 px-10 py-8 border-b border-slate-50">
+              <div>
+                <h3 className="text-xl font-serif font-bold text-slate-900">Account Statement</h3>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mt-1">Full credit &amp; debit history</p>
+              </div>
+              <div className="flex items-center gap-6">
+                <div className="text-right">
+                  <p className="text-[9px] font-black text-emerald-500 uppercase tracking-widest mb-0.5">Total Credit</p>
+                  <p className="text-base font-black text-emerald-600">{fmt(totalCredit)}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[9px] font-black text-rose-500 uppercase tracking-widest mb-0.5">Total Debit</p>
+                  <p className="text-base font-black text-rose-600">{fmt(totalDebit)}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Net Balance</p>
+                  <p className="text-base font-black text-slate-900">{fmt(totalCredit - totalDebit)}</p>
+                </div>
+              </div>
+            </div>
+
+            {ledgerRows.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-[9px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-50">
+                      <th className="text-left px-10 py-3 whitespace-nowrap">Date</th>
+                      <th className="text-left px-3 py-3 whitespace-nowrap">Type</th>
+                      <th className="text-left px-3 py-3">Description</th>
+                      <th className="text-right px-3 py-3 whitespace-nowrap">Credit</th>
+                      <th className="text-right px-3 py-3 whitespace-nowrap">Debit</th>
+                      <th className="text-right px-10 py-3 whitespace-nowrap">Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {[...ledgerRows].reverse().map((r, i) => (
+                      <tr key={i} className="hover:bg-slate-50/60 transition-colors">
+                        <td className="px-10 py-3.5 text-xs font-bold text-slate-500 whitespace-nowrap">{fmtDate(r.date)}</td>
+                        <td className="px-3 py-3.5 text-xs font-bold text-slate-700 whitespace-nowrap">{r.type}</td>
+                        <td className="px-3 py-3.5 text-xs text-slate-500">
+                          {r.description}
+                          {r.reference && <span className="block text-[9px] text-slate-300 mt-0.5">Ref: {r.reference}</span>}
+                        </td>
+                        <td className="px-3 py-3.5 text-xs font-black text-emerald-600 text-right whitespace-nowrap">{r.direction === 'credit' ? fmt(r.amount) : '—'}</td>
+                        <td className="px-3 py-3.5 text-xs font-black text-rose-600 text-right whitespace-nowrap">{r.direction === 'debit' ? fmt(r.amount) : '—'}</td>
+                        <td className="px-10 py-3.5 text-xs font-black text-slate-900 text-right whitespace-nowrap">{fmt(r.balance)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-24 text-center px-8">
+                <Wallet size={28} className="text-slate-200 mb-3" />
+                <p className="text-slate-400 text-sm font-medium">No transactions recorded yet.</p>
+              </div>
+            )}
+          </div>
+
+          <BatchRedeemPanel
+            advances={advances}
+            goldSubs={goldSubs}
+            orders={orders}
+            onAdvanceChanged={handleAdvanceChanged}
+            onSubRedeemed={handleSubRedeemed}
+          />
 
           {/* Advances */}
           {advances.length > 0 && (

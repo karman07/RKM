@@ -41,6 +41,8 @@ const ROUTE_PERMISSION: Record<string, string> = {
   '/dashboard/settings':           'settings',
   // roles page — full admin only (no custom role can ever access it)
   '/dashboard/roles':              '__admin_only__',
+  // field management — full admin only
+  '/dashboard/employee-fields':    '__admin_only__',
   // reporting structure — full admin only
   '/dashboard/reporting-managers': '__admin_only__',
   // Old Gold — page access gated by 'old-gold'; action visibility is

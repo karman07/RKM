@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   addInventoryItem,
   deleteInventoryItem,
@@ -13,6 +13,7 @@ import {
   getMe,
   staticUrl,
   updateInventoryStatus,
+  sellItemsBatch,
   updateInventoryDiscount,
   generateCertificate,
   updateInventoryHallmark,
@@ -181,6 +182,45 @@ export default function InventoryPage() {
   // ── Cashiers for sold form ─────────────────────────────────────────────────
   const [cashiers, setCashiers] = useState<User[]>([]);
 
+  // ── Multi-Item Bill (Cart) ─────────────────────────────────────────────────
+  const [cartMode, setCartMode] = useState(false);
+  const [cart, setCart] = useState<InventoryItem[]>([]);
+  const [cartExpanded, setCartExpanded] = useState(false);
+  const [cartModal, setCartModal] = useState(false);
+  const [cartCustomerDraft, setCartCustomerDraft] = useState<CustomerDraft>({
+    name: '', phone: '', email: '', address: '', city: '', state: '', pincode: '', country: 'India',
+  });
+  const [cartSoldAtBranchId, setCartSoldAtBranchId] = useState('');
+  const [cartSoldByUserId, setCartSoldByUserId] = useState('');
+  const [cartPaymentSplits, setCartPaymentSplits] = useState<PaymentSplit[]>([{ mode: 'cash', amount: '', reference: '' }]);
+  const [cartSubmitting, setCartSubmitting] = useState(false);
+  const [cartError, setCartError] = useState('');
+  const cartModeRef = useRef(false);
+  useEffect(() => { cartModeRef.current = cartMode; }, [cartMode]);
+
+  // Hardware barcode scanner listener — while Multi-Item Bill mode is on, a fast
+  // burst of keystrokes ending in Enter (typical HID scanner behavior) looks the
+  // item up and adds it straight to the cart, so staff can scan item after item.
+  useEffect(() => {
+    let buffer = '';
+    let lastKeyTime = Date.now();
+    function handleKeyDown(e: KeyboardEvent) {
+      if (!cartModeRef.current) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      const now = Date.now();
+      if (now - lastKeyTime > 50) buffer = '';
+      if (e.key === 'Enter') {
+        if (buffer.length > 3) void handleBarcodeAddToCart(buffer);
+        buffer = '';
+      } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        buffer += e.key;
+      }
+      lastKeyTime = now;
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // ── Selection & Bulk Delete ───────────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkDeleteModal, setBulkDeleteModal] = useState(false);
@@ -195,6 +235,12 @@ export default function InventoryPage() {
   const statusOptions  = useMemo(() => (lookups.inventory_status || []).filter(l => l.is_active), [lookups]);
   const locationOptions = useMemo(() => (lookups.item_location || []).filter(l => l.is_active), [lookups]);
   const totalPages = Math.max(1, Math.ceil(total / limit));
+
+  // ── Cart derived ──────────────────────────────────────────────────────────
+  const cartTotal = useMemo(
+    () => cart.reduce((sum, it) => sum + (Number(it.live_selling_price ?? it.selling_price) || 0), 0),
+    [cart]
+  );
 
   const stats = useMemo(() => ({
     totalAsset: dbStats.totalValue,
@@ -351,6 +397,97 @@ export default function InventoryPage() {
     );
   }
 
+  // ─── Cart (Multi-Item Bill) ───────────────────────────────────────────────
+  function isInCart(id: string) {
+    return cart.some(c => c._id === id);
+  }
+
+  function addToCart(item: InventoryItem) {
+    setCart(prev => (prev.some(c => c._id === item._id) ? prev : [...prev, item]));
+  }
+
+  function removeFromCart(id: string) {
+    setCart(prev => prev.filter(c => c._id !== id));
+  }
+
+  // Looks up a scanned barcode and adds the matching item straight to the cart —
+  // lets staff build a multi-item bill by scanning one item after another.
+  async function handleBarcodeAddToCart(code: string) {
+    try {
+      const item = await getInventoryByBarcode(code);
+      if (!item) { showToast(`No item found for barcode ${code}`, 'danger'); return; }
+      if (item.status !== 'available' && item.status !== 'reserved') {
+        showToast(`${item.unique_item_code} is not available for sale (status: ${item.status})`, 'danger');
+        return;
+      }
+      setCart(prev => {
+        if (prev.some(c => c._id === item._id)) {
+          showToast(`${item.unique_item_code} is already in the bill`, 'info');
+          return prev;
+        }
+        const name = typeof item.product_id === 'object' ? (item.product_id as any)?.name : item.unique_item_code;
+        showToast(`Added to bill: ${name || item.unique_item_code}`, 'success');
+        return [...prev, item];
+      });
+    } catch {
+      showToast(`No item found for barcode ${code}`, 'danger');
+    }
+  }
+
+  function openCartCheckout() {
+    if (cart.length === 0) return;
+    setCartError('');
+    setCartCustomerDraft({ name: '', phone: '', email: '', address: '', city: '', state: '', pincode: '', country: 'India' });
+    setCartSoldAtBranchId((user as any)?.branch_id || '');
+    setCartSoldByUserId('');
+    setCartPaymentSplits([{ mode: 'cash', amount: cartTotal > 0 ? String(Math.round(cartTotal)) : '', reference: '' }]);
+    setCartModal(true);
+  }
+
+  async function handleCartCheckout() {
+    setCartSubmitting(true);
+    setCartError('');
+    try {
+      if (cart.length === 0) throw new Error('No items in the bill.');
+      if (!cartCustomerDraft.name.trim()) throw new Error('Customer name is required.');
+      if (!cartCustomerDraft.phone.trim()) throw new Error('Customer phone is required.');
+      if (!cartSoldAtBranchId) throw new Error('Sale branch is required.');
+
+      const splits = cartPaymentSplits
+        .filter(s => parseFloat(s.amount) > 0)
+        .map(s => ({ mode: s.mode, amount: parseFloat(s.amount), reference: s.reference || undefined }));
+      if (splits.length === 0) throw new Error('At least one payment method with an amount is required.');
+
+      const updated = await sellItemsBatch({
+        items: cart.map(it => ({ id: it._id, selling_price: Number(it.live_selling_price ?? it.selling_price) || undefined })),
+        sold_at_branch_id: cartSoldAtBranchId,
+        sold_by_user_id: cartSoldByUserId || undefined,
+        sold_customer_name: cartCustomerDraft.name,
+        sold_customer_phone: cartCustomerDraft.phone,
+        sold_customer_email: cartCustomerDraft.email || undefined,
+        shipping_address: cartCustomerDraft.address || 'Store Collection',
+        shipping_city: cartCustomerDraft.city || undefined,
+        shipping_state: cartCustomerDraft.state || undefined,
+        shipping_pincode: cartCustomerDraft.pincode || undefined,
+        shipping_country: cartCustomerDraft.country || 'India',
+        sale_channel: 'store',
+        payment_mode: splits[0]?.mode ?? 'cash',
+        payment_splits: splits,
+      });
+
+      setItems(prev => prev.map(it => updated.find(u => u._id === it._id) || it));
+      setCart([]);
+      setCartExpanded(false);
+      setCartModal(false);
+      showToast(`${updated.length} items sold in one bill`, 'success');
+      load();
+    } catch (e: any) {
+      setCartError(e.message || 'Checkout failed');
+    } finally {
+      setCartSubmitting(false);
+    }
+  }
+
   const showCharts = !statusFilter && !locationFilter && !barcodeInput;
 
   // ─── Computed discounted price helper ────────────────────────────────────
@@ -435,6 +572,60 @@ export default function InventoryPage() {
         </div>
       )}
 
+      {/* Floating Multi-Item Bill Cart */}
+      {cartMode && cart.length > 0 && (
+        <div className="fixed bottom-8 right-8 z-[150] w-full max-w-sm animate-[fadeRise_300ms_ease-out]">
+          <div className="bg-white rounded-3xl shadow-2xl border border-blue-100 overflow-hidden">
+            <button
+              onClick={() => setCartExpanded(e => !e)}
+              className="w-full flex items-center justify-between px-6 py-4 bg-blue-600 text-white"
+            >
+              <div className="flex items-center gap-3">
+                <span className="flex items-center justify-center w-7 h-7 rounded-full bg-white/20 text-xs font-black">{cart.length}</span>
+                <span className="text-xs font-black uppercase tracking-widest">Items in Bill</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-black">₹{fmt(cartTotal)}</span>
+                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3} className={`transition-transform duration-300 ${cartExpanded ? 'rotate-180' : ''}`}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+              </div>
+            </button>
+
+            {cartExpanded && (
+              <div className="max-h-64 overflow-y-auto divide-y divide-slate-50">
+                {cart.map(it => {
+                  const product = typeof it.product_id === 'object' ? it.product_id as any : null;
+                  const price = Number(it.live_selling_price ?? it.selling_price) || 0;
+                  return (
+                    <div key={it._id} className="flex items-center justify-between gap-3 px-5 py-3">
+                      <div className="min-w-0">
+                        <p className="text-[12px] font-bold text-slate-800 truncate">{product?.name || 'Item'}</p>
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">#{it.unique_item_code} · ₹{fmt(price)}</p>
+                      </div>
+                      <button
+                        onClick={() => removeFromCart(it._id)}
+                        title="Remove from bill"
+                        className="flex-shrink-0 w-6 h-6 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center text-red-400 hover:text-red-600 transition-colors"
+                      >
+                        <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M18 6L6 18M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="p-4 border-t border-slate-100">
+              <button
+                onClick={openCartCheckout}
+                className="w-full py-3.5 rounded-2xl bg-slate-900 text-white text-[11px] font-bold uppercase tracking-widest hover:bg-blue-600 transition-all shadow-xl active:scale-[0.98]"
+              >
+                Checkout ({cart.length}) — ₹{fmt(cartTotal)}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <section className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
@@ -442,6 +633,14 @@ export default function InventoryPage() {
           <p className="text-sm font-medium text-slate-500 mt-2">Precision management of artisan masterpieces — purchase prices are locked; set selling prices &amp; discounts per item.</p>
         </div>
         <div className="flex items-center gap-4 self-start md:self-auto">
+          <button
+            onClick={() => setCartMode(m => !m)}
+            title="Toggle multi-item bill mode"
+            className={`px-6 py-3.5 rounded-2xl text-xs font-bold uppercase tracking-widest shadow-sm transition-all active:scale-95 flex items-center gap-2 border ${cartMode ? 'bg-blue-600 text-white border-blue-600 shadow-lg' : 'bg-blue-50 text-blue-600 border-blue-100 hover:bg-blue-100'}`}
+          >
+            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m-10 0a2 2 0 100 4 2 2 0 000-4zm10 0a2 2 0 100 4 2 2 0 000-4z" /></svg>
+            Multi-Item Bill{cartMode ? ' · On' : ''}
+          </button>
           <Link
             href="/dashboard/inventory/allocate"
             className="px-6 py-3.5 rounded-2xl bg-blue-50 text-blue-600 text-xs font-bold uppercase tracking-widest shadow-sm hover:bg-blue-100 transition-all active:scale-95 flex items-center gap-2 border border-blue-100"
@@ -703,6 +902,28 @@ export default function InventoryPage() {
 
                       {/* Actions */}
                       <td className="px-4 py-3 text-right">
+                        <div className="flex justify-end items-center gap-1.5">
+                          {cartMode && (item.status === 'available' || item.status === 'reserved') && (
+                            isInCart(item._id) ? (
+                              <button
+                                onClick={() => removeFromCart(item._id)}
+                                title="Remove from Bill"
+                                className="px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white text-[9px] font-black uppercase tracking-wider hover:bg-red-600 transition-all active:scale-90 shadow-sm flex items-center gap-1"
+                              >
+                                <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                In Bill
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => addToCart(item)}
+                                title="Add to Bill"
+                                className="px-2.5 py-1.5 rounded-lg bg-blue-600 text-white text-[9px] font-black uppercase tracking-wider hover:bg-blue-700 transition-all active:scale-90 shadow-sm flex items-center gap-1"
+                              >
+                                <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+                                Add to Bill
+                              </button>
+                            )
+                          )}
                         <div className="flex justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                           {transitions.length > 0 && (
                             <button 
@@ -742,6 +963,7 @@ export default function InventoryPage() {
                           <button onClick={() => setDeleteModal(item)} title="Remove Item" className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition-all active:scale-90 shadow-sm">
                             <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                           </button>
+                        </div>
                         </div>
                       </td>
                     </tr>
@@ -1237,6 +1459,77 @@ export default function InventoryPage() {
               } catch (e: any) { showToast(e.message, 'danger'); }
             }} className="flex-[2] py-4 rounded-2xl bg-slate-900 text-white text-[11px] font-bold uppercase tracking-widest shadow-xl hover:bg-blue-600 transition-all">
               Confirm Status Change
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ──────────────────── MULTI-ITEM BILL CHECKOUT MODAL ─────────────────── */}
+      <Modal open={cartModal} onClose={() => setCartModal(false)} title="Multi-Item Bill Checkout" width="max-w-3xl">
+        <div className="p-2 space-y-5">
+          {cartError && <div className="p-4 rounded-xl bg-red-50 text-red-600 text-[11px] font-bold uppercase tracking-widest text-center border border-red-100">{cartError}</div>}
+
+          {/* Bill Summary */}
+          <div className="p-5 bg-white rounded-2xl border border-slate-100 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{cart.length} Item{cart.length !== 1 ? 's' : ''} in Bill</span>
+              <span className="text-xl font-black text-blue-700">₹{fmt(cartTotal)}</span>
+            </div>
+            <div className="max-h-40 overflow-y-auto divide-y divide-slate-50 border-t border-slate-50">
+              {cart.map(it => {
+                const product = typeof it.product_id === 'object' ? it.product_id as any : null;
+                const price = Number(it.live_selling_price ?? it.selling_price) || 0;
+                return (
+                  <div key={it._id} className="flex items-center justify-between gap-3 py-2 text-xs">
+                    <span className="font-bold text-slate-700 truncate">{product?.name || 'Item'} <span className="text-slate-400 font-medium">#{it.unique_item_code}</span></span>
+                    <span className="font-black text-slate-900">₹{fmt(price)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Customer */}
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Customer Details</p>
+            <CustomerSearchPanel value={cartCustomerDraft} onChange={setCartCustomerDraft} />
+          </div>
+
+          {/* Sale details row */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sale Branch <span className="text-red-500">*</span></label>
+              <select className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-bold appearance-none focus:ring-2 focus:ring-blue-500" value={cartSoldAtBranchId} onChange={e => setCartSoldAtBranchId(e.target.value)}>
+                <option value="">Select Branch…</option>
+                {branches.map(b => <option key={b._id} value={b._id}>{b.name} ({b.code})</option>)}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cashier Attribution</label>
+              <select className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-bold appearance-none focus:ring-2 focus:ring-blue-500" value={cartSoldByUserId} onChange={e => setCartSoldByUserId(e.target.value)}>
+                <option value="">— No Cashier / Manager Direct Sale —</option>
+                {cashiers.map(c => (
+                  <option key={c._id} value={c._id}>{c.name}{(c.branch && typeof c.branch === 'object') ? ` · ${(c.branch as any).name}` : ''}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Payment splits */}
+          <PaymentSplitsInput
+            splits={cartPaymentSplits}
+            onChange={setCartPaymentSplits}
+            totalAmount={cartTotal}
+          />
+
+          <div className="pt-2 flex gap-4">
+            <button onClick={() => setCartModal(false)} className="flex-1 py-4 rounded-2xl border border-slate-200 text-[11px] font-bold uppercase tracking-widest text-slate-400">Cancel</button>
+            <button
+              onClick={handleCartCheckout}
+              disabled={cartSubmitting || cart.length === 0}
+              className="flex-[2] py-4 rounded-2xl bg-slate-900 text-white text-[11px] font-bold uppercase tracking-widest shadow-xl hover:bg-blue-600 transition-all disabled:opacity-60"
+            >
+              {cartSubmitting ? 'Processing...' : `Confirm Sale (${cart.length} Item${cart.length !== 1 ? 's' : ''})`}
             </button>
           </div>
         </div>

@@ -119,7 +119,33 @@ export interface User {
   created_at: string;
   employee_id?: string;
   joining_date?: string;
+  custom_field_values?: Record<string, any>;
 }
+
+// ─── Custom Fields (admin-defined, for employee profiles & customer records) ──
+
+export type CustomFieldEntity = 'employee' | 'customer';
+
+export interface CustomField {
+  _id: string;
+  entity: CustomFieldEntity;
+  label: string;
+  key: string;
+  type: 'text' | 'number' | 'date' | 'file' | 'url' | 'textarea';
+  required: boolean;
+  placeholder?: string;
+  description?: string;
+  order: number;
+}
+
+export const getCustomFields = (entity?: CustomFieldEntity) =>
+  request<CustomField[]>(`/custom-fields${entity ? `?entity=${entity}` : ''}`);
+export const createCustomField = (data: Partial<CustomField>) =>
+  request<CustomField>('/custom-fields', { method: 'POST', body: JSON.stringify(data) });
+export const updateCustomField = (id: string, data: Partial<CustomField>) =>
+  request<CustomField>(`/custom-fields/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+export const deleteCustomField = (id: string) =>
+  request<{ deleted: boolean }>(`/custom-fields/${id}`, { method: 'DELETE' });
 
 export interface Attendance {
   _id: string;
@@ -770,6 +796,15 @@ export const rejectSaleRequest = (id: string, reason: string) =>
     body: JSON.stringify({ reason }),
   });
 
+export const approveSaleRequestBatch = (batchId: string) =>
+  request<InventoryItem[]>(`/inventory/sale-request-batch/${batchId}/approve`, { method: 'PATCH' });
+
+export const rejectSaleRequestBatch = (batchId: string, reason: string) =>
+  request<InventoryItem[]>(`/inventory/sale-request-batch/${batchId}/reject`, {
+    method: 'PATCH',
+    body: JSON.stringify({ reason }),
+  });
+
 export const updateInventoryStatus = (
   id: string,
   payload: {
@@ -798,6 +833,25 @@ export const updateInventoryStatus = (
     method: 'PATCH',
     body: JSON.stringify(payload),
   });
+
+/** Sells multiple inventory items in one bill — all share a single auto-generated sale_reference. Admin/manager only. */
+export const sellItemsBatch = (payload: {
+  items: { id: string; selling_price?: number }[];
+  sale_reference?: string;
+  sold_by_user_id?: string;
+  sold_at_branch_id?: string;
+  sold_customer_name: string;
+  sold_customer_phone: string;
+  sold_customer_email?: string;
+  shipping_address?: string;
+  shipping_city?: string;
+  shipping_state?: string;
+  shipping_pincode?: string;
+  shipping_country?: string;
+  sale_channel: string;
+  payment_mode: string;
+  payment_splits: { mode: string; amount: number; reference?: string }[];
+}) => request<InventoryItem[]>('/inventory/sell-batch', { method: 'POST', body: JSON.stringify(payload) });
 
 /** Fills the RKM Certificate of Authenticity PDF template (unchanged artwork) with this sold item's data */
 export const generateCertificate = (id: string) =>

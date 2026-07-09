@@ -1,7 +1,17 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { getPendingSaleRequests, approveSaleRequest, rejectSaleRequest, getBranches, staticUrl, type InventoryItem, type Branch } from '@/lib/api';
+import {
+  getPendingSaleRequests,
+  approveSaleRequest,
+  rejectSaleRequest,
+  approveSaleRequestBatch,
+  rejectSaleRequestBatch,
+  getBranches,
+  staticUrl,
+  type InventoryItem,
+  type Branch,
+} from '@/lib/api';
 
 const fmt = (n: number) => Math.round(n).toLocaleString('en-IN');
 
@@ -16,21 +26,20 @@ function timeAgo(dateStr: string) {
 }
 
 interface RejectModalProps {
-  item: InventoryItem;
+  label: string;
   onConfirm: (reason: string) => void;
   onClose: () => void;
 }
 
-function RejectModal({ item, onConfirm, onClose }: RejectModalProps) {
+function RejectModal({ label, onConfirm, onClose }: RejectModalProps) {
   const [reason, setReason] = useState('');
-  const product = typeof item.product_id === 'object' ? item.product_id : null;
   return (
     <div className="fixed inset-0 z-[200] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6 space-y-5">
         <div>
           <h3 className="text-lg font-black text-slate-900">Reject Sale Request</h3>
           <p className="text-sm text-slate-500 mt-1">
-            Rejecting sale request for <span className="font-bold text-slate-700">{(product as any)?.name ?? item.unique_item_code}</span>
+            Rejecting sale request for <span className="font-bold text-slate-700">{label}</span>
           </p>
         </div>
         <div>
@@ -69,7 +78,7 @@ export default function SaleApprovalsPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
-  const [rejectItem, setRejectItem] = useState<InventoryItem | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<{ itemId?: string; batchId?: string; label: string } | null>(null);
 
   const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
     setToast({ msg, type });
@@ -100,13 +109,52 @@ export default function SaleApprovalsPage() {
     } finally { setActionLoading(null); }
   }
 
-  async function handleRejectConfirm(reason: string) {
-    if (!rejectItem) return;
-    setActionLoading(rejectItem._id);
-    setRejectItem(null);
+  async function handleApproveBatch(batchId: string, count: number) {
+    setActionLoading(batchId);
     try {
-      await rejectSaleRequest(rejectItem._id, reason);
-      showToast('Sale request rejected.');
+      await approveSaleRequestBatch(batchId);
+      showToast(`${count} items approved as one sale!`);
+      load(page);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to approve sale', 'error');
+    } finally { setActionLoading(null); }
+  }
+
+  type RequestGroup = { key: string; items: InventoryItem[]; batchId?: string };
+
+  function buildRequestGroups(list: InventoryItem[]): RequestGroup[] {
+    const groups: RequestGroup[] = [];
+    const batchIndex = new Map<string, number>();
+    for (const it of list) {
+      const batchId = it.sale_request_data?.batch_id as string | undefined;
+      if (batchId) {
+        const idx = batchIndex.get(batchId);
+        if (idx !== undefined) {
+          groups[idx].items.push(it);
+        } else {
+          batchIndex.set(batchId, groups.length);
+          groups.push({ key: batchId, items: [it], batchId });
+        }
+      } else {
+        groups.push({ key: it._id, items: [it] });
+      }
+    }
+    return groups;
+  }
+
+  async function handleRejectConfirm(reason: string) {
+    if (!rejectTarget) return;
+    const key = rejectTarget.batchId ?? rejectTarget.itemId!;
+    setActionLoading(key);
+    setRejectTarget(null);
+    try {
+      if (rejectTarget.batchId) {
+        await rejectSaleRequestBatch(rejectTarget.batchId, reason);
+        showToast('Batch sale request rejected.');
+      } else {
+        await rejectSaleRequest(rejectTarget.itemId!, reason);
+        showToast('Sale request rejected.');
+      }
       load(page);
     } catch (err: any) {
       showToast(err.message || 'Failed to reject request', 'error');
@@ -115,8 +163,8 @@ export default function SaleApprovalsPage() {
 
   return (
     <div className="p-6 lg:p-10 max-w-6xl mx-auto space-y-6">
-      {rejectItem && (
-        <RejectModal item={rejectItem} onConfirm={handleRejectConfirm} onClose={() => setRejectItem(null)} />
+      {rejectTarget && (
+        <RejectModal label={rejectTarget.label} onConfirm={handleRejectConfirm} onClose={() => setRejectTarget(null)} />
       )}
 
       {toast && (
@@ -169,7 +217,150 @@ export default function SaleApprovalsPage() {
       {/* Sale Request Cards */}
       {!loading && items.length > 0 && (
         <div className="space-y-4">
-          {items.map(item => {
+          {buildRequestGroups(items).map(group => {
+            if (group.items.length > 1 && group.batchId) {
+              const batchId = group.batchId;
+              const groupItems = group.items;
+              const first = groupItems[0];
+              const branch = typeof first.branch_id === 'object' ? first.branch_id as any : null;
+              const reqData = first.sale_request_data ?? {};
+              const isProcessing = actionLoading === batchId;
+              const totalPrice = groupItems.reduce(
+                (sum, it) => sum + (it.sale_request_data?.selling_price ?? it.live_selling_price ?? it.selling_price ?? 0),
+                0
+              );
+
+              return (
+                <div key={group.key} className="bg-white border border-slate-100 rounded-3xl overflow-hidden shadow-sm hover:shadow-md transition-all">
+                  {/* Top Banner */}
+                  <div className="bg-amber-50 border-b border-amber-100 px-5 py-3 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                      <span className="text-xs font-black text-amber-700 uppercase tracking-widest">Pending Approval</span>
+                    </div>
+                    <span className="text-xs font-bold text-amber-600">{first.sale_request_at ? timeAgo(first.sale_request_at) : ''}</span>
+                  </div>
+
+                  <div className="p-5 grid grid-cols-1 md:grid-cols-[auto_1fr_auto] gap-5">
+                    {/* Batch Badge */}
+                    <div className="flex md:block items-center gap-4">
+                      <div className="w-20 h-20 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col items-center justify-center overflow-hidden flex-shrink-0">
+                        <span className="text-xl font-black text-slate-700">{groupItems.length}</span>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">items</span>
+                      </div>
+                    </div>
+
+                    {/* Items + Customer Info */}
+                    <div className="space-y-3">
+                      <div>
+                        <div className="flex flex-wrap gap-2 mb-1.5">
+                          <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-black uppercase rounded-lg">{groupItems.length} Items</span>
+                          {branch && <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-black uppercase rounded-lg">{branch.name}</span>}
+                        </div>
+                        <div className="space-y-1.5 bg-slate-50 rounded-2xl p-3">
+                          {groupItems.map(it => {
+                            const itProduct = typeof it.product_id === 'object' ? it.product_id as any : null;
+                            const itPrice = it.sale_request_data?.selling_price ?? it.live_selling_price ?? it.selling_price;
+                            return (
+                              <div key={it._id} className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="text-sm font-bold text-slate-800 truncate">{itProduct?.name ?? it.unique_item_code}</span>
+                                  <span className="px-1.5 py-0.5 bg-white text-slate-500 text-[9px] font-black uppercase rounded-md border border-slate-200 flex-shrink-0">{it.unique_item_code}</span>
+                                </div>
+                                <span className="text-xs font-black text-slate-600 flex-shrink-0">₹{fmt(itPrice)}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Requester */}
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-xl bg-[#5A0F1A]/10 flex items-center justify-center">
+                          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#5A0F1A" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Requested By</p>
+                          <p className="text-sm font-bold text-slate-700">{first.sale_request_by_name || 'Cashier'}</p>
+                        </div>
+                      </div>
+
+                      {/* Customer Details Grid */}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-slate-50 rounded-2xl p-4">
+                        <div>
+                          <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Customer</p>
+                          <p className="text-sm font-bold text-slate-800 truncate">{reqData.sold_customer_name || '—'}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Phone</p>
+                          <p className="text-sm font-bold text-slate-800">{reqData.sold_customer_phone || '—'}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Payment</p>
+                          <p className="text-sm font-bold text-slate-800 capitalize">{reqData.payment_mode || '—'}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Channel</p>
+                          <p className="text-sm font-bold text-slate-800 capitalize">{reqData.sale_channel || '—'}</p>
+                        </div>
+                        {reqData.shipping_address && (
+                          <div className="col-span-2">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Address</p>
+                            <p className="text-sm font-bold text-slate-800 truncate">{reqData.shipping_address}{reqData.shipping_city ? `, ${reqData.shipping_city}` : ''}</p>
+                          </div>
+                        )}
+                        {reqData.is_emi && (
+                          <div className="col-span-full">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-amber-600 mb-0.5">EMI</p>
+                            <p className="text-sm font-bold text-amber-700">{reqData.emi_provider} · {reqData.emi_tenure_months} months{reqData.emi_down_payment ? ` · ₹${fmt(reqData.emi_down_payment)} down` : ''}</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {first.sale_request_notes && (
+                        <div className="flex gap-2 bg-blue-50 rounded-2xl p-3">
+                          <svg className="shrink-0 mt-0.5" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#3b82f6" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
+                          <p className="text-xs font-bold text-blue-700">{first.sale_request_notes}</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Price + Actions */}
+                    <div className="flex flex-col items-end justify-between gap-4 md:min-w-[160px]">
+                      <div className="text-right">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Total Sale Price</p>
+                        <p className="text-2xl font-black text-slate-900">₹{fmt(totalPrice)}</p>
+                      </div>
+
+                      <div className="flex flex-col gap-2 w-full md:w-auto">
+                        <button
+                          onClick={() => handleApproveBatch(batchId, groupItems.length)}
+                          disabled={isProcessing}
+                          className="flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm rounded-2xl transition-all shadow-md shadow-emerald-200 disabled:opacity-60 disabled:cursor-not-allowed min-w-[140px]"
+                        >
+                          {isProcessing ? (
+                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          ) : (
+                            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                          )}
+                          {isProcessing ? 'Processing…' : 'Approve Sale'}
+                        </button>
+                        <button
+                          onClick={() => setRejectTarget({ batchId, label: `${groupItems.length} items` })}
+                          disabled={isProcessing}
+                          className="flex items-center justify-center gap-2 px-5 py-3 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-black text-sm rounded-2xl transition-all disabled:opacity-60 disabled:cursor-not-allowed min-w-[140px]"
+                        >
+                          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            const item = group.items[0];
             const product = typeof item.product_id === 'object' ? item.product_id as any : null;
             const branch = typeof item.branch_id === 'object' ? item.branch_id as any : null;
             const reqData = item.sale_request_data ?? {};
@@ -282,7 +473,7 @@ export default function SaleApprovalsPage() {
                         {isProcessing ? 'Processing…' : 'Approve Sale'}
                       </button>
                       <button
-                        onClick={() => setRejectItem(item)}
+                        onClick={() => setRejectTarget({ itemId: item._id, label: product?.name ?? item.unique_item_code })}
                         disabled={isProcessing}
                         className="flex items-center justify-center gap-2 px-5 py-3 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-black text-sm rounded-2xl transition-all disabled:opacity-60 disabled:cursor-not-allowed min-w-[140px]"
                       >

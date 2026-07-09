@@ -339,6 +339,11 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
               <NavIcon active={pathname.startsWith('/dashboard/users') && !pathname.startsWith('/dashboard/reporting-managers')} color={pathname.startsWith('/dashboard/users') && !pathname.startsWith('/dashboard/reporting-managers') ? colors.activeText : colors.textMuted}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Access Control</span>}
             </Link>}
+            {permissions === null && <Link href="/dashboard/employee-fields" onClick={onNavigate} title={isCollapsed ? "Field Management" : ""} className={navClass(pathname.startsWith('/dashboard/employee-fields'))} style={getNavStyle(pathname.startsWith('/dashboard/employee-fields'))}>
+              {isCollapsed && pathname.startsWith('/dashboard/employee-fields') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname.startsWith('/dashboard/employee-fields')} color={pathname.startsWith('/dashboard/employee-fields') ? colors.activeText : colors.textMuted}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Field Management</span>}
+            </Link>}
             {permissions === null && <Link href="/dashboard/reporting-managers" onClick={onNavigate} title={isCollapsed ? "Reporting Structure" : ""} className={navClass(pathname.startsWith('/dashboard/reporting-managers'))} style={getNavStyle(pathname.startsWith('/dashboard/reporting-managers'))}>
               {isCollapsed && pathname.startsWith('/dashboard/reporting-managers') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
               <NavIcon active={pathname.startsWith('/dashboard/reporting-managers')} color={pathname.startsWith('/dashboard/reporting-managers') ? colors.activeText : colors.textMuted}>
