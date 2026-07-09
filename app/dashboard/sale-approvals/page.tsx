@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  getPendingSaleRequests, approveSaleRequest, rejectSaleRequest, getBranches,
+  getPendingSaleRequests, approveSaleRequest, rejectSaleRequest,
+  approveSaleRequestBatch, rejectSaleRequestBatch, getBranches,
   getGoldBalance, redeemGoldSubscription, getCashiers,
   getAdvanceBalance, redeemCustomerAdvance,
   staticUrl,
@@ -23,15 +24,19 @@ function timeAgo(dateStr: string) {
 }
 
 // ── Reject modal ──────────────────────────────────────────────────────────────
-function RejectModal({ item, onConfirm, onClose }: { item: InventoryItem; onConfirm: (r: string) => void; onClose: () => void }) {
+function RejectModal({ items, onConfirm, onClose }: { items: InventoryItem[]; onConfirm: (r: string) => void; onClose: () => void }) {
   const [reason, setReason] = useState('');
-  const product = typeof item.product_id === 'object' ? item.product_id as any : null;
+  const first = items[0];
+  const product = typeof first.product_id === 'object' ? first.product_id as any : null;
+  const label = items.length > 1
+    ? `${items.length} items (${product?.name ?? first.unique_item_code} + ${items.length - 1} more)`
+    : (product?.name ?? first.unique_item_code);
   return (
     <div className="fixed inset-0 z-[400] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-white rounded-[24px] shadow-2xl w-full max-w-md p-8 space-y-5">
         <div>
           <h3 className="text-xl font-black text-slate-900">Reject Sale Request</h3>
-          <p className="text-sm text-slate-500 mt-1">Rejecting <span className="font-bold text-slate-700">{product?.name ?? item.unique_item_code}</span></p>
+          <p className="text-sm text-slate-500 mt-1">Rejecting <span className="font-bold text-slate-700">{label}</span></p>
         </div>
         <div>
           <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Reason for Rejection</label>
@@ -55,21 +60,32 @@ function RejectModal({ item, onConfirm, onClose }: { item: InventoryItem; onConf
 
 // ── Approve Sale Modal ────────────────────────────────────────────────────────
 interface ApproveSaleModalProps {
-  item: InventoryItem;
+  items: InventoryItem[];
   onClose: () => void;
   onApproved: () => void;
   onRejected: () => void;
 }
 
-function ApproveSaleModal({ item, onClose, onApproved, onRejected }: ApproveSaleModalProps) {
-  const product = typeof item.product_id === 'object' ? item.product_id as any : null;
-  const branch = typeof item.branch_id === 'object' ? item.branch_id as any : null;
-  const reqData: Record<string, any> = (item as any).sale_request_data ?? {};
+function itemQuotedPrice(it: InventoryItem) {
+  const d: Record<string, any> = (it as any).sale_request_data ?? {};
+  return d.selling_price ?? it.selling_price ?? 0;
+}
 
-  const basePrice: number = reqData.selling_price ?? item.selling_price ?? 0;
-  const pb: any = (item as any).pricing_breakdown ?? product?.pricing_breakdown;
-  const makingCharges: number = pb?.making_charges ?? 0;
-  const maxDiscount: number = (item as any).max_manager_discount ?? 0;
+function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSaleModalProps) {
+  const first = items[0];
+  const product = typeof first.product_id === 'object' ? first.product_id as any : null;
+  const branch = typeof first.branch_id === 'object' ? first.branch_id as any : null;
+  const reqData: Record<string, any> = (first as any).sale_request_data ?? {};
+  const batchId: string | undefined = reqData.batch_id;
+  const isBatch = items.length > 1 && !!batchId;
+
+  const basePrice: number = items.reduce((sum, it) => sum + itemQuotedPrice(it), 0);
+  const makingCharges: number = items.reduce((sum, it) => {
+    const p = typeof it.product_id === 'object' ? it.product_id as any : null;
+    const pb: any = (it as any).pricing_breakdown ?? p?.pricing_breakdown;
+    return sum + (pb?.making_charges ?? 0);
+  }, 0);
+  const maxDiscount: number = (first as any).max_manager_discount ?? 0;
 
   // Editable fields (pre-filled from cashier's request)
   const [customerName, setCustomerName] = useState(reqData.sold_customer_name ?? '');
@@ -81,26 +97,88 @@ function ApproveSaleModal({ item, onClose, onApproved, onRejected }: ApproveSale
   const [paymentMode, setPaymentMode] = useState(reqData.payment_mode ?? 'cash');
   const [saleChannel, setSaleChannel] = useState(reqData.sale_channel ?? 'in-store');
   const [soldByUserId, setSoldByUserId] = useState(
-    reqData.sold_by_user_id || (item as any).sale_request_by?.toString() || ''
+    reqData.sold_by_user_id || (first as any).sale_request_by?.toString() || ''
   );
 
   // Manager additions
   const [managerDiscount, setManagerDiscount] = useState(0);
   const [investmentPlans, setInvestmentPlans] = useState<GoldBalance[]>([]);
-  const [selectedSub, setSelectedSub] = useState<GoldBalance | null>(null);
-  const [investmentApplied, setInvestmentApplied] = useState(0);
+  // Multiple plans can be checked and redeemed together in one approval (planId -> amount applied)
+  const [investmentApplied, setInvestmentApplied] = useState<Record<string, number>>({});
   const [loadingBalance, setLoadingBalance] = useState(false);
   const [balanceChecked, setBalanceChecked] = useState(false);
   const [balanceError, setBalanceError] = useState('');
   const [cashiers, setCashiers] = useState<Cashier[]>([]);
 
-  // Advance balance
+  // Advance balance — multiple advances can be checked and redeemed together in one approval (advanceId -> amount applied)
   const [advances, setAdvances] = useState<CustomerAdvance[]>([]);
-  const [selectedAdvance, setSelectedAdvance] = useState<CustomerAdvance | null>(null);
-  const [advanceApplied, setAdvanceApplied] = useState(0);
+  const [advanceApplied, setAdvanceApplied] = useState<Record<string, number>>({});
   const [loadingAdvanceBalance, setLoadingAdvanceBalance] = useState(false);
   const [advanceBalanceChecked, setAdvanceBalanceChecked] = useState(false);
   const [advanceBalanceError, setAdvanceBalanceError] = useState('');
+
+  const totalInvestmentApplied = Object.values(investmentApplied).reduce((s, n) => s + (n || 0), 0);
+  const totalAdvanceApplied = Object.values(advanceApplied).reduce((s, n) => s + (n || 0), 0);
+  const selectedInvestmentPlans = investmentPlans.filter(p => (investmentApplied[p._id] ?? 0) > 0);
+  const selectedAdvances = advances.filter(a => (advanceApplied[a._id] ?? 0) > 0);
+
+  function toggleInvestmentPlan(id: string) {
+    setInvestmentApplied(prev => {
+      if (id in prev) { const next = { ...prev }; delete next[id]; return next; }
+      return { ...prev, [id]: 0 };
+    });
+  }
+  function setInvestmentPlanAmount(id: string, amount: number) {
+    setInvestmentApplied(prev => ({ ...prev, [id]: amount }));
+  }
+  /** Greedily fills `ids` (defaults to whatever is currently checked) up to `cap`, in list order. */
+  function applyMaxInvestment(cap: number, ids?: string[]) {
+    const targets = ids ?? Object.keys(investmentApplied);
+    let remaining = Math.max(0, cap);
+    const next: Record<string, number> = {};
+    for (const plan of investmentPlans) {
+      if (!targets.includes(plan._id)) continue;
+      const amt = Math.max(0, Math.min(plan.availableBalance, remaining));
+      next[plan._id] = amt;
+      remaining -= amt;
+    }
+    setInvestmentApplied(next);
+  }
+  function selectAllInvestments(cap: number) {
+    applyMaxInvestment(cap, investmentPlans.map(p => p._id));
+  }
+  function clearInvestments() {
+    setInvestmentApplied({});
+  }
+
+  function toggleAdvance(id: string) {
+    setAdvanceApplied(prev => {
+      if (id in prev) { const next = { ...prev }; delete next[id]; return next; }
+      return { ...prev, [id]: 0 };
+    });
+  }
+  function setAdvanceAmount(id: string, amount: number) {
+    setAdvanceApplied(prev => ({ ...prev, [id]: amount }));
+  }
+  /** Greedily fills `ids` (defaults to whatever is currently checked) up to `cap`, in list order. Skips locked advances. */
+  function applyMaxAdvance(cap: number, ids?: string[]) {
+    const targets = ids ?? Object.keys(advanceApplied);
+    let remaining = Math.max(0, cap);
+    const next: Record<string, number> = {};
+    for (const advance of advances) {
+      if (advance.locked || !targets.includes(advance._id)) continue;
+      const amt = Math.max(0, Math.min(advance.availableBalance, remaining));
+      next[advance._id] = amt;
+      remaining -= amt;
+    }
+    setAdvanceApplied(next);
+  }
+  function selectAllAdvances(cap: number) {
+    applyMaxAdvance(cap, advances.filter(a => !a.locked).map(a => a._id));
+  }
+  function clearAdvances() {
+    setAdvanceApplied({});
+  }
 
   // Modal state
   const [approving, setApproving] = useState(false);
@@ -111,13 +189,17 @@ function ApproveSaleModal({ item, onClose, onApproved, onRejected }: ApproveSale
 
   useEffect(() => { getCashiers('').then(r => setCashiers(r.data)).catch(() => {}); }, []);
 
-  // Computed prices
+  // Computed prices — when several plans/advances are combined, use the best single waiver %
+  // rather than stacking them, so making charges are never waived beyond 100%.
   const afterDiscount = Math.round(basePrice * (1 - managerDiscount / 100));
-  const rdPct: number = selectedSub?.plan?.redemptionDiscount ?? 0;
-  const mcDiscount = investmentApplied > 0 && rdPct > 0 ? Math.round(makingCharges * rdPct / 100) : 0;
-  const advWaiverPct: number = selectedAdvance?.making_charges_waiver_pct ?? 0;
-  const advMcDiscount = advanceApplied > 0 && advWaiverPct > 0 ? Math.round(makingCharges * advWaiverPct / 100) : 0;
-  const finalPrice = Math.max(0, afterDiscount - investmentApplied - mcDiscount - advanceApplied - advMcDiscount);
+  const rdPct: number = selectedInvestmentPlans.reduce((max, p) => Math.max(max, p.plan?.redemptionDiscount ?? 0), 0);
+  const mcDiscount = totalInvestmentApplied > 0 && rdPct > 0 ? Math.round(makingCharges * rdPct / 100) : 0;
+  const advWaiverPct: number = selectedAdvances.reduce((max, a) => Math.max(max, a.making_charges_waiver_pct ?? 0), 0);
+  const advMcDiscount = totalAdvanceApplied > 0 && advWaiverPct > 0 ? Math.round(makingCharges * advWaiverPct / 100) : 0;
+  const finalPrice = Math.max(0, afterDiscount - totalInvestmentApplied - mcDiscount - totalAdvanceApplied - advMcDiscount);
+  // Ratio used to distribute the combined discount/redemption proportionally back to each
+  // item's own quoted price when approving a batch (mirrors sellBatch's per-item pricing).
+  const priceRatio = basePrice > 0 ? finalPrice / basePrice : 0;
 
   async function checkInvestmentBalance() {
     const phone = reqData.sold_customer_phone;
@@ -129,7 +211,7 @@ function ApproveSaleModal({ item, onClose, onApproved, onRejected }: ApproveSale
       const withBal = data.filter(b => b.availableBalance > 0);
       setInvestmentPlans(withBal);
       setBalanceChecked(true);
-      if (withBal.length === 1) { setSelectedSub(withBal[0]); }
+      if (withBal.length === 1) { setInvestmentApplied({ [withBal[0]._id]: 0 }); }
     } catch (e: any) {
       setInvestmentPlans([]);
       setBalanceChecked(true);
@@ -149,7 +231,7 @@ function ApproveSaleModal({ item, onClose, onApproved, onRejected }: ApproveSale
       const withBal = data.filter(a => a.availableBalance > 0);
       setAdvances(withBal);
       setAdvanceBalanceChecked(true);
-      if (withBal.length === 1) { setSelectedAdvance(withBal[0]); }
+      if (withBal.length === 1 && !withBal[0].locked) { setAdvanceApplied({ [withBal[0]._id]: 0 }); }
     } catch (e: any) {
       setAdvances([]);
       setAdvanceBalanceChecked(true);
@@ -161,11 +243,13 @@ function ApproveSaleModal({ item, onClose, onApproved, onRejected }: ApproveSale
 
   function buildPaymentSplits() {
     const originalSplits: any[] = reqData.payment_splits ?? [];
-    if ((investmentApplied > 0 && selectedSub) || (advanceApplied > 0 && selectedAdvance)) {
+    const investmentEntries = Object.entries(investmentApplied).filter(([, amt]) => amt > 0);
+    const advanceEntries = Object.entries(advanceApplied).filter(([, amt]) => amt > 0);
+    if (investmentEntries.length > 0 || advanceEntries.length > 0) {
       const cashSplits = originalSplits.filter(s => s.mode !== 'investment_balance' && s.mode !== 'advance_balance');
       const splits: any[] = [];
-      if (investmentApplied > 0 && selectedSub) splits.push({ mode: 'investment_balance', amount: investmentApplied, reference: selectedSub._id });
-      if (advanceApplied > 0 && selectedAdvance) splits.push({ mode: 'advance_balance', amount: advanceApplied, reference: selectedAdvance._id });
+      investmentEntries.forEach(([id, amt]) => splits.push({ mode: 'investment_balance', amount: amt, reference: id }));
+      advanceEntries.forEach(([id, amt]) => splits.push({ mode: 'advance_balance', amount: amt, reference: id }));
       splits.push(...(cashSplits.length > 0
         ? cashSplits.map((s, i) => i === 0 ? { ...s, amount: finalPrice } : s)
         : [{ mode: paymentMode, amount: finalPrice }]
@@ -183,39 +267,57 @@ function ApproveSaleModal({ item, onClose, onApproved, onRejected }: ApproveSale
     setApproving(true);
     setError('');
     try {
-      const overrides: Parameters<typeof approveSaleRequest>[1] = {
-        selling_price: finalPrice,
-        payment_splits: buildPaymentSplits(),
-      };
-      if (managerDiscount > 0) overrides.manager_discount = managerDiscount;
-      if (investmentApplied > 0) overrides.investment_redeemed = investmentApplied;
-      if (selectedSub) overrides.investment_sub_id = selectedSub._id;
-      if (mcDiscount > 0) overrides.making_charges_discount = mcDiscount;
-      if (advanceApplied > 0) overrides.advance_redeemed = advanceApplied;
-      if (selectedAdvance) overrides.advance_id = selectedAdvance._id;
-      if (advMcDiscount > 0) overrides.advance_making_charges_discount = advMcDiscount;
+      const investmentEntries = Object.entries(investmentApplied).filter(([, amt]) => amt > 0);
+      const advanceEntries = Object.entries(advanceApplied).filter(([, amt]) => amt > 0);
+      const splits = buildPaymentSplits();
 
-      await approveSaleRequest(item._id, overrides);
+      if (isBatch) {
+        const overrides: Parameters<typeof approveSaleRequestBatch>[1] = {
+          item_prices: items.map(it => ({ id: it._id, selling_price: Math.round(itemQuotedPrice(it) * priceRatio) })),
+          payment_splits: splits,
+        };
+        if (managerDiscount > 0) overrides.manager_discount = managerDiscount;
+        if (totalInvestmentApplied > 0) overrides.investment_redeemed = totalInvestmentApplied;
+        if (investmentEntries[0]) overrides.investment_sub_id = investmentEntries[0][0];
+        if (mcDiscount > 0) overrides.making_charges_discount = mcDiscount;
+        if (totalAdvanceApplied > 0) overrides.advance_redeemed = totalAdvanceApplied;
+        if (advanceEntries[0]) overrides.advance_id = advanceEntries[0][0];
+        if (advMcDiscount > 0) overrides.advance_making_charges_discount = advMcDiscount;
+        await approveSaleRequestBatch(batchId!, overrides);
+      } else {
+        const overrides: Parameters<typeof approveSaleRequest>[1] = {
+          selling_price: finalPrice,
+          payment_splits: splits,
+        };
+        if (managerDiscount > 0) overrides.manager_discount = managerDiscount;
+        if (totalInvestmentApplied > 0) overrides.investment_redeemed = totalInvestmentApplied;
+        if (investmentEntries[0]) overrides.investment_sub_id = investmentEntries[0][0];
+        if (mcDiscount > 0) overrides.making_charges_discount = mcDiscount;
+        if (totalAdvanceApplied > 0) overrides.advance_redeemed = totalAdvanceApplied;
+        if (advanceEntries[0]) overrides.advance_id = advanceEntries[0][0];
+        if (advMcDiscount > 0) overrides.advance_making_charges_discount = advMcDiscount;
+        await approveSaleRequest(first._id, overrides);
+      }
 
-      if (investmentApplied > 0 && selectedSub) {
-        try {
-          await redeemGoldSubscription(selectedSub._id, {
-            amount: investmentApplied,
-            saleReference: item.unique_item_code,
+      const saleReference = reqData.sale_reference || first.unique_item_code;
+      await Promise.all([
+        ...investmentEntries.map(([id, amt]) =>
+          redeemGoldSubscription(id, {
+            amount: amt,
+            saleReference,
             note: `Approved sale for ${customerName}${mcDiscount > 0 ? ` · making charges discount ₹${fmt(mcDiscount)}` : ''}`,
-          });
-        } catch { /* non-blocking */ }
-      }
-      if (advanceApplied > 0 && selectedAdvance) {
-        try {
-          await redeemCustomerAdvance(selectedAdvance._id, {
-            amount: advanceApplied,
-            making_charges_discount: advMcDiscount,
-            saleReference: item.unique_item_code,
-            note: `Approved sale for ${customerName}${advMcDiscount > 0 ? ` · making charges discount ₹${fmt(advMcDiscount)}` : ''}`,
-          });
-        } catch { /* non-blocking */ }
-      }
+          }).catch(() => { /* non-blocking */ })
+        ),
+        ...advanceEntries.map(([id, amt]) => {
+          const share = totalAdvanceApplied > 0 ? Math.round(advMcDiscount * (amt / totalAdvanceApplied)) : 0;
+          return redeemCustomerAdvance(id, {
+            amount: amt,
+            making_charges_discount: share,
+            saleReference,
+            note: `Approved sale for ${customerName}${share > 0 ? ` · making charges discount ₹${fmt(share)}` : ''}`,
+          }).catch(() => { /* non-blocking */ });
+        }),
+      ]);
 
       onApproved();
     } catch (err: any) {
@@ -227,7 +329,8 @@ function ApproveSaleModal({ item, onClose, onApproved, onRejected }: ApproveSale
     setRejecting(true);
     setShowRejectModal(false);
     try {
-      await rejectSaleRequest(item._id, reason);
+      if (isBatch) await rejectSaleRequestBatch(batchId!, reason);
+      else await rejectSaleRequest(first._id, reason);
       onRejected();
     } catch (err: any) {
       setError(err?.message || 'Failed to reject request');
@@ -235,11 +338,13 @@ function ApproveSaleModal({ item, onClose, onApproved, onRejected }: ApproveSale
     }
   }
 
-  // Mock item for bill preview
-  const mockItem: any = {
-    ...item,
+  // Mock items for bill preview — investment/advance redemption bookkeeping is attributed only
+  // to the first item, mirroring how the backend records it once the batch is actually approved.
+  const paymentSplitsPreview = buildPaymentSplits();
+  const mockItems: any[] = items.map((it, i) => ({
+    ...it,
     status: 'sold',
-    selling_price: finalPrice,
+    selling_price: isBatch ? Math.round(itemQuotedPrice(it) * priceRatio) : finalPrice,
     manager_discount: managerDiscount,
     sold_customer_name: customerName,
     sold_customer_phone: reqData.sold_customer_phone,
@@ -250,17 +355,17 @@ function ApproveSaleModal({ item, onClose, onApproved, onRejected }: ApproveSale
     shipping_pincode: shippingPincode,
     sale_channel: saleChannel,
     payment_mode: paymentMode,
-    payment_splits: buildPaymentSplits(),
-    investment_redeemed: investmentApplied,
-    making_charges_discount: mcDiscount,
-    advance_redeemed: advanceApplied,
-    advance_making_charges_discount: advMcDiscount,
+    payment_splits: paymentSplitsPreview,
+    investment_redeemed: i === 0 ? totalInvestmentApplied : 0,
+    making_charges_discount: i === 0 ? mcDiscount : 0,
+    advance_redeemed: i === 0 ? totalAdvanceApplied : 0,
+    advance_making_charges_discount: i === 0 ? advMcDiscount : 0,
     is_emi: reqData.is_emi,
     emi_provider: reqData.emi_provider,
     emi_tenure_months: reqData.emi_tenure_months,
     emi_down_payment: reqData.emi_down_payment,
-    sold_at_branch_id: item.branch_id,
-  };
+    sold_at_branch_id: it.branch_id,
+  }));
 
   return (
     <>
@@ -273,12 +378,14 @@ function ApproveSaleModal({ item, onClose, onApproved, onRejected }: ApproveSale
               <div className="flex items-center gap-2 mb-1">
                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
                 <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Pending Approval</span>
-                {item.sale_request_at && <span className="text-[10px] text-slate-400 font-bold">· {timeAgo(item.sale_request_at)}</span>}
+                {first.sale_request_at && <span className="text-[10px] text-slate-400 font-bold">· {timeAgo(first.sale_request_at)}</span>}
               </div>
-              <h2 className="text-xl font-black text-slate-900">Approve Sale Request</h2>
+              <h2 className="text-xl font-black text-slate-900">
+                {items.length > 1 ? `Approve Sale Request — ${items.length} Items` : 'Approve Sale Request'}
+              </h2>
               <p className="text-sm text-slate-500 font-medium mt-0.5 line-clamp-1">
-                {product?.name ?? item.unique_item_code}
-                {item.sale_request_by_name && <span className="text-slate-400"> · Requested by {item.sale_request_by_name}</span>}
+                {items.length > 1 ? `₹${fmt(basePrice)} bill` : (product?.name ?? first.unique_item_code)}
+                {first.sale_request_by_name && <span className="text-slate-400"> · Requested by {first.sale_request_by_name}</span>}
               </p>
             </div>
             <button onClick={onClose} className="p-2 hover:bg-slate-50 rounded-xl text-slate-500 flex-shrink-0">
@@ -289,29 +396,61 @@ function ApproveSaleModal({ item, onClose, onApproved, onRejected }: ApproveSale
           <div className="p-8 space-y-6">
 
             {/* ── Item Info Banner ── */}
-            <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-              {product?.images?.[0] ? (
-                <img src={staticUrl(product.images[0])} alt="" className="w-14 h-14 rounded-xl object-cover border border-slate-200 flex-shrink-0" />
-              ) : (
-                <div className="w-14 h-14 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center flex-shrink-0">
-                  <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#cbd5e1" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
+            {items.length === 1 ? (
+              <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                {product?.images?.[0] ? (
+                  <img src={staticUrl(product.images[0])} alt="" className="w-14 h-14 rounded-xl object-cover border border-slate-200 flex-shrink-0" />
+                ) : (
+                  <div className="w-14 h-14 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center flex-shrink-0">
+                    <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#cbd5e1" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="font-black text-slate-900">{product?.name ?? '—'}</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">{product?.metal_type} {product?.purity} · {product?.gross_weight}g gross · Code: {first.unique_item_code}</p>
+                  {makingCharges > 0 && <p className="text-[10px] text-slate-400 mt-0.5">Making charges: ₹{fmt(makingCharges)}</p>}
                 </div>
-              )}
-              <div className="flex-1 min-w-0">
-                <p className="font-black text-slate-900">{product?.name ?? '—'}</p>
-                <p className="text-[11px] text-slate-500 mt-0.5">{product?.metal_type} {product?.purity} · {product?.gross_weight}g gross · Code: {item.unique_item_code}</p>
-                {makingCharges > 0 && <p className="text-[10px] text-slate-400 mt-0.5">Making charges: ₹{fmt(makingCharges)}</p>}
+                {branch && <span className="px-3 py-1 bg-[#5A0F1A]/10 text-[#5A0F1A] text-[10px] font-black uppercase rounded-lg flex-shrink-0">{branch.name}</span>}
               </div>
-              {branch && <span className="px-3 py-1 bg-[#5A0F1A]/10 text-[#5A0F1A] text-[10px] font-black uppercase rounded-lg flex-shrink-0">{branch.name}</span>}
-            </div>
+            ) : (
+              <div className="rounded-2xl border border-slate-100 overflow-hidden">
+                <div className="flex items-center justify-between gap-2 px-5 py-3 bg-slate-50 border-b border-slate-100">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{items.length} Items in this Bill</p>
+                  {branch && <span className="px-3 py-1 bg-[#5A0F1A]/10 text-[#5A0F1A] text-[10px] font-black uppercase rounded-lg flex-shrink-0">{branch.name}</span>}
+                </div>
+                <div className="max-h-48 overflow-y-auto divide-y divide-slate-50">
+                  {items.map(it => {
+                    const p = typeof it.product_id === 'object' ? it.product_id as any : null;
+                    return (
+                      <div key={it._id} className="flex items-center justify-between gap-3 px-5 py-3 bg-white">
+                        <div className="min-w-0">
+                          <p className="text-sm font-black text-slate-900 truncate">{p?.name ?? it.unique_item_code}</p>
+                          <p className="text-[10px] text-slate-400 font-bold">{it.unique_item_code}</p>
+                        </div>
+                        <span className="text-sm font-black text-[#7A1C2A] flex-shrink-0">₹{fmt(itemQuotedPrice(it))}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex items-center justify-between px-5 py-3 bg-slate-50 border-t border-slate-100">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Bill Total</span>
+                  <span className="text-base font-black text-[#5A0F1A]">₹{fmt(basePrice)}</span>
+                </div>
+                {makingCharges > 0 && (
+                  <div className="px-5 py-2 bg-white border-t border-slate-50">
+                    <p className="text-[10px] text-slate-400">Combined making charges: ₹{fmt(makingCharges)}</p>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* ── Cashier notes ── */}
-            {item.sale_request_notes && (
+            {first.sale_request_notes && (
               <div className="flex gap-3 bg-blue-50 border border-blue-100 rounded-2xl p-4">
                 <svg className="shrink-0 mt-0.5" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#3b82f6" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
                 <div>
-                  <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Note from {item.sale_request_by_name || 'Cashier'}</p>
-                  <p className="text-xs font-bold text-blue-800 mt-0.5">{item.sale_request_notes}</p>
+                  <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Note from {first.sale_request_by_name || 'Cashier'}</p>
+                  <p className="text-xs font-bold text-blue-800 mt-0.5">{first.sale_request_notes}</p>
                 </div>
               </div>
             )}
@@ -343,13 +482,13 @@ function ApproveSaleModal({ item, onClose, onApproved, onRejected }: ApproveSale
                     <span className="text-sm font-black text-[#5A0F1A]">₹{fmt(finalPrice)}</span>
                     <div className="flex items-center gap-1.5 flex-wrap justify-end">
                       {managerDiscount > 0 && <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-md font-black">-{managerDiscount}% off</span>}
-                      {investmentApplied > 0 && <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-md font-black">-₹{fmt(investmentApplied)} balance</span>}
+                      {totalInvestmentApplied > 0 && <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-md font-black">-₹{fmt(totalInvestmentApplied)} balance</span>}
                       {mcDiscount > 0 && <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-md font-black">-₹{fmt(mcDiscount)} making</span>}
-                      {advanceApplied > 0 && <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md font-black">-₹{fmt(advanceApplied)} advance</span>}
+                      {totalAdvanceApplied > 0 && <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md font-black">-₹{fmt(totalAdvanceApplied)} advance</span>}
                       {advMcDiscount > 0 && <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-md font-black">-₹{fmt(advMcDiscount)} making</span>}
                     </div>
                   </div>
-                  {(managerDiscount > 0 || investmentApplied > 0 || mcDiscount > 0 || advanceApplied > 0 || advMcDiscount > 0) && (
+                  {(managerDiscount > 0 || totalInvestmentApplied > 0 || mcDiscount > 0 || totalAdvanceApplied > 0 || advMcDiscount > 0) && (
                     <div className="border-t border-slate-200 pt-1.5 space-y-0.5">
                       <div className="text-[10px] text-slate-400 font-medium flex items-center gap-1.5">
                         <span>Quoted:</span><span className="font-bold text-slate-600">₹{fmt(basePrice)}</span>
@@ -359,9 +498,9 @@ function ApproveSaleModal({ item, onClose, onApproved, onRejected }: ApproveSale
                           <span>- Manager discount ({managerDiscount}%):</span><span className="font-bold">₹{fmt(basePrice - afterDiscount)}</span>
                         </div>
                       )}
-                      {investmentApplied > 0 && (
+                      {totalInvestmentApplied > 0 && (
                         <div className="text-[10px] text-amber-600 font-medium flex items-center gap-1.5">
-                          <span>- Investment balance:</span><span className="font-bold">₹{fmt(investmentApplied)}</span>
+                          <span>- Investment balance{selectedInvestmentPlans.length > 1 ? ` (${selectedInvestmentPlans.length} plans)` : ''}:</span><span className="font-bold">₹{fmt(totalInvestmentApplied)}</span>
                         </div>
                       )}
                       {mcDiscount > 0 && (
@@ -369,9 +508,9 @@ function ApproveSaleModal({ item, onClose, onApproved, onRejected }: ApproveSale
                           <span>- Making charges ({rdPct}% of ₹{fmt(makingCharges)}):</span><span className="font-bold">₹{fmt(mcDiscount)}</span>
                         </div>
                       )}
-                      {advanceApplied > 0 && (
+                      {totalAdvanceApplied > 0 && (
                         <div className="text-[10px] text-blue-600 font-medium flex items-center gap-1.5">
-                          <span>- Advance balance:</span><span className="font-bold">₹{fmt(advanceApplied)}</span>
+                          <span>- Advance balance{selectedAdvances.length > 1 ? ` (${selectedAdvances.length} advances)` : ''}:</span><span className="font-bold">₹{fmt(totalAdvanceApplied)}</span>
                         </div>
                       )}
                       {advMcDiscount > 0 && (
@@ -456,7 +595,7 @@ function ApproveSaleModal({ item, onClose, onApproved, onRejected }: ApproveSale
                 {cashiers.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
               </select>
               <p className="text-[10px] text-slate-400 font-medium">
-                {soldByUserId ? 'Sale will be attributed to this cashier — visible in Sales Analytics' : 'Requested by ' + (item.sale_request_by_name || 'cashier')}
+                {soldByUserId ? 'Sale will be attributed to this cashier — visible in Sales Analytics' : 'Requested by ' + (first.sale_request_by_name || 'cashier')}
               </p>
             </div>
 
@@ -475,264 +614,262 @@ function ApproveSaleModal({ item, onClose, onApproved, onRejected }: ApproveSale
               </div>
             </div>
 
-            {/* ── Investment Balance Redemption ── */}
-            <div className="rounded-2xl border-2 border-amber-200 bg-amber-50/40 p-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#d97706" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Investment Balance Redemption</p>
-                </div>
-                {reqData.sold_customer_phone && !balanceChecked && (
-                  <button
-                    onClick={checkInvestmentBalance}
-                    disabled={loadingBalance}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-black uppercase rounded-xl disabled:opacity-50 transition-all"
-                  >
-                    {loadingBalance
-                      ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      : <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                    }
-                    Check Balance
-                  </button>
-                )}
-                {balanceChecked && (
-                  <button onClick={() => { setBalanceChecked(false); setInvestmentPlans([]); setSelectedSub(null); setInvestmentApplied(0); }}
-                    className="text-[10px] font-black text-amber-600 hover:underline">Recheck</button>
-                )}
-              </div>
-
-              {!reqData.sold_customer_phone && (
-                <p className="text-xs text-slate-400 font-medium">No customer phone on record — cannot look up investment balance.</p>
-              )}
-
-              {loadingBalance && (
-                <div className="flex items-center gap-2 text-xs text-amber-600 font-bold">
-                  <div className="w-4 h-4 border-2 border-amber-300 border-t-amber-600 rounded-full animate-spin" />
-                  Checking investment balance for {reqData.sold_customer_phone}…
-                </div>
-              )}
-
-              {balanceChecked && balanceError && (
-                <div className="flex items-center justify-between gap-3 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
-                  <p className="text-xs text-red-600 font-bold">{balanceError}</p>
-                  <button
-                    type="button"
-                    onClick={checkInvestmentBalance}
-                    className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-red-700 transition-colors whitespace-nowrap"
-                  >
-                    Retry
-                  </button>
-                </div>
-              )}
-
-              {balanceChecked && !balanceError && investmentPlans.length === 0 && (
-                <p className="text-xs text-slate-400 font-medium">No redeemable investment balance found for this customer.</p>
-              )}
-
-              {investmentPlans.length > 1 && (
-                <div className="space-y-2">
-                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Select plan to redeem from</p>
-                  {investmentPlans.map(plan => (
-                    <button key={plan._id} type="button"
-                      onClick={() => { setSelectedSub(plan); setInvestmentApplied(0); }}
-                      className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all text-left ${selectedSub?._id === plan._id ? 'border-amber-500 bg-amber-50' : 'border-slate-200 bg-white hover:border-amber-300'}`}>
-                      <div>
-                        <p className="text-sm font-black text-slate-900">{plan.plan?.name}</p>
-                        <p className="text-[10px] text-slate-400">{plan.installmentsPaid} months paid{plan.plan?.redemptionDiscount > 0 ? ` · ${plan.plan.redemptionDiscount}% off making charges` : ''}</p>
+            {(() => {
+              const investmentCap = Math.max(0, afterDiscount - totalAdvanceApplied);
+              const advanceCap = Math.max(0, afterDiscount - totalInvestmentApplied);
+              return (
+                <>
+                  {/* ── Investment Balance Redemption ── */}
+                  <div className="rounded-2xl border-2 border-amber-200 bg-amber-50/40 p-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#d97706" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Investment Balance Redemption</p>
                       </div>
-                      <div className="text-right">
-                        <p className="text-sm font-black text-amber-700">₹{fmt(plan.availableBalance)}</p>
-                        <p className="text-[9px] text-slate-400 font-medium">available</p>
+                      <div className="flex items-center gap-3">
+                        {investmentPlans.length > 1 && (
+                          <button type="button" onClick={() => selectAllInvestments(investmentCap)}
+                            className="text-[9px] font-black uppercase tracking-widest text-amber-700 hover:text-amber-800 underline underline-offset-2">
+                            Select All
+                          </button>
+                        )}
+                        {reqData.sold_customer_phone && !balanceChecked && (
+                          <button
+                            onClick={checkInvestmentBalance}
+                            disabled={loadingBalance}
+                            className="flex items-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-black uppercase rounded-xl disabled:opacity-50 transition-all"
+                          >
+                            {loadingBalance
+                              ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                              : <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                            }
+                            Check Balance
+                          </button>
+                        )}
+                        {balanceChecked && (
+                          <button onClick={() => { setBalanceChecked(false); setInvestmentPlans([]); setInvestmentApplied({}); }}
+                            className="text-[10px] font-black text-amber-600 hover:underline">Recheck</button>
+                        )}
                       </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {investmentPlans.length === 1 && selectedSub && (
-                <div className="flex items-center justify-between bg-white rounded-xl px-4 py-3 border border-amber-200">
-                  <div>
-                    <p className="text-sm font-black text-slate-900">{selectedSub.plan?.name}</p>
-                    <p className="text-[10px] text-slate-400">{selectedSub.installmentsPaid} months paid{selectedSub.plan?.redemptionDiscount > 0 ? ` · ${selectedSub.plan.redemptionDiscount}% off making charges` : ''}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-black text-amber-700">₹{fmt(selectedSub.availableBalance)}</p>
-                    <p className="text-[9px] text-slate-400 font-medium">available</p>
-                  </div>
-                </div>
-              )}
-
-              {selectedSub && (() => {
-                const maxApply = Math.min(selectedSub.availableBalance, afterDiscount);
-                return (
-                  <div className="space-y-2">
-                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 block">
-                      Amount to Apply (max ₹{fmt(maxApply)})
-                    </label>
-                    <div className="flex items-center gap-3">
-                      <input type="number" min={0} max={maxApply} value={investmentApplied || ''}
-                        onChange={e => setInvestmentApplied(Math.min(parseFloat(e.target.value) || 0, maxApply))}
-                        placeholder={`0 – ${fmt(maxApply)}`}
-                        className="flex-1 bg-white border-2 border-amber-300 rounded-xl px-4 py-3 text-sm font-black text-amber-800 focus:outline-none focus:border-amber-500 shadow-sm"
-                      />
-                      <button type="button" onClick={() => setInvestmentApplied(maxApply)}
-                        className="px-4 py-3 rounded-xl bg-amber-600 text-white text-xs font-black hover:bg-amber-700 transition-colors whitespace-nowrap">
-                        Apply Max
-                      </button>
-                      {investmentApplied > 0 && (
-                        <button type="button" onClick={() => setInvestmentApplied(0)}
-                          className="px-4 py-3 rounded-xl border border-slate-200 text-slate-500 text-xs font-black hover:bg-slate-50">
-                          Clear
-                        </button>
-                      )}
                     </div>
-                    {investmentApplied > 0 && (
-                      <p className="text-[10px] text-amber-700 font-bold flex items-center gap-1.5">
-                        <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                        ₹{fmt(investmentApplied)} will be deducted from investment plan on approval
-                        {mcDiscount > 0 && ` · ₹${fmt(mcDiscount)} making charges discount also applied`}
-                      </p>
+
+                    {!reqData.sold_customer_phone && (
+                      <p className="text-xs text-slate-400 font-medium">No customer phone on record — cannot look up investment balance.</p>
+                    )}
+
+                    {loadingBalance && (
+                      <div className="flex items-center gap-2 text-xs text-amber-600 font-bold">
+                        <div className="w-4 h-4 border-2 border-amber-300 border-t-amber-600 rounded-full animate-spin" />
+                        Checking investment balance for {reqData.sold_customer_phone}…
+                      </div>
+                    )}
+
+                    {balanceChecked && balanceError && (
+                      <div className="flex items-center justify-between gap-3 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
+                        <p className="text-xs text-red-600 font-bold">{balanceError}</p>
+                        <button
+                          type="button"
+                          onClick={checkInvestmentBalance}
+                          className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-red-700 transition-colors whitespace-nowrap"
+                        >
+                          Retry
+                        </button>
+                      </div>
+                    )}
+
+                    {balanceChecked && !balanceError && investmentPlans.length === 0 && (
+                      <p className="text-xs text-slate-400 font-medium">No redeemable investment balance found for this customer.</p>
+                    )}
+
+                    {investmentPlans.length > 0 && (
+                      <>
+                        <div className="space-y-2">
+                          {investmentPlans.map(plan => {
+                            const checked = plan._id in investmentApplied;
+                            const amt = investmentApplied[plan._id] ?? 0;
+                            return (
+                              <div key={plan._id} className={`rounded-xl border-2 transition-all ${checked ? 'border-amber-500 bg-amber-50' : 'border-slate-200 bg-white hover:border-amber-300'}`}>
+                                <label className="w-full flex items-center gap-3 px-4 py-3 cursor-pointer">
+                                  <input type="checkbox" checked={checked} onChange={() => toggleInvestmentPlan(plan._id)}
+                                    className="w-4 h-4 rounded accent-amber-600 flex-shrink-0" />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-black text-slate-900">{plan.plan?.name}</p>
+                                    <p className="text-[10px] text-slate-400">{plan.installmentsPaid} months paid{plan.plan?.redemptionDiscount > 0 ? ` · ${plan.plan.redemptionDiscount}% off making charges` : ''}</p>
+                                  </div>
+                                  <div className="text-right flex-shrink-0">
+                                    <p className="text-sm font-black text-amber-700">₹{fmt(plan.availableBalance)}</p>
+                                    <p className="text-[9px] text-slate-400 font-medium">available</p>
+                                  </div>
+                                </label>
+                                {checked && (
+                                  <div className="px-4 pb-3">
+                                    <input type="number" min={0} max={plan.availableBalance} value={amt || ''}
+                                      onChange={e => setInvestmentPlanAmount(plan._id, Math.min(parseFloat(e.target.value) || 0, plan.availableBalance))}
+                                      placeholder={`Amount to apply (max ₹${fmt(plan.availableBalance)})`}
+                                      className="w-full bg-white border-2 border-amber-300 rounded-xl px-4 py-2.5 text-sm font-black text-amber-800 focus:outline-none focus:border-amber-500 shadow-sm"
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {Object.keys(investmentApplied).length > 0 && (
+                          <div className="flex items-center gap-3">
+                            <button type="button" onClick={() => applyMaxInvestment(investmentCap)}
+                              className="px-4 py-2.5 rounded-xl bg-amber-600 text-white text-xs font-black hover:bg-amber-700 transition-colors whitespace-nowrap">
+                              Apply Max Across Selected
+                            </button>
+                            <button type="button" onClick={clearInvestments}
+                              className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-500 text-xs font-black hover:bg-slate-50">
+                              Clear
+                            </button>
+                          </div>
+                        )}
+
+                        {totalInvestmentApplied > 0 && (
+                          <p className="text-[10px] text-amber-700 font-bold flex items-center gap-1.5">
+                            <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                            ₹{fmt(totalInvestmentApplied)} will be deducted from {selectedInvestmentPlans.length > 1 ? `${selectedInvestmentPlans.length} investment plans` : 'investment plan'} on approval
+                            {mcDiscount > 0 && ` · ₹${fmt(mcDiscount)} making charges discount also applied`}
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
-                );
-              })()}
-            </div>
 
-            {/* ── Advance Balance Redemption ── */}
-            <div className="rounded-2xl border-2 border-blue-200 bg-blue-50/40 p-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#1d4ed8" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 12V7H5a2 2 0 010-4h14v4M3 5v14a2 2 0 002 2h16v-5M18 12a2 2 0 000 4h4v-4h-4z" /></svg>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">Advance Balance Redemption</p>
-                </div>
-                {reqData.sold_customer_phone && !advanceBalanceChecked && (
-                  <button
-                    onClick={checkAdvanceBalance}
-                    disabled={loadingAdvanceBalance}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-black uppercase rounded-xl disabled:opacity-50 transition-all"
-                  >
-                    {loadingAdvanceBalance
-                      ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      : <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                    }
-                    Check Balance
-                  </button>
-                )}
-                {advanceBalanceChecked && (
-                  <button onClick={() => { setAdvanceBalanceChecked(false); setAdvances([]); setSelectedAdvance(null); setAdvanceApplied(0); }}
-                    className="text-[10px] font-black text-blue-600 hover:underline">Recheck</button>
-                )}
-              </div>
-
-              {!reqData.sold_customer_phone && (
-                <p className="text-xs text-slate-400 font-medium">No customer phone on record — cannot look up advance balance.</p>
-              )}
-
-              {loadingAdvanceBalance && (
-                <div className="flex items-center gap-2 text-xs text-blue-600 font-bold">
-                  <div className="w-4 h-4 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" />
-                  Checking advance balance for {reqData.sold_customer_phone}…
-                </div>
-              )}
-
-              {advanceBalanceChecked && advanceBalanceError && (
-                <div className="flex items-center justify-between gap-3 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
-                  <p className="text-xs text-red-600 font-bold">{advanceBalanceError}</p>
-                  <button
-                    type="button"
-                    onClick={checkAdvanceBalance}
-                    className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-red-700 transition-colors whitespace-nowrap"
-                  >
-                    Retry
-                  </button>
-                </div>
-              )}
-
-              {advanceBalanceChecked && !advanceBalanceError && advances.length === 0 && (
-                <p className="text-xs text-slate-400 font-medium">No redeemable advance balance found for this customer.</p>
-              )}
-
-              {advances.length > 1 && (
-                <div className="space-y-2">
-                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Select advance to redeem from</p>
-                  {advances.map(a => (
-                    <button key={a._id} type="button"
-                      onClick={() => { setSelectedAdvance(a); setAdvanceApplied(0); }}
-                      className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all text-left ${selectedAdvance?._id === a._id ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white hover:border-blue-300'}`}>
-                      <div>
-                        <p className="text-sm font-black text-slate-900 flex items-center gap-1.5">
-                          {new Date(a.createdAt).toLocaleDateString('en-IN', { dateStyle: 'medium' })}
-                          {a.locked && <span className="text-[9px] font-black uppercase text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">Locked</span>}
-                        </p>
-                        <p className="text-[10px] text-slate-400">{a.making_charges_waiver_pct > 0 ? `${a.making_charges_waiver_pct}% off making charges` : 'No making charges waiver'}</p>
+                  {/* ── Advance Balance Redemption ── */}
+                  <div className="rounded-2xl border-2 border-blue-200 bg-blue-50/40 p-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#1d4ed8" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 12V7H5a2 2 0 010-4h14v4M3 5v14a2 2 0 002 2h16v-5M18 12a2 2 0 000 4h4v-4h-4z" /></svg>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">Advance Balance Redemption</p>
                       </div>
-                      <div className="text-right">
-                        <p className="text-sm font-black text-blue-700">₹{fmt(a.availableBalance)}</p>
-                        <p className="text-[9px] text-slate-400 font-medium">available</p>
+                      <div className="flex items-center gap-3">
+                        {advances.filter(a => !a.locked).length > 1 && (
+                          <button type="button" onClick={() => selectAllAdvances(advanceCap)}
+                            className="text-[9px] font-black uppercase tracking-widest text-blue-700 hover:text-blue-800 underline underline-offset-2">
+                            Select All
+                          </button>
+                        )}
+                        {reqData.sold_customer_phone && !advanceBalanceChecked && (
+                          <button
+                            onClick={checkAdvanceBalance}
+                            disabled={loadingAdvanceBalance}
+                            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-black uppercase rounded-xl disabled:opacity-50 transition-all"
+                          >
+                            {loadingAdvanceBalance
+                              ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                              : <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                            }
+                            Check Balance
+                          </button>
+                        )}
+                        {advanceBalanceChecked && (
+                          <button onClick={() => { setAdvanceBalanceChecked(false); setAdvances([]); setAdvanceApplied({}); }}
+                            className="text-[10px] font-black text-blue-600 hover:underline">Recheck</button>
+                        )}
                       </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {advances.length === 1 && selectedAdvance && (
-                <div className="flex items-center justify-between bg-white rounded-xl px-4 py-3 border border-blue-200">
-                  <div>
-                    <p className="text-sm font-black text-slate-900 flex items-center gap-1.5">
-                      Advance recorded {new Date(selectedAdvance.createdAt).toLocaleDateString('en-IN', { dateStyle: 'medium' })}
-                      {selectedAdvance.locked && <span className="text-[9px] font-black uppercase text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">Locked</span>}
-                    </p>
-                    <p className="text-[10px] text-slate-400">{selectedAdvance.making_charges_waiver_pct > 0 ? `${selectedAdvance.making_charges_waiver_pct}% off making charges` : 'No making charges waiver'}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-black text-blue-700">₹{fmt(selectedAdvance.availableBalance)}</p>
-                    <p className="text-[9px] text-slate-400 font-medium">available</p>
-                  </div>
-                </div>
-              )}
-
-              {selectedAdvance?.locked && (
-                <div className="flex items-center gap-2 px-4 py-3 bg-amber-50 border border-amber-100 rounded-xl text-xs text-amber-700 font-bold">
-                  <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-                  Locked until {new Date(selectedAdvance.lock_in_expires_at!).toLocaleDateString('en-IN', { dateStyle: 'medium' })} — cannot be redeemed yet.
-                </div>
-              )}
-
-              {selectedAdvance && !selectedAdvance.locked && (() => {
-                const maxApply = Math.max(0, Math.min(selectedAdvance.availableBalance, afterDiscount - investmentApplied));
-                return (
-                  <div className="space-y-2">
-                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 block">
-                      Amount to Apply (max ₹{fmt(maxApply)})
-                    </label>
-                    <div className="flex items-center gap-3">
-                      <input type="number" min={0} max={maxApply} value={advanceApplied || ''}
-                        onChange={e => setAdvanceApplied(Math.min(parseFloat(e.target.value) || 0, maxApply))}
-                        placeholder={`0 – ${fmt(maxApply)}`}
-                        className="flex-1 bg-white border-2 border-blue-300 rounded-xl px-4 py-3 text-sm font-black text-blue-800 focus:outline-none focus:border-blue-500 shadow-sm"
-                      />
-                      <button type="button" onClick={() => setAdvanceApplied(maxApply)}
-                        className="px-4 py-3 rounded-xl bg-blue-600 text-white text-xs font-black hover:bg-blue-700 transition-colors whitespace-nowrap">
-                        Apply Max
-                      </button>
-                      {advanceApplied > 0 && (
-                        <button type="button" onClick={() => setAdvanceApplied(0)}
-                          className="px-4 py-3 rounded-xl border border-slate-200 text-slate-500 text-xs font-black hover:bg-slate-50">
-                          Clear
-                        </button>
-                      )}
                     </div>
-                    {advanceApplied > 0 && (
-                      <p className="text-[10px] text-blue-700 font-bold flex items-center gap-1.5">
-                        <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                        ₹{fmt(advanceApplied)} will be deducted from advance balance on approval
-                        {advMcDiscount > 0 && ` · ₹${fmt(advMcDiscount)} making charges discount also applied`}
-                      </p>
+
+                    {!reqData.sold_customer_phone && (
+                      <p className="text-xs text-slate-400 font-medium">No customer phone on record — cannot look up advance balance.</p>
+                    )}
+
+                    {loadingAdvanceBalance && (
+                      <div className="flex items-center gap-2 text-xs text-blue-600 font-bold">
+                        <div className="w-4 h-4 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" />
+                        Checking advance balance for {reqData.sold_customer_phone}…
+                      </div>
+                    )}
+
+                    {advanceBalanceChecked && advanceBalanceError && (
+                      <div className="flex items-center justify-between gap-3 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
+                        <p className="text-xs text-red-600 font-bold">{advanceBalanceError}</p>
+                        <button
+                          type="button"
+                          onClick={checkAdvanceBalance}
+                          className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-red-700 transition-colors whitespace-nowrap"
+                        >
+                          Retry
+                        </button>
+                      </div>
+                    )}
+
+                    {advanceBalanceChecked && !advanceBalanceError && advances.length === 0 && (
+                      <p className="text-xs text-slate-400 font-medium">No redeemable advance balance found for this customer.</p>
+                    )}
+
+                    {advances.length > 0 && (
+                      <>
+                        <div className="space-y-2">
+                          {advances.map(a => {
+                            const checked = a._id in advanceApplied;
+                            const amt = advanceApplied[a._id] ?? 0;
+                            return (
+                              <div key={a._id} className={`rounded-xl border-2 transition-all ${a.locked ? 'border-slate-100 bg-slate-50 opacity-70' : checked ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white hover:border-blue-300'}`}>
+                                <label className={`w-full flex items-center gap-3 px-4 py-3 ${a.locked ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                                  <input type="checkbox" checked={checked} disabled={a.locked} onChange={() => toggleAdvance(a._id)}
+                                    className="w-4 h-4 rounded accent-blue-600 flex-shrink-0" />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-black text-slate-900 flex items-center gap-1.5">
+                                      {new Date(a.createdAt).toLocaleDateString('en-IN', { dateStyle: 'medium' })}
+                                      {a.locked && <span className="text-[9px] font-black uppercase text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">Locked</span>}
+                                    </p>
+                                    <p className="text-[10px] text-slate-400">{a.making_charges_waiver_pct > 0 ? `${a.making_charges_waiver_pct}% off making charges` : 'No making charges waiver'}</p>
+                                  </div>
+                                  <div className="text-right flex-shrink-0">
+                                    <p className="text-sm font-black text-blue-700">₹{fmt(a.availableBalance)}</p>
+                                    <p className="text-[9px] text-slate-400 font-medium">available</p>
+                                  </div>
+                                </label>
+                                {a.locked && (
+                                  <div className="flex items-center gap-2 px-4 pb-3 text-[10px] text-amber-700 font-bold">
+                                    <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                                    Locked until {new Date(a.lock_in_expires_at!).toLocaleDateString('en-IN', { dateStyle: 'medium' })} — cannot be redeemed yet.
+                                  </div>
+                                )}
+                                {checked && !a.locked && (
+                                  <div className="px-4 pb-3">
+                                    <input type="number" min={0} max={a.availableBalance} value={amt || ''}
+                                      onChange={e => setAdvanceAmount(a._id, Math.min(parseFloat(e.target.value) || 0, a.availableBalance))}
+                                      placeholder={`Amount to apply (max ₹${fmt(a.availableBalance)})`}
+                                      className="w-full bg-white border-2 border-blue-300 rounded-xl px-4 py-2.5 text-sm font-black text-blue-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {Object.keys(advanceApplied).length > 0 && (
+                          <div className="flex items-center gap-3">
+                            <button type="button" onClick={() => applyMaxAdvance(advanceCap)}
+                              className="px-4 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black hover:bg-blue-700 transition-colors whitespace-nowrap">
+                              Apply Max Across Selected
+                            </button>
+                            <button type="button" onClick={clearAdvances}
+                              className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-500 text-xs font-black hover:bg-slate-50">
+                              Clear
+                            </button>
+                          </div>
+                        )}
+
+                        {totalAdvanceApplied > 0 && (
+                          <p className="text-[10px] text-blue-700 font-bold flex items-center gap-1.5">
+                            <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                            ₹{fmt(totalAdvanceApplied)} will be deducted from {selectedAdvances.length > 1 ? `${selectedAdvances.length} advances` : 'advance balance'} on approval
+                            {advMcDiscount > 0 && ` · ₹${fmt(advMcDiscount)} making charges discount also applied`}
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
-                );
-              })()}
-            </div>
+                </>
+              );
+            })()}
 
             {error && (
               <div className="flex gap-2 bg-red-50 border border-red-200 rounded-2xl p-3">
@@ -782,7 +919,7 @@ function ApproveSaleModal({ item, onClose, onApproved, onRejected }: ApproveSale
       {showBill && (
         <div style={{ zIndex: 500 }} className="fixed inset-0">
           <BillModal
-            items={[mockItem]}
+            items={mockItems}
             date={new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
             onClose={() => setShowBill(false)}
             branch={branch}
@@ -791,7 +928,7 @@ function ApproveSaleModal({ item, onClose, onApproved, onRejected }: ApproveSale
       )}
 
       {showRejectModal && (
-        <RejectModal item={item} onConfirm={handleReject} onClose={() => setShowRejectModal(false)} />
+        <RejectModal items={items} onConfirm={handleReject} onClose={() => setShowRejectModal(false)} />
       )}
     </>
   );
@@ -807,7 +944,19 @@ export default function SaleApprovalsPage() {
   const [branchFilter, setBranchFilter] = useState('');
   const [branches, setBranches] = useState<Branch[]>([]);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
-  const [reviewItem, setReviewItem] = useState<InventoryItem | null>(null);
+  const [reviewGroup, setReviewGroup] = useState<InventoryItem[] | null>(null);
+
+  // A cashier's multi-item bill submits one pending sale_request per item, all tagged with the
+  // same sale_request_data.batch_id — group them back into one card/one approval action here.
+  const requestGroups = useMemo(() => {
+    const map = new Map<string, InventoryItem[]>();
+    for (const it of items) {
+      const key = (it as any).sale_request_data?.batch_id || it._id;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(it);
+    }
+    return Array.from(map.values());
+  }, [items]);
 
   const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
     setToast({ msg, type });
@@ -830,12 +979,12 @@ export default function SaleApprovalsPage() {
   return (
     <div className="p-6 lg:p-10 max-w-5xl mx-auto space-y-6">
 
-      {reviewItem && (
+      {reviewGroup && (
         <ApproveSaleModal
-          item={reviewItem}
-          onClose={() => setReviewItem(null)}
-          onApproved={() => { setReviewItem(null); showToast('Sale approved and processed!'); load(page); }}
-          onRejected={() => { setReviewItem(null); showToast('Sale request rejected.'); load(page); }}
+          items={reviewGroup}
+          onClose={() => setReviewGroup(null)}
+          onApproved={() => { setReviewGroup(null); showToast('Sale approved and processed!'); load(page); }}
+          onRejected={() => { setReviewGroup(null); showToast('Sale request rejected.'); load(page); }}
         />
       )}
 
@@ -854,7 +1003,7 @@ export default function SaleApprovalsPage() {
         <div>
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">Sale Approvals</h1>
           <p className="text-slate-400 text-sm font-medium mt-1">
-            {loading ? 'Loading…' : `${total} pending request${total !== 1 ? 's' : ''} awaiting review`}
+            {loading ? 'Loading…' : `${requestGroups.length} pending bill${requestGroups.length !== 1 ? 's' : ''} awaiting review (${total} item${total !== 1 ? 's' : ''})`}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -887,34 +1036,43 @@ export default function SaleApprovalsPage() {
 
       {!loading && items.length > 0 && (
         <div className="space-y-3">
-          {items.map(item => {
+          {requestGroups.map(group => {
+            const item = group[0];
+            const isBatch = group.length > 1;
             const product = typeof item.product_id === 'object' ? item.product_id as any : null;
             const branch = typeof item.branch_id === 'object' ? item.branch_id as any : null;
             const reqData: any = (item as any).sale_request_data ?? {};
-            const price = reqData.selling_price ?? item.selling_price;
+            const price = group.reduce((sum, it) => sum + (((it as any).sale_request_data?.selling_price) ?? it.selling_price ?? 0), 0);
 
             return (
-              <div key={item._id} className="bg-white border border-slate-100 rounded-3xl overflow-hidden shadow-sm hover:shadow-md transition-all">
+              <div key={reqData.batch_id || item._id} className="bg-white border border-slate-100 rounded-3xl overflow-hidden shadow-sm hover:shadow-md transition-all">
                 <div className="bg-amber-50 border-b border-amber-100 px-5 py-2.5 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                    <span className="text-[10px] font-black text-amber-700 uppercase tracking-widest">Pending Approval</span>
+                    <span className="text-[10px] font-black text-amber-700 uppercase tracking-widest">Pending Approval{isBatch ? ` · ${group.length} Items` : ''}</span>
                   </div>
                   <span className="text-[10px] font-bold text-amber-600">{item.sale_request_at ? timeAgo(item.sale_request_at) : ''}</span>
                 </div>
 
                 <div className="p-4 flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+                  <div className="relative w-14 h-14 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden flex-shrink-0">
                     {product?.images?.[0]
                       ? <img src={staticUrl(product.images[0])} alt="" className="w-full h-full object-cover" />
                       : <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#cbd5e1" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
                     }
+                    {isBatch && (
+                      <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[#5A0F1A] text-white text-[9px] font-black flex items-center justify-center border-2 border-white">
+                        {group.length}
+                      </span>
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-black text-slate-900 text-sm truncate">{product?.name ?? item.unique_item_code}</p>
+                    <p className="font-black text-slate-900 text-sm truncate">
+                      {isBatch ? `${product?.name ?? item.unique_item_code} + ${group.length - 1} more` : (product?.name ?? item.unique_item_code)}
+                    </p>
                     <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                      <span className="text-[10px] font-bold text-slate-500">{item.unique_item_code}</span>
-                      {product?.metal_type && <span className="text-[10px] text-slate-400">· {product.metal_type} {product.purity}</span>}
+                      <span className="text-[10px] font-bold text-slate-500">{isBatch ? `${group.length} items` : item.unique_item_code}</span>
+                      {!isBatch && product?.metal_type && <span className="text-[10px] text-slate-400">· {product.metal_type} {product.purity}</span>}
                       {branch && <span className="px-1.5 py-0.5 bg-[#5A0F1A]/10 text-[#5A0F1A] text-[9px] font-black uppercase rounded-md">{branch.name}</span>}
                     </div>
                     <p className="text-[11px] font-bold text-slate-500 mt-1 truncate">
@@ -925,11 +1083,11 @@ export default function SaleApprovalsPage() {
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0">
                     <div className="text-right hidden sm:block">
-                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Price</p>
+                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{isBatch ? 'Bill Total' : 'Price'}</p>
                       <p className="text-base font-black text-slate-900">₹{fmt(price)}</p>
                     </div>
                     <button
-                      onClick={() => setReviewItem(item)}
+                      onClick={() => setReviewGroup(group)}
                       className="flex items-center gap-2 px-5 py-2.5 bg-[#5A0F1A] hover:bg-[#7A1C2A] text-white font-black text-sm rounded-2xl transition-all shadow-md shadow-[#5A0F1A]/20"
                     >
                       <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>

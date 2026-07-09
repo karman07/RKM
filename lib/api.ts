@@ -116,8 +116,11 @@ export interface UserProfile {
   custom_field_values?: Record<string, any>;
 }
 
+export type CustomFieldEntity = 'employee' | 'customer';
+
 export interface EmployeeCustomField {
   _id: string;
+  entity?: CustomFieldEntity;
   label: string;
   key: string;
   type: 'text' | 'number' | 'date' | 'file' | 'url' | 'textarea';
@@ -128,7 +131,11 @@ export interface EmployeeCustomField {
 }
 
 export const getEmployeeCustomFields = () =>
-  request<EmployeeCustomField[]>('/employee-custom-fields');
+  request<EmployeeCustomField[]>('/custom-fields?entity=employee');
+export const getCustomerCustomFields = () =>
+  request<EmployeeCustomField[]>('/custom-fields?entity=customer');
+export const updateOwnCustomFields = (values: Record<string, any>) =>
+  request<UserProfile>('/users/me/custom-fields', { method: 'PATCH', body: JSON.stringify({ values }) });
 
 export interface Category {
   _id: string;
@@ -368,6 +375,31 @@ export const updateInventoryStatus = (id: string, payload: {
     method: 'PATCH',
     body: JSON.stringify(payload),
   });
+
+/** Multi-item cart checkout: sells several inventory items in one shot under a single shared sale_reference. */
+export const sellItemsBatch = (payload: {
+  items: { id: string; selling_price?: number }[];
+  sale_reference?: string;
+  sold_by_user_id?: string;
+  sold_at_branch_id?: string;
+  sold_customer_name: string;
+  sold_customer_phone: string;
+  sold_customer_email?: string;
+  shipping_address: string;
+  shipping_city?: string;
+  shipping_state?: string;
+  shipping_pincode?: string;
+  shipping_country?: string;
+  sale_channel: string;
+  payment_mode: string;
+  payment_splits: { mode: string; amount: number; reference?: string }[];
+  investment_redeemed?: number;
+  investment_sub_id?: string;
+  making_charges_discount?: number;
+  advance_redeemed?: number;
+  advance_id?: string;
+  advance_making_charges_discount?: number;
+}) => request<InventoryItem[]>('/inventory/sell-batch', { method: 'POST', body: JSON.stringify(payload) });
 
 /** Sends a post-sale "thank you & feedback" message to the customer via the chosen channel */
 export const notifyCustomerPostSale = (id: string, channel: 'sms' | 'whatsapp' | 'email') =>
@@ -828,6 +860,8 @@ export interface FullCustomer {
   isEmailVerified: boolean;
   isActive: boolean;
   createdAt: string;
+  relationship_manager?: { _id: string; name: string; email?: string; mobile_number?: string; role?: string } | string | null;
+  customFields?: { key: string; value: string }[];
 }
 
 export const getCustomers = (page = 1, limit = 20) =>
@@ -1125,6 +1159,28 @@ export const approveSaleRequest = (id: string, overrides?: {
 
 export const rejectSaleRequest = (id: string, reason: string) =>
   request<InventoryItem>(`/inventory/${id}/sale-request/reject`, {
+    method: 'PATCH',
+    body: JSON.stringify({ reason }),
+  });
+
+export const approveSaleRequestBatch = (batchId: string, overrides?: {
+  item_prices?: Array<{ id: string; selling_price: number }>;
+  manager_discount?: number;
+  investment_redeemed?: number;
+  investment_sub_id?: string;
+  making_charges_discount?: number;
+  advance_redeemed?: number;
+  advance_id?: string;
+  advance_making_charges_discount?: number;
+  payment_splits?: Array<{ mode: string; amount: number; reference?: string }>;
+}) =>
+  request<InventoryItem[]>(`/inventory/sale-request-batch/${batchId}/approve`, {
+    method: 'PATCH',
+    body: JSON.stringify(overrides ?? {}),
+  });
+
+export const rejectSaleRequestBatch = (batchId: string, reason: string) =>
+  request<InventoryItem[]>(`/inventory/sale-request-batch/${batchId}/reject`, {
     method: 'PATCH',
     body: JSON.stringify({ reason }),
   });

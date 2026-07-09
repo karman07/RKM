@@ -4,7 +4,8 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import {
   getCustomers, searchCustomerByPhone, createCustomer,
   getInventory, getGoldBalance, getCustomerAdvances, createCustomerAdvance, getGoldLoansByCustomer,
-  type FullCustomer, type InventoryItem, type GoldBalance, type CustomerAdvance, type GoldLoan,
+  getCustomerCustomFields, uploadUserAvatar, staticUrl,
+  type FullCustomer, type InventoryItem, type GoldBalance, type CustomerAdvance, type GoldLoan, type EmployeeCustomField,
 } from '../../../lib/api';
 import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from 'firebase/auth';
 import { auth } from '../../../lib/firebase';
@@ -114,7 +115,7 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [accountNumber, setAccountNumber] = useState('');
   const [ifscCode, setIfscCode] = useState('');
   const [bankName, setBankName] = useState('');
-  // Custom fields
+  // Custom fields (freeform)
   const [customFields, setCustomFields] = useState<{ key: string; value: string }[]>([]);
 
   function addCustomField() { setCustomFields(f => [...f, { key: '', value: '' }]); }
@@ -122,6 +123,14 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
   function updateCustomField(i: number, part: 'key' | 'value', val: string) {
     setCustomFields(f => f.map((item, idx) => idx === i ? { ...item, [part]: val } : item));
   }
+
+  // Admin-defined customer fields
+  const [definedFields, setDefinedFields] = useState<EmployeeCustomField[]>([]);
+  const [definedFieldValues, setDefinedFieldValues] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    getCustomerCustomFields().catch(() => [] as EmployeeCustomField[]).then(setDefinedFields);
+  }, []);
 
   // Live phone search
   useEffect(() => {
@@ -182,10 +191,15 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
 
   async function handleSave() {
     if (!name.trim()) { setErr('Customer name is required'); return; }
+    const missingDefined = definedFields.filter(f => f.required && !definedFieldValues[f.key]?.trim());
+    if (missingDefined.length) { setErr(`Missing required field(s): ${missingDefined.map(f => f.label).join(', ')}`); return; }
     setErr('');
     setSaving(true);
     try {
-      const validCustomFields = customFields.filter(f => f.key.trim());
+      const validCustomFields = [
+        ...definedFields.filter(f => definedFieldValues[f.key]?.trim()).map(f => ({ key: f.key, value: definedFieldValues[f.key] })),
+        ...customFields.filter(f => f.key.trim()),
+      ];
       const customer = await createCustomer({
         name: name.trim(),
         phone: `+91${phone.replace(/^\+91/, '')}`,
@@ -487,6 +501,53 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
                   </div>
                 </div>
 
+                {/* Admin-defined Fields */}
+                {definedFields.length > 0 && (
+                  <div className="border-t border-slate-100 pt-4 space-y-3">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Additional Information</p>
+                    {definedFields.map(f => (
+                      <div key={f._id}>
+                        <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">
+                          {f.label}{f.required && <span style={{ color: PRIMARY }}> *</span>}
+                        </label>
+                        {f.type === 'file' ? (
+                          <div className="flex items-center gap-2">
+                            {definedFieldValues[f.key] && (
+                              <a href={staticUrl(definedFieldValues[f.key])} target="_blank" rel="noreferrer"
+                                className="text-[10px] font-black whitespace-nowrap" style={{ color: PRIMARY }}>View ↗</a>
+                            )}
+                            <label className="flex-1 cursor-pointer">
+                              <span className="block w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-center text-slate-500 hover:bg-slate-50 transition-colors">
+                                {definedFieldValues[f.key] ? 'Replace file' : 'Upload file'}
+                              </span>
+                              <input type="file" className="hidden" onChange={async e => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                try {
+                                  const res = await uploadUserAvatar(file);
+                                  setDefinedFieldValues(v => ({ ...v, [f.key]: res.url }));
+                                } catch { setErr('Error uploading file'); }
+                              }} />
+                            </label>
+                          </div>
+                        ) : f.type === 'textarea' ? (
+                          <textarea rows={2} value={definedFieldValues[f.key] ?? ''} placeholder={f.placeholder}
+                            onChange={e => setDefinedFieldValues(v => ({ ...v, [f.key]: e.target.value }))}
+                            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 resize-none"
+                            style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+                        ) : (
+                          <input
+                            type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : f.type === 'url' ? 'url' : 'text'}
+                            value={definedFieldValues[f.key] ?? ''} placeholder={f.placeholder}
+                            onChange={e => setDefinedFieldValues(v => ({ ...v, [f.key]: e.target.value }))}
+                            className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
+                            style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {/* Custom Fields */}
                 <div className="border-t border-slate-100 pt-4 space-y-3">
                   <div className="flex items-center justify-between">
@@ -566,6 +627,11 @@ function CustomerDrawer({ customer, onClose }: { customer: FullCustomer; onClose
   const [savingAdvance, setSavingAdvance] = useState(false);
   const [advanceError, setAdvanceError] = useState('');
   const [receiptAdvance, setReceiptAdvance] = useState<CustomerAdvance | null>(null);
+  const [customFieldDefs, setCustomFieldDefs] = useState<EmployeeCustomField[]>([]);
+
+  useEffect(() => {
+    getCustomerCustomFields().catch(() => [] as EmployeeCustomField[]).then(setCustomFieldDefs);
+  }, []);
 
   const fmtMoney = (n: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
@@ -658,6 +724,38 @@ function CustomerDrawer({ customer, onClose }: { customer: FullCustomer; onClose
           </button>
         </div>
 
+        {/* Relationship Manager */}
+        {typeof customer.relationship_manager === 'object' && customer.relationship_manager && (
+          <div className="px-6 py-3 border-b border-slate-100 flex items-center gap-2.5 bg-slate-50/60">
+            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Relationship Manager</span>
+            <span className="text-xs font-bold text-slate-700">{customer.relationship_manager.name}</span>
+            {customer.relationship_manager.role && (
+              <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full" style={{ background: `${PRIMARY}12`, color: PRIMARY }}>
+                {customer.relationship_manager.role}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Additional Information (admin-defined custom fields) */}
+        {(customer.customFields?.length ?? 0) > 0 && (
+          <div className="px-6 py-4 border-b border-slate-100 space-y-2">
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Additional Information</p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+              {customer.customFields!.map((f, i) => {
+                const def = customFieldDefs.find(d => d.key === f.key);
+                const label = def?.label ?? f.key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                return (
+                  <div key={i}>
+                    <p className="text-[9px] font-bold text-slate-400 capitalize">{label}</p>
+                    <p className="text-xs font-bold text-slate-800 truncate">{f.value}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Tabs */}
         <div className="flex gap-1 px-6 py-3 border-b border-slate-100 bg-white sticky top-[77px] z-10">
           {(['purchases', 'plans', 'advance', 'loans'] as const).map(t => (
@@ -693,7 +791,7 @@ function CustomerDrawer({ customer, onClose }: { customer: FullCustomer; onClose
                   return (
                     <div key={item._id} className="bg-white border border-slate-100 rounded-2xl p-4 flex items-center gap-4 hover:border-slate-200 transition-colors">
                       {product?.images?.[0] ? (
-                        <img src={product.images[0]} alt={name} className="w-12 h-12 rounded-xl object-cover flex-shrink-0 border border-slate-100" />
+                        <img src={staticUrl(product.images[0])} alt={name} className="w-12 h-12 rounded-xl object-cover flex-shrink-0 border border-slate-100" />
                       ) : (
                         <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center flex-shrink-0">
                           <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#cbd5e1" strokeWidth={1.5}>
