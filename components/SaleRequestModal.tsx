@@ -15,11 +15,11 @@ interface Props {
 }
 
 // ─── Shared style tokens ──────────────────────────────────────────────────────
-const INPUT = 'w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#7A1C2A] focus:ring-2 focus:ring-[#7A1C2A]/10 focus:bg-white transition-all';
-const LABEL = 'block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5';
-const SELECT = `${INPUT} appearance-none`;
+export const INPUT = 'w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#7A1C2A] focus:ring-2 focus:ring-[#7A1C2A]/10 focus:bg-white transition-all';
+export const LABEL = 'block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5';
+export const SELECT = `${INPUT} appearance-none`;
 
-const PAYMENT_MODES = [
+export const PAYMENT_MODES = [
   { value: 'cash', label: 'Cash' },
   { value: 'card', label: 'Card' },
   { value: 'upi', label: 'UPI' },
@@ -31,12 +31,12 @@ const PAYMENT_MODES = [
 ];
 
 // ─── Customer search sub-component ───────────────────────────────────────────
-interface CustomerDraft {
+export interface CustomerDraft {
   name: string; phone: string; email: string;
   address: string; city: string; state: string; pincode: string;
 }
 
-function CustomerSection({
+export function CustomerSection({
   value, onChange,
 }: {
   value: CustomerDraft;
@@ -183,9 +183,9 @@ function CustomerSection({
 }
 
 // ─── Payment splits sub-component ────────────────────────────────────────────
-interface SplitRow { mode: string; amount: string; reference: string; }
+export interface SplitRow { mode: string; amount: string; reference: string; }
 
-function PaymentSection({
+export function PaymentSection({
   splits, onChange, totalAmount,
 }: {
   splits: SplitRow[];

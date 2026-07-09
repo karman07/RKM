@@ -86,7 +86,29 @@ export interface UserProfile {
   isActive: boolean;
   avatar?: string;
   createdAt?: string;
+  custom_field_values?: Record<string, any>;
 }
+
+export type CustomFieldEntity = 'employee' | 'customer';
+
+export interface EmployeeCustomField {
+  _id: string;
+  entity?: CustomFieldEntity;
+  label: string;
+  key: string;
+  type: 'text' | 'number' | 'date' | 'file' | 'url' | 'textarea';
+  required: boolean;
+  placeholder?: string;
+  description?: string;
+  order: number;
+}
+
+export const getEmployeeCustomFields = () =>
+  request<EmployeeCustomField[]>('/custom-fields?entity=employee');
+export const getCustomerCustomFields = () =>
+  request<EmployeeCustomField[]>('/custom-fields?entity=customer');
+export const updateOwnCustomFields = (values: Record<string, any>) =>
+  request<UserProfile>('/users/me/custom-fields', { method: 'PATCH', body: JSON.stringify({ values }) });
 
 export interface Category {
   _id: string;
@@ -363,6 +385,8 @@ export interface FullCustomer {
   isEmailVerified: boolean;
   isActive: boolean;
   createdAt: string;
+  relationship_manager?: { _id: string; name: string; email?: string; mobile_number?: string; role?: string } | string | null;
+  customFields?: { key: string; value: string }[];
 }
 
 export const getCustomers = (page = 1, limit = 24) =>
@@ -382,6 +406,7 @@ export const verifyCustomerOtp = (phone: string, otp: string) =>
 export const createCustomer = (data: {
   name: string; phone: string; email?: string; gender?: string;
   address?: string; city?: string; state?: string; pincode?: string; country?: string;
+  customFields?: { key: string; value: string }[];
 }) => request<FullCustomer>('/customers', { method: 'POST', body: JSON.stringify(data) });
 
 // ── Gold Investment Balance ───────────────────────────────────────────────────
@@ -497,3 +522,24 @@ export const getCustomerAdvances = (customerId: string) =>
 
 export const submitSaleRequest = (itemId: string, data: Record<string, any>) =>
   request<any>(`/inventory/${itemId}/sale-request`, { method: 'POST', body: JSON.stringify(data) });
+
+export const submitSaleRequestBatch = (
+  items: { id: string; selling_price?: number }[],
+  requestData: {
+    sold_customer_name: string;
+    sold_customer_phone: string;
+    sold_customer_email?: string;
+    shipping_address?: string;
+    shipping_city?: string;
+    shipping_state?: string;
+    shipping_pincode?: string;
+    shipping_country?: string;
+    sale_channel?: string;
+    payment_mode?: string;
+    payment_splits?: { mode: string; amount: number; reference?: string }[];
+    notes?: string;
+  },
+) => request<InventoryItem[]>('/inventory/sale-request-batch', {
+  method: 'POST',
+  body: JSON.stringify({ items, requestData }),
+});

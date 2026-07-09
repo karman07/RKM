@@ -4,7 +4,8 @@ import { useRouter } from 'next/navigation';
 
 import {
   getProfile, updateUserProfile, uploadUserAvatar, checkSessionExpiry, staticUrl,
-  type UserProfile,
+  getEmployeeCustomFields, updateOwnCustomFields,
+  type UserProfile, type EmployeeCustomField,
 } from '../../../lib/api';
 
 export default function ProfilePage() {
@@ -17,6 +18,9 @@ export default function ProfilePage() {
   const [form, setForm] = useState({ name: '', email: '' });
   const [passwordForm, setPasswordForm] = useState({ current: '', next: '', confirm: '' });
   const [showPassForm, setShowPassForm] = useState(false);
+  const [customFields, setCustomFields] = useState<EmployeeCustomField[]>([]);
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>({});
+  const [savingCustomFields, setSavingCustomFields] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   function showToast(msg: string, type: 'success' | 'error') {
@@ -28,11 +32,40 @@ export default function ProfilePage() {
     if (checkSessionExpiry()) return;
     const sessionStr = localStorage.getItem('cashier_session');
     if (!sessionStr) { router.replace('/login'); return; }
-    getProfile()
-      .then((p) => { setUser(p); setForm({ name: p.name, email: p.email }); })
+    Promise.all([
+      getProfile(),
+      getEmployeeCustomFields().catch(() => [] as EmployeeCustomField[]),
+    ])
+      .then(([p, cf]) => {
+        setUser(p);
+        setForm({ name: p.name, email: p.email });
+        setCustomFields(cf);
+        const values: Record<string, string> = {};
+        cf.forEach(f => { values[f.key] = p.custom_field_values?.[f.key] ?? ''; });
+        setCustomFieldValues(values);
+      })
       .catch(() => { localStorage.removeItem('cashier_session'); router.replace('/login'); })
       .finally(() => setLoading(false));
   }, [router]);
+
+  async function handleSaveCustomFields() {
+    if (!user) return;
+    const missing = customFields.filter(f => f.required && !customFieldValues[f.key]?.trim());
+    if (missing.length) {
+      showToast(`Missing required field(s): ${missing.map(f => f.label).join(', ')}`, 'error');
+      return;
+    }
+    setSavingCustomFields(true);
+    try {
+      const updated = await updateOwnCustomFields(customFieldValues);
+      setUser(updated);
+      showToast('Additional information updated!', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to save', 'error');
+    } finally {
+      setSavingCustomFields(false);
+    }
+  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -212,7 +245,71 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
+
+        {/* Admin-defined custom fields — fill in your own values */}
+        {customFields.length > 0 && (
+          <div className="bg-white border border-slate-100 rounded-[2rem] p-6 sm:p-8 shadow-sm">
+            <h2 className="text-base font-black text-slate-900 mb-6">Additional Information</h2>
+            <div className="space-y-5">
+              {customFields.map(field => (
+                <div key={field._id}>
+                  <label className="block text-[11px] font-black uppercase tracking-widest text-slate-400 mb-2">
+                    {field.label}{field.required && <span className="text-[#5A0F1A]"> *</span>}
+                  </label>
+                  {field.type === 'file' ? (
+                    <div className="flex items-center gap-3">
+                      {customFieldValues[field.key] && (
+                        <a href={staticUrl(customFieldValues[field.key])} target="_blank" rel="noreferrer"
+                          className="text-xs font-bold text-[#5A0F1A] hover:underline whitespace-nowrap">View ↗</a>
+                      )}
+                      <label className="flex-1 cursor-pointer">
+                        <span className="block w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-bold text-slate-500 text-center hover:bg-slate-100 transition-colors">
+                          {customFieldValues[field.key] ? 'Replace file' : 'Upload file'}
+                        </span>
+                        <input
+                          type="file" className="hidden"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            try {
+                              const res = await uploadUserAvatar(file);
+                              setCustomFieldValues(v => ({ ...v, [field.key]: res.url }));
+                            } catch {
+                              showToast('Error uploading file', 'error');
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                  ) : field.type === 'textarea' ? (
+                    <textarea
+                      rows={3} value={customFieldValues[field.key] ?? ''}
+                      placeholder={field.placeholder}
+                      onChange={e => setCustomFieldValues(v => ({ ...v, [field.key]: e.target.value }))}
+                      className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#7A1C2A] focus:ring-2 focus:ring-[#7A1C2A]/10 focus:bg-white transition-all resize-none"
+                    />
+                  ) : (
+                    <input
+                      type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : field.type === 'url' ? 'url' : 'text'}
+                      value={customFieldValues[field.key] ?? ''}
+                      placeholder={field.placeholder}
+                      onChange={e => setCustomFieldValues(v => ({ ...v, [field.key]: e.target.value }))}
+                      className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#7A1C2A] focus:ring-2 focus:ring-[#7A1C2A]/10 focus:bg-white transition-all"
+                    />
+                  )}
+                  {field.description && <p className="text-[10px] text-slate-400 mt-1.5">{field.description}</p>}
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={handleSaveCustomFields} disabled={savingCustomFields}
+              className="mt-6 w-full h-[52px] bg-[#5A0F1A] hover:bg-[#7A1C2A] text-white rounded-2xl text-sm font-bold shadow-lg shadow-[#5A0F1A]/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {savingCustomFields ? <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Saving…</> : 'Save Information'}
+            </button>
+          </div>
+        )}
       </div>
-    
+
   );
 }
