@@ -7,8 +7,9 @@ import Link from 'next/link';
 import {
   ChevronLeft, ShoppingBag, Package, Store, Loader2, MapPin, Clock,
   CheckCircle2, Truck, AlertCircle, RefreshCw, ChevronDown, ChevronUp,
-  Calendar, CreditCard, Phone, Receipt, Tag, Gem, TrendingUp
+  Calendar, CreditCard, Phone, Receipt, Tag, Gem, TrendingUp, ShieldCheck
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { API_BASE_URL, STATIC_BASE_URL } from '../constants';
 
 function staticImg(path: string | undefined | null) {
@@ -118,6 +119,26 @@ export default function OrdersPage() {
   const [tab, setTab] = useState<'all' | 'online' | 'store' | 'plans'>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [goldSubs, setGoldSubs] = useState<any[]>([]);
+  const [certGeneratingId, setCertGeneratingId] = useState<string | null>(null);
+
+  async function handleDownloadCertificate(itemId: string) {
+    if (!authState.token) return;
+    setCertGeneratingId(itemId);
+    try {
+      const res = await fetch(`${API_BASE_URL}/customers/purchases/${itemId}/certificate`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${authState.token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Certificate generation failed');
+      const url = data.url?.startsWith('http') ? data.url : `${STATIC_BASE_URL}${data.url}`;
+      window.open(url, '_blank');
+    } catch (err: any) {
+      toast.error(err.message || 'Certificate generation failed');
+    } finally {
+      setCertGeneratingId(null);
+    }
+  }
 
   const formatINR = (v: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(Math.max(0, v || 0));
@@ -480,6 +501,14 @@ export default function OrdersPage() {
                               </div>
                             ))}
                           </div>
+                          <button
+                            onClick={() => handleDownloadCertificate(item._id)}
+                            disabled={certGeneratingId === item._id}
+                            className="mt-4 flex items-center justify-center gap-2 w-full sm:w-auto px-5 py-2.5 rounded-2xl bg-[#7A1238] hover:bg-[#5A0F1A] text-white text-[11px] font-black uppercase tracking-wider transition-all disabled:opacity-50"
+                          >
+                            <ShieldCheck size={14} />
+                            {certGeneratingId === item._id ? 'Generating…' : 'Download Certificate'}
+                          </button>
                         </div>
                       )}
                     </div>
