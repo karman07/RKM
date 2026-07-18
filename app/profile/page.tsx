@@ -33,7 +33,8 @@ export default function ProfilePage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyTab, setHistoryTab] = useState<'all' | 'store' | 'online'>('all');
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
-  const [customFieldDefs, setCustomFieldDefs] = useState<{ _id: string; key: string; label: string; type: string }[]>([]);
+  const [customFieldDefs, setCustomFieldDefs] = useState<{ _id: string; key: string; label: string; type: string; required?: boolean; placeholder?: string }[]>([]);
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>({});
 
   const [form, setForm] = useState({
     name: '',
@@ -69,6 +70,9 @@ export default function ProfilePage() {
         state: authState.customer.state || '',
         country: authState.customer.country || ''
       });
+      const values: Record<string, string> = {};
+      (authState.customer.customFields ?? []).forEach(f => { values[f.key] = f.value; });
+      setCustomFieldValues(values);
     }
   }, [authState.token, authState.customer]);
 
@@ -144,18 +148,27 @@ export default function ProfilePage() {
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSaveLoading(true);
     setError('');
     setSuccess('');
 
+    const missingDefined = customFieldDefs.filter(f => f.required && !customFieldValues[f.key]?.trim());
+    if (missingDefined.length) {
+      setError(`Missing required field(s): ${missingDefined.map(f => f.label).join(', ')}`);
+      return;
+    }
+
+    setSaveLoading(true);
     try {
+      const customFields = customFieldDefs
+        .filter(f => customFieldValues[f.key]?.trim())
+        .map(f => ({ key: f.key, value: customFieldValues[f.key] }));
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/customers/auth/profile`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${authState.token}`
         },
-        body: JSON.stringify(form)
+        body: JSON.stringify({ ...form, customFields: customFieldDefs.length ? customFields : undefined })
       });
       const data = await res.json();
       if (res.ok && authState.token) {
@@ -396,27 +409,6 @@ export default function ProfilePage() {
               </div>
             )}
 
-            {(authState.customer.customFields?.length ?? 0) > 0 && (
-              <div className="bg-white rounded-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.04)] border border-slate-50 p-8 mt-6">
-                <div className="flex items-center gap-2 mb-5">
-                  <ShieldCheck size={16} className="text-[#7A1238]" />
-                  <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-[0.2em]">Additional Information</h3>
-                </div>
-                <div className="space-y-4">
-                  {authState.customer.customFields!.map((f, i) => {
-                    const def = customFieldDefs.find(d => d.key === f.key);
-                    const label = def?.label ?? f.key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-                    return (
-                      <div key={i} className="flex items-center justify-between gap-4">
-                        <span className="text-xs font-semibold text-slate-400">{label}</span>
-                        <span className="text-sm font-bold text-slate-900 text-right">{f.value}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
           </div>
 
           {/* Right Column: Information & Settings */}
@@ -568,9 +560,48 @@ export default function ProfilePage() {
                   </div>
                 </div>
 
+                {customFieldDefs.length > 0 && (
+                  <div className="space-y-6 pt-10 border-t border-slate-50">
+                    <div className="flex items-center gap-3">
+                      <ShieldCheck size={18} className="text-[#7A1238]" />
+                      <h4 className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-900">Additional Information</h4>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+                      {customFieldDefs.map(f => (
+                        <div key={f._id} className="space-y-2">
+                          <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">
+                            {f.label}{f.required && <span className="text-[#7A1238]"> *</span>}
+                          </label>
+                          {f.type === 'textarea' ? (
+                            <textarea
+                              rows={2}
+                              value={customFieldValues[f.key] ?? ''}
+                              placeholder={f.placeholder}
+                              onChange={e => setCustomFieldValues(v => ({ ...v, [f.key]: e.target.value }))}
+                              className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:ring-4 focus:ring-emerald-500/5 focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700 resize-none"
+                            />
+                          ) : f.type === 'file' ? (
+                            <div className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-400 italic">
+                              {customFieldValues[f.key] ? 'File on record — visit a store to update' : 'Not on file — visit a store to add'}
+                            </div>
+                          ) : (
+                            <input
+                              type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : f.type === 'url' ? 'url' : 'text'}
+                              value={customFieldValues[f.key] ?? ''}
+                              placeholder={f.placeholder}
+                              onChange={e => setCustomFieldValues(v => ({ ...v, [f.key]: e.target.value }))}
+                              className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:ring-4 focus:ring-emerald-500/5 focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700"
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="pt-10 border-t border-slate-50 flex items-center justify-between">
-                  <button 
-                    type="button" 
+                  <button
+                    type="button"
                     onClick={() => setIsLogoutOpen(true)}
                     className="flex items-center gap-2 text-red-500 hover:text-red-700 text-[10px] font-black uppercase tracking-widest transition-all"
                   >
