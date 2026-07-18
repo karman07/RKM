@@ -4,7 +4,7 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   getCustomerById, getMyEnquiries, getCustomerPurchases, getCustomerGoldBalance, getCustomerCustomFields,
-  updateCustomer, uploadUserAvatar, staticUrl, checkSessionExpiry,
+  updateCustomer, uploadUserAvatar, generateCertificate, staticUrl, checkSessionExpiry,
   type FullCustomer, type SaleEnquiry, type InventoryItem, type GoldBalance, type EmployeeCustomField,
 } from '../../../../lib/api';
 import Modal from '../../../../components/Modal';
@@ -183,6 +183,21 @@ export default function CustomerDetailPage() {
   const [tab, setTab] = useState<'enquiries' | 'purchases' | 'plans'>('enquiries');
   const [customFieldDefs, setCustomFieldDefs] = useState<EmployeeCustomField[]>([]);
   const [showEdit, setShowEdit] = useState(false);
+  const [certGeneratingId, setCertGeneratingId] = useState<string | null>(null);
+  const [certError, setCertError] = useState('');
+
+  async function handleGenerateCertificate(item: InventoryItem) {
+    setCertGeneratingId(item._id);
+    setCertError('');
+    try {
+      const cert = await generateCertificate(item._id);
+      window.open(staticUrl(cert.url), '_blank');
+    } catch (e: any) {
+      setCertError(e.message || 'Certificate generation failed');
+    } finally {
+      setCertGeneratingId(null);
+    }
+  }
 
   useEffect(() => {
     getCustomerCustomFields().catch(() => [] as EmployeeCustomField[]).then(setCustomFieldDefs);
@@ -357,6 +372,7 @@ export default function CustomerDetailPage() {
             </div>
           ) : (
             <div className="p-4 sm:p-6 space-y-3">
+              {certError && <p className="text-xs text-red-600 font-bold">{certError}</p>}
               {purchases.map(item => {
                 const product = typeof item.product_id === 'object' ? item.product_id : null;
                 const img = product?.images?.[0];
@@ -375,8 +391,17 @@ export default function CustomerDetailPage() {
                       <p className="font-bold text-sm text-slate-900 truncate">{product?.name ?? item.unique_item_code}</p>
                       <p className="text-[10px] text-slate-400 font-medium">{item.unique_item_code}</p>
                     </div>
-                    <div className="flex-shrink-0 text-right">
+                    <div className="flex-shrink-0 text-right flex items-center gap-3">
                       <p className="text-sm font-black text-slate-900">{rupee(item.selling_price)}</p>
+                      <button
+                        onClick={() => handleGenerateCertificate(item)}
+                        disabled={certGeneratingId === item._id}
+                        title="Certificate of Authenticity"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 text-amber-700 hover:bg-amber-600 hover:text-white border border-amber-200 hover:border-amber-600 text-[10px] font-black uppercase tracking-wider transition-all disabled:opacity-50"
+                      >
+                        <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        {certGeneratingId === item._id ? '…' : 'Certificate'}
+                      </button>
                     </div>
                   </div>
                 );

@@ -215,6 +215,10 @@ export const getInventoryItemById = async (id: string): Promise<InventoryItem | 
 export const getCustomerPurchases = (phone: string) =>
   getInventoryItems({ status: 'sold', sold_customer_phone: phone, limit: 200 }).then(res => res.data);
 
+/** Fills the RKM Certificate of Authenticity PDF (diamond template if the item has stones, gold template otherwise) */
+export const generateCertificate = (id: string) =>
+  request<{ url: string }>(`/inventory/${id}/generate-certificate`, { method: 'POST' });
+
 // ── Gold Investment — customer balance (read-only) ───────────────────────────
 
 export interface GoldBalance {

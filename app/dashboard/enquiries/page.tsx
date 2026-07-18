@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import {
   getProfile, getMyCustomers, getMyEnquiries, createSaleEnquiry, checkSessionExpiry,
-  getInventoryItems, getInventoryItemById, getInvestmentPlans, staticUrl,
+  getInventoryItems, getInventoryItemById, getInvestmentPlans, generateCertificate, staticUrl,
   type UserProfile, type FullCustomer, type SaleEnquiry, type InventoryItem, type InvestmentPlan,
 } from '../../../lib/api';
 import Modal from '../../../components/Modal';
@@ -304,10 +304,27 @@ function EnquiriesPageInner() {
   const [showNew, setShowNew] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [certGeneratingRef, setCertGeneratingRef] = useState<string | null>(null);
 
   function showToast(msg: string, ok = true) {
     setToast({ msg, ok });
     setTimeout(() => setToast(null), 3500);
+  }
+
+  async function handleGenerateCertificate(reference: string) {
+    if (!reference) return;
+    setCertGeneratingRef(reference);
+    try {
+      const res = await getInventoryItems({ search: reference, limit: 5 });
+      const item = res.data.find(i => i.unique_item_code === reference) ?? res.data[0];
+      if (!item) { showToast('Could not find the sold item for this certificate', false); return; }
+      const cert = await generateCertificate(item._id);
+      window.open(staticUrl(cert.url), '_blank');
+    } catch (err: any) {
+      showToast(err.message || 'Certificate generation failed', false);
+    } finally {
+      setCertGeneratingRef(null);
+    }
   }
 
   const load = useCallback(async () => {
@@ -428,6 +445,17 @@ function EnquiriesPageInner() {
                       </span>
                       {e.commission_amount > 0 && (
                         <span className="text-[10px] font-black text-emerald-600">{rupee(e.commission_amount)} → payroll</span>
+                      )}
+                      {e.status === 'approved' && e.type === 'item_sale' && e.reference && (
+                        <button
+                          onClick={() => handleGenerateCertificate(e.reference)}
+                          disabled={certGeneratingRef === e.reference}
+                          title="Certificate of Authenticity"
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 text-amber-700 hover:bg-amber-600 hover:text-white border border-amber-200 hover:border-amber-600 text-[10px] font-black uppercase tracking-wider transition-all disabled:opacity-50"
+                        >
+                          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                          {certGeneratingRef === e.reference ? 'Generating…' : 'Certificate'}
+                        </button>
                       )}
                     </div>
                   </div>
