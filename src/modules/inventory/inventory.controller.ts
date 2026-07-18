@@ -258,7 +258,7 @@ export class InventoryController {
    * with this sold item's product/sale/branch data and returns its static URL.
    */
   @Post(':id/generate-certificate')
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER, UserRole.SALES)
   generateCertificate(@Param('id') id: string) {
     return this.certificateService.generate(id);
   }

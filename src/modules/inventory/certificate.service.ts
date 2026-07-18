@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as fs from 'fs';
@@ -44,6 +44,13 @@ const ROWS_PURE_GOLD: Record<string, [number, number]> = {
   invoice_number: [433.601194, 448.166098],
   date_of_purchase: [460.019913, 474.584817],
 };
+
+/** Same phone normalisation used by CustomersService.getPurchaseHistory, so ownership checks
+ *  agree with what a customer actually sees in their own purchase history. */
+function phoneVariants(phone: string): string[] {
+  const stripped = phone.replace(/^\+/, '');
+  return [phone, stripped, `+${stripped}`];
+}
 
 function fmtDate(dt: Date | null | undefined): string {
   if (!dt) return '';
@@ -96,11 +103,18 @@ export class CertificateService {
     fs.mkdirSync(this.outDir, { recursive: true });
   }
 
-  async generate(itemId: string): Promise<{ url: string }> {
+  /**
+   * @param ownerPhone When set (customer-facing calls only), restricts generation to items
+   * actually sold to that phone number — staff calls omit this and can certify any sold item.
+   */
+  async generate(itemId: string, ownerPhone?: string): Promise<{ url: string }> {
     const item = await this.inventoryModel.findById(itemId).lean().exec();
     if (!item) throw new NotFoundException(`Inventory item ${itemId} not found`);
     if (item.status !== InventoryStatus.SOLD) {
       throw new BadRequestException('Certificate can only be generated for sold items');
+    }
+    if (ownerPhone && !phoneVariants(ownerPhone).includes(item.sold_customer_phone || '')) {
+      throw new ForbiddenException('This item was not purchased on your account');
     }
 
     const product = await this.productsService.findOneRaw(String(item.product_id));

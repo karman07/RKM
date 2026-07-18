@@ -4,6 +4,7 @@ import { InventoryItem, InventoryItemSchema } from './schemas/inventory-item.sch
 import { InventoryService } from './inventory.service.js';
 import { CertificateService } from './certificate.service.js';
 import { InventoryController } from './inventory.controller.js';
+import { CustomerCertificateController } from './customer-certificate.controller.js';
 import { ProductsModule } from '../products/products.module.js';
 import { UploadsModule } from '../uploads/uploads.module.js';
 import { SettingsModule } from '../settings/settings.module.js';
@@ -29,7 +30,7 @@ import { WhatsAppModule } from '../whatsapp/whatsapp.module.js';
     EmailModule,
     WhatsAppModule,
   ],
-  controllers: [InventoryController],
+  controllers: [InventoryController, CustomerCertificateController],
   providers: [InventoryService, CertificateService],
   exports: [InventoryService],
 })
