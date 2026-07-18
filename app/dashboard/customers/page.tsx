@@ -1,10 +1,11 @@
 'use client';
 import { useEffect, useState, useCallback, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import {
   getCustomers, searchCustomerByPhone, createCustomer, updateCustomer,
   getInventory, getGoldBalance, getCustomerAdvances, createCustomerAdvance, getGoldLoansByCustomer,
-  getCustomerCustomFields, uploadUserAvatar, staticUrl,
+  getCustomerCustomFields, uploadUserAvatar, generateCertificate, staticUrl,
   type FullCustomer, type InventoryItem, type GoldBalance, type CustomerAdvance, type GoldLoan, type EmployeeCustomField,
 } from '../../../lib/api';
 import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from 'firebase/auth';
@@ -834,10 +835,23 @@ function CustomerDrawer({ customer, onClose, onUpdated }: { customer: FullCustom
   const [advanceError, setAdvanceError] = useState('');
   const [receiptAdvance, setReceiptAdvance] = useState<CustomerAdvance | null>(null);
   const [customFieldDefs, setCustomFieldDefs] = useState<EmployeeCustomField[]>([]);
+  const [certGeneratingId, setCertGeneratingId] = useState<string | null>(null);
 
   useEffect(() => {
     getCustomerCustomFields().catch(() => [] as EmployeeCustomField[]).then(setCustomFieldDefs);
   }, []);
+
+  async function handleGenerateCertificate(item: InventoryItem) {
+    setCertGeneratingId(item._id);
+    try {
+      const cert = await generateCertificate(item._id);
+      window.open(staticUrl(cert.url), '_blank');
+    } catch (e: any) {
+      toast.error(e.message || 'Certificate generation failed');
+    } finally {
+      setCertGeneratingId(null);
+    }
+  }
 
   const fmtMoney = (n: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
@@ -1032,6 +1046,15 @@ function CustomerDrawer({ customer, onClose, onUpdated }: { customer: FullCustom
                         {item.sold_at && (
                           <p className="text-[10px] text-slate-400 mt-0.5">{new Date(item.sold_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                         )}
+                        <button
+                          onClick={() => handleGenerateCertificate(item)}
+                          disabled={certGeneratingId === item._id}
+                          title="Certificate of Authenticity"
+                          className="mt-1.5 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-600 hover:text-white border border-amber-200 hover:border-amber-600 text-[9px] font-black uppercase tracking-wider transition-all disabled:opacity-50"
+                        >
+                          <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                          {certGeneratingId === item._id ? '…' : 'Certificate'}
+                        </button>
                       </div>
                     </div>
                   );
