@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { getCustomers, searchCustomersByPhone, createCustomer, type Customer, staticUrl } from '@/lib/api';
 import { useAppTheme } from '@/components/AppThemeContext';
 import { APP_THEME } from '@/lib/theme-constants';
-import { auth } from '@/lib/firebase';
+import { getFirebaseAuth } from '@/lib/firebase';
 import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from 'firebase/auth';
 import Link from 'next/link';
 import {
@@ -69,7 +69,7 @@ function AddClientModal({ onClose, onCreated }: { onClose: () => void; onCreated
 
   function getOrCreateRecaptcha() {
     if (!(window as any)._rcv_admin_customer) {
-      (window as any)._rcv_admin_customer = new RecaptchaVerifier(auth, 'recaptcha-admin-customer', { size: 'invisible' });
+      (window as any)._rcv_admin_customer = new RecaptchaVerifier(getFirebaseAuth(), 'recaptcha-admin-customer', { size: 'invisible' });
     }
     return (window as any)._rcv_admin_customer;
   }
@@ -80,7 +80,7 @@ function AddClientModal({ onClose, onCreated }: { onClose: () => void; onCreated
     setSending(true);
     try {
       const verifier = getOrCreateRecaptcha();
-      const result = await signInWithPhoneNumber(auth, `+91${phone.replace(/^\+91/, '')}`, verifier);
+      const result = await signInWithPhoneNumber(getFirebaseAuth(), `+91${phone.replace(/^\+91/, '')}`, verifier);
       confirmRef.current = result;
       setStep('otp');
       setCountdown(60);

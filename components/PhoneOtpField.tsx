@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { getFirebaseAuth } from '@/lib/firebase';
 
 interface PhoneOtpFieldProps {
   label: string;
@@ -51,7 +51,7 @@ export default function PhoneOtpField({
   function getOrCreateRecaptcha() {
     const id = `recaptcha-${fieldKey}`;
     if (!(window as any)[`_rcv_${fieldKey}`]) {
-      (window as any)[`_rcv_${fieldKey}`] = new RecaptchaVerifier(auth, id, { size: 'invisible' });
+      (window as any)[`_rcv_${fieldKey}`] = new RecaptchaVerifier(getFirebaseAuth(), id, { size: 'invisible' });
     }
     return (window as any)[`_rcv_${fieldKey}`];
   }
@@ -61,7 +61,7 @@ export default function PhoneOtpField({
     setSending(true); setError('');
     try {
       const verifier = getOrCreateRecaptcha();
-      const result = await signInWithPhoneNumber(auth, `+91${value}`, verifier);
+      const result = await signInWithPhoneNumber(getFirebaseAuth(), `+91${value}`, verifier);
       confirmRef.current = result;
       setOtpSent(true);
     } catch (e: any) {

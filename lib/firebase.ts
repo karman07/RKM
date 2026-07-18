@@ -1,6 +1,6 @@
 // Firebase client config for Admin panel
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
+import { getAuth, type Auth } from 'firebase/auth';
 import { getMessaging, getToken, onMessage, Messaging } from 'firebase/messaging';
 
 const firebaseConfig = {
@@ -13,10 +13,25 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+// Only ever initialized in the browser, on demand, so a missing/invalid
+// config doesn't crash SSR prerendering (e.g. the /_not-found page).
+function getFirebaseApp(): FirebaseApp | null {
+  if (typeof window === 'undefined') return null;
+  if (!firebaseConfig.apiKey) return null;
+  return !getApps().length ? initializeApp(firebaseConfig) : getApp();
+}
 
-// Phone OTP auth
-export const auth = getAuth(app);
+let cachedAuth: Auth | null = null;
+
+/** Phone OTP auth. Only call from browser event handlers. */
+export function getFirebaseAuth(): Auth {
+  if (!cachedAuth) {
+    const app = getFirebaseApp();
+    if (!app) throw new Error('Firebase is not configured');
+    cachedAuth = getAuth(app);
+  }
+  return cachedAuth;
+}
 
 // FCM Push Messaging
 export const VAPID_KEY = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY ?? '';
@@ -26,6 +41,8 @@ let messaging: Messaging | null = null;
 export function getFirebaseMessaging(): Messaging | null {
   if (typeof window === 'undefined') return null;
   if (messaging) return messaging;
+  const app = getFirebaseApp();
+  if (!app) return null;
   try { messaging = getMessaging(app); } catch { messaging = null; }
   return messaging;
 }
