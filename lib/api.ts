@@ -408,6 +408,11 @@ export const createCustomer = (data: {
   address?: string; city?: string; state?: string; pincode?: string; country?: string;
   customFields?: { key: string; value: string }[];
 }) => request<FullCustomer>('/customers', { method: 'POST', body: JSON.stringify(data) });
+export const updateCustomer = (id: string, data: {
+  name?: string; email?: string; gender?: string;
+  address?: string; city?: string; state?: string; pincode?: string; country?: string;
+  customFields?: { key: string; value: string }[];
+}) => request<FullCustomer>(`/customers/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
 
 // ── Gold Investment Balance ───────────────────────────────────────────────────
 

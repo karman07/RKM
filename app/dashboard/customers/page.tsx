@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import {
-  getCustomers, searchCustomerByPhone, sendCustomerOtp, verifyCustomerOtp, createCustomer,
+  getCustomers, searchCustomerByPhone, sendCustomerOtp, verifyCustomerOtp, createCustomer, updateCustomer,
   getInventory, getGoldBalance, getGoldLoansByCustomer, getCustomerAdvances,
   getCustomerCustomFields, uploadUserAvatar, staticUrl,
   type FullCustomer, type InventoryItem, type GoldBalance, type GoldLoan, type CustomerAdvance, type EmployeeCustomField,
@@ -432,10 +432,216 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
   );
 }
 
+// ── Edit Customer Modal ────────────────────────────────────────────────────────
+
+function EditCustomerModal({
+  open, customer, onClose, onSaved,
+}: {
+  open: boolean; customer: FullCustomer; onClose: () => void; onSaved: (c: FullCustomer) => void;
+}) {
+  const [name, setName] = useState(customer.name);
+  const [email, setEmail] = useState(customer.email ?? '');
+  const [gender, setGender] = useState(customer.gender ?? '');
+  const [address, setAddress] = useState(customer.address ?? '');
+  const [city, setCity] = useState(customer.city ?? '');
+  const [state, setState] = useState(customer.state ?? '');
+  const [pincode, setPincode] = useState(customer.pincode ?? '');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  const [definedFields, setDefinedFields] = useState<EmployeeCustomField[]>([]);
+  const [definedFieldValues, setDefinedFieldValues] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!open) return;
+    getCustomerCustomFields().catch(() => [] as EmployeeCustomField[]).then(setDefinedFields);
+    setName(customer.name);
+    setEmail(customer.email ?? '');
+    setGender(customer.gender ?? '');
+    setAddress(customer.address ?? '');
+    setCity(customer.city ?? '');
+    setState(customer.state ?? '');
+    setPincode(customer.pincode ?? '');
+    const values: Record<string, string> = {};
+    (customer.customFields ?? []).forEach(f => { values[f.key] = f.value; });
+    setDefinedFieldValues(values);
+    setErr('');
+  }, [open, customer]);
+
+  if (!open) return null;
+
+  async function handleSave() {
+    if (!name.trim()) { setErr('Customer name is required'); return; }
+    const missingDefined = definedFields.filter(f => f.required && !definedFieldValues[f.key]?.trim());
+    if (missingDefined.length) { setErr(`Missing required field(s): ${missingDefined.map(f => f.label).join(', ')}`); return; }
+    setErr(''); setSaving(true);
+    try {
+      const validDefinedFields = definedFields
+        .filter(f => definedFieldValues[f.key]?.trim())
+        .map(f => ({ key: f.key, value: definedFieldValues[f.key] }));
+      const updated = await updateCustomer(customer._id, {
+        name: name.trim(),
+        email: email.trim() || undefined,
+        gender: gender || undefined,
+        address: address.trim() || undefined,
+        city: city.trim() || undefined,
+        state: state.trim() || undefined,
+        pincode: pincode.trim() || undefined,
+        customFields: definedFields.length ? validDefinedFields : undefined,
+      });
+      onSaved(updated);
+    } catch (e: any) {
+      setErr(e.message || 'Failed to update customer');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
+        <div className="px-7 py-5 border-b border-slate-100 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-2xl flex items-center justify-center" style={{ background: PRIMARY }}>
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7m-1.5-9.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-base font-black text-slate-900">Edit Customer</h2>
+              <p className="text-[11px] text-slate-400 font-medium">{customer.phone}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 transition-colors">
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="px-7 py-5 space-y-4 overflow-y-auto flex-1">
+          <div>
+            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Full Name *</label>
+            <input placeholder="Customer full name" value={name} onChange={e => setName(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
+              style={{ '--tw-ring-color': `${PRIMARY}40` } as any} autoFocus />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Email</label>
+              <input type="email" placeholder="email@example.com" value={email} onChange={e => setEmail(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
+                style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+            </div>
+            <div>
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Gender</label>
+              <select value={gender} onChange={e => setGender(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 bg-white"
+                style={{ '--tw-ring-color': `${PRIMARY}40` } as any}>
+                <option value="">Select</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Address</label>
+            <input placeholder="Full address…" value={address} onChange={e => setAddress(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
+              style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">City</label>
+              <input placeholder="City" value={city} onChange={e => setCity(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
+                style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+            </div>
+            <div>
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">State</label>
+              <input placeholder="State" value={state} onChange={e => setState(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
+                style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+            </div>
+            <div>
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Pincode</label>
+              <input placeholder="PIN" value={pincode} onChange={e => setPincode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
+                style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+            </div>
+          </div>
+
+          {definedFields.length > 0 && (
+            <div className="border-t border-slate-100 pt-4 space-y-3">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Additional Information</p>
+              {definedFields.map(f => (
+                <div key={f._id}>
+                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">
+                    {f.label}{f.required && <span style={{ color: PRIMARY }}> *</span>}
+                  </label>
+                  {f.type === 'file' ? (
+                    <div className="flex items-center gap-2">
+                      {definedFieldValues[f.key] && (
+                        <a href={staticUrl(definedFieldValues[f.key])} target="_blank" rel="noreferrer"
+                          className="text-[10px] font-black whitespace-nowrap" style={{ color: PRIMARY }}>View ↗</a>
+                      )}
+                      <label className="flex-1 cursor-pointer">
+                        <span className="block w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-center text-slate-500 hover:bg-slate-50 transition-colors">
+                          {definedFieldValues[f.key] ? 'Replace file' : 'Upload file'}
+                        </span>
+                        <input type="file" className="hidden" onChange={async e => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          try {
+                            const res = await uploadUserAvatar(file);
+                            setDefinedFieldValues(v => ({ ...v, [f.key]: res.url }));
+                          } catch { setErr('Error uploading file'); }
+                        }} />
+                      </label>
+                    </div>
+                  ) : f.type === 'textarea' ? (
+                    <textarea rows={2} value={definedFieldValues[f.key] ?? ''} placeholder={f.placeholder}
+                      onChange={e => setDefinedFieldValues(v => ({ ...v, [f.key]: e.target.value }))}
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 resize-none"
+                      style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+                  ) : (
+                    <input
+                      type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : f.type === 'url' ? 'url' : 'text'}
+                      value={definedFieldValues[f.key] ?? ''} placeholder={f.placeholder}
+                      onChange={e => setDefinedFieldValues(v => ({ ...v, [f.key]: e.target.value }))}
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
+                      style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {err && <p className="text-xs text-red-600 font-bold">{err}</p>}
+
+          <div className="flex gap-3 pt-1">
+            <button onClick={onClose} className="flex-1 py-3 rounded-2xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors">
+              Cancel
+            </button>
+            <button onClick={handleSave} disabled={saving}
+              className="flex-1 py-3 rounded-2xl text-white text-sm font-black transition-all disabled:opacity-40 flex items-center justify-center gap-2"
+              style={{ background: PRIMARY }}>
+              {saving && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+              {saving ? 'Saving…' : 'Save Changes'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Customer Drawer ───────────────────────────────────────────────────────────
 
-function CustomerDrawer({ customer, onClose }: { customer: FullCustomer; onClose: () => void }) {
+function CustomerDrawer({ customer, onClose, onUpdated }: { customer: FullCustomer; onClose: () => void; onUpdated: (c: FullCustomer) => void }) {
   const [tab, setTab] = useState<'purchases' | 'plans' | 'advance' | 'loans'>('purchases');
+  const [showEdit, setShowEdit] = useState(false);
   const [purchases, setPurchases] = useState<InventoryItem[]>([]);
   const [plans, setPlans] = useState<GoldBalance[]>([]);
   const [advances, setAdvances] = useState<CustomerAdvance[]>([]);
@@ -508,9 +714,16 @@ function CustomerDrawer({ customer, onClose }: { customer: FullCustomer; onClose
               )}
             </div>
           </div>
-          <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 transition-colors flex-shrink-0">
-            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button onClick={() => setShowEdit(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-500 hover:bg-slate-50 transition-colors">
+              <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7m-1.5-9.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+              Edit
+            </button>
+            <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 transition-colors">
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
         </div>
 
         {/* Relationship Manager */}
@@ -805,6 +1018,13 @@ function CustomerDrawer({ customer, onClose }: { customer: FullCustomer; onClose
           )}
         </div>
       </div>
+
+      <EditCustomerModal
+        open={showEdit}
+        customer={customer}
+        onClose={() => setShowEdit(false)}
+        onSaved={(updated) => { onUpdated(updated); setShowEdit(false); }}
+      />
     </div>
   );
 }
@@ -920,7 +1140,15 @@ function CustomersPageInner() {
       )}
 
       {selectedCustomer && (
-        <CustomerDrawer customer={selectedCustomer} onClose={() => setSelectedCustomer(null)} />
+        <CustomerDrawer
+          customer={selectedCustomer}
+          onClose={() => setSelectedCustomer(null)}
+          onUpdated={(updated) => {
+            setSelectedCustomer(updated);
+            setCustomers(prev => prev.map(c => c._id === updated._id ? updated : c));
+            showToast(`${updated.name} updated`);
+          }}
+        />
       )}
 
       {/* Header */}
