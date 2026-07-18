@@ -4,7 +4,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import {
   getCustomers, searchCustomerByPhone, sendCustomerOtp, verifyCustomerOtp, createCustomer, updateCustomer,
   getInventory, getGoldBalance, getGoldLoansByCustomer, getCustomerAdvances,
-  getCustomerCustomFields, uploadUserAvatar, staticUrl,
+  getCustomerCustomFields, uploadUserAvatar, generateCertificate, staticUrl,
   type FullCustomer, type InventoryItem, type GoldBalance, type GoldLoan, type CustomerAdvance, type EmployeeCustomField,
 } from '../../../lib/api';
 
@@ -651,10 +651,25 @@ function CustomerDrawer({ customer, onClose, onUpdated }: { customer: FullCustom
   const [loadingAdvances, setLoadingAdvances] = useState(true);
   const [loadingLoans, setLoadingLoans] = useState(true);
   const [customFieldDefs, setCustomFieldDefs] = useState<EmployeeCustomField[]>([]);
+  const [certGeneratingId, setCertGeneratingId] = useState<string | null>(null);
+  const [certError, setCertError] = useState('');
 
   useEffect(() => {
     getCustomerCustomFields().catch(() => [] as EmployeeCustomField[]).then(setCustomFieldDefs);
   }, []);
+
+  async function handleGenerateCertificate(item: InventoryItem) {
+    setCertGeneratingId(item._id);
+    setCertError('');
+    try {
+      const cert = await generateCertificate(item._id);
+      window.open(staticUrl(cert.url), '_blank');
+    } catch (e: any) {
+      setCertError(e.message || 'Certificate generation failed');
+    } finally {
+      setCertGeneratingId(null);
+    }
+  }
 
   const fmtMoney = (n: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
@@ -786,6 +801,7 @@ function CustomerDrawer({ customer, onClose, onUpdated }: { customer: FullCustom
             ) : (
               <div className="space-y-3">
                 <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-3">{purchases.length} purchase{purchases.length !== 1 ? 's' : ''}</p>
+                {certError && <p className="text-xs text-red-600 font-bold">{certError}</p>}
                 {purchases.map(item => {
                   const product = typeof item.product_id === 'object' ? item.product_id as any : null;
                   const name = product?.name || item.unique_item_code;
@@ -821,6 +837,15 @@ function CustomerDrawer({ customer, onClose, onUpdated }: { customer: FullCustom
                         {item.sold_at && (
                           <p className="text-[10px] text-slate-400 mt-0.5">{new Date(item.sold_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                         )}
+                        <button
+                          onClick={() => handleGenerateCertificate(item)}
+                          disabled={certGeneratingId === item._id}
+                          title="Certificate of Authenticity"
+                          className="mt-1.5 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-600 hover:text-white border border-amber-200 hover:border-amber-600 text-[9px] font-black uppercase tracking-wider transition-all disabled:opacity-50"
+                        >
+                          <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                          {certGeneratingId === item._id ? '…' : 'Certificate'}
+                        </button>
                       </div>
                     </div>
                   );

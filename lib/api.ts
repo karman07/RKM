@@ -232,6 +232,10 @@ export const getInventoryItem = (id: string) =>
 export const getInventoryByBarcode = (barcode: string) =>
   request<InventoryItem>(`/inventory/barcode/${barcode}`);
 
+/** Fills the RKM Certificate of Authenticity PDF (diamond template if the item has stones, gold template otherwise) */
+export const generateCertificate = (id: string) =>
+  request<{ url: string }>(`/inventory/${id}/generate-certificate`, { method: 'POST' });
+
 // ── Categories ─────────────────────────────────────────────────
 export const getCategories = () => request<Category[]>('/categories');
 

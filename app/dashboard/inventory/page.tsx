@@ -2,12 +2,13 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
+import { toast } from 'sonner';
 import BarcodeScannerModal from '../../../components/BarcodeScannerModal';
 import ViewItemModal from '../../../components/ViewItemModal';
 import SaleRequestModal from '../../../components/SaleRequestModal';
 import BatchSaleRequestModal from '../../../components/BatchSaleRequestModal';
 import {
-  getProfile, getInventory, getInventoryByBarcode, checkSessionExpiry, staticUrl, getCategories,
+  getProfile, getInventory, getInventoryByBarcode, checkSessionExpiry, staticUrl, getCategories, generateCertificate,
   type UserProfile, type InventoryItem, type Category
 } from '../../../lib/api';
 import { Suspense } from 'react';
@@ -50,6 +51,19 @@ function InventoryContent() {
   // Sale Request Modal
   const [saleRequestItem, setSaleRequestItem] = useState<InventoryItem | null>(null);
   const [successToast, setSuccessToast] = useState('');
+  const [certGeneratingId, setCertGeneratingId] = useState<string | null>(null);
+
+  async function handleGenerateCertificate(item: InventoryItem) {
+    setCertGeneratingId(item._id);
+    try {
+      const cert = await generateCertificate(item._id);
+      window.open(staticUrl(cert.url), '_blank');
+    } catch (e: any) {
+      toast.error(e.message || 'Certificate generation failed');
+    } finally {
+      setCertGeneratingId(null);
+    }
+  }
 
   // Multi-Item Bill (cart) mode
   const [cartMode, setCartMode] = useState(false);
@@ -488,6 +502,17 @@ function InventoryContent() {
                   >
                     View
                   </button>
+                  {item.status === 'sold' && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleGenerateCertificate(item); }}
+                      disabled={certGeneratingId === item._id}
+                      title="Certificate of Authenticity"
+                      className="flex-[2] py-2.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-600 hover:text-white hover:border-amber-600 text-[11px] font-black uppercase tracking-wider transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+                    >
+                      <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                      {certGeneratingId === item._id ? 'Generating…' : 'Certificate'}
+                    </button>
+                  )}
                   {item.status === 'available' && (
                     item.sale_request_status === 'pending' ? (
                       <div className="flex-[2] py-2.5 rounded-2xl bg-amber-50 border border-amber-200 text-[11px] font-black uppercase tracking-wider text-amber-700 text-center flex items-center justify-center gap-1.5">
