@@ -5,8 +5,9 @@ import {
   getCustomerById, getInventory, getSubscriptions, redeemSubscription,
   markGoldCashPayment, addInterestToSubscription, getMe, getGoldLoansByCustomer,
   getCustomerAdvances, createCustomerAdvance, redeemCustomerAdvance,
+  updateCustomer, getCustomFields, uploadUserAvatar, getUsers,
   type Customer, type InventoryItem, type GoldSubscription, type User as AdminUser, type GoldLoan,
-  type CustomerAdvance, staticUrl,
+  type CustomerAdvance, type CustomField, staticUrl,
 } from '@/lib/api';
 import { downloadCsv } from '@/lib/export-utils';
 import { useAppTheme } from '@/components/AppThemeContext';
@@ -14,12 +15,13 @@ import { APP_THEME } from '@/lib/theme-constants';
 import BillModal from '@/components/BillModal';
 import InvestmentReceiptModal from '@/components/InvestmentReceiptModal';
 import AdvanceReceiptModal from '@/components/AdvanceReceiptModal';
+import Modal from '@/components/Modal';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import {
   Users, Mail, Phone, MapPin, ChevronLeft, Calendar, ShoppingBag,
   CreditCard, Target, ShieldCheck, TrendingUp, Package, Gem, Download, Loader2, Plus, Wallet, X,
-  Receipt, Lock,
+  Receipt, Lock, Pencil, UserCog, Search,
 } from 'lucide-react';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -1189,6 +1191,318 @@ function BatchRedeemPanel({
   );
 }
 
+// ── Edit Client Modal ────────────────────────────────────────────────────────
+
+function EditClientModal({
+  open, customer, definedFields, onClose, onSaved,
+}: {
+  open: boolean; customer: Customer; definedFields: CustomField[];
+  onClose: () => void; onSaved: (c: Customer) => void;
+}) {
+  const [name, setName] = useState(customer.name);
+  const [email, setEmail] = useState(customer.email ?? '');
+  const [gender, setGender] = useState(customer.gender ?? '');
+  const [address, setAddress] = useState(customer.address ?? '');
+  const [city, setCity] = useState(customer.city ?? '');
+  const [state, setState] = useState(customer.state ?? '');
+  const [pincode, setPincode] = useState(customer.pincode ?? '');
+  const [country, setCountry] = useState(customer.country ?? 'India');
+  const [aadharCard, setAadharCard] = useState(customer.aadharCard ?? '');
+  const [panCard, setPanCard] = useState(customer.panCard ?? '');
+  const [accountNumber, setAccountNumber] = useState(customer.accountNumber ?? '');
+  const [ifscCode, setIfscCode] = useState(customer.ifscCode ?? '');
+  const [bankName, setBankName] = useState(customer.bankName ?? '');
+  const [definedFieldValues, setDefinedFieldValues] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  // ── Relationship Manager reassignment (admin-only) ──
+  const initialRm = typeof customer.relationship_manager === 'object' && customer.relationship_manager
+    ? customer.relationship_manager
+    : null;
+  const [rmId, setRmId] = useState(initialRm?._id ?? '');
+  const [rmLabel, setRmLabel] = useState(initialRm ? `${initialRm.name} (${initialRm.role})` : '');
+  const [staffList, setStaffList] = useState<AdminUser[]>([]);
+  const [rmSearch, setRmSearch] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    setName(customer.name);
+    setEmail(customer.email ?? '');
+    setGender(customer.gender ?? '');
+    setAddress(customer.address ?? '');
+    setCity(customer.city ?? '');
+    setState(customer.state ?? '');
+    setPincode(customer.pincode ?? '');
+    setCountry(customer.country ?? 'India');
+    setAadharCard(customer.aadharCard ?? '');
+    setPanCard(customer.panCard ?? '');
+    setAccountNumber(customer.accountNumber ?? '');
+    setIfscCode(customer.ifscCode ?? '');
+    setBankName(customer.bankName ?? '');
+    const values: Record<string, string> = {};
+    (customer.customFields ?? []).forEach(f => { values[f.key] = f.value; });
+    setDefinedFieldValues(values);
+    const rm = typeof customer.relationship_manager === 'object' && customer.relationship_manager
+      ? customer.relationship_manager
+      : null;
+    setRmId(rm?._id ?? '');
+    setRmLabel(rm ? `${rm.name} (${rm.role})` : '');
+    setRmSearch('');
+    setErr('');
+    getUsers(undefined, 1, 200).then(res => setStaffList(res.data)).catch(() => {});
+  }, [open, customer]);
+
+  const rmMatches = rmSearch.trim()
+    ? staffList.filter(u =>
+        u.role !== 'worker' &&
+        (u.name.toLowerCase().includes(rmSearch.toLowerCase()) || u.email?.toLowerCase().includes(rmSearch.toLowerCase()))
+      ).slice(0, 8)
+    : [];
+
+  async function handleSave() {
+    if (!name.trim()) { setErr('Client name is required'); return; }
+    const missingDefined = definedFields.filter(f => f.required && !definedFieldValues[f.key]?.trim());
+    if (missingDefined.length) { setErr(`Missing required field(s): ${missingDefined.map(f => f.label).join(', ')}`); return; }
+    setErr(''); setSaving(true);
+    try {
+      const validDefinedFields = definedFields
+        .filter(f => definedFieldValues[f.key]?.trim())
+        .map(f => ({ key: f.key, value: definedFieldValues[f.key] }));
+      const updated = await updateCustomer(customer._id, {
+        name: name.trim(),
+        email: email.trim() || undefined,
+        gender: gender || undefined,
+        address: address.trim() || undefined,
+        city: city.trim() || undefined,
+        state: state.trim() || undefined,
+        pincode: pincode.trim() || undefined,
+        country: country.trim() || 'India',
+        aadharCard: aadharCard.trim() || undefined,
+        panCard: panCard.trim().toUpperCase() || undefined,
+        accountNumber: accountNumber.trim() || undefined,
+        ifscCode: ifscCode.trim().toUpperCase() || undefined,
+        bankName: bankName.trim() || undefined,
+        customFields: definedFields.length ? validDefinedFields : undefined,
+        relationship_manager: rmId || null,
+      });
+      onSaved(updated);
+    } catch (e: any) {
+      setErr(e.message || 'Failed to update client');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Edit Client" width="max-w-2xl">
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Full Name *</label>
+            <input value={name} onChange={e => setName(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Email</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Gender</label>
+            <select value={gender} onChange={e => setGender(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all">
+              <option value="">Not specified</option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Country</label>
+            <input value={country} onChange={e => setCountry(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+          </div>
+        </div>
+
+        <div>
+          <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Address</label>
+          <input value={address} onChange={e => setAddress(e.target.value)}
+            className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">City</label>
+            <input value={city} onChange={e => setCity(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">State</label>
+            <input value={state} onChange={e => setState(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">PIN</label>
+            <input value={pincode} onChange={e => setPincode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+          </div>
+        </div>
+
+        <div className="border-t border-slate-100 pt-4 space-y-3">
+          <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">KYC</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Aadhar Card</label>
+              <input value={aadharCard} onChange={e => setAadharCard(e.target.value.replace(/\D/g, '').slice(0, 12))}
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+            </div>
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">PAN Card</label>
+              <input value={panCard} onChange={e => setPanCard(e.target.value.toUpperCase().slice(0, 10))}
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all uppercase" />
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-slate-100 pt-4 space-y-3">
+          <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Bank Details</p>
+          <div>
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Account Number</label>
+            <input value={accountNumber} onChange={e => setAccountNumber(e.target.value.replace(/\D/g, ''))}
+              className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">IFSC Code</label>
+              <input value={ifscCode} onChange={e => setIfscCode(e.target.value.toUpperCase().slice(0, 11))}
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all uppercase" />
+            </div>
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Bank Name</label>
+              <input value={bankName} onChange={e => setBankName(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-slate-100 pt-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <UserCog className="w-3.5 h-3.5 text-blue-600" />
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Relationship Manager</p>
+          </div>
+
+          {rmId ? (
+            <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-100 rounded-xl">
+              <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white text-xs font-black flex-shrink-0">
+                {rmLabel.charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-black text-slate-900 leading-tight truncate">{rmLabel}</p>
+              </div>
+              <button type="button" onClick={() => { setRmId(''); setRmLabel(''); }}
+                className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all flex-shrink-0">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <p className="text-[10px] text-slate-400 font-medium">No relationship manager assigned. Search below to assign one.</p>
+          )}
+
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+            <input
+              className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-400 transition-all"
+              placeholder="Search staff by name or email…"
+              value={rmSearch}
+              onChange={e => setRmSearch(e.target.value)}
+            />
+          </div>
+
+          {rmSearch.trim() && (
+            rmMatches.length > 0 ? (
+              <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
+                {rmMatches.map(u => (
+                  <button key={u._id} type="button"
+                    onClick={() => { setRmId(u._id); setRmLabel(`${u.name} (${u.role})`); setRmSearch(''); }}
+                    className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-all ${rmId === u._id ? 'bg-blue-50' : 'bg-white hover:bg-slate-50'}`}>
+                    <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white text-[10px] font-black flex-shrink-0">
+                      {u.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-slate-900 leading-tight truncate">{u.name}</p>
+                      <p className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">{u.role}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[10px] text-slate-400 font-medium px-1">No staff found matching "{rmSearch}"</p>
+            )
+          )}
+          <p className="text-[9px] text-slate-400">Whoever is assigned here earns sales commission on this customer's purchases within the commission window.</p>
+        </div>
+
+        {definedFields.length > 0 && (
+          <div className="border-t border-slate-100 pt-4 space-y-3">
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Additional Information</p>
+            {definedFields.map(f => (
+              <div key={f._id}>
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">
+                  {f.label}{f.required && <span className="text-blue-600"> *</span>}
+                </label>
+                {f.type === 'file' ? (
+                  <div className="flex items-center gap-2">
+                    {definedFieldValues[f.key] && (
+                      <a href={staticUrl(definedFieldValues[f.key])} target="_blank" rel="noreferrer"
+                        className="text-[10px] font-black text-blue-600 whitespace-nowrap">View ↗</a>
+                    )}
+                    <label className="flex-1 cursor-pointer">
+                      <span className="block w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-center text-slate-500 hover:bg-slate-50 transition-colors">
+                        {definedFieldValues[f.key] ? 'Replace file' : 'Upload file'}
+                      </span>
+                      <input type="file" className="hidden" onChange={async e => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        try {
+                          const res = await uploadUserAvatar(file);
+                          setDefinedFieldValues(v => ({ ...v, [f.key]: res.url }));
+                        } catch { setErr('Error uploading file'); }
+                      }} />
+                    </label>
+                  </div>
+                ) : f.type === 'textarea' ? (
+                  <textarea rows={2} value={definedFieldValues[f.key] ?? ''} placeholder={f.placeholder}
+                    onChange={e => setDefinedFieldValues(v => ({ ...v, [f.key]: e.target.value }))}
+                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all resize-none" />
+                ) : (
+                  <input
+                    type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : f.type === 'url' ? 'url' : 'text'}
+                    value={definedFieldValues[f.key] ?? ''} placeholder={f.placeholder}
+                    onChange={e => setDefinedFieldValues(v => ({ ...v, [f.key]: e.target.value }))}
+                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {err && <p className="text-xs text-red-600 font-bold">{err}</p>}
+
+        <div className="flex gap-3 pt-1">
+          <button onClick={onClose} className="flex-1 py-3 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors">
+            Cancel
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            className="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-black transition-all disabled:opacity-40 flex items-center justify-center gap-2">
+            {saving && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+            {saving ? 'Saving…' : 'Save Changes'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function CustomerDetailPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
@@ -1204,8 +1518,14 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
   const [selectedBill, setSelectedBill] = useState<InventoryItem | null>(null);
   const [me, setMe] = useState<AdminUser | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [customFieldDefs, setCustomFieldDefs] = useState<CustomField[]>([]);
   const { theme } = useAppTheme();
   const colors = APP_THEME[theme];
+
+  useEffect(() => {
+    getCustomFields('customer').catch(() => [] as CustomField[]).then(setCustomFieldDefs);
+  }, []);
 
   useEffect(() => {
     async function loadData() {
@@ -1351,13 +1671,21 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
             </div>
           </div>
         </div>
-        <button
-          onClick={handleExportHistory}
-          disabled={exporting}
-          className="inline-flex items-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-blue-500/20 transition-all disabled:opacity-60 self-start"
-        >
-          {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />} Download Full History
-        </button>
+        <div className="flex items-center gap-3 self-start">
+          <button
+            onClick={() => setShowEdit(true)}
+            className="inline-flex items-center gap-2 px-5 py-3 bg-white border border-slate-200 text-slate-500 text-[11px] font-black uppercase tracking-widest rounded-2xl hover:border-blue-300 hover:text-blue-600 transition-all"
+          >
+            <Pencil className="w-3.5 h-3.5" /> Edit
+          </button>
+          <button
+            onClick={handleExportHistory}
+            disabled={exporting}
+            className="inline-flex items-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-blue-500/20 transition-all disabled:opacity-60"
+          >
+            {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />} Download Full History
+          </button>
+        </div>
       </div>
 
       {/* Main Grid */}
@@ -1612,12 +1940,16 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
                 {(customer.customFields?.length ?? 0) > 0 && (
                   <div className="pt-4 border-t border-slate-50 space-y-3">
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Additional Info</p>
-                    {customer.customFields!.map((f, i) => (
-                      <div key={i} className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-slate-400 capitalize">{f.key}</span>
-                        <span className="text-sm font-bold text-slate-900">{f.value}</span>
-                      </div>
-                    ))}
+                    {customer.customFields!.map((f, i) => {
+                      const def = customFieldDefs.find(d => d.key === f.key);
+                      const label = def?.label ?? f.key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                      return (
+                        <div key={i} className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-slate-400 capitalize">{label}</span>
+                          <span className="text-sm font-bold text-slate-900">{f.value}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
 
@@ -1855,6 +2187,14 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
       {newAdvanceReceipt && (
         <AdvanceReceiptModal advance={newAdvanceReceipt} onClose={() => setNewAdvanceReceipt(null)} />
       )}
+
+      <EditClientModal
+        open={showEdit}
+        customer={customer}
+        definedFields={customFieldDefs}
+        onClose={() => setShowEdit(false)}
+        onSaved={(updated) => { setCustomer(updated); setShowEdit(false); toast.success('Client updated'); }}
+      />
     </div>
   );
 }

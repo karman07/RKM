@@ -787,8 +787,21 @@ export const getPendingSaleRequests = (params?: { page?: number; limit?: number;
   );
 };
 
-export const approveSaleRequest = (id: string) =>
-  request<InventoryItem>(`/inventory/${id}/sale-request/approve`, { method: 'PATCH' });
+export const approveSaleRequest = (id: string, overrides?: {
+  selling_price?: number;
+  manager_discount?: number;
+  investment_redeemed?: number;
+  investment_sub_id?: string;
+  making_charges_discount?: number;
+  advance_redeemed?: number;
+  advance_id?: string;
+  advance_making_charges_discount?: number;
+  payment_splits?: Array<{ mode: string; amount: number; reference?: string }>;
+}) =>
+  request<InventoryItem>(`/inventory/${id}/sale-request/approve`, {
+    method: 'PATCH',
+    body: JSON.stringify(overrides ?? {}),
+  });
 
 export const rejectSaleRequest = (id: string, reason: string) =>
   request<InventoryItem>(`/inventory/${id}/sale-request/reject`, {
@@ -796,14 +809,47 @@ export const rejectSaleRequest = (id: string, reason: string) =>
     body: JSON.stringify({ reason }),
   });
 
-export const approveSaleRequestBatch = (batchId: string) =>
-  request<InventoryItem[]>(`/inventory/sale-request-batch/${batchId}/approve`, { method: 'PATCH' });
+export const approveSaleRequestBatch = (batchId: string, overrides?: {
+  item_prices?: Array<{ id: string; selling_price: number }>;
+  manager_discount?: number;
+  investment_redeemed?: number;
+  investment_sub_id?: string;
+  making_charges_discount?: number;
+  advance_redeemed?: number;
+  advance_id?: string;
+  advance_making_charges_discount?: number;
+  payment_splits?: Array<{ mode: string; amount: number; reference?: string }>;
+}) =>
+  request<InventoryItem[]>(`/inventory/sale-request-batch/${batchId}/approve`, {
+    method: 'PATCH',
+    body: JSON.stringify(overrides ?? {}),
+  });
 
 export const rejectSaleRequestBatch = (batchId: string, reason: string) =>
   request<InventoryItem[]>(`/inventory/sale-request-batch/${batchId}/reject`, {
     method: 'PATCH',
     body: JSON.stringify({ reason }),
   });
+
+export interface GoldBalance {
+  _id: string;
+  customerName: string;
+  customerPhone: string;
+  status: string;
+  amountAccumulated: number;
+  interestAccumulated: number;
+  amountRedeemed: number;
+  interestStopped: boolean;
+  availableBalance: number;
+  plan: { name: string; monthlyAmount: number; redemptionDiscount: number; durationMonths: number; interestRate: number };
+  installmentsPaid: number;
+}
+
+export const getGoldBalance = (phone: string) =>
+  request<GoldBalance[]>(`/gold-investment/balance?phone=${encodeURIComponent(phone)}`);
+
+export const redeemGoldSubscription = (id: string, data: { amount: number; saleReference?: string; note?: string }) =>
+  request<GoldBalance>(`/gold-investment/subscriptions/${id}/redeem`, { method: 'POST', body: JSON.stringify(data) });
 
 export const updateInventoryStatus = (
   id: string,
@@ -1026,6 +1072,10 @@ export interface AppSettings {
   staff_session_expiry_hours?: number;
   /** Hours after shift start within which staff must sign in before admin is alerted (default 2) */
   sign_in_window_hours?: number;
+  /** Months after onboarding during which a customer's purchases/investments earn the sales agent commission (default 6) */
+  sales_commission_window_months?: number;
+  /** Commission rate (%) applied to approved sale/investment enquiries (default 2) */
+  sales_commission_rate_percentage?: number;
   updatedAt?: string;
 }
 
@@ -1264,6 +1314,13 @@ export interface Incentive {
   createdAt?: string;
 }
 
+export interface PayrollCommission {
+  _id: string;
+  amount: number;
+  description: string;
+  customer_name?: string;
+}
+
 export interface PayrollSummary {
   user: User;
   base_salary: number;
@@ -1273,6 +1330,8 @@ export interface PayrollSummary {
   deductions: number;
   incentives: number;
   incentive_list: Incentive[];
+  commission: number;
+  commission_list: PayrollCommission[];
   net_payable: number;
   calendar: PayrollCalendarDay[];
 }
@@ -1302,6 +1361,13 @@ export const createCustomer = (data: {
   aadharCard?: string; panCard?: string; accountNumber?: string; ifscCode?: string; bankName?: string;
   customFields?: { key: string; value: string }[];
 }) => request<Customer>('/customers', { method: 'POST', body: JSON.stringify(data) });
+export const updateCustomer = (id: string, data: {
+  name?: string; email?: string; gender?: string;
+  address?: string; city?: string; state?: string; pincode?: string; country?: string;
+  aadharCard?: string; panCard?: string; accountNumber?: string; ifscCode?: string; bankName?: string;
+  customFields?: { key: string; value: string }[];
+  relationship_manager?: string | null;
+}) => request<Customer>(`/customers/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
 
 // ─── WhatsApp API Helpers ─────────────────────────────────────────────────────
 
@@ -1828,6 +1894,58 @@ export const getUserReimbursements = (userId: string) =>
 
 export const getHrSummary = () =>
   request<{ pendingLeaves: number; pendingReimbursements: number; totalApprovedReimbursementAmount: number }>('/hr/summary');
+
+// ─── Sales Team ─────────────────────────────────────────────────────────────
+
+export interface SaleEnquiry {
+  _id: string;
+  sales_agent_id: { _id: string; name: string; email: string } | string;
+  customer_id: { _id: string; name: string; phone: string; email?: string } | string;
+  type: 'item_sale' | 'investment';
+  description: string;
+  amount: number;
+  reference: string;
+  status: 'pending' | 'approved' | 'rejected';
+  admin_note: string;
+  reviewed_by?: { _id: string; name: string } | string | null;
+  reviewed_at?: string | null;
+  commission_amount: number;
+  createdAt: string;
+}
+
+export interface SalesCommissionSummary {
+  sales_agent_id: string;
+  name: string;
+  email: string;
+  pending_enquiries: number;
+  approved_enquiries: number;
+  commission_total: number;
+}
+
+export const getSalesEnquiries = (params?: { status?: string; sales_agent_id?: string }) => {
+  const qs = params
+    ? '?' + Object.entries(params).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join('&')
+    : '';
+  return request<SaleEnquiry[]>(`/sales/enquiries${qs}`);
+};
+
+export const reviewSalesEnquiry = (id: string, status: 'approved' | 'rejected', admin_note?: string, payment?: {
+  payment_mode?: string;
+  payment_splits?: Array<{ mode: string; amount: number; reference?: string }>;
+  investment_redeemed?: number;
+  investment_sub_id?: string;
+  advance_redeemed?: number;
+  advance_id?: string;
+}) =>
+  request<SaleEnquiry>(`/sales/enquiries/${id}/review`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status, admin_note, ...payment }),
+  });
+
+export const getSalesCommissionSummary = () =>
+  request<SalesCommissionSummary[]>('/sales/commissions/summary');
+
+export const getSalesReps = () => getUsers('sales', 1, 500);
 
 // ─── Attendance by Branch (for admin analytics) ────────────────────────────────
 

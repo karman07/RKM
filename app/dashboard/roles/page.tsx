@@ -42,6 +42,13 @@ const PERMISSION_GROUPS = [
     ],
   },
   {
+    group: 'Sales Team Operations',
+    items: [
+      { key: 'sales-team',            label: 'Sales Team Dashboard' },
+      { key: 'sales-team.enquiries',  label: 'Sales Enquiries — Review' },
+    ],
+  },
+  {
     group: 'Product Management',
     items: [
       { key: 'products',    label: 'Product Catalog' },

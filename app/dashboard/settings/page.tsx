@@ -114,6 +114,10 @@ export default function SettingsPage() {
   const [staffSessionExpiry, setStaffSessionExpiry] = useState('2');
   const [signInWindow, setSignInWindow] = useState('2');
 
+  // Sales Team Commission
+  const [salesCommissionWindow, setSalesCommissionWindow] = useState('6');
+  const [salesCommissionRate, setSalesCommissionRate] = useState('2');
+
   // Fetch purity lookups from database
   useEffect(() => {
     getLookups()
@@ -213,6 +217,8 @@ export default function SettingsPage() {
     setHrAbsentAbandonment(String(settings.hr_absent_days_abandonment ?? 3));
     setStaffSessionExpiry(String(settings.staff_session_expiry_hours ?? 2));
     setSignInWindow(String(settings.sign_in_window_hours ?? 2));
+    setSalesCommissionWindow(String((settings as any).sales_commission_window_months ?? 6));
+    setSalesCommissionRate(String((settings as any).sales_commission_rate_percentage ?? 2));
   }, [loading, lookupsLoading, settings, purityLookups, metalConfig]);
 
   function showToast(message: string, type: 'success' | 'danger' | 'info' = 'info') {
@@ -291,6 +297,8 @@ export default function SettingsPage() {
         hr_absent_days_abandonment:Number(hrAbsentAbandonment) || 3,
         staff_session_expiry_hours: Math.max(1, Math.min(24, Number(staffSessionExpiry) || 2)),
         sign_in_window_hours: Math.max(1, Math.min(12, Number(signInWindow) || 2)),
+        sales_commission_window_months: Math.max(0, Math.min(120, Number(salesCommissionWindow) || 6)),
+        sales_commission_rate_percentage: Math.max(0, Math.min(100, Number(salesCommissionRate) || 2)),
       });
 
       await fetch(`${API_BASE}/online-orders/delivery-settings`, {
@@ -1082,6 +1090,75 @@ return (
             <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           Sessions already in progress use their original expiry. The sign-in window triggers a push notification to admins with the branch location when a manager or cashier has not signed in.
+        </div>
+      </section>
+
+      {/* ── Sales Team Commission ── */}
+      <section className="border rounded-2xl p-6 space-y-5 shadow-sm" style={{ borderColor: colors.border }}>
+        <div>
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: '#5A0F1A10' }}>
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#5A0F1A" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V6m0 12v-2m9-4a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h2 className="text-[15px] font-bold" style={{ color: colors.textMain }}>Sales Team Commission</h2>
+          </div>
+          <p className="text-xs mt-0.5 opacity-60" style={{ color: colors.textMain }}>
+            Sales agents earn commission on approved item-sale and investment enquiries for customers they onboarded, as long as it happens within the commission window below.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-md">
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-widest" style={{ color: colors.textHeader }}>
+              Commission Window
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                min={0}
+                max={120}
+                value={salesCommissionWindow}
+                onChange={e => setSalesCommissionWindow(e.target.value)}
+                className="w-full px-4 py-3 pr-20 rounded-xl border text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/20 focus:border-[#5A0F1A] transition-all"
+                style={{ borderColor: colors.border, background: theme === 'dark' ? '#1e293b' : '#f8fafc', color: colors.textMain }}
+              />
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[11px] font-bold opacity-40" style={{ color: colors.textMain }}>months</span>
+            </div>
+            <p className="text-[10px] opacity-50" style={{ color: colors.textMain }}>
+              Months after onboarding during which a customer's activity earns commission.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-widest" style={{ color: colors.textHeader }}>
+              Commission Rate
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={0.5}
+                value={salesCommissionRate}
+                onChange={e => setSalesCommissionRate(e.target.value)}
+                className="w-full px-4 py-3 pr-12 rounded-xl border text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/20 focus:border-[#5A0F1A] transition-all"
+                style={{ borderColor: colors.border, background: theme === 'dark' ? '#1e293b' : '#f8fafc', color: colors.textMain }}
+              />
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[11px] font-bold opacity-40" style={{ color: colors.textMain }}>%</span>
+            </div>
+            <p className="text-[10px] opacity-50" style={{ color: colors.textMain }}>
+              Applied to the sale/investment amount on approval.
+            </p>
+          </div>
+        </div>
+
+        <div className="p-3 rounded-xl text-[10px] font-medium flex items-start gap-2" style={{ backgroundColor: '#5A0F1A0d', color: '#5A0F1A' }}>
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} className="flex-shrink-0 mt-px">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Enquiries approved after the window has elapsed are still recorded but earn no commission. Manage enquiries under Sales Team → Enquiries.
         </div>
       </section>
 

@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { getPayrollSummary, getMyPayroll, addIncentive, deleteIncentive, getUserReimbursements, API_BASE, type PayrollSummary, type PayrollCalendarDay, type Incentive, type ReimbursementRequest } from '@/lib/api';
-import { ChevronLeft, ChevronRight, TrendingDown, ChevronDown, Wallet, Users, BadgeDollarSign, CircleDollarSign, TrendingUp, Calendar, Gift, Plus, Trash2, Loader2, X, Download, Eye, AlertCircle, FileText } from 'lucide-react';
+import { getPayrollSummary, getMyPayroll, addIncentive, deleteIncentive, getUserReimbursements, API_BASE, type PayrollSummary, type PayrollCalendarDay, type Incentive, type PayrollCommission, type ReimbursementRequest } from '@/lib/api';
+import { ChevronLeft, ChevronRight, TrendingDown, ChevronDown, Wallet, Users, BadgeDollarSign, CircleDollarSign, TrendingUp, Calendar, Gift, Plus, Trash2, Loader2, X, Download, Eye, AlertCircle, FileText, Briefcase } from 'lucide-react';
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
@@ -636,6 +636,7 @@ function EmployeePayrollCard({
   }
 
   const incentiveList: Incentive[] = data.incentive_list ?? [];
+  const commissionList: PayrollCommission[] = data.commission_list ?? [];
 
   return (
     <>
@@ -706,6 +707,11 @@ function EmployeePayrollCard({
                     <Gift className="w-2.5 h-2.5" /> {incentiveList.length} incentive{incentiveList.length > 1 ? 's' : ''}
                   </span>
                 )}
+                {commissionList.length > 0 && (
+                  <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
+                    <Briefcase className="w-2.5 h-2.5" /> {commissionList.length} commission{commissionList.length > 1 ? 's' : ''}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -738,6 +744,12 @@ function EmployeePayrollCard({
                 <div className="text-right">
                   <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Incentives</p>
                   <p className="text-sm font-bold text-emerald-600">+₹{fmtFull(data.incentives)}</p>
+                </div>
+              )}
+              {data.commission > 0 && (
+                <div className="text-right">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Commission</p>
+                  <p className="text-sm font-bold text-emerald-600">+₹{fmtFull(data.commission)}</p>
                 </div>
               )}
             </div>
@@ -829,6 +841,32 @@ function EmployeePayrollCard({
               )}
             </div>
 
+            {/* ── Sales commission section — auto-added on enquiry approval, not editable here ── */}
+            {commissionList.length > 0 && (
+              <div className="border border-slate-100 rounded-xl overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-3.5 bg-slate-50/60">
+                  <div className="flex items-center gap-2">
+                    <Briefcase className="w-3.5 h-3.5 text-emerald-600" />
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                      Sales Commission
+                      <span className="ml-2 text-emerald-600">+₹{fmtFull(data.commission)}</span>
+                    </p>
+                  </div>
+                  <span className="text-[10px] font-bold text-slate-400">Auto-added on approval</span>
+                </div>
+                <div className="divide-y divide-slate-50">
+                  {commissionList.map(c => (
+                    <div key={c._id} className="flex items-center justify-between px-5 py-3">
+                      <div>
+                        <p className="text-sm font-bold text-emerald-700">+₹{fmtFull(c.amount)}</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">{c.description}{c.customer_name ? ` — ${c.customer_name}` : ''}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* ── Reimbursements section ── */}
             {reimbursements !== null && (
               <div className="border border-slate-100 rounded-xl overflow-hidden">
@@ -879,11 +917,12 @@ function EmployeePayrollCard({
             <div className="border border-slate-200 rounded-xl px-5 py-4 flex items-center justify-between">
               <div>
                 <p className="text-sm font-bold text-slate-700">Net Payable This Month</p>
-                {(data.deductions > 0 || data.incentives > 0) && (
+                {(data.deductions > 0 || data.incentives > 0 || data.commission > 0) && (
                   <p className="text-[10px] text-slate-400 mt-0.5">
                     ₹{fmtFull(data.base_salary)}
                     {data.deductions > 0 && <span className="text-red-400"> − ₹{fmtFull(data.deductions)}</span>}
                     {data.incentives > 0 && <span className="text-emerald-500"> + ₹{fmtFull(data.incentives)}</span>}
+                    {data.commission > 0 && <span className="text-emerald-500"> + ₹{fmtFull(data.commission)} commission</span>}
                     {reimbursements !== null && reimbursements.filter(r => r.status === 'approved').length > 0 && (
                       <span className="text-blue-500"> + ₹{fmtFull(reimbursements.filter(r => r.status === 'approved').reduce((s, r) => s + r.amount, 0))} reimb.</span>
                     )}

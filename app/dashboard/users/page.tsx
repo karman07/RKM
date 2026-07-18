@@ -15,7 +15,7 @@ import {
   Building2, Mail, Loader2, User as UserIcon, FileText, CreditCard,
   DollarSign, Calendar, Upload, Phone, Users, Wrench, Camera,
   Download, RefreshCw, CheckCircle2, Sparkles, Search, X, UserCog,
-  Landmark,
+  Landmark, Briefcase,
 } from 'lucide-react';
 
 const roleBadge: Record<string, { wrap: string; dot: string; icon: any }> = {
@@ -23,6 +23,7 @@ const roleBadge: Record<string, { wrap: string; dot: string; icon: any }> = {
   manager: { wrap: 'bg-violet-50 text-violet-700 border-violet-100',  dot: 'bg-violet-600', icon: UserCheck },
   cashier: { wrap: 'bg-slate-50 text-slate-600 border-slate-100',     dot: 'bg-slate-400',  icon: UserIcon  },
   worker:  { wrap: 'bg-amber-50 text-amber-700 border-amber-100',     dot: 'bg-amber-500',  icon: Wrench    },
+  sales:   { wrap: 'bg-[#5A0F1A]/10 text-[#5A0F1A] border-[#5A0F1A]/20', dot: 'bg-[#5A0F1A]', icon: Briefcase },
 };
 
 interface UserForm {
@@ -449,6 +450,7 @@ export default function UsersPage() {
           { value: 'admin',   label: 'Admins'     },
           { value: 'manager', label: 'Managers'   },
           { value: 'cashier', label: 'Cashiers'   },
+          { value: 'sales',   label: 'Sales Team'  },
           { value: 'worker',  label: 'Workers'    },
         ].map(r => (
           <button
@@ -458,6 +460,8 @@ export default function UsersPage() {
               roleFilter === r.value
                 ? r.value === 'worker'
                   ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20 px-8'
+                  : r.value === 'sales'
+                  ? 'bg-[#5A0F1A] text-white shadow-lg shadow-[#5A0F1A]/20 px-8'
                   : 'bg-blue-600 text-white shadow-lg shadow-blue-600/20 px-8'
                 : 'bg-white border border-slate-200 text-slate-400 hover:text-blue-600 hover:border-blue-200'
             }`}
@@ -742,6 +746,7 @@ export default function UsersPage() {
                     value={form.role} onChange={e => setForm({ ...form, role: e.target.value, custom_role: undefined, job_title: '' })}>
                     <option value="cashier">Cashier</option>
                     <option value="manager">Manager</option>
+                    <option value="sales">Sales Agent</option>
                     <option value="admin">Admin</option>
                     <option value="worker">Worker (Non-Login)</option>
                     {customRoles.length > 0 && (

@@ -141,7 +141,7 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
         </section>}
 
         {/* Inventory Section */}
-        {(['inventory','inventory.sold','sale-approvals','inventory.allocate','inventory.damaged','inventory.stolen','purchase-orders','suppliers','branches','analytics.branches','refunds','attendance','item-attendance','leaves','holidays','location-violations','reimbursements','payroll','online-orders'].some(k => can(k))) && <section>
+        {(['inventory','inventory.sold','sale-approvals','inventory.allocate','inventory.damaged','inventory.stolen','purchase-orders','suppliers','branches','analytics.branches','refunds','attendance','item-attendance','leaves','holidays','location-violations','reimbursements','payroll','online-orders','sales-team','sales-team.enquiries'].some(k => can(k))) && <section>
           {!isCollapsed && <p className="px-8 mb-4 text-[10px] font-black uppercase tracking-[0.25em] text-slate-400 animate-[fadeRise_400ms_ease-out]">Asset Custody</p>}
           <div className="space-y-2">
             {can('inventory') && <Link href="/dashboard/inventory" onClick={onNavigate} title={isCollapsed ? "Current Stock" : ""} className={navClass(pathname === '/dashboard/inventory')} style={getNavStyle(pathname === '/dashboard/inventory')}>
@@ -230,6 +230,16 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
               {isCollapsed && pathname.startsWith('/dashboard/reimbursements') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
               <NavIcon active={pathname.startsWith('/dashboard/reimbursements')} color={pathname.startsWith('/dashboard/reimbursements') ? colors.activeText : colors.textMuted}><path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Reimbursements</span>}
+            </Link>}
+            {can('sales-team') && <Link href="/dashboard/sales-team" onClick={onNavigate} title={isCollapsed ? "Sales Team" : ""} className={navClass(pathname === '/dashboard/sales-team')} style={getNavStyle(pathname === '/dashboard/sales-team')}>
+              {isCollapsed && pathname === '/dashboard/sales-team' && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname === '/dashboard/sales-team'} color={pathname === '/dashboard/sales-team' ? colors.activeText : colors.textMuted}><path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Sales Team</span>}
+            </Link>}
+            {can('sales-team.enquiries') && <Link href="/dashboard/sales-team/enquiries" onClick={onNavigate} title={isCollapsed ? "Sales Enquiries" : ""} className={navClass(pathname.startsWith('/dashboard/sales-team/enquiries'))} style={getNavStyle(pathname.startsWith('/dashboard/sales-team/enquiries'))}>
+              {isCollapsed && pathname.startsWith('/dashboard/sales-team/enquiries') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname.startsWith('/dashboard/sales-team/enquiries')} color={pathname.startsWith('/dashboard/sales-team/enquiries') ? colors.activeText : colors.textMuted}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Sales Enquiries</span>}
             </Link>}
             {can('payroll') && <Link href="/dashboard/payroll" onClick={onNavigate} title={isCollapsed ? "Payroll" : ""} className={navClass(pathname.startsWith('/dashboard/payroll'))} style={getNavStyle(pathname.startsWith('/dashboard/payroll'))}>
               {isCollapsed && pathname.startsWith('/dashboard/payroll') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
