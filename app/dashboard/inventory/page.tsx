@@ -8,7 +8,7 @@ import BillModal from '../../../components/BillModal';
 import {
   getProfile, getInventory, updateInventoryStatus, updateManagerDiscount, getCashiers,
   generateSaleInvoiceNumber, staticUrl, searchCustomers, getGoldBalance, redeemGoldSubscription,
-  getAdvanceBalance, redeemCustomerAdvance, generateCertificate, updateInventoryHallmark, sellItemsBatch,
+  getAdvanceBalance, generateCertificate, updateInventoryHallmark, sellItemsBatch,
   getInventoryByBarcode,
   InventoryItem, UserProfile, Cashier, createPaymentOrder, FullCustomer, GoldBalance, CustomerAdvance,
 } from '../../../lib/api';
@@ -519,11 +519,14 @@ export function InventoryPageContent() {
         advance_making_charges_discount: cartAdvanceMakingChargesDiscount > 0 ? cartAdvanceMakingChargesDiscount : undefined,
       });
 
-      // Deduct every selected investment plan's / advance's balance once, bill-level — mirrors the
-      // single-item Sell flow's post-sale redemption calls, one call per plan/advance selected.
+      // Advance balance redemption is now performed atomically by the backend as part of
+      // sellItemsBatch itself (see payment_splits/advance_redeemed sent above) — the sale
+      // fails outright if the redemption fails, so there's nothing left to redeem here.
+      // Investment plan redemption still happens as a separate best-effort call, bill-level —
+      // mirrors the single-item Sell flow's post-sale redemption calls.
       const redemptionFailures: string[] = [];
-      await Promise.all([
-        ...investmentEntries.map(async ([id, amt]) => {
+      await Promise.all(
+        investmentEntries.map(async ([id, amt]) => {
           const plan = investmentPlans.find(p => p._id === id);
           try {
             await redeemGoldSubscription(id, {
@@ -535,21 +538,7 @@ export function InventoryPageContent() {
             redemptionFailures.push(plan?.plan?.name || 'an investment plan');
           }
         }),
-        ...advanceEntries.map(async ([id, amt]) => {
-          // Proportionally attribute the aggregate making-charges discount across the advances that earned it.
-          const share = totalAdvanceApplied > 0 ? Math.round(cartAdvanceMakingChargesDiscount * (amt / totalAdvanceApplied)) : 0;
-          try {
-            await redeemCustomerAdvance(id, {
-              amount: amt,
-              making_charges_discount: share,
-              saleReference: saleInvoiceNumber,
-              note: `Redeemed against multi-item sale (${saleInvoiceNumber})`,
-            });
-          } catch {
-            redemptionFailures.push('an advance');
-          }
-        }),
-      ]);
+      );
       if (redemptionFailures.length > 0) {
         toast.error(`Sale recorded but balance deduction failed for ${redemptionFailures.join(', ')} — please do it manually.`);
       }
@@ -820,12 +809,14 @@ export function InventoryPageContent() {
           advance_id: advanceEntries[0]?.[0],
           advance_making_charges_discount: advanceMakingChargesDiscount > 0 ? advanceMakingChargesDiscount : undefined,
         });
-        // Deduct every selected investment plan's / advance's balance after the sale is recorded —
-        // one call per plan/advance, all tagged with the same invoice number.
+        // Advance balance redemption is now performed atomically by the backend as part of
+        // updateInventoryStatus itself (see payment_splits/advance_redeemed sent above) — the
+        // sale fails outright if the redemption fails, so there's nothing left to redeem here.
+        // Investment plan redemption still happens as a separate best-effort call.
         const productName = typeof sellItem.product_id === 'object' ? (sellItem.product_id as any).name : sellItem.unique_item_code;
         const redemptionFailures: string[] = [];
-        await Promise.all([
-          ...investmentEntries.map(async ([id, amt]) => {
+        await Promise.all(
+          investmentEntries.map(async ([id, amt]) => {
             const plan = investmentPlans.find(p => p._id === id);
             try {
               await redeemGoldSubscription(id, {
@@ -837,21 +828,7 @@ export function InventoryPageContent() {
               redemptionFailures.push(plan?.plan?.name || 'an investment plan');
             }
           }),
-          ...advanceEntries.map(async ([id, amt]) => {
-            // Proportionally attribute the aggregate making-charges discount across the advances that earned it.
-            const share = totalAdvanceApplied > 0 ? Math.round(advanceMakingChargesDiscount * (amt / totalAdvanceApplied)) : 0;
-            try {
-              await redeemCustomerAdvance(id, {
-                amount: amt,
-                making_charges_discount: share,
-                saleReference: saleInvoiceNumber,
-                note: `Redeemed against sale of ${productName} (${saleInvoiceNumber})`,
-              });
-            } catch {
-              redemptionFailures.push('an advance');
-            }
-          }),
-        ]);
+        );
         if (redemptionFailures.length > 0) {
           toast.error(`Sale recorded but balance deduction failed for ${redemptionFailures.join(', ')} — please do it manually.`);
         }

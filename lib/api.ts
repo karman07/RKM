@@ -887,6 +887,12 @@ export const createCustomer = (data: {
   aadharCard?: string; panCard?: string; accountNumber?: string; ifscCode?: string; bankName?: string;
   customFields?: { key: string; value: string }[];
 }) => request<FullCustomer>('/customers', { method: 'POST', body: JSON.stringify(data) });
+export const updateCustomer = (id: string, data: {
+  name?: string; email?: string; gender?: string;
+  address?: string; city?: string; state?: string; pincode?: string; country?: string;
+  aadharCard?: string; panCard?: string; accountNumber?: string; ifscCode?: string; bankName?: string;
+  customFields?: { key: string; value: string }[];
+}) => request<FullCustomer>(`/customers/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
 
 // ─── Payroll ──────────────────────────────────────────────────────────────────
 
@@ -1183,4 +1189,40 @@ export const rejectSaleRequestBatch = (batchId: string, reason: string) =>
   request<InventoryItem[]>(`/inventory/sale-request-batch/${batchId}/reject`, {
     method: 'PATCH',
     body: JSON.stringify({ reason }),
+  });
+
+// ── Sales Enquiries (field-sales agents assigned to this manager) ──────────────
+
+export interface SaleEnquiry {
+  _id: string;
+  sales_agent_id: { _id: string; name: string; email: string } | string;
+  customer_id: { _id: string; name: string; phone: string; email?: string } | string;
+  type: 'item_sale' | 'investment';
+  description: string;
+  amount: number;
+  reference: string;
+  status: 'pending' | 'approved' | 'rejected';
+  admin_note: string;
+  reviewed_by?: { _id: string; name: string } | string | null;
+  reviewed_at?: string | null;
+  commission_amount: number;
+  createdAt: string;
+}
+
+export const getSalesEnquiries = (params?: { status?: string }) => {
+  const qs = params?.status ? `?status=${params.status}` : '';
+  return request<SaleEnquiry[]>(`/sales/enquiries${qs}`);
+};
+
+export const reviewSalesEnquiry = (id: string, status: 'approved' | 'rejected', admin_note?: string, payment?: {
+  payment_mode?: string;
+  payment_splits?: Array<{ mode: string; amount: number; reference?: string }>;
+  investment_redeemed?: number;
+  investment_sub_id?: string;
+  advance_redeemed?: number;
+  advance_id?: string;
+}) =>
+  request<SaleEnquiry>(`/sales/enquiries/${id}/review`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status, admin_note, ...payment }),
   });

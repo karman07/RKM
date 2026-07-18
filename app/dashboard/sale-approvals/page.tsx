@@ -5,7 +5,7 @@ import {
   getPendingSaleRequests, approveSaleRequest, rejectSaleRequest,
   approveSaleRequestBatch, rejectSaleRequestBatch, getBranches,
   getGoldBalance, redeemGoldSubscription, getCashiers,
-  getAdvanceBalance, redeemCustomerAdvance,
+  getAdvanceBalance, getInventory, generateCertificate,
   staticUrl,
   type InventoryItem, type Branch, type GoldBalance, type Cashier, type CustomerAdvance,
 } from '@/lib/api';
@@ -62,7 +62,7 @@ function RejectModal({ items, onConfirm, onClose }: { items: InventoryItem[]; on
 interface ApproveSaleModalProps {
   items: InventoryItem[];
   onClose: () => void;
-  onApproved: () => void;
+  onApproved: (soldItems: InventoryItem[]) => void;
   onRejected: () => void;
 }
 
@@ -187,6 +187,12 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
   const [showBill, setShowBill] = useState(false);
   const [error, setError] = useState('');
 
+  // Post-approval "sale completed" state — real data, real bill, real certificates
+  const [completedItems, setCompletedItems] = useState<InventoryItem[] | null>(null);
+  const [completedBillItems, setCompletedBillItems] = useState<InventoryItem[] | null>(null);
+  const [certGeneratingId, setCertGeneratingId] = useState<string | null>(null);
+  const [certUrls, setCertUrls] = useState<Record<string, string>>({});
+
   useEffect(() => { getCashiers('').then(r => setCashiers(r.data)).catch(() => {}); }, []);
 
   // Computed prices — when several plans/advances are combined, use the best single waiver %
@@ -262,6 +268,14 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
     return originalSplits;
   }
 
+  /** After a real approval, re-fetch the now-sold item(s) with product/branch populated — the
+   *  approve endpoint's own response doesn't populate those, so it can't drive BillModal directly. */
+  async function fetchSoldItems(saleReference: string): Promise<InventoryItem[]> {
+    const res = await getInventory({ search: saleReference, limit: '20' });
+    const matches = res.data.filter(i => i.sale_reference === saleReference);
+    return matches.length ? matches : res.data;
+  }
+
   async function handleApprove() {
     if (!customerName.trim()) { setError('Customer name is required'); return; }
     setApproving(true);
@@ -270,6 +284,7 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
       const investmentEntries = Object.entries(investmentApplied).filter(([, amt]) => amt > 0);
       const advanceEntries = Object.entries(advanceApplied).filter(([, amt]) => amt > 0);
       const splits = buildPaymentSplits();
+      let approvedRef = '';
 
       if (isBatch) {
         const overrides: Parameters<typeof approveSaleRequestBatch>[1] = {
@@ -283,7 +298,8 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
         if (totalAdvanceApplied > 0) overrides.advance_redeemed = totalAdvanceApplied;
         if (advanceEntries[0]) overrides.advance_id = advanceEntries[0][0];
         if (advMcDiscount > 0) overrides.advance_making_charges_discount = advMcDiscount;
-        await approveSaleRequestBatch(batchId!, overrides);
+        const result = await approveSaleRequestBatch(batchId!, overrides);
+        approvedRef = result[0]?.sale_reference || reqData.sale_reference || first.unique_item_code;
       } else {
         const overrides: Parameters<typeof approveSaleRequest>[1] = {
           selling_price: finalPrice,
@@ -296,33 +312,43 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
         if (totalAdvanceApplied > 0) overrides.advance_redeemed = totalAdvanceApplied;
         if (advanceEntries[0]) overrides.advance_id = advanceEntries[0][0];
         if (advMcDiscount > 0) overrides.advance_making_charges_discount = advMcDiscount;
-        await approveSaleRequest(first._id, overrides);
+        const result = await approveSaleRequest(first._id, overrides);
+        approvedRef = result.sale_reference || first.unique_item_code;
       }
 
-      const saleReference = reqData.sale_reference || first.unique_item_code;
-      await Promise.all([
-        ...investmentEntries.map(([id, amt]) =>
+      // Advance balance redemption is now performed atomically by the backend as part of
+      // approving the sale (see payment_splits/advance_redeemed sent above) — the sale
+      // itself fails if the redemption fails, so there's no separate call to make here.
+      const saleReference = approvedRef;
+      await Promise.all(
+        investmentEntries.map(([id, amt]) =>
           redeemGoldSubscription(id, {
             amount: amt,
             saleReference,
             note: `Approved sale for ${customerName}${mcDiscount > 0 ? ` · making charges discount ₹${fmt(mcDiscount)}` : ''}`,
           }).catch(() => { /* non-blocking */ })
         ),
-        ...advanceEntries.map(([id, amt]) => {
-          const share = totalAdvanceApplied > 0 ? Math.round(advMcDiscount * (amt / totalAdvanceApplied)) : 0;
-          return redeemCustomerAdvance(id, {
-            amount: amt,
-            making_charges_discount: share,
-            saleReference,
-            note: `Approved sale for ${customerName}${share > 0 ? ` · making charges discount ₹${fmt(share)}` : ''}`,
-          }).catch(() => { /* non-blocking */ });
-        }),
-      ]);
+      );
 
-      onApproved();
+      const soldItems = await fetchSoldItems(saleReference);
+      setCompletedItems(soldItems.length ? soldItems : items);
+      onApproved(soldItems.length ? soldItems : items);
     } catch (err: any) {
       setError(err?.message || 'Failed to approve sale');
     } finally { setApproving(false); }
+  }
+
+  async function handleGenerateCertificate(item: InventoryItem) {
+    setCertGeneratingId(item._id);
+    try {
+      const res = await generateCertificate(item._id);
+      setCertUrls(prev => ({ ...prev, [item._id]: res.url }));
+      window.open(staticUrl(res.url), '_blank');
+    } catch (e: any) {
+      setError(e.message || 'Certificate generation failed');
+    } finally {
+      setCertGeneratingId(null);
+    }
   }
 
   async function handleReject(reason: string) {
@@ -366,6 +392,91 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
     emi_down_payment: reqData.emi_down_payment,
     sold_at_branch_id: it.branch_id,
   }));
+
+  // ── Post-approval "Sale Completed" panel — real data, real bill, real certificates ──
+  if (completedItems) {
+    return (
+      <>
+        <div className="fixed inset-0 z-[200] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-[24px] shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-8 space-y-6">
+            <div className="flex flex-col items-center text-center gap-3">
+              <div className="w-16 h-16 rounded-full bg-emerald-50 flex items-center justify-center">
+                <svg width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="#10b981" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              </div>
+              <div>
+                <h2 className="text-xl font-black text-slate-900">Sale Approved</h2>
+                <p className="text-sm text-slate-500 mt-1">
+                  {completedItems.length > 1 ? `${completedItems.length} items` : (typeof completedItems[0].product_id === 'object' ? (completedItems[0].product_id as any).name : completedItems[0].unique_item_code)} marked as sold to {customerName}.
+                </p>
+              </div>
+            </div>
+
+            <div className="divide-y divide-slate-100 border border-slate-100 rounded-2xl overflow-hidden">
+              {completedItems.map(item => {
+                const p = typeof item.product_id === 'object' ? item.product_id as any : null;
+                return (
+                  <div key={item._id} className="flex items-center gap-3 p-4">
+                    {p?.images?.[0] ? (
+                      <img src={staticUrl(p.images[0])} alt="" className="w-11 h-11 rounded-xl object-cover border border-slate-200 flex-shrink-0" />
+                    ) : (
+                      <div className="w-11 h-11 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center flex-shrink-0">
+                        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="#cbd5e1" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-black text-slate-900 truncate">{p?.name ?? item.unique_item_code}</p>
+                      <p className="text-[10px] text-slate-400">{item.unique_item_code} · ₹{fmt(item.selling_price)}</p>
+                    </div>
+                    <button
+                      onClick={() => handleGenerateCertificate(item)}
+                      disabled={certGeneratingId === item._id}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-amber-50 text-amber-700 border border-amber-200 hover:border-amber-300 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 flex-shrink-0"
+                    >
+                      <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                      {certGeneratingId === item._id ? 'Generating…' : certUrls[item._id] ? 'Re-open' : 'Certificate'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            {error && (
+              <div className="flex gap-2 bg-red-50 border border-red-200 rounded-2xl p-3">
+                <p className="text-xs font-bold text-red-700">{error}</p>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setCompletedBillItems(completedItems)}
+                className="flex-1 py-3.5 bg-white border border-slate-200 rounded-2xl text-[11px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-50 shadow-sm flex items-center justify-center gap-2"
+              >
+                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                View Bill
+              </button>
+              <button
+                onClick={onClose}
+                className="flex-1 py-3.5 bg-[#5A0F1A] hover:bg-[#7A1C2A] text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-md transition-colors"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {completedBillItems && (
+          <div style={{ zIndex: 500 }} className="fixed inset-0">
+            <BillModal
+              items={completedBillItems}
+              date={completedBillItems[0]?.sold_at ? new Date(completedBillItems[0].sold_at as any).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+              onClose={() => setCompletedBillItems(null)}
+              branch={branch}
+            />
+          </div>
+        )}
+      </>
+    );
+  }
 
   return (
     <>
@@ -982,8 +1093,8 @@ export default function SaleApprovalsPage() {
       {reviewGroup && (
         <ApproveSaleModal
           items={reviewGroup}
-          onClose={() => setReviewGroup(null)}
-          onApproved={() => { setReviewGroup(null); showToast('Sale approved and processed!'); load(page); }}
+          onClose={() => { setReviewGroup(null); load(page); }}
+          onApproved={() => { showToast('Sale approved and processed!'); load(page); }}
           onRejected={() => { setReviewGroup(null); showToast('Sale request rejected.'); load(page); }}
         />
       )}

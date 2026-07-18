@@ -17,7 +17,7 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
 
 // ─── FCM Push Messaging ────────────────────────────────────────────────────
-export const VAPID_KEY = 'BBIe1hKaE3RN6Pq3Op4BpxbjvFUwYXhmlghCcvWxmcJq974DD5OO8SfChtv4OzDN3bL7IqbEne4uZGPE5iwqqbg';
+export const VAPID_KEY = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY ?? '';
 
 let _messaging: Messaging | null = null;
 
