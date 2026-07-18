@@ -71,7 +71,7 @@ export class UsersService implements OnModuleInit {
   /** Get all non-login workers, optionally filtered by branch */
   async findWorkers(branchId?: string, page = 1, limit = 50) {
     const skip = (page - 1) * limit;
-    const query: any = { role: UserRole.WORKER };
+    const query: any = { role: UserRole.WORKER, is_deleted: { $ne: true } };
     if (branchId) query.branch = branchId;
     const [data, total] = await Promise.all([
       this.userModel.find(query).select('-password').populate('branch').skip(skip).limit(limit).sort({ createdAt: -1 }).exec(),
@@ -82,15 +82,16 @@ export class UsersService implements OnModuleInit {
 
   async findAll(page: number = 1, limit: number = 20): Promise<{ data: UserDocument[]; meta: any }> {
     const skip = (page - 1) * limit;
+    const query = { is_deleted: { $ne: true } };
     const [data, total] = await Promise.all([
-      this.userModel.find()
+      this.userModel.find(query)
         .select('-password')
         .populate('branch')
         .skip(skip)
         .limit(limit)
         .sort({ createdAt: -1 })
         .exec(),
-      this.userModel.countDocuments().exec(),
+      this.userModel.countDocuments(query).exec(),
     ]);
     return { 
       data, 
@@ -105,7 +106,7 @@ export class UsersService implements OnModuleInit {
 
   async findByRole(role: UserRole, page: number = 1, limit: number = 20, branchId?: string): Promise<{ data: UserDocument[]; meta: any }> {
     const skip = (page - 1) * limit;
-    const query: any = { role };
+    const query: any = { role, is_deleted: { $ne: true } };
     if (branchId) query.branch = branchId;
     
     const [data, total] = await Promise.all([
@@ -195,8 +196,15 @@ export class UsersService implements OnModuleInit {
     return updated!;
   }
 
+  /**
+   * Soft delete — the account is deactivated (blocks login) and hidden from staff
+   * lists, but the document itself is kept so historical sales/attendance/payroll
+   * records that reference this user by id still resolve to a real name.
+   */
   async remove(id: string): Promise<{ message: string }> {
-    const user = await this.userModel.findByIdAndDelete(id).exec();
+    const user = await this.userModel
+      .findByIdAndUpdate(id, { is_deleted: true, deleted_at: new Date(), isActive: false }, { new: true })
+      .exec();
     if (!user) throw new NotFoundException(`User ${id} not found`);
     return { message: 'User deleted successfully' };
   }

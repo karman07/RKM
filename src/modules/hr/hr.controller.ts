@@ -29,13 +29,13 @@ export class HrController {
   // ─── Leave Requests ──────────────────────────────────────────────────────────
 
   @Post('leaves')
-  @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.CASHIER)
+  @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.CASHIER, UserRole.SALES)
   createLeave(@Body() data: any, @Req() req: any) {
     return this.hrService.createLeaveRequest(getUserId(req), data);
   }
 
   @Get('leaves/mine')
-  @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.CASHIER)
+  @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.CASHIER, UserRole.SALES)
   getMyLeaves(@Req() req: any) {
     return this.hrService.getMyLeaves(getUserId(req));
   }
@@ -63,13 +63,13 @@ export class HrController {
   // ─── Reimbursements ──────────────────────────────────────────────────────────
 
   @Post('reimbursements')
-  @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.CASHIER)
+  @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.CASHIER, UserRole.SALES)
   createReimbursement(@Body() data: any, @Req() req: any) {
     return this.hrService.createReimbursement(getUserId(req), data);
   }
 
   @Get('reimbursements/mine')
-  @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.CASHIER)
+  @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.CASHIER, UserRole.SALES)
   getMyReimbursements(@Req() req: any) {
     return this.hrService.getMyReimbursements(getUserId(req));
   }

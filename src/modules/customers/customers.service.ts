@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, BadRequestException, ConflictException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import * as admin from 'firebase-admin';
@@ -168,16 +168,21 @@ export class CustomersService {
     return this.customerModel.findById(id).populate('relationship_manager', 'name email mobile_number role').exec();
   }
 
+  async countByRelationshipManager(relationshipManagerId: string) {
+    return this.customerModel.countDocuments({ relationship_manager: relationshipManagerId }).exec();
+  }
+
   async findByPhone(phone: string) {
     return this.customerModel.findOne({ phone }).exec();
   }
 
-  async findAll(page: number = 1, limit: number = 20) {
+  async findAll(page: number = 1, limit: number = 20, relationshipManagerId?: string) {
     const skip = (page - 1) * limit;
+    const filter = relationshipManagerId ? { relationship_manager: relationshipManagerId } : {};
     const [data, total] = await Promise.all([
-      this.customerModel.find().sort({ createdAt: -1 }).skip(skip).limit(limit)
+      this.customerModel.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit)
         .populate('relationship_manager', 'name email mobile_number role').exec(),
-      this.customerModel.countDocuments().exec()
+      this.customerModel.countDocuments(filter).exec()
     ]);
 
     return {
@@ -324,6 +329,37 @@ export class CustomersService {
       isActive: true,
       relationship_manager: createdByUserId && Types.ObjectId.isValid(createdByUserId) ? createdByUserId : null,
     });
+    await customer.save();
+    return customer.populate('relationship_manager', 'name email mobile_number role');
+  }
+
+  /** Edit an existing customer's record — used by admin/manager/cashier/sales staff apps. Phone is intentionally excluded (it's the OTP-verified identifier). `relationship_manager` is only ever passed by the controller when the caller is an admin. */
+  async updateByStaff(id: string, data: {
+    name?: string;
+    email?: string;
+    gender?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
+    country?: string;
+    aadharCard?: string;
+    panCard?: string;
+    accountNumber?: string;
+    ifscCode?: string;
+    bankName?: string;
+    customFields?: { key: string; value: string }[];
+    relationship_manager?: string | null;
+  }) {
+    const customer = await this.customerModel.findById(id);
+    if (!customer) throw new NotFoundException('Customer not found');
+    const { relationship_manager, ...rest } = data;
+    Object.assign(customer, rest);
+    if (relationship_manager !== undefined) {
+      customer.relationship_manager = relationship_manager && Types.ObjectId.isValid(relationship_manager)
+        ? new Types.ObjectId(relationship_manager)
+        : null;
+    }
     await customer.save();
     return customer.populate('relationship_manager', 'name email mobile_number role');
   }

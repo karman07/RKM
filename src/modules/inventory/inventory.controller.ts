@@ -191,13 +191,13 @@ export class InventoryController {
   }
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER, UserRole.SALES)
   findAll(@Query() query: QueryInventoryDto) {
     return this.inventoryService.findAll(query);
   }
 
   @Get('barcode/:code')
-  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER, UserRole.SALES)
   findByBarcode(@Param('code') code: string) {
     return this.inventoryService.findByBarcode(code);
   }

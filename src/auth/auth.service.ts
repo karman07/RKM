@@ -149,7 +149,7 @@ export class AuthService {
       throw new ForbiddenException('This account does not have system access. Please contact your manager.');
     }
 
-    if (user.role !== 'admin' && user.role !== 'custom') {
+    if (user.role !== 'admin' && user.role !== 'custom' && user.role !== 'sales') {
       await this.checkGeofence(user, loginDto.latitude, loginDto.longitude);
     }
 

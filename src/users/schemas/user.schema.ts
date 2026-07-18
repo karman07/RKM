@@ -9,6 +9,7 @@ export enum UserRole {
   CASHIER = 'cashier',
   CUSTOM  = 'custom',
   WORKER  = 'worker',  // non-login staff: sweeper, cleaner, security, etc.
+  SALES   = 'sales',   // field sales agents — login from anywhere, no geofence/WebAuthn
 }
 
 @Schema({ timestamps: true })
@@ -123,6 +124,15 @@ export class User {
   /** Values for admin-defined employee custom fields, keyed by EmployeeCustomField.key */
   @Prop({ type: mongoose.Schema.Types.Mixed, default: {} })
   custom_field_values?: Record<string, any>;
+
+  /** Soft delete — the account is deactivated and hidden from staff lists, but the
+   *  document is kept so historical sales/records (sold_by_user_id, sold_by_manager_id,
+   *  etc.) still resolve to a real name instead of a dangling reference. */
+  @Prop({ default: false })
+  is_deleted: boolean;
+
+  @Prop({ type: Date, required: false })
+  deleted_at?: Date | null;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

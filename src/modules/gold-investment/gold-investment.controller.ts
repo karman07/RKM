@@ -157,7 +157,7 @@ export class GoldInvestmentController {
 
   @Get('balance')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER, UserRole.SALES)
   getCustomerBalance(@Query('phone') phone: string) {
     return this.svc.getCustomerBalance(phone);
   }

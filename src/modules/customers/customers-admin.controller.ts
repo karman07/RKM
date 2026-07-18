@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, UseGuards, Query, Body, BadRequestException, Req } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, UseGuards, Query, Body, BadRequestException, ForbiddenException, Req } from '@nestjs/common';
 import { CustomersService } from './customers.service';
 import { CustomerAdvanceService } from './customer-advance.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -15,8 +15,12 @@ export class CustomersAdminController {
   ) {}
 
   @Get()
-  async findAll(@Query('page') page: string, @Query('limit') limit: string) {
-    return this.customersService.findAll(Number(page) || 1, Number(limit) || 20);
+  async findAll(
+    @Query('page') page: string,
+    @Query('limit') limit: string,
+    @Query('relationship_manager') relationshipManager: string,
+  ) {
+    return this.customersService.findAll(Number(page) || 1, Number(limit) || 20, relationshipManager || undefined);
   }
 
   /** Search customers by partial phone, name, or email */
@@ -73,6 +77,32 @@ export class CustomersAdminController {
   }, @Req() req: any) {
     if (!body?.name || !body?.phone) throw new BadRequestException('name and phone are required');
     return this.customersService.createByManager(body, req.user?.userId);
+  }
+
+  /** Edit an existing customer's record — available to any authenticated staff role (admin/manager/cashier/sales). Reassigning the relationship manager is admin-only. */
+  @Patch(':id')
+  async updateCustomer(@Param('id') id: string, @Body() body: {
+    name?: string;
+    email?: string;
+    gender?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
+    country?: string;
+    aadharCard?: string;
+    panCard?: string;
+    accountNumber?: string;
+    ifscCode?: string;
+    bankName?: string;
+    customFields?: { key: string; value: string }[];
+    relationship_manager?: string | null;
+  }, @Req() req: any) {
+    if (body?.name !== undefined && !body.name.trim()) throw new BadRequestException('name cannot be empty');
+    if (body?.relationship_manager !== undefined && req.user?.role !== UserRole.ADMIN) {
+      throw new ForbiddenException('Only admin can change a customer\'s relationship manager');
+    }
+    return this.customersService.updateByStaff(id, body);
   }
 
   // ── Customer Advances ───────────────────────────────────────────────────────

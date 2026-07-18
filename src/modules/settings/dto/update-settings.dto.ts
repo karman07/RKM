@@ -184,4 +184,20 @@ export class UpdateSettingsDto {
   @Min(1)
   @Max(12)
   sign_in_window_hours?: number;
+
+  // ── Sales Team Commission ─────────────────────────────────────────────────
+
+  /** Months after onboarding during which a customer's purchases/investments earn the agent commission */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(120)
+  sales_commission_window_months?: number;
+
+  /** Commission rate (%) applied to approved sale/investment enquiries */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  sales_commission_rate_percentage?: number;
 }

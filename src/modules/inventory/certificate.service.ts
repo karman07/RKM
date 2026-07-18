@@ -13,7 +13,7 @@ import { ProductsService } from '../products/products.service.js';
 import { BranchesService } from '../branches/branches.service.js';
 
 const TEMPLATES_DIR = path.join(__dirname, 'certificate-templates');
-const TEMPLATE_WITH_STONES = path.join(TEMPLATES_DIR, 'RKM Certification (3).pdf');
+const TEMPLATE_WITH_STONES = path.join(TEMPLATES_DIR, 'RKM Certification (5).pdf');
 const TEMPLATE_PURE_GOLD = path.join(TEMPLATES_DIR, 'RKM Certification (4).pdf');
 
 const VALUE_X = 349;
@@ -25,15 +25,14 @@ const TEXT_COLOR = rgb(0.07, 0.07, 0.07);
 /** Vertical mid-point of each label row on page 2, in top-down PDF-source coordinates (as captured via `pdftotext -bbox`). */
 const ROWS_WITH_STONES: Record<string, [number, number]> = {
   date_of_purchase: [300.150359, 314.715263],
-  invoice_number: [325.759313, 340.324217],
+  invoice_number: [325.759284, 340.324188],
   product_code: [352.257047, 366.821951],
   purity: [379.441645, 394.006548],
-  gross_weight: [405.158556, 419.723459],
+  gross_weight: [405.158508, 419.723411],
   net_gold_weight: [433.601194, 448.166098],
   diamond_weight: [460.019913, 474.584817],
-  stone_weight: [486.557336, 501.122240],
-  store_name: [515.203351, 529.768254],
-  store_address: [541.740822, 556.305725],
+  store_name: [485.932640, 500.497544],
+  store_address: [512.938471, 527.503375],
 };
 
 const ROWS_PURE_GOLD: Record<string, [number, number]> = {
@@ -162,8 +161,10 @@ export class CertificateService {
     draw('store_name', branch?.name || '');
     draw('store_address', shortAddress(branch));
 
-    // Only mention diamond/stone details when the piece actually carries stone weight —
-    // leave both rows blank otherwise rather than printing zeroes.
+    // Only mention diamond weight when the piece actually carries stone weight — leave the
+    // row blank otherwise rather than printing zero. The template only has a single "Diamond
+    // Weight" row (no separate generic stone-weight row), so a piece set only with non-diamond
+    // stones prints nothing here rather than mislabelling other gemstones as diamonds.
     if (hasStones && stoneWeight > 0) {
       // Prefer the authoritative multi-stone breakdown; fall back to the legacy
       // single-stone fields for older products that never populated `stones[]`.
@@ -176,23 +177,13 @@ export class CertificateService {
       const diamondTemplateWeight = stones
         .filter(s => /diamond/i.test(s.stone_type))
         .reduce((sum, s) => sum + (s.weight || 0), 0);
-      const otherTemplateWeight = stones
-        .filter(s => !/diamond/i.test(s.stone_type))
-        .reduce((sum, s) => sum + (s.weight || 0), 0);
-      const totalTemplateWeight = diamondTemplateWeight + otherTemplateWeight;
+      const totalTemplateWeight = stones.reduce((sum, s) => sum + (s.weight || 0), 0);
 
-      let diamondWeight = 0;
-      let otherStoneWeight = 0;
-      if (totalTemplateWeight > 0) {
-        diamondWeight = stoneWeight * (diamondTemplateWeight / totalTemplateWeight);
-        otherStoneWeight = stoneWeight - diamondWeight;
-      } else {
-        // Unknown breakdown — attribute the whole weight to the generic Stone Weight row.
-        otherStoneWeight = stoneWeight;
-      }
+      const diamondWeight = totalTemplateWeight > 0
+        ? stoneWeight * (diamondTemplateWeight / totalTemplateWeight)
+        : 0;
 
       draw('diamond_weight', diamondWeight > 0 ? `${diamondWeight.toFixed(3)} ct` : '');
-      draw('stone_weight', otherStoneWeight > 0 ? `${otherStoneWeight.toFixed(3)} ct` : '');
     }
 
     const filename = `CERT-${item.unique_item_code}-${Date.now()}.pdf`;

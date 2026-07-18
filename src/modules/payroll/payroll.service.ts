@@ -11,6 +11,8 @@ import { Reimbursement, ReimbursementDocument, ReimbursementStatus } from '../hr
 import { SettingsService } from '../settings/settings.service';
 import { IncentiveService } from '../incentives/incentive.service';
 import { IncentiveDocument } from '../incentives/schemas/incentive.schema';
+import { SalesService } from '../sales/sales.service';
+import { SaleEnquiryDocument } from '../sales/schemas/sale-enquiry.schema';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const PDFDocument = require('pdfkit');
@@ -68,6 +70,7 @@ function calcPayroll(
   today: Date,
   shiftEndTime: string,
   incentives: IncentiveDocument[],
+  commissions: SaleEnquiryDocument[],
 ) {
   const base_salary     = (user as any).base_salary ?? 0;
   const holidayDates    = new Set(holidayMap.keys());
@@ -183,7 +186,16 @@ function calcPayroll(
     granted_by: (i as any).granted_by,
   }));
 
-  const net_payable = Math.max(0, base_salary - deductions) + totalIncentives;
+  // ── Sales commission — approved automatically each cycle, no manual "paid" step ──
+  const totalCommission = commissions.reduce((sum, c) => sum + c.commission_amount, 0);
+  const commissionList  = commissions.map(c => ({
+    _id:           (c as any)._id,
+    amount:        c.commission_amount,
+    description:   c.description,
+    customer_name: typeof c.customer_id === 'object' ? (c.customer_id as any)?.name : undefined,
+  }));
+
+  const net_payable = Math.max(0, base_salary - deductions) + totalIncentives + totalCommission;
 
   return {
     base_salary,
@@ -193,6 +205,8 @@ function calcPayroll(
     deductions:   +deductions.toFixed(2),
     incentives:   +totalIncentives.toFixed(2),
     incentive_list: incentiveList,
+    commission:   +totalCommission.toFixed(2),
+    commission_list: commissionList,
     net_payable:  +net_payable.toFixed(2),
     calendar,
   };
@@ -210,6 +224,7 @@ export class PayrollService {
     @InjectModel(Reimbursement.name)   private reimbursementModel:   Model<ReimbursementDocument>,
     private settingsService:  SettingsService,
     private incentiveService: IncentiveService,
+    private salesService:     SalesService,
   ) {}
 
   async getMyPayroll(userId: string, month: number, year: number) {
@@ -217,13 +232,14 @@ export class PayrollService {
     const startDate = new Date(year, month, 1);
     const endDate   = new Date(year, month + 1, 0);
 
-    const [user, attendanceRecords, leaveRequests, holidays, settings, incentives] = await Promise.all([
+    const [user, attendanceRecords, leaveRequests, holidays, settings, incentives, commissions] = await Promise.all([
       this.userModel.findById(userId).select('-password').populate('branch').exec(),
       this.attendanceModel.find({ user_id: new Types.ObjectId(userId), date: { $gte: startDate, $lte: endDate } }).exec(),
       this.leaveModel.find({ manager_id: new Types.ObjectId(userId), status: LeaveStatus.APPROVED }).exec(),
       this.holidayModel.find().exec(),
       this.settingsService.get(),
       this.incentiveService.findForUserMonth(userId, month, year),
+      this.salesService.findApprovedCommissionsForUserMonth(userId, month, year),
     ]);
 
     if (!user) throw new Error('User not found');
@@ -233,6 +249,7 @@ export class PayrollService {
       year, month, today,
       settings.shift_end_time ?? '18:00',
       incentives,
+      commissions,
     );
 
     return { user, ...payroll };
@@ -388,6 +405,7 @@ export class PayrollService {
       const base       = payroll.base_salary as number;
       const attDed     = payroll.deductions  as number;
       const incTotal   = payroll.incentives  as number;
+      const commTotal  = payroll.commission  as number;
       const netPayable = payroll.net_payable as number;
       const advanceDed = (user.salary_advance_balance ?? 0) as number;
 
@@ -433,6 +451,22 @@ export class PayrollService {
         earningRows.push({ label: 'INCENTIVE', amount: incTotal, gross: incTotal });
       }
 
+      // Sales commission — folded into payroll automatically on approval, shown per enquiry
+      const commList: any[] = payroll.commission_list ?? [];
+      let commRowCount = 0;
+      if (commList.length >= 1) {
+        for (const c of commList) {
+          if ((c.amount ?? 0) <= 0) continue;
+          const desc  = (c.description || '').trim();
+          const label = desc ? `SALES COMMISSION: ${desc.toUpperCase()}` : 'SALES COMMISSION';
+          earningRows.push({ label, amount: c.amount, gross: c.amount });
+          commRowCount++;
+        }
+      } else if (commTotal > 0) {
+        earningRows.push({ label: 'SALES COMMISSION', amount: commTotal, gross: commTotal });
+        commRowCount = 1;
+      }
+
       // Reimbursements — each line separately
       earningRows.push(...reimbRows);
 
@@ -450,7 +484,7 @@ export class PayrollService {
 
       // Row-group boundaries for visual section dividers in the PDF
       const BASE_ROWS_END  = 4;                                     // after basic/HRA/transport/special
-      const INCENT_END     = BASE_ROWS_END + incList.filter(i => (i.amount ?? 0) > 0).length;
+      const INCENT_END     = BASE_ROWS_END + incList.filter(i => (i.amount ?? 0) > 0).length + commRowCount;
 
       // extra deduction total (TDS, advance, etc.) must also come off finalNet
       const extraDedTotal = extraDeductions.reduce((s, d) => s + (d.amount > 0 ? d.amount : 0), 0);
@@ -772,13 +806,14 @@ export class PayrollService {
     const startDate = new Date(year, month, 1);
     const endDate   = new Date(year, month + 1, 0);
 
-    const [users, allAttendance, allLeaves, holidays, settings, incentiveMap] = await Promise.all([
+    const [users, allAttendance, allLeaves, holidays, settings, incentiveMap, commissionMap] = await Promise.all([
       this.userModel.find({ isActive: true }).select('-password').populate('branch').exec(),
       this.attendanceModel.find({ date: { $gte: startDate, $lte: endDate } }).exec(),
       this.leaveModel.find({ status: LeaveStatus.APPROVED }).exec(),
       this.holidayModel.find().exec(),
       this.settingsService.get(),
       this.incentiveService.findAllForMonth(month, year),
+      this.salesService.findApprovedCommissionsAllForMonth(month, year),
     ]);
 
     const holidayMap   = buildHolidaySet(holidays, year, month);
@@ -789,7 +824,8 @@ export class PayrollService {
       const records   = allAttendance.filter(a => a.user_id.toString() === uid);
       const leaves    = allLeaves.filter(l => l.manager_id.toString() === uid);
       const incentives = incentiveMap.get(uid) ?? [];
-      const payroll   = calcPayroll(user, records, leaves, holidayMap, year, month, today, shiftEndTime, incentives);
+      const commissions = commissionMap.get(uid) ?? [];
+      const payroll   = calcPayroll(user, records, leaves, holidayMap, year, month, today, shiftEndTime, incentives, commissions);
       return { user, ...payroll };
     });
   }

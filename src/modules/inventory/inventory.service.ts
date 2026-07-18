@@ -28,6 +28,7 @@ import { QueryInventoryDto } from './dto/query-inventory.dto.js';
 import { UpdateInventoryDiscountDto } from './dto/update-inventory-discount.dto.js';
 import { BranchesService } from '../branches/branches.service.js';
 import { CustomersService } from '../customers/customers.service.js';
+import { CustomerAdvanceService } from '../customers/customer-advance.service.js';
 import {
   SALE_COMPLETED_EVENT,
   SALE_RETURNED_EVENT,
@@ -62,6 +63,7 @@ export class InventoryService {
     private readonly barcodeService: BarcodeService,
     private readonly branchesService: BranchesService,
     private readonly customersService: CustomersService,
+    private readonly customerAdvanceService: CustomerAdvanceService,
     private readonly eventEmitter: EventEmitter2,
     private readonly configService: ConfigService,
     private readonly notificationsService: NotificationsService,
@@ -1092,6 +1094,12 @@ export class InventoryService {
 
   // ─── Update Status ─────────────────────────────────────────────────────────
 
+  /** Look up a single item by its unique code — used by the sales-enquiry approval flow to link a claim to real stock. */
+  async findByCode(code: string): Promise<InventoryItemDocument | null> {
+    if (!code?.trim()) return null;
+    return this.inventoryModel.findOne({ unique_item_code: code.trim() }).exec();
+  }
+
   /**
    * @param id Inventory item ID
    * @param dto Status update payload
@@ -1259,6 +1267,41 @@ export class InventoryService {
       // Auto-generate a unique sale reference, unless a shared one was supplied (multi-item bill)
       if (!item.sale_reference) {
         item.sale_reference = dto.sale_reference?.trim() || this.generateSaleReference();
+      }
+
+      // ─── Redeem customer advance(s) — atomically with the sale ────────────────
+      // This must happen (and succeed) before item.save() below: previously the advance
+      // ledger was only decremented by a separate, best-effort call fired from the
+      // frontend *after* approval, so a sale could be approved/completed while the
+      // advance balance underneath was never actually deducted (or was deducted twice
+      // on retry). Doing it here means a redemption failure (insufficient balance,
+      // locked, already closed) fails the sale itself instead of failing silently.
+      // Gated on advance_redeemed/advance_id, which callers only set once per bill
+      // (e.g. only on the first item of a batch) — payment_splits itself is duplicated
+      // onto every item in a batch dto purely for per-item bill display.
+      if (dto.advance_redeemed != null || dto.advance_id) {
+        const advanceSplits = (dto.payment_splits ?? []).filter(
+          s => s.mode === 'advance_balance' && s.reference && Number(s.amount) > 0,
+        );
+        if (advanceSplits.length > 0) {
+          for (const split of advanceSplits) {
+            await this.customerAdvanceService.redeemAdvance(split.reference!, {
+              amount: Number(split.amount),
+              making_charges_discount: dto.advance_making_charges_discount,
+              saleReference: item.sale_reference,
+              note: `Sale ${item.unique_item_code}`,
+              staffId: requestingUserId,
+            });
+          }
+        } else if (dto.advance_id && dto.advance_redeemed) {
+          await this.customerAdvanceService.redeemAdvance(dto.advance_id, {
+            amount: Number(dto.advance_redeemed),
+            making_charges_discount: dto.advance_making_charges_discount,
+            saleReference: item.sale_reference,
+            note: `Sale ${item.unique_item_code}`,
+            staffId: requestingUserId,
+          });
+        }
       }
     }
 
@@ -1566,18 +1609,25 @@ export class InventoryService {
     if (overrides?.advance_making_charges_discount != null) dto.advance_making_charges_discount = Number(overrides.advance_making_charges_discount);
     if (overrides?.payment_splits?.length) dto.payment_splits = overrides.payment_splits;
 
-    // Set manager_discount on item before saving so it's captured
+    // Set manager_discount on item before saving so updateStatus's own fresh fetch picks it up
     if (overrides?.manager_discount != null) {
       item.manager_discount = Number(overrides.manager_discount);
+      await item.save();
     }
 
-    (item as any).sale_request_status = 'approved';
-    (item as any).sale_request_reviewer = reviewerId && Types.ObjectId.isValid(reviewerId)
-      ? new Types.ObjectId(reviewerId) : null;
-    (item as any).sale_request_reviewed_at = new Date();
-    await item.save();
+    // Only flip sale_request_status to 'approved' once the SOLD transition (including advance
+    // redemption) has actually succeeded — otherwise a redemption failure (insufficient balance,
+    // locked advance, etc.) would leave the request stuck in an "approved but not sold" limbo
+    // that could never be retried, since the pending-status guard above would reject it.
+    const savedItem = await this.updateStatus(id, dto, reviewerId, undefined, reviewerRole);
 
-    return this.updateStatus(id, dto, reviewerId, undefined, reviewerRole);
+    (savedItem as any).sale_request_status = 'approved';
+    (savedItem as any).sale_request_reviewer = reviewerId && Types.ObjectId.isValid(reviewerId)
+      ? new Types.ObjectId(reviewerId) : null;
+    (savedItem as any).sale_request_reviewed_at = new Date();
+    await savedItem.save();
+
+    return savedItem;
   }
 
   async rejectSaleRequest(

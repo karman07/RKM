@@ -39,6 +39,7 @@ import { SignInMonitorModule } from './modules/sign-in-monitor/sign-in-monitor.m
 import { ReportsModule } from './modules/reports/reports.module';
 import { GoldLoanModule } from './modules/gold-loan/gold-loan.module';
 import { SmsModule } from './modules/sms/sms.module';
+import { SalesModule } from './modules/sales/sales.module';
 
 @Module({
   imports: [
@@ -86,6 +87,7 @@ import { SmsModule } from './modules/sms/sms.module';
     ReportsModule,
     GoldLoanModule,
     SmsModule,
+    SalesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

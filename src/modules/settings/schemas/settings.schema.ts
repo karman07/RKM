@@ -205,6 +205,20 @@ export class Settings {
    */
   @Prop({ type: Number, min: 1, max: 12, default: 2 })
   sign_in_window_hours: number;
+
+  // ── Sales Team Commission ──────────────────────────────────────────────────
+
+  /**
+   * Number of months after a customer is onboarded by a sales agent during
+   * which purchases/investments from that customer earn the agent commission.
+   * Default: 6 months. Admin can change this from the Settings panel.
+   */
+  @Prop({ type: Number, min: 0, max: 120, default: 6 })
+  sales_commission_window_months: number;
+
+  /** Commission rate (%) applied to approved sale/investment enquiries. */
+  @Prop({ type: Number, min: 0, max: 100, default: 2 })
+  sales_commission_rate_percentage: number;
 }
 
 export const SettingsSchema = SchemaFactory.createForClass(Settings);

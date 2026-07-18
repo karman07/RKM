@@ -9,6 +9,7 @@ import { Holiday, HolidaySchema } from '../holidays/schemas/holiday.schema';
 import { Reimbursement, ReimbursementSchema } from '../hr/schemas/reimbursement.schema';
 import { SettingsModule } from '../settings/settings.module';
 import { IncentiveModule } from '../incentives/incentive.module';
+import { SalesModule } from '../sales/sales.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { IncentiveModule } from '../incentives/incentive.module';
     ]),
     SettingsModule,
     IncentiveModule,
+    SalesModule,
   ],
   controllers: [PayrollController],
   providers: [PayrollService],
