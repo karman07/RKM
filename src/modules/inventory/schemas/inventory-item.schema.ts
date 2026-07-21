@@ -298,6 +298,41 @@ export class InventoryItem {
 
   @Prop({ type: Date, default: null })
   certificate_generated_at: Date | null;
+
+  // ─── Pre-Booking (reservation backed by a customer advance) ─────────────────
+  /** The customer this item is pre-booked for */
+  @Prop({ type: Types.ObjectId, ref: 'Customer', default: null })
+  prebooking_customer_id: Types.ObjectId | null;
+
+  @Prop({ trim: true, default: '' })
+  prebooking_customer_name: string;
+
+  @Prop({ trim: true, default: '' })
+  prebooking_customer_phone: string;
+
+  /** The CustomerAdvance record created to hold this pre-booking's advance payment */
+  @Prop({ type: String, default: null })
+  prebooking_advance_id: string | null;
+
+  /** Snapshot of the advance amount taken at booking time (₹) */
+  @Prop({ type: Number, default: 0 })
+  prebooking_advance_amount: number;
+
+  /** Optional expected pickup/delivery date agreed with the customer */
+  @Prop({ type: Date, default: null })
+  prebooking_expected_date: Date | null;
+
+  @Prop({ trim: true, default: '' })
+  prebooking_notes: string;
+
+  @Prop({ type: Types.ObjectId, ref: 'User', default: null })
+  prebooked_by_user_id: Types.ObjectId | null;
+
+  @Prop({ trim: true, default: '' })
+  prebooked_by_name: string;
+
+  @Prop({ type: Date, default: null })
+  prebooked_at: Date | null;
 }
 
 export const InventoryItemSchema = SchemaFactory.createForClass(InventoryItem);

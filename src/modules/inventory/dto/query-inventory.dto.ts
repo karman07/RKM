@@ -64,6 +64,11 @@ export class QueryInventoryDto {
   @IsString()
   sold_customer_email?: string;
 
+  /** Filter items pre-booked (reserved with an advance) for a specific customer */
+  @IsOptional()
+  @IsMongoId()
+  prebooking_customer_id?: string;
+
   @IsOptional()
   @IsMongoId()
   category_id?: string;

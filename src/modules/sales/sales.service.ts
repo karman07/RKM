@@ -26,6 +26,33 @@ export class SalesService {
     const customer = await this.customersService.findById(dto.customer_id);
     if (!customer) throw new NotFoundException('Customer not found');
 
+    if (dto.type === SaleEnquiryType.PRE_BOOKING) {
+      if (!dto.mode?.trim()) {
+        throw new BadRequestException('Select how the advance payment was collected from the customer.');
+      }
+      if (!dto.reference?.trim()) {
+        throw new BadRequestException('Pick an available item to pre-book.');
+      }
+      const item = await this.inventoryService.findByCode(dto.reference.trim());
+      if (!item) {
+        throw new BadRequestException(`No inventory item found with code "${dto.reference}".`);
+      }
+      if (item.status !== InventoryStatus.AVAILABLE) {
+        // Covers an item already pre-booked (directly or via a previously approved enquiry)
+        // as well as any other non-available status — surfaced here so the agent finds out
+        // immediately instead of waiting for the reviewer to reject it later.
+        throw new BadRequestException(`Item "${dto.reference}" is already ${item.status} and cannot be pre-booked again.`);
+      }
+      const duplicatePending = await this.enquiryModel.exists({
+        type: SaleEnquiryType.PRE_BOOKING,
+        reference: dto.reference.trim(),
+        status: SaleEnquiryStatus.PENDING,
+      });
+      if (duplicatePending) {
+        throw new BadRequestException(`Item "${dto.reference}" already has a pending pre-booking request awaiting review.`);
+      }
+    }
+
     const doc = new this.enquiryModel({
       sales_agent_id: new Types.ObjectId(salesAgentId),
       customer_id: new Types.ObjectId(dto.customer_id),
@@ -33,6 +60,7 @@ export class SalesService {
       description: dto.description,
       amount: dto.amount,
       reference: dto.reference ?? '',
+      mode: dto.mode?.trim() || '',
     });
     await doc.save();
 
@@ -126,10 +154,49 @@ export class SalesService {
       }
     }
 
+    let preBookedItem: Awaited<ReturnType<InventoryService['findByCode']>> = null;
+    if (status === SaleEnquiryStatus.APPROVED && doc.type === SaleEnquiryType.PRE_BOOKING) {
+      if (!doc.reference?.trim()) {
+        throw new BadRequestException('This enquiry has no linked inventory item. Ask the sales agent to re-submit by picking a real item from stock before it can be approved.');
+      }
+      preBookedItem = await this.inventoryService.findByCode(doc.reference.trim());
+      if (!preBookedItem) {
+        throw new BadRequestException(`No inventory item found with code "${doc.reference}". Link this enquiry to a real, available item before approving.`);
+      }
+      if (preBookedItem.status !== InventoryStatus.AVAILABLE) {
+        throw new BadRequestException(`Item "${doc.reference}" is no longer available (status: ${preBookedItem.status}) and cannot be pre-booked.`);
+      }
+    }
+
     doc.status = status;
     doc.admin_note = adminNote ?? '';
     doc.reviewed_by = new Types.ObjectId(reviewerId);
     doc.reviewed_at = new Date();
+
+    if (status === SaleEnquiryStatus.APPROVED && doc.type === SaleEnquiryType.PRE_BOOKING) {
+      // A pre-booking isn't a completed sale — no commission is earned until the item is
+      // actually sold (via a normal item_sale enquiry or a direct manager sale later).
+      doc.commission_amount = 0;
+      doc.commission_status = CommissionStatus.NOT_APPLICABLE;
+
+      await this.inventoryService.preBookItem(
+        (preBookedItem as any)._id.toString(),
+        {
+          customer_id: doc.customer_id.toString(),
+          advance_amount: doc.amount,
+          // The sales agent records how they collected the money at submission time — that's
+          // the source of truth. paymentDetails.payment_mode is kept only as a fallback for
+          // enquiries created before this field existed.
+          mode: doc.mode || paymentDetails?.payment_mode || 'cash',
+          notes: doc.description,
+        },
+        doc.sales_agent_id.toString(),
+        (salesAgent as any)?.name,
+      );
+
+      await doc.save();
+      return doc;
+    }
 
     if (status === SaleEnquiryStatus.APPROVED) {
       const settings = await this.settingsService.get();

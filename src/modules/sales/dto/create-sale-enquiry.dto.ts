@@ -19,4 +19,9 @@ export class CreateSaleEnquiryDto {
   @IsOptional()
   @IsString()
   reference?: string;
+
+  /** How the payment was collected — required when type is pre_booking */
+  @IsOptional()
+  @IsString()
+  mode?: string;
 }

@@ -4,8 +4,10 @@ import mongoose, { Document } from 'mongoose';
 export type SaleEnquiryDocument = SaleEnquiry & Document;
 
 export enum SaleEnquiryType {
-  ITEM_SALE  = 'item_sale',
-  INVESTMENT = 'investment',
+  ITEM_SALE    = 'item_sale',
+  INVESTMENT   = 'investment',
+  /** Field agent pre-books an available item for a customer with an advance payment */
+  PRE_BOOKING  = 'pre_booking',
 }
 
 export enum SaleEnquiryStatus {
@@ -48,6 +50,10 @@ export class SaleEnquiry {
   /** Optional loose reference — a sale_reference or subscription id, not a hard FK */
   @Prop({ type: String, trim: true, default: '' })
   reference: string;
+
+  /** How the sales agent collected payment from the customer — mandatory for pre_booking (the agent, not the reviewer, records this) */
+  @Prop({ type: String, trim: true, default: '' })
+  mode: string;
 
   @Prop({ type: String, enum: SaleEnquiryStatus, default: SaleEnquiryStatus.PENDING, index: true })
   status: SaleEnquiryStatus;

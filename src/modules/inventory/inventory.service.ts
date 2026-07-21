@@ -26,6 +26,7 @@ import { UpdateInventoryStatusDto } from './dto/update-inventory-status.dto.js';
 import { SellBatchDto } from './dto/sell-batch.dto.js';
 import { QueryInventoryDto } from './dto/query-inventory.dto.js';
 import { UpdateInventoryDiscountDto } from './dto/update-inventory-discount.dto.js';
+import { PreBookItemDto } from './dto/prebook-item.dto.js';
 import { BranchesService } from '../branches/branches.service.js';
 import { CustomersService } from '../customers/customers.service.js';
 import { CustomerAdvanceService } from '../customers/customer-advance.service.js';
@@ -412,7 +413,7 @@ export class InventoryService {
       sold_at_branch_id, sold_after, sold_by_user_id, 
       page = 1, limit = 20, search,
       sold_customer_phone, sold_customer_email,
-      category_id, metal_type, purity
+      category_id, metal_type, purity, prebooking_customer_id,
     } = query;
     const skip = (page - 1) * limit;
 
@@ -450,6 +451,10 @@ export class InventoryService {
     if (sold_customer_phone) filter.sold_customer_phone = sold_customer_phone;
     if (sold_customer_email) filter.sold_customer_email = sold_customer_email;
 
+    if (prebooking_customer_id && Types.ObjectId.isValid(prebooking_customer_id)) {
+      filter.prebooking_customer_id = new Types.ObjectId(prebooking_customer_id);
+    }
+
     if (search || category_id || metal_type || purity) {
       const matchingProductIds = await this.productsService.findIdsByFilters({
         search,
@@ -465,6 +470,8 @@ export class InventoryService {
           { unique_item_code: { $regex: search, $options: 'i' } },
           { sale_reference: { $regex: search, $options: 'i' } },
           { invoice_number: { $regex: search, $options: 'i' } },
+          { prebooking_customer_name: { $regex: search, $options: 'i' } },
+          { prebooking_customer_phone: { $regex: search, $options: 'i' } },
           { product_id: { $in: matchingProductIds } },
         ];
       } else {
@@ -1889,6 +1896,125 @@ export class InventoryService {
     );
     if (!item) throw new NotFoundException(`Inventory item ${id} not found`);
     return item;
+  }
+
+  /**
+   * Pre-books an AVAILABLE item for a customer, taking an advance payment against it.
+   * Reuses the existing CustomerAdvance ledger (so the same balance surfaces automatically
+   * at final-sale time via the normal "check advance balance by phone" flow) and the existing
+   * RESERVED inventory status — this just links the two together on the item itself.
+   *
+   * The AVAILABLE → RESERVED transition is claimed atomically (findOneAndUpdate conditioned
+   * on the current status) so an item can never be pre-booked twice — whether the second
+   * attempt comes from another manager/admin clicking "Pre-Book" at the same time, or from a
+   * sales-enquiry approval racing a direct booking. Every pre-booking channel funnels through
+   * this one method, so the guarantee holds regardless of where the request originated.
+   */
+  async preBookItem(
+    id: string,
+    dto: PreBookItemDto,
+    requestingUserId?: string,
+    requestingUserName?: string,
+  ): Promise<InventoryItemDocument> {
+    this.validateObjectId(id);
+
+    const claimed = await this.inventoryModel.findOneAndUpdate(
+      { _id: id, status: InventoryStatus.AVAILABLE },
+      { $set: { status: InventoryStatus.RESERVED, reserved_at: new Date() } },
+      { new: true },
+    );
+    if (!claimed) {
+      const existing = await this.inventoryModel.findById(id);
+      if (!existing) throw new NotFoundException(`Inventory item ${id} not found`);
+      throw new BadRequestException(
+        existing.status === InventoryStatus.RESERVED
+          ? `This item has already been pre-booked${existing.prebooking_customer_name ? ` for ${existing.prebooking_customer_name}` : ''} and cannot be pre-booked again.`
+          : `Only available items can be pre-booked (current status: ${existing.status})`,
+      );
+    }
+
+    try {
+      const advance = await this.customerAdvanceService.createAdvance(
+        dto.customer_id,
+        {
+          amount: dto.advance_amount,
+          making_charges_waiver_pct: dto.making_charges_waiver_pct,
+          mode: dto.mode,
+          note: dto.notes?.trim() || `Pre-booking advance for ${claimed.unique_item_code}`,
+          lock_in_days: dto.lock_in_days,
+        },
+        requestingUserId,
+      );
+
+      claimed.prebooking_customer_id = new Types.ObjectId(dto.customer_id) as any;
+      claimed.prebooking_customer_name = advance.customerName;
+      claimed.prebooking_customer_phone = advance.customerPhone;
+      claimed.prebooking_advance_id = advance._id.toString();
+      claimed.prebooking_advance_amount = dto.advance_amount;
+      claimed.prebooking_expected_date = dto.expected_date ? new Date(dto.expected_date) : null;
+      claimed.prebooking_notes = dto.notes?.trim() || '';
+      claimed.prebooked_by_user_id = requestingUserId && Types.ObjectId.isValid(requestingUserId)
+        ? (new Types.ObjectId(requestingUserId) as any)
+        : null;
+      claimed.prebooked_by_name = requestingUserName || '';
+      claimed.prebooked_at = new Date();
+
+      const saved = await claimed.save();
+
+      try {
+        this.eventEmitter.emit(SALE_RESERVED_EVENT, {
+          customerPhone: advance.customerPhone,
+          customerName: advance.customerName,
+          itemId: saved._id?.toString(),
+        });
+      } catch (evtErr) {
+        console.error('[InventoryService] Event emit error:', evtErr?.message);
+      }
+
+      void this.notificationsService.notifyAdmins(
+        '📌 Item Pre-Booked',
+        `${saved.unique_item_code} pre-booked for ${advance.customerName} with ₹${dto.advance_amount.toLocaleString('en-IN')} advance.`,
+        { type: 'item_prebooked', item_id: saved._id?.toString() ?? '', url: '/dashboard/inventory' },
+      );
+
+      return saved;
+    } catch (err) {
+      // The advance couldn't be created (bad customer, validation failure, etc.) — release
+      // the claim so the item doesn't get stuck RESERVED with no advance behind it.
+      await this.inventoryModel.updateOne(
+        { _id: id, status: InventoryStatus.RESERVED, prebooking_advance_id: null },
+        { $set: { status: InventoryStatus.AVAILABLE, reserved_at: null } },
+      );
+      throw err;
+    }
+  }
+
+  /**
+   * Releases a pre-booked item back to AVAILABLE. The linked CustomerAdvance is left untouched —
+   * it remains active on the customer's ledger as store credit, redeemable against any future sale.
+   */
+  async cancelPreBooking(id: string): Promise<InventoryItemDocument> {
+    this.validateObjectId(id);
+    const item = await this.inventoryModel.findById(id);
+    if (!item) throw new NotFoundException(`Inventory item ${id} not found`);
+    if (item.status !== InventoryStatus.RESERVED || !item.prebooking_advance_id) {
+      throw new BadRequestException('This item does not have an active pre-booking to cancel');
+    }
+
+    item.status = InventoryStatus.AVAILABLE;
+    item.reserved_at = null;
+    item.prebooking_customer_id = null;
+    item.prebooking_customer_name = '';
+    item.prebooking_customer_phone = '';
+    item.prebooking_advance_id = null;
+    item.prebooking_advance_amount = 0;
+    item.prebooking_expected_date = null;
+    item.prebooking_notes = '';
+    item.prebooked_by_user_id = null;
+    item.prebooked_by_name = '';
+    item.prebooked_at = null;
+
+    return item.save();
   }
 
   private generateBarcode(): string {
