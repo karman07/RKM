@@ -3,7 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import * as admin from 'firebase-admin';
 import { JwtService } from '@nestjs/jwt';
-import { Customer, CustomerDocument } from './schemas/customer.schema';
+import { Customer, CustomerDocument, CustomerProfileFields } from './schemas/customer.schema';
 import { RegisterCustomerDto, LoginCustomerDto } from './dto/register-customer.dto';
 import { InventoryItem, InventoryItemDocument } from '../inventory/schemas/inventory-item.schema';
 import { OnlineOrder, OnlineOrderDocument } from '../online-orders/schemas/online-order.schema';
@@ -307,22 +307,9 @@ export class CustomersService {
     }).limit(15).exec();
   }
 
-  async createByManager(data: {
+  async createByManager(data: CustomerProfileFields & {
     name: string;
     phone: string;
-    email?: string;
-    gender?: string;
-    address?: string;
-    city?: string;
-    state?: string;
-    pincode?: string;
-    country?: string;
-    aadharCard?: string;
-    panCard?: string;
-    accountNumber?: string;
-    ifscCode?: string;
-    bankName?: string;
-    customFields?: { key: string; value: string }[];
   }, createdByUserId?: string) {
     const existing = await this.customerModel.findOne({ phone: data.phone });
     if (existing) throw new ConflictException('A customer with this phone number already exists');
@@ -338,21 +325,8 @@ export class CustomersService {
   }
 
   /** Edit an existing customer's record — used by admin/manager/cashier/sales staff apps. Phone is intentionally excluded (it's the OTP-verified identifier). `relationship_manager` is only ever passed by the controller when the caller is an admin. */
-  async updateByStaff(id: string, data: {
+  async updateByStaff(id: string, data: CustomerProfileFields & {
     name?: string;
-    email?: string;
-    gender?: string;
-    address?: string;
-    city?: string;
-    state?: string;
-    pincode?: string;
-    country?: string;
-    aadharCard?: string;
-    panCard?: string;
-    accountNumber?: string;
-    ifscCode?: string;
-    bankName?: string;
-    customFields?: { key: string; value: string }[];
     relationship_manager?: string | null;
   }) {
     const customer = await this.customerModel.findById(id);

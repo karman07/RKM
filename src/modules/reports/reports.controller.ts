@@ -330,6 +330,15 @@ export class ReportsController {
     res.send(buffer);
   }
 
+  @Get('vendor-items')
+  getVendorItemsPurchased(
+    @Query('supplierId') supplierId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.reports.getVendorItemsPurchased(supplierId, from, to);
+  }
+
   @Get('inventory-valuation')
   getInventoryValuation() {
     return this.reports.getInventoryValuation();

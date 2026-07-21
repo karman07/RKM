@@ -5,6 +5,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { UserRole } from '../../users/schemas/user.schema';
+import type { CustomerProfileFields } from './schemas/customer.schema';
 
 @Controller('customers')
 @UseGuards(JwtAuthGuard)
@@ -42,22 +43,9 @@ export class CustomersAdminController {
 
   /** Create a new customer (manager/cashier flow — phone is verified client-side via Firebase Phone Auth first) */
   @Post()
-  async createCustomer(@Body() body: {
+  async createCustomer(@Body() body: CustomerProfileFields & {
     name: string;
     phone: string;
-    email?: string;
-    gender?: string;
-    address?: string;
-    city?: string;
-    state?: string;
-    pincode?: string;
-    country?: string;
-    aadharCard?: string;
-    panCard?: string;
-    accountNumber?: string;
-    ifscCode?: string;
-    bankName?: string;
-    customFields?: { key: string; value: string }[];
   }, @Req() req: any) {
     if (!body?.name || !body?.phone) throw new BadRequestException('name and phone are required');
     return this.customersService.createByManager(body, req.user?.userId);
@@ -65,21 +53,8 @@ export class CustomersAdminController {
 
   /** Edit an existing customer's record — available to any authenticated staff role (admin/manager/cashier/sales). Reassigning the relationship manager is admin-only. */
   @Patch(':id')
-  async updateCustomer(@Param('id') id: string, @Body() body: {
+  async updateCustomer(@Param('id') id: string, @Body() body: CustomerProfileFields & {
     name?: string;
-    email?: string;
-    gender?: string;
-    address?: string;
-    city?: string;
-    state?: string;
-    pincode?: string;
-    country?: string;
-    aadharCard?: string;
-    panCard?: string;
-    accountNumber?: string;
-    ifscCode?: string;
-    bankName?: string;
-    customFields?: { key: string; value: string }[];
     relationship_manager?: string | null;
   }, @Req() req: any) {
     if (body?.name !== undefined && !body.name.trim()) throw new BadRequestException('name cannot be empty');

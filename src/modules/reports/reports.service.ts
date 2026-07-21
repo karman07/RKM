@@ -926,6 +926,51 @@ export class ReportsService {
     };
   }
 
+  // ── Vendor Items Purchased (purchase register scoped to a single supplier) ─────
+
+  async getVendorItemsPurchased(supplierId: string, from?: string, to?: string) {
+    const supplierObjectId = Types.ObjectId.isValid(supplierId) ? new Types.ObjectId(supplierId) : null;
+    const baseMatch = { ...rangeMatch('purchase_date', from, to), supplier_id: supplierObjectId };
+
+    const pipeline: any[] = [
+      { $match: baseMatch },
+      { $sort: { purchase_date: -1 } },
+      { $unwind: { path: '$items', preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          _id: 0,
+          poNumber: '$po_number',
+          invoiceNumber: { $ifNull: ['$invoice_number', ''] },
+          purchaseDate: '$purchase_date',
+          itemName: { $ifNull: ['$items.name', 'Unknown Item'] },
+          sku: { $ifNull: ['$items.sku', ''] },
+          metalType: { $ifNull: ['$items.metal_type', ''] },
+          purity: { $ifNull: ['$items.purity', ''] },
+          quantity: { $ifNull: ['$items.count', 1] },
+          unitCost: { $ifNull: ['$items.purchase_price', 0] },
+          lineTotal: { $multiply: [{ $ifNull: ['$items.purchase_price', 0] }, { $ifNull: ['$items.count', 1] }] },
+          status: '$status',
+        },
+      },
+    ];
+
+    const [rows, poCountAgg] = await Promise.all([
+      this.poModel.aggregate(pipeline),
+      this.poModel.aggregate([{ $match: baseMatch }, { $count: 'count' }]),
+    ]);
+
+    const totals = rows.reduce(
+      (acc: any, r: any) => ({ amount: acc.amount + (r.lineTotal || 0), quantity: acc.quantity + (r.quantity || 0) }),
+      { amount: 0, quantity: 0 },
+    );
+
+    return {
+      period: { from: from ?? null, to: to ?? null },
+      rows,
+      totals: { ...totals, itemCount: rows.length, poCount: poCountAgg[0]?.count ?? 0 },
+    };
+  }
+
   // ── Inventory Valuation ──────────────────────────────────────────────────────────
 
   async getInventoryValuation() {

@@ -60,7 +60,10 @@ export class CustomerAdvanceService {
       createdBy: staffId && Types.ObjectId.isValid(staffId) ? new Types.ObjectId(staffId) : null,
     });
 
-    const populated = await advance.populate('createdBy', 'name role');
+    const populated = await advance.populate([
+      { path: 'createdBy', select: 'name role' },
+      { path: 'branch_id', select: 'name code' },
+    ]);
     return this.withBalance(populated);
   }
 
