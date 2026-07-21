@@ -282,6 +282,8 @@ export interface AppSettings {
   fixed_making_charge: number;
   note?: string;
   stone_refund_percentage?: number;
+  /** Default deduction (% of the advance) suggested when cancelling a pre-booking (default 0) */
+  prebooking_cancellation_deduction_pct?: number;
   updatedAt?: string;
 }
 export const getSettings = () => request<AppSettings>('/settings');
@@ -437,9 +439,25 @@ export const preBookItem = (id: string, payload: {
     body: JSON.stringify(payload),
   });
 
-/** Releases a pre-booked item back to available stock. The customer's advance is left untouched as store credit. */
-export const cancelPreBooking = (id: string) =>
-  request<InventoryItem>(`/inventory/${id}/prebook/cancel`, { method: 'PATCH' });
+/** Releases a pre-booked item back to available stock. By default the customer's advance is left untouched
+ *  as store credit; pass a deduction to forfeit part of it as a cancellation fee instead. */
+export const cancelPreBooking = (id: string, payload?: { deduction_amount?: number; deduction_reason?: string }) =>
+  request<InventoryItem>(`/inventory/${id}/prebook/cancel`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload || {}),
+  });
+
+/** Collects the remaining balance on a pre-booked item and marks it sold — the advance on file is redeemed automatically. */
+export const completePreBooking = (id: string, payload: {
+  payment_splits?: Array<{ mode: string; amount: number; reference?: string }>;
+  selling_price?: number;
+  sold_by_user_id?: string;
+  sold_at_branch_id?: string;
+}) =>
+  request<InventoryItem>(`/inventory/${id}/prebook/complete`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 
 /** Sets/updates the BIS Hallmark HUID on a specific inventory item */
 export const updateInventoryHallmark = (id: string, hallmark: string) =>

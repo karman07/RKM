@@ -6,9 +6,10 @@ interface ViewItemModalProps {
   onClose: () => void;
   onCancelPreBooking?: (item: InventoryItem) => void;
   cancellingPreBooking?: boolean;
+  onCompleteSale?: (item: InventoryItem) => void;
 }
 
-export default function ViewItemModal({ item, onClose, onCancelPreBooking, cancellingPreBooking }: ViewItemModalProps) {
+export default function ViewItemModal({ item, onClose, onCancelPreBooking, cancellingPreBooking, onCompleteSale }: ViewItemModalProps) {
   const product = typeof item.product_id === 'object' ? item.product_id : ({} as any);
   const img = staticUrl(product?.images?.[0]);
 
@@ -172,33 +173,64 @@ export default function ViewItemModal({ item, onClose, onCancelPreBooking, cance
           )}
 
           {/* Pre-Booking Info */}
-          {item.status === 'reserved' && item.prebooking_advance_id && (
-            <div className="bg-blue-50 rounded-2xl border border-blue-100 p-5 mb-6 text-sm">
-              <h3 className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-3 border-b border-blue-100 pb-2">Pre-Booking</h3>
-              <div className="space-y-2.5">
-                <div className="flex justify-between items-center"><span className="text-slate-500">Customer</span><span className="font-bold text-slate-800">{item.prebooking_customer_name} · {item.prebooking_customer_phone}</span></div>
-                <div className="flex justify-between items-center"><span className="text-slate-500">Advance Paid</span><span className="font-black text-blue-700">₹{fmt(item.prebooking_advance_amount)}</span></div>
-                {item.prebooking_expected_date && (
-                  <div className="flex justify-between items-center"><span className="text-slate-500">Expected Pickup</span><span className="font-bold text-slate-800">{new Date(item.prebooking_expected_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span></div>
-                )}
-                {item.prebooked_by_name && (
-                  <div className="flex justify-between items-center"><span className="text-slate-500">Booked By</span><span className="font-bold text-slate-800">{item.prebooked_by_name}</span></div>
-                )}
-                {item.prebooking_notes && (
-                  <div className="pt-2 border-t border-blue-100 text-slate-600 italic">"{item.prebooking_notes}"</div>
-                )}
+          {item.status === 'reserved' && item.prebooking_advance_id && (() => {
+            const price = item.live_selling_price ?? item.selling_price ?? 0;
+            const advance = item.prebooking_advance_amount ?? 0;
+            const balanceDue = Math.max(0, price - advance);
+            const paymentPending = balanceDue > 0;
+            return (
+              <div className="bg-blue-50 rounded-2xl border border-blue-100 p-5 mb-6 text-sm">
+                <div className="flex items-center justify-between mb-3 border-b border-blue-100 pb-2">
+                  <h3 className="text-[10px] font-black uppercase tracking-widest text-blue-600">Pre-Booking</h3>
+                  {paymentPending ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[9px] font-black uppercase tracking-wider">
+                      <svg width="9" height="9" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+                      Payment Pending
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[9px] font-black uppercase tracking-wider">
+                      Paid in Full
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-2.5">
+                  <div className="flex justify-between items-center"><span className="text-slate-500">Customer</span><span className="font-bold text-slate-800">{item.prebooking_customer_name} · {item.prebooking_customer_phone}</span></div>
+                  <div className="flex justify-between items-center"><span className="text-slate-500">Advance Paid</span><span className="font-black text-blue-700">₹{fmt(item.prebooking_advance_amount)}</span></div>
+                  {paymentPending && (
+                    <div className="flex justify-between items-center"><span className="text-slate-500">Balance Due</span><span className="font-black text-amber-700">₹{fmt(balanceDue)}</span></div>
+                  )}
+                  {item.prebooking_expected_date && (
+                    <div className="flex justify-between items-center"><span className="text-slate-500">Expected Pickup</span><span className="font-bold text-slate-800">{new Date(item.prebooking_expected_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span></div>
+                  )}
+                  {item.prebooked_by_name && (
+                    <div className="flex justify-between items-center"><span className="text-slate-500">Booked By</span><span className="font-bold text-slate-800">{item.prebooked_by_name}</span></div>
+                  )}
+                  {item.prebooking_notes && (
+                    <div className="pt-2 border-t border-blue-100 text-slate-600 italic">"{item.prebooking_notes}"</div>
+                  )}
+                </div>
+                <div className="flex gap-2 mt-4">
+                  {onCompleteSale && (
+                    <button
+                      onClick={() => onCompleteSale(item)}
+                      className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-[11px] font-black uppercase tracking-wider hover:bg-emerald-700 transition-all"
+                    >
+                      Complete Sale
+                    </button>
+                  )}
+                  {onCancelPreBooking && (
+                    <button
+                      onClick={() => onCancelPreBooking(item)}
+                      disabled={cancellingPreBooking}
+                      className="flex-1 py-2.5 bg-white border border-red-200 text-red-600 rounded-xl text-[11px] font-black uppercase tracking-wider hover:bg-red-50 transition-all disabled:opacity-50"
+                    >
+                      {cancellingPreBooking ? 'Cancelling…' : 'Cancel Booking'}
+                    </button>
+                  )}
+                </div>
               </div>
-              {onCancelPreBooking && (
-                <button
-                  onClick={() => onCancelPreBooking(item)}
-                  disabled={cancellingPreBooking}
-                  className="w-full mt-4 py-2.5 bg-white border border-red-200 text-red-600 rounded-xl text-[11px] font-black uppercase tracking-wider hover:bg-red-50 transition-all disabled:opacity-50"
-                >
-                  {cancellingPreBooking ? 'Cancelling…' : 'Cancel Booking'}
-                </button>
-              )}
-            </div>
-          )}
+            );
+          })()}
 
           {/* Meta Info */}
           <div className="mt-auto pt-4 border-t border-slate-100 flex items-center justify-between">

@@ -4,14 +4,16 @@ import { useRouter, useSearchParams } from 'next/navigation';
 
 import ViewItemModal from '../../../components/ViewItemModal';
 import PreBookModal from '../../../components/PreBookModal';
+import CompletePreBookingModal from '../../../components/CompletePreBookingModal';
+import CancelPreBookingModal from '../../../components/CancelPreBookingModal';
 import BarcodeScannerModal from '../../../components/BarcodeScannerModal';
 import BillModal from '../../../components/BillModal';
 import {
   getProfile, getInventory, updateInventoryStatus, updateManagerDiscount, getCashiers,
   generateSaleInvoiceNumber, staticUrl, searchCustomers, getGoldBalance, redeemGoldSubscription,
   getAdvanceBalance, generateCertificate, updateInventoryHallmark, sellItemsBatch,
-  getInventoryByBarcode, cancelPreBooking,
-  InventoryItem, UserProfile, Cashier, createPaymentOrder, FullCustomer, GoldBalance, CustomerAdvance,
+  getInventoryByBarcode, getSettings,
+  InventoryItem, UserProfile, Cashier, createPaymentOrder, FullCustomer, GoldBalance, CustomerAdvance, AppSettings,
 } from '../../../lib/api';
 import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth';
 import { auth } from '../../../lib/firebase';
@@ -337,6 +339,25 @@ export function InventoryPageContent() {
 
   // Pre-book modal state
   const [preBookTarget, setPreBookTarget] = useState<InventoryItem | null>(null);
+  const [completeSaleTarget, setCompleteSaleTarget] = useState<InventoryItem | null>(null);
+  const [cancelBookingTarget, setCancelBookingTarget] = useState<InventoryItem | null>(null);
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+
+  useEffect(() => {
+    getSettings().then(setSettings).catch(() => setSettings(null));
+  }, []);
+
+  function isPaymentPending(item: InventoryItem) {
+    if (item.status !== 'reserved' || !item.prebooking_advance_id) return false;
+    const price = item.live_selling_price ?? item.selling_price ?? 0;
+    return (item.prebooking_advance_amount ?? 0) < price;
+  }
+
+  function handleSaleCompleted(updated: InventoryItem) {
+    setItems((prev) => prev.map((i) => i._id === updated._id ? updated : i));
+    setCompleteSaleTarget(null);
+    toast.success(`${updated.unique_item_code} marked as sold`);
+  }
 
   function handleBooked(updated: InventoryItem) {
     setItems((prev) => prev.map((i) => i._id === updated._id ? updated : i));
@@ -1000,19 +1021,10 @@ export function InventoryPageContent() {
     setReturnItem(item);
   }
 
-  const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null);
-  async function handleCancelPreBooking(item: InventoryItem) {
-    if (!confirm(`Release ${item.unique_item_code} back to available stock? The customer's advance stays on their account as credit.`)) return;
-    setCancellingBookingId(item._id);
-    try {
-      const updated = await cancelPreBooking(item._id);
-      setItems((prev) => prev.map((i) => i._id === updated._id ? updated : i));
-      toast.success('Pre-booking cancelled — item is available again');
-    } catch (e: any) {
-      toast.error(e.message || 'Failed to cancel pre-booking');
-    } finally {
-      setCancellingBookingId(null);
-    }
+  function handleBookingCancelled(updated: InventoryItem) {
+    setItems((prev) => prev.map((i) => i._id === updated._id ? updated : i));
+    setCancelBookingTarget(null);
+    toast.success('Pre-booking cancelled — item is available again');
   }
 
   const filteredItems = items;
@@ -1202,7 +1214,15 @@ export function InventoryPageContent() {
                 )}
                 {item.status === 'reserved' && item.prebooking_advance_id && (
                   <div className="border-t border-slate-50 pt-3 pb-1">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-blue-500">Pre-Booked</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-blue-500">Pre-Booked</p>
+                      {isPaymentPending(item) && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[8px] font-black uppercase tracking-wider">
+                          <svg width="8" height="8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+                          Payment Pending
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs font-bold text-slate-700 mt-0.5 truncate">{item.prebooking_customer_name} · ₹{(item.prebooking_advance_amount ?? 0).toLocaleString('en-IN')} advance</p>
                   </div>
                 )}
@@ -1216,11 +1236,16 @@ export function InventoryPageContent() {
                       >{isInCart(item._id) ? 'Added ✓' : 'Add to Bill'}</button>
                     )}
                     {item.status === 'reserved' && item.prebooking_advance_id && (
-                      <button
-                        onClick={() => handleCancelPreBooking(item)}
-                        disabled={cancellingBookingId === item._id}
-                        className="py-2.5 px-3 bg-white border border-red-100 text-red-600 rounded-xl text-[11px] font-black uppercase tracking-wider disabled:opacity-50"
-                      >{cancellingBookingId === item._id ? 'Cancelling…' : 'Cancel Booking'}</button>
+                      <>
+                        <button
+                          onClick={() => setCompleteSaleTarget(item)}
+                          className="py-2.5 px-3 bg-emerald-600 text-white rounded-xl text-[11px] font-black uppercase tracking-wider"
+                        >Complete Sale</button>
+                        <button
+                          onClick={() => setCancelBookingTarget(item)}
+                          className="py-2.5 px-3 bg-white border border-red-100 text-red-600 rounded-xl text-[11px] font-black uppercase tracking-wider"
+                        >Cancel Booking</button>
+                      </>
                     )}
                   </div>
                 )}
@@ -1384,6 +1409,12 @@ export function InventoryPageContent() {
                           <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot} shadow-[0_0_4px_currentColor]`} />
                           {cfg.label}
                         </span>
+                        {isPaymentPending(item) && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[9px] font-black uppercase tracking-wider w-fit">
+                            <svg width="9" height="9" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+                            Payment Pending
+                          </span>
+                        )}
                         {item.status === 'sold' && (() => {
                           const cashierObj = (item as any).sold_by_user_id && typeof (item as any).sold_by_user_id === 'object' ? (item as any).sold_by_user_id : null;
                           return cashierObj ? (
@@ -1524,13 +1555,21 @@ export function InventoryPageContent() {
                           </button>
                         )}
                         {item.status === 'reserved' && item.prebooking_advance_id && (
-                          <button
-                            onClick={() => handleCancelPreBooking(item)}
-                            disabled={cancellingBookingId === item._id}
-                            className="px-4 py-2 bg-white hover:bg-red-50 text-red-600 border border-red-100 hover:border-red-200 rounded-full text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-1.5 disabled:opacity-50"
-                          >
-                            {cancellingBookingId === item._id ? 'Cancelling…' : 'Cancel Booking'}
-                          </button>
+                          <>
+                            <button
+                              onClick={() => setCompleteSaleTarget(item)}
+                              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-1.5"
+                            >
+                              <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                              Complete Sale
+                            </button>
+                            <button
+                              onClick={() => setCancelBookingTarget(item)}
+                              className="px-4 py-2 bg-white hover:bg-red-50 text-red-600 border border-red-100 hover:border-red-200 rounded-full text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-1.5"
+                            >
+                              Cancel Booking
+                            </button>
+                          </>
                         )}
                         <button
                           onClick={() => { setHallmarkItem(item); setHallmarkValue(item.hallmark || ''); }}
@@ -2262,12 +2301,29 @@ export function InventoryPageContent() {
         <ViewItemModal
           item={viewItem}
           onClose={() => setViewItem(null)}
-          onCancelPreBooking={async (item) => { await handleCancelPreBooking(item); setViewItem(null); }}
-          cancellingPreBooking={cancellingBookingId === viewItem._id}
+          onCancelPreBooking={(item) => { setViewItem(null); setCancelBookingTarget(item); }}
+          onCompleteSale={(item) => { setCompleteSaleTarget(item); setViewItem(null); }}
         />
       )}
       {preBookTarget && (
         <PreBookModal item={preBookTarget} onClose={() => setPreBookTarget(null)} onBooked={handleBooked} />
+      )}
+      {completeSaleTarget && (
+        <CompletePreBookingModal
+          item={completeSaleTarget}
+          soldByUserId={user?._id}
+          soldAtBranchId={(user?.branch as any)?._id}
+          onClose={() => setCompleteSaleTarget(null)}
+          onCompleted={handleSaleCompleted}
+        />
+      )}
+      {cancelBookingTarget && (
+        <CancelPreBookingModal
+          item={cancelBookingTarget}
+          defaultDeductionPct={settings?.prebooking_cancellation_deduction_pct}
+          onClose={() => setCancelBookingTarget(null)}
+          onCancelled={handleBookingCancelled}
+        />
       )}
 
       {showCameraScanner && (
