@@ -4,8 +4,8 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   getCustomerById, getMyEnquiries, getCustomerPurchases, getCustomerGoldBalance, getCustomerCustomFields,
-  updateCustomer, uploadUserAvatar, generateCertificate, staticUrl, checkSessionExpiry,
-  type FullCustomer, type SaleEnquiry, type InventoryItem, type GoldBalance, type EmployeeCustomField,
+  updateCustomer, uploadUserAvatar, generateCertificate, staticUrl, checkSessionExpiry, GST_TREATMENTS,
+  type FullCustomer, type SaleEnquiry, type InventoryItem, type GoldBalance, type EmployeeCustomField, type ContactPerson,
 } from '../../../../lib/api';
 import Modal from '../../../../components/Modal';
 
@@ -47,12 +47,37 @@ function EditCustomerModal({
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
+  const [customerSubType, setCustomerSubType] = useState<'individual' | 'business'>(customer.customer_sub_type ?? 'individual');
+  const [companyName, setCompanyName] = useState(customer.company_name ?? '');
+  const [salutation, setSalutation] = useState(customer.salutation ?? '');
+  const [firstName, setFirstName] = useState(customer.first_name ?? '');
+  const [lastName, setLastName] = useState(customer.last_name ?? '');
+  const [workPhone, setWorkPhone] = useState(customer.work_phone ?? '');
+  const [website, setWebsite] = useState(customer.website ?? '');
+  const [gstTreatment, setGstTreatment] = useState(customer.gst_treatment ?? '');
+  const [gstNo, setGstNo] = useState(customer.gst_no ?? '');
+  const [placeOfSupply, setPlaceOfSupply] = useState(customer.place_of_supply ?? '');
+  const [notes, setNotes] = useState(customer.notes ?? '');
+  const [contactPersons, setContactPersons] = useState<ContactPerson[]>(customer.contact_persons ?? []);
+
   useEffect(() => {
     if (!open) return;
     setName(customer.name);
     setEmail(customer.email ?? '');
     setCity(customer.city ?? '');
     setAddress(customer.address ?? '');
+    setCustomerSubType(customer.customer_sub_type ?? 'individual');
+    setCompanyName(customer.company_name ?? '');
+    setSalutation(customer.salutation ?? '');
+    setFirstName(customer.first_name ?? '');
+    setLastName(customer.last_name ?? '');
+    setWorkPhone(customer.work_phone ?? '');
+    setWebsite(customer.website ?? '');
+    setGstTreatment(customer.gst_treatment ?? '');
+    setGstNo(customer.gst_no ?? '');
+    setPlaceOfSupply(customer.place_of_supply ?? '');
+    setNotes(customer.notes ?? '');
+    setContactPersons(customer.contact_persons ?? []);
     const values: Record<string, string> = {};
     (customer.customFields ?? []).forEach(f => { values[f.key] = f.value; });
     setDefinedFieldValues(values);
@@ -74,6 +99,18 @@ function EditCustomerModal({
         city: city.trim() || undefined,
         address: address.trim() || undefined,
         customFields: definedFields.length ? validDefinedFields : undefined,
+        customer_sub_type: customerSubType,
+        company_name: customerSubType === 'business' ? companyName.trim() || undefined : undefined,
+        salutation: salutation || undefined,
+        first_name: firstName.trim() || undefined,
+        last_name: lastName.trim() || undefined,
+        work_phone: workPhone.trim() || undefined,
+        website: website.trim() || undefined,
+        gst_treatment: (gstTreatment || null) as any,
+        gst_no: gstNo.trim() || undefined,
+        place_of_supply: placeOfSupply.trim() || undefined,
+        notes: notes.trim() || undefined,
+        contact_persons: contactPersons.filter(p => p.first_name?.trim()),
       });
       onSaved(updated);
     } catch (e: any) {
@@ -91,6 +128,40 @@ function EditCustomerModal({
           <input value={name} onChange={e => setName(e.target.value)} placeholder="Customer full name" autoFocus
             className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A] transition-all" />
         </div>
+
+        <div className="border-t border-slate-100 pt-4 space-y-3">
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Business Details</p>
+          <div className="flex gap-2">
+            {(['individual', 'business'] as const).map(t => (
+              <button key={t} type="button" onClick={() => setCustomerSubType(t)}
+                className={`flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-wide border transition-all ${customerSubType === t ? 'bg-[#5A0F1A] text-white border-[#5A0F1A]' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>
+                {t}
+              </button>
+            ))}
+          </div>
+          {customerSubType === 'business' && (
+            <input placeholder="Company / business name" value={companyName} onChange={e => setCompanyName(e.target.value)}
+              className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A] transition-all" />
+          )}
+          <div className="grid grid-cols-3 gap-2">
+            <select value={salutation} onChange={e => setSalutation(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A]">
+              <option value="">—</option>
+              {['Mr.', 'Mrs.', 'Ms.', 'Dr.'].map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <input placeholder="First name" value={firstName} onChange={e => setFirstName(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A]" />
+            <input placeholder="Last name" value={lastName} onChange={e => setLastName(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A]" />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <input placeholder="Work phone" value={workPhone} onChange={e => setWorkPhone(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A]" />
+            <input placeholder="Website" value={website} onChange={e => setWebsite(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A]" />
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Email</label>
@@ -107,6 +178,71 @@ function EditCustomerModal({
           <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Address</label>
           <input placeholder="Full address…" value={address} onChange={e => setAddress(e.target.value)}
             className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A] transition-all" />
+        </div>
+
+        <div className="border-t border-slate-100 pt-4 space-y-3">
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">GST &amp; Tax</p>
+          <select value={gstTreatment} onChange={e => setGstTreatment(e.target.value as any)}
+            className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A] transition-all">
+            <option value="">Not specified</option>
+            {GST_TREATMENTS.map(g => <option key={g.value} value={g.value}>{g.label}</option>)}
+          </select>
+          <div className="grid grid-cols-2 gap-2">
+            <input placeholder="GSTIN" value={gstNo} onChange={e => setGstNo(e.target.value.toUpperCase())}
+              className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A]" />
+            <input placeholder="Place of supply" value={placeOfSupply} onChange={e => setPlaceOfSupply(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A]" />
+          </div>
+        </div>
+
+        <div className="border-t border-slate-100 pt-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Contact Persons</p>
+            <button type="button" className="text-[10px] font-black text-[#5A0F1A] hover:underline"
+              onClick={() => setContactPersons(p => [...p, { salutation: '', first_name: '', last_name: '', email: '', phone: '', mobile: '', designation: '', department: '', is_primary_contact: p.length === 0 }])}>
+              + Add Contact
+            </button>
+          </div>
+          {contactPersons.map((cp, i) => (
+            <div key={i} className="p-3 bg-slate-50 border border-slate-100 rounded-xl space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 cursor-pointer">
+                  <input type="radio" name="sales-primary-contact" checked={!!cp.is_primary_contact}
+                    onChange={() => setContactPersons(list => list.map((p, j) => ({ ...p, is_primary_contact: j === i })))} />
+                  Primary
+                </label>
+                <button type="button" onClick={() => setContactPersons(list => list.filter((_, j) => j !== i))}
+                  className="p-1 text-slate-400 hover:text-red-500 transition-colors">
+                  <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M18 6L6 18M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <input placeholder="First name" value={cp.first_name}
+                  onChange={e => setContactPersons(list => list.map((p, j) => j === i ? { ...p, first_name: e.target.value } : p))}
+                  className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A]" />
+                <input placeholder="Last name" value={cp.last_name}
+                  onChange={e => setContactPersons(list => list.map((p, j) => j === i ? { ...p, last_name: e.target.value } : p))}
+                  className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A]" />
+                <input placeholder="Designation" value={cp.designation}
+                  onChange={e => setContactPersons(list => list.map((p, j) => j === i ? { ...p, designation: e.target.value } : p))}
+                  className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A]" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <input placeholder="Email" value={cp.email}
+                  onChange={e => setContactPersons(list => list.map((p, j) => j === i ? { ...p, email: e.target.value } : p))}
+                  className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A]" />
+                <input placeholder="Mobile" value={cp.mobile}
+                  onChange={e => setContactPersons(list => list.map((p, j) => j === i ? { ...p, mobile: e.target.value } : p))}
+                  className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A]" />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="border-t border-slate-100 pt-4 space-y-3">
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Remarks</p>
+          <textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Internal notes…"
+            className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A] transition-all resize-none" />
         </div>
 
         {definedFields.length > 0 && (

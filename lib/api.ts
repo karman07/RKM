@@ -126,10 +126,44 @@ export const getSettings = () => request<CommissionSettings>('/settings');
 
 // ── Customers ────────────────────────────────────────────────────────────────
 
+export interface ContactPerson {
+  salutation?: string;
+  first_name: string;
+  last_name?: string;
+  email?: string;
+  phone?: string;
+  mobile?: string;
+  designation?: string;
+  department?: string;
+  is_primary_contact?: boolean;
+}
+
+export interface ShippingAddress {
+  attention?: string;
+  address?: string;
+  street2?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  country?: string;
+  phone?: string;
+}
+
+export const GST_TREATMENTS = [
+  { value: 'registered_business',   label: 'Registered Business' },
+  { value: 'unregistered_business', label: 'Unregistered Business' },
+  { value: 'consumer',              label: 'Consumer' },
+  { value: 'overseas',              label: 'Overseas' },
+  { value: 'special_economic_zone', label: 'Special Economic Zone' },
+  { value: 'deemed_export',         label: 'Deemed Export' },
+] as const;
+
 export interface FullCustomer {
   _id: string;
   name: string;
   phone?: string;
+  /** Secondary landline/office number — not OTP-verified */
+  work_phone?: string;
   email?: string;
   gender?: string;
   address?: string;
@@ -143,6 +177,52 @@ export interface FullCustomer {
   createdAt: string;
   relationship_manager?: { _id: string; name: string; email?: string; mobile_number?: string; role?: string } | string | null;
   customFields?: { key: string; value: string }[];
+  // Zoho-style business/contact fields
+  customer_sub_type?: 'business' | 'individual';
+  salutation?: string;
+  first_name?: string;
+  last_name?: string;
+  company_name?: string;
+  website?: string;
+  attention?: string;
+  street2?: string;
+  shipping_address?: ShippingAddress | null;
+  contact_persons?: ContactPerson[];
+  payment_terms?: string;
+  credit_limit?: number;
+  notes?: string;
+  gst_treatment?: (typeof GST_TREATMENTS)[number]['value'] | null;
+  gst_no?: string;
+  place_of_supply?: string;
+}
+
+/** Zoho-style optional profile fields shared by createCustomer/updateCustomer */
+export interface CustomerProfileFields {
+  email?: string;
+  gender?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  country?: string;
+  customFields?: { key: string; value: string }[];
+  work_phone?: string;
+  customer_sub_type?: 'business' | 'individual';
+  salutation?: string;
+  first_name?: string;
+  last_name?: string;
+  company_name?: string;
+  website?: string;
+  attention?: string;
+  street2?: string;
+  shipping_address?: ShippingAddress | null;
+  contact_persons?: ContactPerson[];
+  payment_terms?: string;
+  credit_limit?: number;
+  notes?: string;
+  gst_treatment?: (typeof GST_TREATMENTS)[number]['value'] | null;
+  gst_no?: string;
+  place_of_supply?: string;
 }
 
 export const getMyCustomers = (page = 1, limit = 100, relationshipManagerId?: string) =>
@@ -152,17 +232,11 @@ export const getMyCustomers = (page = 1, limit = 100, relationshipManagerId?: st
 
 export const getCustomerById = (id: string) => request<FullCustomer>(`/customers/${id}`);
 
-export const createCustomer = (data: {
-  name: string; phone: string; email?: string; gender?: string;
-  address?: string; city?: string; state?: string; pincode?: string; country?: string;
-  customFields?: { key: string; value: string }[];
-}) => request<FullCustomer>('/customers', { method: 'POST', body: JSON.stringify(data) });
+export const createCustomer = (data: CustomerProfileFields & { name: string; phone: string }) =>
+  request<FullCustomer>('/customers', { method: 'POST', body: JSON.stringify(data) });
 
-export const updateCustomer = (id: string, data: {
-  name?: string; email?: string; gender?: string;
-  address?: string; city?: string; state?: string; pincode?: string; country?: string;
-  customFields?: { key: string; value: string }[];
-}) => request<FullCustomer>(`/customers/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+export const updateCustomer = (id: string, data: CustomerProfileFields & { name?: string }) =>
+  request<FullCustomer>(`/customers/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
 
 // ── Inventory (read-only catalog browse) ─────────────────────────────────────
 
