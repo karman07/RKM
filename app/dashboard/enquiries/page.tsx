@@ -15,10 +15,13 @@ function name(v: any): string {
   return typeof v === 'object' && v ? v.name : '—';
 }
 
-const TYPE_OPTIONS: { value: 'item_sale' | 'investment'; label: string; icon: string }[] = [
-  { value: 'item_sale',  label: 'Item Sale',  icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' },
-  { value: 'investment', label: 'Investment', icon: 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6' },
+const TYPE_OPTIONS: { value: 'item_sale' | 'investment' | 'pre_booking'; label: string; icon: string }[] = [
+  { value: 'item_sale',   label: 'Item Sale',   icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' },
+  { value: 'pre_booking', label: 'Pre-Booking', icon: 'M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-4-7 4V5z' },
+  { value: 'investment',  label: 'Investment',  icon: 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6' },
 ];
+
+const TYPE_LABEL: Record<string, string> = { item_sale: 'Item Sale', investment: 'Investment', pre_booking: 'Pre-Booking' };
 
 const STATUS_CFG: Record<string, { label: string; text: string; dot: string }> = {
   pending:  { label: 'Pending',  text: 'text-amber-600',  dot: 'bg-amber-500'  },
@@ -31,16 +34,17 @@ function rupeeShort(n: number) {
 }
 
 function NewEnquiryModal({
-  open, onClose, onCreated, customers, defaultCustomerId, defaultItemId, defaultPlanId,
+  open, onClose, onCreated, customers, defaultCustomerId, defaultItemId, defaultPlanId, defaultType,
 }: {
   open: boolean; onClose: () => void; onCreated: (e: SaleEnquiry) => void;
-  customers: FullCustomer[]; defaultCustomerId?: string; defaultItemId?: string; defaultPlanId?: string;
+  customers: FullCustomer[]; defaultCustomerId?: string; defaultItemId?: string; defaultPlanId?: string; defaultType?: 'item_sale' | 'investment' | 'pre_booking';
 }) {
   const [customerId, setCustomerId] = useState(defaultCustomerId ?? '');
-  const [type, setType] = useState<'item_sale' | 'investment'>(defaultPlanId ? 'investment' : 'item_sale');
+  const [type, setType] = useState<'item_sale' | 'investment' | 'pre_booking'>(defaultType ?? (defaultPlanId ? 'investment' : 'item_sale'));
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [reference, setReference] = useState('');
+  const [mode, setMode] = useState('cash');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
@@ -56,12 +60,13 @@ function NewEnquiryModal({
   const [pickedPlanId, setPickedPlanId] = useState('');
 
   useEffect(() => { if (open) setCustomerId(defaultCustomerId ?? ''); }, [open, defaultCustomerId]);
+  useEffect(() => { if (open && defaultType) setType(defaultType); }, [open, defaultType]);
 
   // Preload a specific item/plan when opened via deep link
   useEffect(() => {
     if (!open) return;
     if (defaultItemId) {
-      getInventoryItemById(defaultItemId).then(item => { if (item) selectItem(item); });
+      getInventoryItemById(defaultItemId).then(item => { if (item) selectItem(item, defaultType === 'pre_booking'); });
     }
     if (defaultPlanId) {
       getInvestmentPlans().then(all => {
@@ -71,7 +76,7 @@ function NewEnquiryModal({
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, defaultItemId, defaultPlanId]);
+  }, [open, defaultItemId, defaultPlanId, defaultType]);
 
   // Load plans once when investment type is chosen (for the dropdown)
   useEffect(() => {
@@ -93,11 +98,12 @@ function NewEnquiryModal({
     return () => clearTimeout(t);
   }, [itemQuery, itemPickerOpen]);
 
-  function selectItem(item: InventoryItem) {
+  function selectItem(item: InventoryItem, forPreBooking = type === 'pre_booking') {
     const product = typeof item.product_id === 'object' ? item.product_id : null;
     setPickedItem(item);
     setDescription(`${product?.name ?? item.unique_item_code} (${item.unique_item_code})`);
-    setAmount(String(item.selling_price));
+    // For a pre-booking the amount is the advance taken, not the full price — leave it blank.
+    setAmount(forPreBooking ? '' : String(item.selling_price));
     setReference(item.unique_item_code);
     setItemPickerOpen(false);
   }
@@ -110,7 +116,7 @@ function NewEnquiryModal({
   }
 
   function reset() {
-    setCustomerId(''); setType('item_sale'); setDescription(''); setAmount(''); setReference(''); setErr('');
+    setCustomerId(''); setType('item_sale'); setDescription(''); setAmount(''); setReference(''); setMode('cash'); setErr('');
     setPickedItem(null); setItemQuery(''); setItemResults([]); setItemPickerOpen(false); setPickedPlanId('');
   }
 
@@ -119,11 +125,13 @@ function NewEnquiryModal({
     if (!customerId) { setErr('Select a customer'); return; }
     if (!description.trim()) { setErr('Describe what was sold or invested'); return; }
     if (!amount || isNaN(amt) || amt <= 0) { setErr('Enter a valid amount'); return; }
+    if (type === 'pre_booking' && !mode) { setErr('Select how you collected the advance payment'); return; }
     setErr(''); setSaving(true);
     try {
       const enquiry = await createSaleEnquiry({
         customer_id: customerId, type, description: description.trim(), amount: amt,
         reference: reference.trim() || undefined,
+        mode: type === 'pre_booking' ? mode : undefined,
       });
       onCreated(enquiry);
       reset();
@@ -139,7 +147,7 @@ function NewEnquiryModal({
       <div className="space-y-5">
         <div>
           <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Type</label>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             {TYPE_OPTIONS.map(t => (
               <button key={t.value} type="button" onClick={() => { setType(t.value); setPickedItem(null); setPickedPlanId(''); setDescription(''); setAmount(''); setReference(''); }}
                 className={`flex items-center justify-center gap-2 p-3.5 rounded-2xl border-2 transition-all ${
@@ -164,7 +172,7 @@ function NewEnquiryModal({
           )}
         </div>
 
-        {type === 'item_sale' ? (
+        {type === 'item_sale' || type === 'pre_booking' ? (
           <div>
             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Item</label>
             {pickedItem && !itemPickerOpen ? (
@@ -235,7 +243,9 @@ function NewEnquiryModal({
                 )}
               </div>
             )}
-            <p className="text-[10px] text-slate-400 mt-1.5">Pick a real item from stock, or leave blank and describe it manually below.</p>
+            <p className="text-[10px] text-slate-400 mt-1.5">
+              {type === 'pre_booking' ? 'Pick the available item your customer wants to hold.' : 'Pick a real item from stock, or leave blank and describe it manually below.'}
+            </p>
           </div>
         ) : (
           <div>
@@ -258,13 +268,13 @@ function NewEnquiryModal({
             Description {(pickedItem || pickedPlanId) && <span className="normal-case text-slate-300 font-medium">— edit if needed</span>}
           </label>
           <textarea rows={2} value={description} onChange={e => setDescription(e.target.value)}
-            placeholder={type === 'item_sale' ? 'e.g. 22K gold necklace, 18g' : 'e.g. Gold Savings Plan — 12 months'}
+            placeholder={type === 'item_sale' ? 'e.g. 22K gold necklace, 18g' : type === 'pre_booking' ? 'e.g. Customer will collect after resizing' : 'e.g. Gold Savings Plan — 12 months'}
             className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A] transition-all resize-none" />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Amount (₹)</label>
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">{type === 'pre_booking' ? 'Advance Amount (₹)' : 'Amount (₹)'}</label>
             <div className="relative">
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">₹</span>
               <input type="number" min="1" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00"
@@ -277,6 +287,21 @@ function NewEnquiryModal({
               className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A] transition-all" />
           </div>
         </div>
+
+        {type === 'pre_booking' && (
+          <div>
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">
+              How did you collect the advance? <span className="text-[#5A0F1A]">*</span>
+            </label>
+            <select value={mode} onChange={e => setMode(e.target.value)}
+              className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A] bg-white transition-all">
+              {['cash', 'card', 'upi', 'bank_transfer', 'cheque'].map(m => (
+                <option key={m} value={m}>{m.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>
+              ))}
+            </select>
+            <p className="text-[10px] text-slate-400 mt-1.5">This is recorded on the advance receipt — admin/manager won't need to ask again when they review.</p>
+          </div>
+        )}
 
         {err && <p className="text-xs text-red-600 font-bold">{err}</p>}
 
@@ -355,6 +380,8 @@ function EnquiriesPageInner() {
   const defaultCustomerId = searchParams.get('customer_id') || undefined;
   const defaultItemId = searchParams.get('item_id') || undefined;
   const defaultPlanId = searchParams.get('plan_id') || undefined;
+  const typeParam = searchParams.get('type');
+  const defaultType = (typeParam === 'item_sale' || typeParam === 'investment' || typeParam === 'pre_booking') ? typeParam : undefined;
 
   return (
     <div className="p-5 sm:p-8 max-w-5xl mx-auto min-h-full space-y-6 pb-20">
@@ -371,6 +398,7 @@ function EnquiriesPageInner() {
         defaultCustomerId={defaultCustomerId}
         defaultItemId={defaultItemId}
         defaultPlanId={defaultPlanId}
+        defaultType={defaultType}
         onCreated={(e) => {
           showToast('Enquiry submitted — awaiting admin review');
           setShowNew(false);
@@ -427,13 +455,16 @@ function EnquiriesPageInner() {
                     <div className="flex items-start gap-4">
                       <div className="w-10 h-10 rounded-2xl bg-slate-100 flex items-center justify-center flex-shrink-0 mt-0.5">
                         <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="#64748b" strokeWidth={1.8}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d={e.type === 'item_sale' ? 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' : 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6'} />
+                          <path strokeLinecap="round" strokeLinejoin="round" d={e.type === 'item_sale' ? 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' : e.type === 'pre_booking' ? 'M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-4-7 4V5z' : 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6'} />
                         </svg>
                       </div>
                       <div>
-                        <p className="text-sm font-black text-slate-900">{name(e.customer_id)} · {e.type === 'item_sale' ? 'Item Sale' : 'Investment'}</p>
+                        <p className="text-sm font-black text-slate-900">{name(e.customer_id)} · {TYPE_LABEL[e.type]}</p>
                         <p className="text-[11px] text-slate-500 font-medium mt-0.5">
                           <span className="text-[#7A1C2A] font-black">{rupee(e.amount)}</span> — {e.description}
+                          {e.type === 'pre_booking' && e.mode && (
+                            <span className="ml-1.5 text-[9px] font-black uppercase text-slate-400">via {e.mode.replace('_', ' ')}</span>
+                          )}
                         </p>
                         {e.admin_note && <p className="text-[10px] text-slate-400 mt-0.5 italic">Admin: {e.admin_note}</p>}
                       </div>

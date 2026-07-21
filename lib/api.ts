@@ -259,10 +259,11 @@ export interface SaleEnquiry {
   _id: string;
   sales_agent_id: string;
   customer_id: { _id: string; name: string; phone?: string; email?: string } | string;
-  type: 'item_sale' | 'investment';
+  type: 'item_sale' | 'investment' | 'pre_booking';
   description: string;
   amount: number;
   reference: string;
+  mode?: string;
   status: 'pending' | 'approved' | 'rejected';
   admin_note: string;
   reviewed_at?: string | null;
@@ -272,10 +273,11 @@ export interface SaleEnquiry {
 
 export const createSaleEnquiry = (data: {
   customer_id: string;
-  type: 'item_sale' | 'investment';
+  type: 'item_sale' | 'investment' | 'pre_booking';
   description: string;
   amount: number;
   reference?: string;
+  mode?: string;
 }) => request<SaleEnquiry>('/sales/enquiries', { method: 'POST', body: JSON.stringify(data) });
 
 export const getMyEnquiries = () => request<SaleEnquiry[]>('/sales/enquiries/mine');

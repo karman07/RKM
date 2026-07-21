@@ -117,16 +117,26 @@ export default function ItemsPage() {
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center justify-between mt-auto pt-3 border-t border-slate-50">
+                <div className="flex items-center justify-between mt-auto pt-3 border-t border-slate-50 gap-2">
                   <div>
                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-300">Price</p>
                     <p className="text-sm font-black text-slate-900">{rupee(item.selling_price)}</p>
                   </div>
-                  <Link href={`/dashboard/enquiries?new=1&item_id=${item._id}`}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#5A0F1A]/10 text-[#5A0F1A] hover:bg-[#5A0F1A] hover:text-white text-[10px] font-black uppercase tracking-wider transition-all">
-                    <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
-                    Enquiry
-                  </Link>
+                  <div className="flex items-center gap-1.5">
+                    {item.status === 'available' && (
+                      <Link href={`/dashboard/enquiries?new=1&item_id=${item._id}&type=pre_booking`}
+                        title="Pre-book with an advance"
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white text-[10px] font-black uppercase tracking-wider transition-all">
+                        <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-4-7 4V5z" /></svg>
+                        Pre-Book
+                      </Link>
+                    )}
+                    <Link href={`/dashboard/enquiries?new=1&item_id=${item._id}`}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#5A0F1A]/10 text-[#5A0F1A] hover:bg-[#5A0F1A] hover:text-white text-[10px] font-black uppercase tracking-wider transition-all">
+                      <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+                      Enquiry
+                    </Link>
+                  </div>
                 </div>
               </div>
             );
