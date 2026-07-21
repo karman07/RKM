@@ -114,6 +114,12 @@ export default function ItemsPage() {
                         : item.status === 'reserved' ? 'bg-blue-50 border-blue-100 text-blue-600'
                         : 'bg-slate-50 border-slate-200 text-slate-400'
                       }`}>{item.status}</span>
+                      {item.status === 'reserved' && item.prebooking_advance_id && (item.prebooking_advance_amount ?? 0) < (item.live_selling_price ?? item.selling_price) && (
+                        <span className="inline-flex items-center gap-1 text-[8px] font-black px-1.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-700 rounded uppercase">
+                          <svg width="8" height="8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+                          Payment Pending
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

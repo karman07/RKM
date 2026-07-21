@@ -85,18 +85,24 @@ function NewEnquiryModal({
     }
   }, [open, type, plans.length]);
 
-  // Debounced item search
+  // Debounced item search — for item_sale, also surface the selected customer's own
+  // pre-booked (reserved) items so the agent can pick one to collect the balance and close the sale.
   useEffect(() => {
     if (!itemPickerOpen) return;
     setSearchingItems(true);
     const t = setTimeout(() => {
-      getInventoryItems({ status: 'available', search: itemQuery || undefined, limit: 10 })
-        .then(res => setItemResults(res.data))
+      Promise.all([
+        getInventoryItems({ status: 'available', search: itemQuery || undefined, limit: 10 }),
+        type === 'item_sale' && customerId
+          ? getInventoryItems({ status: 'reserved', prebooking_customer_id: customerId, search: itemQuery || undefined, limit: 10 })
+          : Promise.resolve({ data: [] as InventoryItem[] }),
+      ])
+        .then(([availableRes, reservedRes]) => setItemResults([...reservedRes.data, ...availableRes.data]))
         .catch(() => setItemResults([]))
         .finally(() => setSearchingItems(false));
     }, 300);
     return () => clearTimeout(t);
-  }, [itemQuery, itemPickerOpen]);
+  }, [itemQuery, itemPickerOpen, type, customerId]);
 
   function selectItem(item: InventoryItem, forPreBooking = type === 'pre_booking') {
     const product = typeof item.product_id === 'object' ? item.product_id : null;
@@ -190,8 +196,13 @@ function NewEnquiryModal({
                 })()}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-black text-slate-900 truncate">{description}</p>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <p className="text-[11px] text-[#5A0F1A] font-bold">{rupeeShort(pickedItem.selling_price)}</p>
+                    {pickedItem.status === 'reserved' && pickedItem.prebooking_advance_id && (
+                      <span className="text-[9px] font-black text-blue-700 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded-full">
+                        Pre-Booked · ₹{(pickedItem.prebooking_advance_amount ?? 0).toLocaleString('en-IN')} already paid
+                      </span>
+                    )}
                     {pickedItem.max_manager_discount > 0 && (
                       <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded-full">
                         Up to {pickedItem.max_manager_discount}% off
@@ -220,13 +231,19 @@ function NewEnquiryModal({
                     ) : (
                       itemResults.map(item => {
                         const product = typeof item.product_id === 'object' ? item.product_id : null;
+                        const isPrebooked = item.status === 'reserved' && !!item.prebooking_advance_id;
                         return (
                           <button key={item._id} type="button" onClick={() => selectItem(item)}
                             className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors text-left">
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-bold text-slate-900 truncate">{product?.name ?? item.unique_item_code}</p>
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex items-center gap-1.5 flex-wrap">
                                 <p className="text-[10px] text-slate-400">{item.unique_item_code}</p>
+                                {isPrebooked && (
+                                  <span className="text-[9px] font-black text-blue-700 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded-full">
+                                    Pre-Booked · ₹{(item.prebooking_advance_amount ?? 0).toLocaleString('en-IN')} paid
+                                  </span>
+                                )}
                                 {item.max_manager_discount > 0 && (
                                   <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded-full">
                                     Up to {item.max_manager_discount}% off

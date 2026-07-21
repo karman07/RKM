@@ -182,22 +182,34 @@ export interface InventoryItem {
   barcode: string;
   status: 'available' | 'sold' | 'reserved' | 'damaged' | 'returned' | 'stolen';
   selling_price: number;
+  live_selling_price?: number;
   gross_weight: number;
   net_weight: number;
   max_manager_discount: number;
   product_id: InventoryProduct | string;
   createdAt: string;
+  // Pre-Booking
+  prebooking_customer_id?: string | null;
+  prebooking_customer_name?: string;
+  prebooking_customer_phone?: string;
+  prebooking_advance_id?: string | null;
+  prebooking_advance_amount?: number;
+  prebooking_expected_date?: string | null;
+  prebooking_notes?: string;
+  prebooked_by_name?: string;
 }
 
 export const getInventoryItems = (params?: {
   status?: string; search?: string; page?: number; limit?: number;
   sold_customer_phone?: string; sold_customer_email?: string;
+  prebooking_customer_id?: string;
 }) => {
   const qs = new URLSearchParams();
   if (params?.status) qs.set('status', params.status);
   if (params?.search) qs.set('search', params.search);
   if (params?.sold_customer_phone) qs.set('sold_customer_phone', params.sold_customer_phone);
   if (params?.sold_customer_email) qs.set('sold_customer_email', params.sold_customer_email);
+  if (params?.prebooking_customer_id) qs.set('prebooking_customer_id', params.prebooking_customer_id);
   qs.set('page', String(params?.page ?? 1));
   qs.set('limit', String(params?.limit ?? 40));
   return request<{ data: InventoryItem[]; meta: { total: number; page: number; limit: number; total_pages: number } }>(
