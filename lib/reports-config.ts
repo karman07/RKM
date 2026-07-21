@@ -304,7 +304,7 @@ export const REPORTS: ReportConfig[] = [
     slug: 'receivables',
     category: 'Receivables',
     title: 'Customer Balances',
-    description: 'Outstanding EMI balances and unpaid online orders.',
+    description: 'Outstanding EMI balances, unpaid online orders, and pending pre-booking dues.',
     icon: Wallet,
     mode: 'list',
     dateMode: 'none',
@@ -321,6 +321,7 @@ export const REPORTS: ReportConfig[] = [
       { label: 'Total Outstanding', accessor: 'totalOutstanding', format: 'currency' },
       { label: 'EMI Balances', accessor: 'emiCount', format: 'number' },
       { label: 'Online Orders Pending', accessor: 'onlineCount', format: 'number' },
+      { label: 'Pre-Bookings Pending', accessor: 'prebookingCount', format: 'number' },
     ],
   },
   {

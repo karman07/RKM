@@ -21,7 +21,6 @@ import {
   getSettings,
   getCashiersByBranch,
   getSuppliers,
-  cancelPreBooking,
   type InventoryItem,
   type Lookup,
   type Product,
@@ -34,7 +33,9 @@ import Modal from '@/components/Modal';
 import CustomerSearchPanel, { type CustomerDraft } from '@/components/CustomerSearchPanel';
 import PaymentSplitsInput, { type PaymentSplit } from '@/components/PaymentSplitsInput';
 import PreBookModal from '@/components/PreBookModal';
-import { Bookmark } from 'lucide-react';
+import { Bookmark, CheckCircle2, AlertTriangle } from 'lucide-react';
+import CompletePreBookingModal from '@/components/CompletePreBookingModal';
+import CancelPreBookingModal from '@/components/CancelPreBookingModal';
 import dynamic from 'next/dynamic';
 
 const Doughnut = dynamic(() => import('react-chartjs-2').then(mod => mod.Doughnut), { ssr: false });
@@ -112,7 +113,14 @@ export default function InventoryPage() {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'danger' | 'info' } | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [preBookTarget, setPreBookTarget] = useState<InventoryItem | null>(null);
-  const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null);
+  const [completeSaleTarget, setCompleteSaleTarget] = useState<InventoryItem | null>(null);
+  const [cancelBookingTarget, setCancelBookingTarget] = useState<InventoryItem | null>(null);
+
+  function isPaymentPending(item: InventoryItem) {
+    if (item.status !== 'reserved' || !item.prebooking_advance_id) return false;
+    const price = item.live_selling_price ?? item.selling_price ?? 0;
+    return (item.prebooking_advance_amount ?? 0) < price;
+  }
   const [settings, setSettings] = useState<any>(null);
 
   const [statusFilter, setStatusFilter] = useState('');
@@ -287,18 +295,16 @@ export default function InventoryPage() {
     showToast(`${updated.unique_item_code} reserved with ₹${(updated.prebooking_advance_amount ?? 0).toLocaleString('en-IN')} advance`, 'success');
   }
 
-  async function handleCancelPreBooking(item: InventoryItem) {
-    if (!confirm(`Release ${item.unique_item_code} back to available stock? The customer's advance stays on their account as credit.`)) return;
-    setCancellingBookingId(item._id);
-    try {
-      const updated = await cancelPreBooking(item._id);
-      setItems(prev => prev.map(it => it._id === updated._id ? updated : it));
-      showToast('Pre-booking cancelled — item is available again', 'success');
-    } catch (e: any) {
-      showToast(e.message || 'Failed to cancel pre-booking', 'danger');
-    } finally {
-      setCancellingBookingId(null);
-    }
+  function handleSaleCompleted(updated: InventoryItem) {
+    setItems(prev => prev.map(it => it._id === updated._id ? updated : it));
+    setCompleteSaleTarget(null);
+    showToast(`${updated.unique_item_code} marked as sold`, 'success');
+  }
+
+  function handleBookingCancelled(updated: InventoryItem) {
+    setItems(prev => prev.map(it => it._id === updated._id ? updated : it));
+    setCancelBookingTarget(null);
+    showToast('Pre-booking cancelled — item is available again', 'success');
   }
 
   // ─── Data Load ────────────────────────────────────────────────────────────
@@ -924,9 +930,16 @@ export default function InventoryPage() {
                       <td className="px-4 py-3">
                         <span className={`${badge.wrap} scale-90 origin-left`}><span className={`h-1 w-1 rounded-full ${badge.dot}`} />{lookups.inventory_status?.find(l => l.value === item.status)?.label || (item.status.charAt(0).toUpperCase() + item.status.slice(1))}</span>
                         {item.status === 'reserved' && item.prebooking_advance_id && (
-                          <p className="text-[9px] font-bold text-blue-600 mt-1 max-w-[160px] truncate" title={`${item.prebooking_customer_name} · ₹${(item.prebooking_advance_amount ?? 0).toLocaleString('en-IN')} advance`}>
-                            {item.prebooking_customer_name} · ₹{(item.prebooking_advance_amount ?? 0).toLocaleString('en-IN')}
-                          </p>
+                          <>
+                            <p className="text-[9px] font-bold text-blue-600 mt-1 max-w-[160px] truncate" title={`${item.prebooking_customer_name} · ₹${(item.prebooking_advance_amount ?? 0).toLocaleString('en-IN')} advance`}>
+                              {item.prebooking_customer_name} · ₹{(item.prebooking_advance_amount ?? 0).toLocaleString('en-IN')}
+                            </p>
+                            {isPaymentPending(item) && (
+                              <span className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[8px] font-black uppercase tracking-wider">
+                                <AlertTriangle size={8} strokeWidth={3} /> Payment Pending
+                              </span>
+                            )}
+                          </>
                         )}
                       </td>
 
@@ -965,14 +978,22 @@ export default function InventoryPage() {
                             </button>
                           )}
                           {item.status === 'reserved' && item.prebooking_advance_id && (
-                            <button
-                              onClick={() => handleCancelPreBooking(item)}
-                              disabled={cancellingBookingId === item._id}
-                              title="Cancel Pre-Booking"
-                              className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition-all active:scale-90 shadow-sm disabled:opacity-50"
-                            >
-                              <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-                            </button>
+                            <>
+                              <button
+                                onClick={() => setCompleteSaleTarget(item)}
+                                title="Complete Sale"
+                                className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white transition-all active:scale-90 shadow-sm"
+                              >
+                                <CheckCircle2 size={14} strokeWidth={2.5} />
+                              </button>
+                              <button
+                                onClick={() => setCancelBookingTarget(item)}
+                                title="Cancel Pre-Booking"
+                                className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition-all active:scale-90 shadow-sm disabled:opacity-50"
+                              >
+                                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                              </button>
+                            </>
                           )}
                           {transitions.length > 0 && (
                             <button 
@@ -1619,6 +1640,23 @@ export default function InventoryPage() {
 
       {preBookTarget && (
         <PreBookModal item={preBookTarget} onClose={() => setPreBookTarget(null)} onBooked={handleBooked} />
+      )}
+      {completeSaleTarget && (
+        <CompletePreBookingModal
+          item={completeSaleTarget}
+          soldByUserId={user?._id}
+          soldAtBranchId={typeof user?.branch === 'object' ? user?.branch?._id : user?.branch}
+          onClose={() => setCompleteSaleTarget(null)}
+          onCompleted={handleSaleCompleted}
+        />
+      )}
+      {cancelBookingTarget && (
+        <CancelPreBookingModal
+          item={cancelBookingTarget}
+          defaultDeductionPct={settings?.prebooking_cancellation_deduction_pct}
+          onClose={() => setCancelBookingTarget(null)}
+          onCancelled={handleBookingCancelled}
+        />
       )}
 
       {/* Invisible Print Wrapper for Scannable Labels */}

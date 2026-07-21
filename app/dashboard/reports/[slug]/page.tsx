@@ -353,7 +353,10 @@ function BalanceSheetView({ data, colors }: { data: any; colors: any }) {
           <h3 className="text-lg font-black text-slate-900 mb-4">Assets</h3>
           <StatementRow label="Cash &amp; Bank (Estimated)" amount={data.assets.cashAndBank} />
           <StatementRow label="Inventory at Cost" amount={data.assets.inventoryAtCost} sub={`${data.assets.breakdown.inventoryItemCount} items`} />
-          <StatementRow label="Accounts Receivable" amount={data.assets.accountsReceivable} sub="EMI + Online Pending" />
+          <StatementRow label="Receivable — EMI Outstanding" amount={data.assets.emiOutstanding} sub={`${data.assets.breakdown.emiOutstandingCount} sales`} />
+          <StatementRow label="Receivable — Online Orders Pending" amount={data.assets.onlinePending} sub={`${data.assets.breakdown.onlinePendingCount} orders`} />
+          <StatementRow label="Receivable — Pre-Booking Dues" amount={data.assets.prebookingDues} sub={`${data.assets.breakdown.prebookingPendingCount} bookings`} />
+          <StatementRow label="Total Accounts Receivable" amount={data.assets.accountsReceivable} bold />
           <StatementRow label="Total Assets" amount={data.totalAssets} bold color="#1E3264" />
         </Panel>
         <Panel colors={colors}>
@@ -583,7 +586,7 @@ function ListView({ config, data, colors }: { config: ReportConfig; data: any; c
                   {columns.map(c => (
                     <td key={c.accessor} className="px-6 py-4 text-sm font-semibold text-slate-700 first:pl-8 last:pr-8">
                       {c.accessor === 'type'
-                        ? (get(r, c.accessor) === 'emi' ? 'EMI' : 'Online Order')
+                        ? (get(r, c.accessor) === 'emi' ? 'EMI' : get(r, c.accessor) === 'prebooking' ? 'Pre-Booking' : 'Online Order')
                         : formatValue(get(r, c.accessor), c.format)}
                     </td>
                   ))}

@@ -5,9 +5,9 @@ import {
   getCustomerById, getInventory, getSubscriptions, redeemSubscription,
   markGoldCashPayment, addInterestToSubscription, getMe, getGoldLoansByCustomer,
   getCustomerAdvances, createCustomerAdvance, redeemCustomerAdvance,
-  updateCustomer, getCustomFields, uploadUserAvatar, getUsers, cancelPreBooking,
+  updateCustomer, getCustomFields, uploadUserAvatar, getUsers, getSettings,
   type Customer, type InventoryItem, type GoldSubscription, type User as AdminUser, type GoldLoan,
-  type CustomerAdvance, type CustomField, staticUrl,
+  type CustomerAdvance, type CustomField, type AppSettings, staticUrl,
 } from '@/lib/api';
 import { downloadCsv } from '@/lib/export-utils';
 import { useAppTheme } from '@/components/AppThemeContext';
@@ -16,12 +16,14 @@ import BillModal from '@/components/BillModal';
 import InvestmentReceiptModal from '@/components/InvestmentReceiptModal';
 import AdvanceReceiptModal from '@/components/AdvanceReceiptModal';
 import Modal from '@/components/Modal';
+import CompletePreBookingModal from '@/components/CompletePreBookingModal';
+import CancelPreBookingModal from '@/components/CancelPreBookingModal';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import {
   Users, Mail, Phone, MapPin, ChevronLeft, Calendar, ShoppingBag,
   CreditCard, Target, ShieldCheck, TrendingUp, Package, Gem, Download, Loader2, Plus, Wallet, X,
-  Receipt, Lock, Pencil, UserCog, Search, Bookmark,
+  Receipt, Lock, Pencil, UserCog, Search, Bookmark, CheckCircle2, AlertTriangle,
 } from 'lucide-react';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -137,6 +139,16 @@ function buildLedgerRows(
         direction: 'debit',
         amount: r.amount,
         reference: r.saleReference || a._id,
+      });
+    });
+    (a.forfeitureHistory || []).forEach(f => {
+      rows.push({
+        date: f.date,
+        type: 'Cancellation Fee',
+        description: `Pre-booking cancelled — advance deduction kept by store${f.reason ? ` (${f.reason})` : ''}`,
+        direction: 'debit',
+        amount: f.amount,
+        reference: f.reference || a._id,
       });
     });
   });
@@ -1510,7 +1522,14 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [orders, setOrders] = useState<InventoryItem[]>([]);
   const [prebookedItems, setPrebookedItems] = useState<InventoryItem[]>([]);
-  const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null);
+  const [cancelBookingTarget, setCancelBookingTarget] = useState<InventoryItem | null>(null);
+  const [completeSaleTarget, setCompleteSaleTarget] = useState<InventoryItem | null>(null);
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+
+  function isPaymentPending(item: InventoryItem) {
+    const price = item.live_selling_price ?? item.selling_price ?? 0;
+    return (item.prebooking_advance_amount ?? 0) < price;
+  }
   const [goldSubs, setGoldSubs] = useState<GoldSubscription[]>([]);
   const [goldLoans, setGoldLoans] = useState<GoldLoan[]>([]);
   const [advances, setAdvances] = useState<CustomerAdvance[]>([]);
@@ -1539,7 +1558,7 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
         if (c.phone) query.sold_customer_phone = c.phone;
         else if (c.email) query.sold_customer_email = c.email;
 
-        const [sales, prebooked, subs, loans, advs, meRes] = await Promise.all([
+        const [sales, prebooked, subs, loans, advs, meRes, settingsRes] = await Promise.all([
           getInventory(query),
           getInventory({ status: 'reserved', prebooking_customer_id: c._id, limit: '50' }).catch(() => ({ data: [] })),
           c.phone || c.email
@@ -1548,6 +1567,7 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
           getGoldLoansByCustomer(c._id).catch(() => []),
           getCustomerAdvances(c._id).catch(() => []),
           getMe().catch(() => null),
+          getSettings().catch(() => null),
         ]);
 
         setOrders(sales.data || []);
@@ -1556,6 +1576,7 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
         setGoldLoans(loans as GoldLoan[]);
         setAdvances(advs as CustomerAdvance[]);
         setMe(meRes);
+        setSettings(settingsRes);
       } catch (err) {
         console.error(err);
       } finally {
@@ -1573,18 +1594,16 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
     setAdvances(prev => prev.map(a => a._id === updated._id ? updated : a));
   }
 
-  async function handleCancelPreBooking(item: InventoryItem) {
-    if (!confirm(`Release ${item.unique_item_code} back to available stock? The advance stays on this customer's account as credit.`)) return;
-    setCancellingBookingId(item._id);
-    try {
-      await cancelPreBooking(item._id);
-      setPrebookedItems(prev => prev.filter(i => i._id !== item._id));
-      toast.success('Pre-booking cancelled');
-    } catch (e: any) {
-      toast.error(e.message || 'Failed to cancel pre-booking');
-    } finally {
-      setCancellingBookingId(null);
-    }
+  function handleBookingCancelled(updated: InventoryItem) {
+    setPrebookedItems(prev => prev.filter(i => i._id !== updated._id));
+    setCancelBookingTarget(null);
+    toast.success('Pre-booking cancelled');
+  }
+
+  function handleSaleCompleted(updated: InventoryItem) {
+    setPrebookedItems(prev => prev.filter(i => i._id !== updated._id));
+    setCompleteSaleTarget(null);
+    toast.success(`${updated.unique_item_code} marked as sold`);
   }
 
   async function handleCreateAdvance(data: { amount: number; making_charges_waiver_pct?: number; mode?: string; note?: string; lock_in_days?: number }) {
@@ -1645,6 +1664,10 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
   const totalAdvanceBalance = advances.reduce((acc, a) => acc + a.availableBalance, 0);
   const activeAdvances = advances.filter(a => a.status === 'active');
   const totalValue = totalSpent + totalInvestmentBalance + totalAdvanceBalance;
+  const totalPendingDues = prebookedItems.reduce(
+    (sum, item) => sum + Math.max(0, (item.live_selling_price ?? item.selling_price ?? 0) - (item.prebooking_advance_amount ?? 0)),
+    0,
+  );
 
   const ledgerRows = buildLedgerRows(orders, goldSubs, advances, goldLoans);
   const totalCredit = ledgerRows.filter(r => r.direction === 'credit').reduce((s, r) => s + r.amount, 0);
@@ -1804,6 +1827,25 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
               </div>
             )}
           </div>
+
+          {/* Pending Dues summary card — debt owed against active pre-bookings */}
+          {totalPendingDues > 0 && (
+            <div className="rounded-[32px] p-6 shadow-sm bg-white border border-red-100">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-8 h-8 rounded-xl bg-red-600 flex items-center justify-center">
+                  <AlertTriangle size={14} className="text-white" />
+                </div>
+                <p className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-400">Pending Dues</p>
+              </div>
+              <p className="text-3xl font-bold text-red-600 mb-0.5">{fmt(totalPendingDues)}</p>
+              <p className="text-[10px] font-bold text-red-400 mb-4">Owed on active pre-bookings</p>
+              <div className="flex items-center gap-3 text-[9px] font-bold text-slate-400">
+                <span className="px-2 py-0.5 bg-red-50 text-red-600 rounded-lg border border-red-100">
+                  {prebookedItems.filter(i => isPaymentPending(i)).length} item{prebookedItems.filter(i => isPaymentPending(i)).length !== 1 ? 's' : ''} pending
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* Contact Card */}
           <div className="bg-white border border-slate-100 rounded-[28px] p-8 shadow-sm">
@@ -2093,9 +2135,20 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
                             )}
                           </div>
                           <div className="min-w-0">
-                            <span className="text-[9px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-lg uppercase tracking-widest">
-                              #{item.unique_item_code}
-                            </span>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[9px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-lg uppercase tracking-widest">
+                                #{item.unique_item_code}
+                              </span>
+                              {isPaymentPending(item) ? (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-black text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg uppercase tracking-widest">
+                                  <AlertTriangle size={9} strokeWidth={3} /> Payment Pending
+                                </span>
+                              ) : (
+                                <span className="text-[9px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg uppercase tracking-widest">
+                                  Paid in Full
+                                </span>
+                              )}
+                            </div>
                             <h4 className="text-base font-bold text-slate-900 mt-1 truncate">{product?.name || 'Jewellery Item'}</h4>
                           </div>
                         </div>
@@ -2127,13 +2180,20 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
                       {item.prebooking_notes && (
                         <p className="text-xs text-slate-500 italic mt-4 pt-4 border-t border-slate-50">"{item.prebooking_notes}"</p>
                       )}
-                      <button
-                        onClick={() => handleCancelPreBooking(item)}
-                        disabled={cancellingBookingId === item._id}
-                        className="w-full mt-5 py-2.5 bg-white border border-red-200 text-red-600 rounded-xl text-[11px] font-black uppercase tracking-wider hover:bg-red-50 transition-all disabled:opacity-50"
-                      >
-                        {cancellingBookingId === item._id ? 'Cancelling…' : 'Cancel Booking'}
-                      </button>
+                      <div className="flex gap-3 mt-5">
+                        <button
+                          onClick={() => setCompleteSaleTarget(item)}
+                          className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-[11px] font-black uppercase tracking-wider hover:bg-emerald-700 transition-all flex items-center justify-center gap-1.5"
+                        >
+                          <CheckCircle2 size={13} /> Complete Sale
+                        </button>
+                        <button
+                          onClick={() => setCancelBookingTarget(item)}
+                          className="flex-1 py-2.5 bg-white border border-red-200 text-red-600 rounded-xl text-[11px] font-black uppercase tracking-wider hover:bg-red-50 transition-all"
+                        >
+                          Cancel Booking
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -2278,6 +2338,25 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
 
       {newAdvanceReceipt && (
         <AdvanceReceiptModal advance={newAdvanceReceipt} onClose={() => setNewAdvanceReceipt(null)} />
+      )}
+
+      {completeSaleTarget && (
+        <CompletePreBookingModal
+          item={completeSaleTarget}
+          soldByUserId={me?._id}
+          soldAtBranchId={typeof me?.branch === 'object' ? (me?.branch as any)?._id : me?.branch}
+          onClose={() => setCompleteSaleTarget(null)}
+          onCompleted={handleSaleCompleted}
+        />
+      )}
+
+      {cancelBookingTarget && (
+        <CancelPreBookingModal
+          item={cancelBookingTarget}
+          defaultDeductionPct={settings?.prebooking_cancellation_deduction_pct}
+          onClose={() => setCancelBookingTarget(null)}
+          onCancelled={handleBookingCancelled}
+        />
       )}
 
       <EditClientModal

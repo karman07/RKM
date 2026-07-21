@@ -7,12 +7,14 @@ import {
 } from 'recharts';
 import {
   TrendingUp, CreditCard, DollarSign, ShoppingBag,
-  ArrowUpRight, Calendar, Building2, Banknote, Repeat, Download, Loader2,
+  ArrowUpRight, Calendar, Building2, Banknote, Repeat, Download, Loader2, Plus,
 } from 'lucide-react';
 import { useAppTheme } from '@/components/AppThemeContext';
 import { APP_THEME } from '@/lib/theme-constants';
-import { API_BASE, getInventory, fetchAllPages, getAdvanceAnalytics, type InventoryItem, type AdvanceAnalytics } from '@/lib/api';
+import { API_BASE, getInventory, fetchAllPages, getAdvanceAnalytics, getMiscPayments, type InventoryItem, type AdvanceAnalytics, type MiscPayment } from '@/lib/api';
 import { downloadCsv } from '@/lib/export-utils';
+import AddMiscPaymentModal from '@/components/AddMiscPaymentModal';
+import { toast } from 'sonner';
 
 const PAYMENT_COLORS: Record<string, string> = {
   cash: '#10b981',
@@ -66,41 +68,70 @@ export default function PaymentsPage() {
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(30);
   const [exporting, setExporting] = useState(false);
+  const [showAddPayment, setShowAddPayment] = useState(false);
 
   useEffect(() => {
     getAdvanceAnalytics(days).then(setAdvanceData).catch(() => setAdvanceData(null));
   }, [days]);
 
-  useEffect(() => {
+  function loadAnalytics() {
     setLoading(true);
     const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : '';
-    fetch(`${API_BASE}/inventory/payments/analytics?days=${days}`, {
+    return fetch(`${API_BASE}/inventory/payments/analytics?days=${days}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(r => r.json())
       .then(setData)
       .catch(console.error)
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    loadAnalytics();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [days]);
+
+  function handlePaymentAdded(payment: MiscPayment) {
+    setShowAddPayment(false);
+    toast.success(`₹${payment.amount.toLocaleString('en-IN')} payment recorded`);
+    loadAnalytics();
+  }
 
   async function handleExportHistory() {
     setExporting(true);
     try {
       const since = new Date();
       since.setDate(since.getDate() - days);
-      const rows = await fetchAllPages<InventoryItem>(
-        (page, limit) => getInventory({ status: 'sold', sold_after: since.toISOString(), limit: String(limit), page: String(page) }),
-        200,
-      );
+      const [saleRows, miscRes] = await Promise.all([
+        fetchAllPages<InventoryItem>(
+          (page, limit) => getInventory({ status: 'sold', sold_after: since.toISOString(), limit: String(limit), page: String(page) }),
+          200,
+        ),
+        getMiscPayments(1, 1000).catch(() => ({ data: [] as MiscPayment[] })),
+      ]);
+      const miscRows = miscRes.data
+        .filter(p => new Date(p.createdAt) >= since)
+        .map((p: any) => ({
+          sold_at: p.createdAt,
+          reason: p.reason,
+          sold_customer_name: '',
+          sold_customer_phone: '',
+          sold_at_branch_id: p.branch_id,
+          sold_by_user_id: p.recorded_by,
+          payment_mode: p.mode,
+          purchase_price: 0,
+          selling_price: p.amount,
+        }));
+      const rows: any[] = [...saleRows, ...miscRows];
       downloadCsv(`payment-history-${days}d`, rows, [
         { header: 'Date', accessor: (r: any) => (r.sold_at ? new Date(r.sold_at).toLocaleDateString('en-IN') : '') },
         { header: 'Item', accessor: (r: any) => (typeof r.product_id === 'object' ? r.product_id?.name : '') || r.barcode || '' },
         { header: 'SKU', accessor: (r: any) => (typeof r.product_id === 'object' ? r.product_id?.sku : '') || '' },
-        { header: 'Reason', accessor: () => 'Item Sale' },
-        { header: 'Customer', accessor: (r: any) => r.sold_customer_name || 'Walk-in Customer' },
+        { header: 'Reason', accessor: (r: any) => r.reason || 'Item Sale' },
+        { header: 'Customer', accessor: (r: any) => r.sold_customer_name || (r.reason ? '—' : 'Walk-in Customer') },
         { header: 'Phone', accessor: (r: any) => r.sold_customer_phone || '' },
         { header: 'Branch', accessor: (r: any) => (typeof r.sold_at_branch_id === 'object' ? r.sold_at_branch_id?.name : '') || '' },
-        { header: 'Cashier', accessor: (r: any) => (typeof r.sold_by_user_id === 'object' ? r.sold_by_user_id?.name : '') || '' },
+        { header: 'Recorded By', accessor: (r: any) => (typeof r.sold_by_user_id === 'object' ? r.sold_by_user_id?.name : '') || '' },
         { header: 'Payment Mode', accessor: (r: any) => (Array.isArray(r.payment_splits) && r.payment_splits.length ? r.payment_splits.map((s: any) => s.mode).join(' + ') : r.payment_mode) || '' },
         { header: 'Cost', accessor: (r: any) => r.purchase_price ?? 0 },
         { header: 'Amount Received', accessor: (r: any) => r.selling_price ?? 0 },
@@ -170,6 +201,12 @@ export default function PaymentsPage() {
             ))}
           </div>
           <button
+            onClick={() => setShowAddPayment(true)}
+            className="inline-flex items-center gap-2 px-5 py-3 bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-slate-500/20 transition-all"
+          >
+            <Plus className="w-3.5 h-3.5" /> Add Payment
+          </button>
+          <button
             onClick={handleExportHistory}
             disabled={exporting}
             className="inline-flex items-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-blue-500/20 transition-all disabled:opacity-60"
@@ -178,6 +215,10 @@ export default function PaymentsPage() {
           </button>
         </div>
       </div>
+
+      {showAddPayment && (
+        <AddMiscPaymentModal onClose={() => setShowAddPayment(false)} onAdded={handlePaymentAdded} />
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
@@ -513,13 +554,21 @@ export default function PaymentsPage() {
                 const profit = (tx.selling_price ?? 0) - (tx.purchase_price ?? 0);
                 const date = tx.sold_at ? new Date(tx.sold_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '—';
                 const topMode = (Array.isArray(tx.payment_splits) && tx.payment_splits[0]?.mode) || tx.payment_mode || 'unknown';
+                const isMisc = tx.type === 'misc';
                 return (
                   <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60 transition-colors group">
-                    <td className="py-4 pr-6 text-sm font-bold text-slate-800 truncate max-w-[160px]">Sale: {itemName}</td>
-                    <td className="py-4 pr-6 text-sm font-semibold text-slate-500 truncate max-w-[140px]">{tx.sold_customer_name || 'Walk-in Customer'}</td>
+                    <td className="py-4 pr-6 text-sm font-bold text-slate-800 truncate max-w-[160px]">
+                      {isMisc ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-slate-100 text-slate-500">Other</span>
+                          {tx.reason}
+                        </span>
+                      ) : `Sale: ${itemName}`}
+                    </td>
+                    <td className="py-4 pr-6 text-sm font-semibold text-slate-500 truncate max-w-[140px]">{isMisc ? '—' : (tx.sold_customer_name || 'Walk-in Customer')}</td>
                     <td className="py-4 pr-6 text-sm font-semibold text-slate-500 truncate max-w-[120px]">{branch}</td>
                     <td className="py-4 pr-6 text-sm font-semibold text-slate-500 truncate max-w-[120px]">{cashier}</td>
-                    <td className="py-4 pr-6 text-sm font-bold text-slate-500">{fmtFull(tx.purchase_price)}</td>
+                    <td className="py-4 pr-6 text-sm font-bold text-slate-500">{isMisc ? '—' : fmtFull(tx.purchase_price)}</td>
                     <td className="py-4 pr-6 text-sm font-black text-slate-900">{fmtFull(tx.selling_price)}</td>
                     <td className="py-4 pr-6 text-sm font-black text-emerald-600">{fmtFull(profit)}</td>
                     <td className="py-4 pr-6">
