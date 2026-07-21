@@ -19,7 +19,7 @@ const PAYMENT_MODES = [
   { value: 'cheque', label: 'Cheque' },
 ];
 
-const TYPE_LABEL: Record<string, string> = { item_sale: 'Item Sale', investment: 'Investment' };
+const TYPE_LABEL: Record<string, string> = { item_sale: 'Item Sale', investment: 'Investment', pre_booking: 'Pre-Booking' };
 
 const STATUS_CFG: Record<string, { label: string; bg: string; text: string; dot: string }> = {
   pending:  { label: 'Pending',  bg: 'bg-amber-50 border-amber-200',    text: 'text-amber-700',   dot: 'bg-amber-500'   },
@@ -191,9 +191,14 @@ export default function SalesEnquiriesPage() {
   async function handleReview() {
     if (!reviewTarget) return;
     const isApprovingItemSale = reviewAction === 'approved' && reviewTarget.type === 'item_sale';
+    const isApprovingPreBooking = reviewAction === 'approved' && reviewTarget.type === 'pre_booking';
 
     if (isApprovingItemSale && remainingAmount > 0 && !splitsValid) {
       showToast(`Payment splits must add up to ₹${remainingAmount.toLocaleString('en-IN')}`, false);
+      return;
+    }
+    if (isApprovingPreBooking && !reviewTarget.reference) {
+      showToast('This enquiry has no linked inventory item', false);
       return;
     }
 
@@ -323,7 +328,7 @@ export default function SalesEnquiriesPage() {
                     <div className="flex items-start gap-4">
                       <div className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: `${PRIMARY}10` }}>
                         <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke={PRIMARY} strokeWidth={1.8}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d={e.type === 'item_sale' ? 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' : 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6'} />
+                          <path strokeLinecap="round" strokeLinejoin="round" d={e.type === 'item_sale' ? 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' : e.type === 'pre_booking' ? 'M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-4-7 4V5z' : 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6'} />
                         </svg>
                       </div>
                       <div>
@@ -331,7 +336,7 @@ export default function SalesEnquiriesPage() {
                         <p className="text-[11px] text-slate-500 font-medium mt-0.5">
                           <span className="font-black" style={{ color: PRIMARY }}>{rupee(e.amount)}</span> — {e.description}
                         </p>
-                        {e.reference && <p className="text-[10px] text-slate-400 mt-0.5">Ref: {e.reference}</p>}
+                        {e.reference && <p className="text-[10px] text-slate-400 mt-0.5">Ref: {e.reference}{e.type === 'pre_booking' && e.mode ? ` · via ${e.mode.replace('_', ' ')}` : ''}</p>}
                         {e.admin_note && <p className="text-[10px] text-slate-400 mt-0.5 italic">Note: {e.admin_note}</p>}
                       </div>
                     </div>
@@ -365,6 +370,8 @@ export default function SalesEnquiriesPage() {
                             {certGeneratingRef === e.reference ? 'Generating…' : 'Certificate'}
                           </button>
                         </div>
+                      ) : e.status === 'approved' && e.type === 'pre_booking' ? (
+                        <span className="text-[10px] font-black text-blue-600">Reserved · {e.reference}</span>
                       ) : e.commission_amount > 0 ? (
                         <span className="text-[10px] font-black text-emerald-600">{rupee(e.commission_amount)} → payroll</span>
                       ) : null}
@@ -394,12 +401,38 @@ export default function SalesEnquiriesPage() {
                 <p className="text-sm font-black text-slate-900">{name(reviewTarget.sales_agent_id)} → {name(reviewTarget.customer_id)}</p>
                 <p className="text-[11px] text-slate-500 mt-1">{TYPE_LABEL[reviewTarget.type]} • {rupee(reviewTarget.amount)}</p>
                 <p className="text-[11px] text-slate-400 italic mt-1">"{reviewTarget.description}"</p>
-                {reviewAction === 'approved' && (
+                {reviewAction === 'approved' && reviewTarget.type !== 'pre_booking' && (
                   <p className="text-[10px] text-emerald-700 font-bold mt-2 uppercase tracking-wider">
                     Commission will be computed automatically if the customer is within the configured commission window, and included in the agent's payroll for this month.
                   </p>
                 )}
+                {reviewAction === 'approved' && reviewTarget.type === 'pre_booking' && (
+                  <p className="text-[10px] text-blue-700 font-bold mt-2 uppercase tracking-wider">
+                    No commission yet — this only reserves the item and records the advance. Commission applies once the item is actually sold.
+                  </p>
+                )}
               </div>
+
+              {reviewAction === 'approved' && reviewTarget.type === 'pre_booking' && (
+                !reviewTarget.reference ? (
+                  <div className="p-4 rounded-2xl bg-red-50 border border-red-100 text-[11px] font-bold text-red-700">
+                    This enquiry has no linked inventory item — it can't be approved until the sales agent re-submits by picking a real item from stock.
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border-2 border-blue-200 bg-blue-50/40 p-5 space-y-3">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">Advance Payment</p>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm font-black text-slate-900">₹{reviewTarget.amount.toLocaleString('en-IN')}</span>
+                      <span className="px-4 py-2 bg-white border border-blue-200 rounded-xl text-xs font-black uppercase tracking-wider text-blue-700">
+                        {(reviewTarget.mode || 'cash').replace('_', ' ')}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400">
+                      Payment mode as recorded by the sales agent. Item <span className="font-bold text-slate-600">{reviewTarget.reference}</span> will be marked reserved and this amount recorded as an advance on {name(reviewTarget.customer_id)}'s account.
+                    </p>
+                  </div>
+                )
+              )}
 
               {reviewAction === 'approved' && reviewTarget.type === 'item_sale' && (
                 !reviewTarget.reference ? (
@@ -563,7 +596,9 @@ export default function SalesEnquiriesPage() {
                   Cancel
                 </button>
                 <button onClick={handleReview}
-                  disabled={reviewing || (reviewAction === 'approved' && reviewTarget.type === 'item_sale' && (!reviewTarget.reference || (remainingAmount > 0 && !splitsValid)))}
+                  disabled={reviewing
+                    || (reviewAction === 'approved' && reviewTarget.type === 'item_sale' && (!reviewTarget.reference || (remainingAmount > 0 && !splitsValid)))
+                    || (reviewAction === 'approved' && reviewTarget.type === 'pre_booking' && !reviewTarget.reference)}
                   className={`flex-1 py-3.5 rounded-2xl text-white text-sm font-black transition-all disabled:opacity-50 flex items-center justify-center gap-2 ${reviewAction === 'approved' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'}`}>
                   {reviewing && <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
                   {reviewing ? 'Saving…' : reviewAction === 'approved' ? 'Approve' : 'Reject'}

@@ -4,9 +4,11 @@ import { InventoryItem, staticUrl } from '../lib/api';
 interface ViewItemModalProps {
   item: InventoryItem;
   onClose: () => void;
+  onCancelPreBooking?: (item: InventoryItem) => void;
+  cancellingPreBooking?: boolean;
 }
 
-export default function ViewItemModal({ item, onClose }: ViewItemModalProps) {
+export default function ViewItemModal({ item, onClose, onCancelPreBooking, cancellingPreBooking }: ViewItemModalProps) {
   const product = typeof item.product_id === 'object' ? item.product_id : ({} as any);
   const img = staticUrl(product?.images?.[0]);
 
@@ -166,6 +168,35 @@ export default function ViewItemModal({ item, onClose }: ViewItemModalProps) {
 
                 <div className="flex justify-between items-center mt-2"><span className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Max Allowable Discount</span><span className="font-bold text-slate-500 text-xs">{item.max_manager_discount}%</span></div>
               </div>
+            </div>
+          )}
+
+          {/* Pre-Booking Info */}
+          {item.status === 'reserved' && item.prebooking_advance_id && (
+            <div className="bg-blue-50 rounded-2xl border border-blue-100 p-5 mb-6 text-sm">
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-3 border-b border-blue-100 pb-2">Pre-Booking</h3>
+              <div className="space-y-2.5">
+                <div className="flex justify-between items-center"><span className="text-slate-500">Customer</span><span className="font-bold text-slate-800">{item.prebooking_customer_name} · {item.prebooking_customer_phone}</span></div>
+                <div className="flex justify-between items-center"><span className="text-slate-500">Advance Paid</span><span className="font-black text-blue-700">₹{fmt(item.prebooking_advance_amount)}</span></div>
+                {item.prebooking_expected_date && (
+                  <div className="flex justify-between items-center"><span className="text-slate-500">Expected Pickup</span><span className="font-bold text-slate-800">{new Date(item.prebooking_expected_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span></div>
+                )}
+                {item.prebooked_by_name && (
+                  <div className="flex justify-between items-center"><span className="text-slate-500">Booked By</span><span className="font-bold text-slate-800">{item.prebooked_by_name}</span></div>
+                )}
+                {item.prebooking_notes && (
+                  <div className="pt-2 border-t border-blue-100 text-slate-600 italic">"{item.prebooking_notes}"</div>
+                )}
+              </div>
+              {onCancelPreBooking && (
+                <button
+                  onClick={() => onCancelPreBooking(item)}
+                  disabled={cancellingPreBooking}
+                  className="w-full mt-4 py-2.5 bg-white border border-red-200 text-red-600 rounded-xl text-[11px] font-black uppercase tracking-wider hover:bg-red-50 transition-all disabled:opacity-50"
+                >
+                  {cancellingPreBooking ? 'Cancelling…' : 'Cancel Booking'}
+                </button>
+              )}
             </div>
           )}
 

@@ -161,6 +161,16 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
     return (window as any)._rcv_customer;
   }
 
+  // #recaptcha-customer unmounts with this modal, so the cached verifier must be
+  // cleared here too — otherwise reopening the modal reuses a verifier bound to a
+  // dead DOM node and signInWithPhoneNumber fails with auth/invalid-app-credential.
+  useEffect(() => {
+    return () => {
+      try { (window as any)._rcv_customer?.clear(); } catch {}
+      (window as any)._rcv_customer = null;
+    };
+  }, []);
+
   async function handleSendOtp() {
     if (!phone || phone.length < 10) { setErr('Enter a valid 10-digit mobile number'); return; }
     setErr('');
