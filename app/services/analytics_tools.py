@@ -1442,3 +1442,434 @@ async def get_today_snapshot() -> dict:
 
     snap["date"] = today_start.strftime("%Y-%m-%d")
     return snap
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Financial statements — mirrors backend/src/modules/reports/reports.service.ts
+# so the AI's numbers match the admin's Reports pages exactly.
+# ─────────────────────────────────────────────────────────────────────────────
+
+AVG_DAYS_PER_MONTH = 30.4375
+
+
+async def _compute_staff_expense(from_dt: Optional[datetime], to_dt: datetime) -> dict:
+    """Cumulative staff cost: base salary prorated by tenure/period, plus recorded incentives."""
+    db = get_db()
+    users = await db["users"].find(
+        {"isActive": {"$ne": False}}, {"base_salary": 1, "joining_date": 1, "createdAt": 1}
+    ).to_list(500)
+
+    base = 0.0
+    headcount = 0
+    for u in users:
+        salary = u.get("base_salary") or 0
+        if not salary:
+            continue
+        joined = u.get("joining_date") or u.get("createdAt") or to_dt
+        if isinstance(joined, str):
+            joined = datetime.fromisoformat(joined.replace("Z", "+00:00"))
+        if joined.tzinfo is None:
+            joined = joined.replace(tzinfo=timezone.utc)
+        period_start = from_dt if (from_dt and from_dt > joined) else joined
+        days = (to_dt - period_start).total_seconds() / 86400
+        if days <= 0:
+            continue
+        base += salary * (days / AVG_DAYS_PER_MONTH)
+        headcount += 1
+
+    incentives_docs = await db["incentives"].find({}, {"month": 1, "year": 1, "amount": 1}).to_list(2000)
+    incentives = 0.0
+    from_month_start = datetime(from_dt.year, from_dt.month, 1, tzinfo=timezone.utc) if from_dt else None
+    for inc in incentives_docs:
+        # inc["month"] is stored 0-indexed (0=Jan), matching the JS `new Date(year, month, 1)` convention
+        inc_date = datetime(inc["year"], (inc.get("month") or 0) + 1, 1, tzinfo=timezone.utc)
+        if inc_date > to_dt:
+            continue
+        if from_month_start and inc_date < from_month_start:
+            continue
+        incentives += inc.get("amount") or 0
+
+    return {"base": round(base), "incentives": round(incentives), "total": round(base + incentives), "headcount": headcount}
+
+
+async def _compute_misc_expense(from_dt: Optional[datetime], to_dt: datetime) -> float:
+    """Approved reimbursements (travel/food/supplies/maintenance) dated within [from, to]."""
+    db = get_db()
+    match: dict = {"status": "approved"}
+    date_range: dict = {"$lte": to_dt}
+    if from_dt:
+        date_range["$gte"] = from_dt
+    pipeline = [
+        {"$addFields": {"_expense_date": {"$ifNull": ["$reviewed_at", "$createdAt"]}}},
+        {"$match": {**match, "_expense_date": date_range}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}},
+    ]
+    rows = await db["reimbursements"].aggregate(pipeline).to_list(1)
+    return rows[0]["total"] if rows else 0
+
+
+async def _compute_inventory_loss(from_dt: Optional[datetime], to_dt: datetime) -> dict:
+    """Stolen/damaged inventory written off at purchase cost, reported within [from, to]."""
+    db = get_db()
+    match: dict = {
+        "is_deleted": {"$ne": True},
+        "status": {"$in": ["stolen", "damaged"]},
+        "damaged_at": {"$ne": None, "$lte": to_dt, **({"$gte": from_dt} if from_dt else {})},
+    }
+    rows = await db["inventory_items"].aggregate([
+        {"$match": match},
+        {"$group": {"_id": "$status", "total": {"$sum": "$purchase_price"}, "count": {"$sum": 1}}},
+    ]).to_list(10)
+
+    stolen = next((r for r in rows if r["_id"] == "stolen"), {"total": 0, "count": 0})
+    damaged = next((r for r in rows if r["_id"] == "damaged"), {"total": 0, "count": 0})
+    return {
+        "stolen": round(stolen.get("total") or 0), "stolen_count": stolen.get("count", 0),
+        "damaged": round(damaged.get("total") or 0), "damaged_count": damaged.get("count", 0),
+        "total": round((stolen.get("total") or 0) + (damaged.get("total") or 0)),
+    }
+
+
+def _parse_as_of(as_of: Optional[str]) -> datetime:
+    if not as_of:
+        return _now()
+    d = datetime.fromisoformat(as_of)
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=timezone.utc)
+    return d.replace(hour=23, minute=59, second=59, microsecond=999000)
+
+
+async def get_profit_loss_statement(days: int = 30) -> dict:
+    """
+    Full Profit & Loss statement — matches the admin's P&L report exactly (same source data
+    and business rules, not a simplified estimate). Use for 'P&L', 'profit and loss', 'net profit',
+    'income statement' queries — this is more authoritative than get_profit_summary, which only
+    covers gross margin on sold items and skips overhead (payroll, reimbursements, write-offs).
+    """
+    db = get_db()
+    since = _start(days)
+    to_dt = _now()
+
+    sales_rows = await db["inventory_items"].aggregate([
+        {"$match": {"is_deleted": {"$ne": True}, "status": "sold", "sold_at": {"$gte": since}}},
+        {"$group": {"_id": None, "revenue": {"$sum": "$selling_price"}, "cogs": {"$sum": "$purchase_price"}, "count": {"$sum": 1}}},
+    ]).to_list(1)
+    online_rows = await db["onlineorders"].aggregate([
+        {"$match": {"payment_status": "paid", "createdAt": {"$gte": since}}},
+        {"$group": {"_id": None, "revenue": {"$sum": "$total"}, "count": {"$sum": 1}}},
+    ]).to_list(1)
+    old_gold_rows = await db["oldgoldtransactions"].aggregate([
+        {"$match": {"status": "settled", "settled_at": {"$gte": since}}},
+        {"$group": {"_id": None, "outflow": {"$sum": "$settlement_amount"}, "count": {"$sum": 1}}},
+    ]).to_list(1)
+    forfeiture_rows = await db["customeradvances"].aggregate([
+        {"$unwind": "$forfeitureHistory"},
+        {"$match": {"forfeitureHistory.date": {"$gte": since}}},
+        {"$group": {"_id": None, "total": {"$sum": "$forfeitureHistory.amount"}, "count": {"$sum": 1}}},
+    ]).to_list(1)
+
+    sales = sales_rows[0] if sales_rows else {"revenue": 0, "cogs": 0, "count": 0}
+    online = online_rows[0] if online_rows else {"revenue": 0, "count": 0}
+    old_gold = old_gold_rows[0] if old_gold_rows else {"outflow": 0, "count": 0}
+    forfeiture = forfeiture_rows[0] if forfeiture_rows else {"total": 0, "count": 0}
+
+    staff_expense, misc_expense, inventory_loss = (
+        await _compute_staff_expense(since, to_dt),
+        await _compute_misc_expense(since, to_dt),
+        await _compute_inventory_loss(since, to_dt),
+    )
+
+    total_revenue = (sales["revenue"] or 0) + (online["revenue"] or 0) + (forfeiture["total"] or 0)
+    gross_profit = total_revenue - (sales["cogs"] or 0)
+    total_expenses = (old_gold["outflow"] or 0) + staff_expense["total"] + misc_expense + inventory_loss["total"]
+    net_profit = gross_profit - total_expenses
+
+    return {
+        "period_days": days,
+        "revenue": {
+            "in_store_sales": round(sales["revenue"] or 0),
+            "online_orders": round(online["revenue"] or 0),
+            "prebooking_cancellation_fees": round(forfeiture["total"] or 0),
+            "total": round(total_revenue),
+        },
+        "cost_of_goods_sold": round(sales["cogs"] or 0),
+        "gross_profit": round(gross_profit),
+        "gross_margin_pct": round((gross_profit / total_revenue * 100) if total_revenue else 0, 1),
+        "expenses": {
+            "old_gold_buyback_payments": round(old_gold["outflow"] or 0),
+            "staff_and_payroll": staff_expense["total"],
+            "miscellaneous_reimbursements": round(misc_expense),
+            "stolen_inventory_writeoff": inventory_loss["stolen"],
+            "damaged_inventory_writeoff": inventory_loss["damaged"],
+            "total": round(total_expenses),
+        },
+        "net_profit": round(net_profit),
+        "net_margin_pct": round((net_profit / total_revenue * 100) if total_revenue else 0, 1),
+        "_charts": [{
+            "type": "stat",
+            "title": f"P&L Summary — Last {days} Days",
+            "data": [
+                {"label": "Total Revenue", "value": round(total_revenue), "prefix": "₹"},
+                {"label": "Gross Profit", "value": round(gross_profit), "prefix": "₹"},
+                {"label": "Net Profit", "value": round(net_profit), "prefix": "₹"},
+            ],
+        }],
+    }
+
+
+async def get_balance_sheet(as_of: Optional[str] = None) -> dict:
+    """
+    Estimated balance sheet as of a date — matches the admin's Balance Sheet report exactly.
+    Use for 'balance sheet', 'assets and liabilities', 'net worth', 'equity' queries.
+    """
+    db = get_db()
+    as_of_dt = _parse_as_of(as_of)
+
+    async def _agg(col, pipeline):
+        rows = await db[col].aggregate(pipeline).to_list(1)
+        return rows[0] if rows else {}
+
+    cash_sales = await _agg("inventory_items", [
+        {"$match": {"is_deleted": {"$ne": True}, "status": "sold", "sold_at": {"$lte": as_of_dt}}},
+        {"$group": {"_id": None, "total": {"$sum": "$selling_price"}}},
+    ])
+    cash_online = await _agg("onlineorders", [
+        {"$match": {"payment_status": "paid", "createdAt": {"$lte": as_of_dt}}},
+        {"$group": {"_id": None, "total": {"$sum": "$total"}}},
+    ])
+    cash_investment_in = await _agg("subscriptions", [
+        {"$unwind": "$paymentLedger"},
+        {"$match": {"paymentLedger.date": {"$lte": as_of_dt}}},
+        {"$group": {"_id": None, "total": {"$sum": "$paymentLedger.amount"}}},
+    ])
+    cash_out_old_gold = await _agg("oldgoldtransactions", [
+        {"$match": {"status": "settled", "settled_at": {"$lte": as_of_dt}}},
+        {"$group": {"_id": None, "total": {"$sum": "$settlement_amount"}}},
+    ])
+    cash_out_po = await _agg("purchase_orders", [
+        {"$match": {"status": "published", "purchase_date": {"$lte": as_of_dt}}},
+        {"$group": {"_id": None, "total": {"$sum": "$total_amount"}}},
+    ])
+    cash_out_investment = await _agg("subscriptions", [
+        {"$unwind": "$redemptionHistory"},
+        {"$match": {"redemptionHistory.date": {"$lte": as_of_dt}}},
+        {"$group": {"_id": None, "total": {"$sum": "$redemptionHistory.amount"}}},
+    ])
+    inventory_at_cost = await _agg("inventory_items", [
+        {"$match": {"is_deleted": {"$ne": True}, "status": {"$in": ["available", "reserved"]}}},
+        {"$group": {"_id": None, "total": {"$sum": "$purchase_price"}, "count": {"$sum": 1}}},
+    ])
+    emi_outstanding = await _agg("inventory_items", [
+        {"$match": {"is_deleted": {"$ne": True}, "is_emi": True, "status": "sold", "sold_at": {"$lte": as_of_dt}}},
+        {"$group": {"_id": None, "total": {"$sum": {"$subtract": ["$selling_price", {"$ifNull": ["$emi_down_payment", 0]}]}}, "count": {"$sum": 1}}},
+    ])
+    online_pending = await _agg("onlineorders", [
+        {"$match": {"payment_status": "pending", "createdAt": {"$lte": as_of_dt}}},
+        {"$group": {"_id": None, "total": {"$sum": "$total"}, "count": {"$sum": 1}}},
+    ])
+    investment_payable = await _agg("subscriptions", [
+        {"$match": {"startedAt": {"$lte": as_of_dt}}},
+        {"$project": {"payable": {"$max": [0, {"$subtract": [{"$add": [{"$ifNull": ["$amountAccumulated", 0]}, {"$ifNull": ["$interestAccumulated", 0]}]}, {"$ifNull": ["$amountRedeemed", 0]}]}]}}},
+        {"$group": {"_id": None, "total": {"$sum": "$payable"}, "count": {"$sum": 1}}},
+    ])
+    old_gold_payable = await _agg("oldgoldtransactions", [
+        {"$match": {"status": "melting_authorized", "melt_authorized_at": {"$lte": as_of_dt}}},
+        {"$group": {"_id": None, "total": {"$sum": "$total_value"}, "count": {"$sum": 1}}},
+    ])
+    prebooking_receivable = await _agg("inventory_items", [
+        {"$match": {"is_deleted": {"$ne": True}, "status": "reserved", "prebooking_advance_id": {"$ne": None}, "prebooked_at": {"$lte": as_of_dt}}},
+        {"$group": {"_id": None, "total": {"$sum": {"$max": [0, {"$subtract": ["$selling_price", {"$ifNull": ["$prebooking_advance_amount", 0]}]}]}}, "count": {"$sum": 1}}},
+    ])
+
+    staff_expense, misc_expense = await _compute_staff_expense(None, as_of_dt), await _compute_misc_expense(None, as_of_dt)
+
+    cash_position = (
+        (cash_sales.get("total") or 0) + (cash_online.get("total") or 0) + (cash_investment_in.get("total") or 0)
+        - (cash_out_old_gold.get("total") or 0) - (cash_out_po.get("total") or 0) - (cash_out_investment.get("total") or 0)
+        - staff_expense["total"] - misc_expense
+    )
+
+    emi_total = emi_outstanding.get("total") or 0
+    online_pending_total = online_pending.get("total") or 0
+    prebooking_total = prebooking_receivable.get("total") or 0
+    receivables = emi_total + online_pending_total + prebooking_total
+    inventory_cost = inventory_at_cost.get("total") or 0
+
+    total_assets = round(cash_position) + round(inventory_cost) + round(receivables)
+    goldinv_payable = round(investment_payable.get("total") or 0)
+    oldgold_payable = round(old_gold_payable.get("total") or 0)
+    total_liabilities = goldinv_payable + oldgold_payable
+    equity = total_assets - total_liabilities
+
+    return {
+        "as_of": as_of_dt.strftime("%Y-%m-%d"),
+        "is_estimated": True,
+        "assets": {
+            "cash_and_bank": round(cash_position),
+            "inventory_at_cost": round(inventory_cost),
+            "accounts_receivable": round(receivables),
+            "emi_outstanding": round(emi_total),
+            "online_pending": round(online_pending_total),
+            "prebooking_dues": round(prebooking_total),
+        },
+        "total_assets": total_assets,
+        "liabilities": {
+            "gold_investment_payable": goldinv_payable,
+            "old_gold_payable": oldgold_payable,
+        },
+        "total_liabilities": total_liabilities,
+        "equity": equity,
+    }
+
+
+async def get_cash_flow_summary(days: int = 30) -> dict:
+    """Cash in vs cash out over N days — matches the admin's Cash Flow report. Use for 'cash flow', 'cash position', 'money in and out' queries."""
+    db = get_db()
+    since = _start(days)
+
+    async def _sum(col, match, field):
+        rows = await db[col].aggregate([{"$match": match}, {"$group": {"_id": None, "total": {"$sum": f"${field}"}}}]).to_list(1)
+        return rows[0]["total"] if rows else 0
+
+    cash_in_sales = await _sum("inventory_items", {"is_deleted": {"$ne": True}, "status": "sold", "sold_at": {"$gte": since}}, "selling_price")
+    cash_in_online = await _sum("onlineorders", {"payment_status": "paid", "createdAt": {"$gte": since}}, "total")
+    cash_out_old_gold = await _sum("oldgoldtransactions", {"status": "settled", "settled_at": {"$gte": since}}, "settlement_amount")
+    cash_out_po = await _sum("purchase_orders", {"status": "published", "purchase_date": {"$gte": since}}, "total_amount")
+
+    cash_in = (cash_in_sales or 0) + (cash_in_online or 0)
+    cash_out = (cash_out_old_gold or 0) + (cash_out_po or 0)
+
+    return {
+        "period_days": days,
+        "cash_in": {"sales": round(cash_in_sales or 0), "online_orders": round(cash_in_online or 0), "total": round(cash_in)},
+        "cash_out": {"old_gold_buyback": round(cash_out_old_gold or 0), "purchase_orders": round(cash_out_po or 0), "total": round(cash_out)},
+        "net_cash_movement": round(cash_in - cash_out),
+    }
+
+
+async def get_purchase_register(days: int = 90, vendor_name: str = "") -> dict:
+    """
+    Itemized purchase register — every line item purchased from suppliers, matching the admin's
+    Purchase Register report. Pass vendor_name to see items purchased FROM A SPECIFIC VENDOR
+    (e.g. 'items from Martech Acadmey', 'what did we buy from Ryntra Tech'). Use for 'purchase
+    register', 'purchase history', 'items bought from [vendor]', 'vendor spend' queries.
+    """
+    db = get_db()
+    since = _start(days)
+
+    match: dict = {"purchase_date": {"$gte": since}}
+    pipeline = [
+        {"$match": match},
+        {"$sort": {"purchase_date": -1}},
+        {"$unwind": {"path": "$items", "preserveNullAndEmptyArrays": True}},
+        {"$lookup": {"from": "suppliers", "localField": "supplier_id", "foreignField": "_id", "as": "supplier"}},
+        {"$unwind": {"path": "$supplier", "preserveNullAndEmptyArrays": True}},
+        {"$project": {
+            "_id": 0,
+            "po_number": "$po_number",
+            "vendor": {"$ifNull": ["$supplier.name", {"$ifNull": ["$vendor_name", "Unknown Vendor"]}]},
+            "invoice_number": {"$ifNull": ["$invoice_number", ""]},
+            "purchase_date": "$purchase_date",
+            "item_name": {"$ifNull": ["$items.name", "Unknown Item"]},
+            "sku": {"$ifNull": ["$items.sku", ""]},
+            "quantity": {"$ifNull": ["$items.count", 1]},
+            "unit_cost": {"$ifNull": ["$items.purchase_price", 0]},
+            "line_total": {"$multiply": [{"$ifNull": ["$items.purchase_price", 0]}, {"$ifNull": ["$items.count", 1]}]},
+            "status": "$status",
+        }},
+    ]
+    rows = await db["purchase_orders"].aggregate(pipeline).to_list(2000)
+
+    if vendor_name.strip():
+        needle = vendor_name.strip().lower()
+        rows = [r for r in rows if needle in (r.get("vendor") or "").lower()]
+
+    for r in rows:
+        r["purchase_date"] = str(r.get("purchase_date", ""))[:10]
+
+    total_amount = sum(r.get("line_total") or 0 for r in rows)
+    total_qty = sum(r.get("quantity") or 0 for r in rows)
+
+    return {
+        "period_days": days,
+        "vendor_filter": vendor_name or None,
+        "line_items": rows[:50],
+        "total_line_items": len(rows),
+        "totals": {"amount": round(total_amount), "quantity": total_qty},
+    }
+
+
+async def get_inventory_valuation() -> dict:
+    """Current stock valuation (cost and retail value) by status, category, and branch — matches the admin's Inventory Valuation report."""
+    db = get_db()
+
+    by_status = await db["inventory_items"].aggregate([
+        {"$match": {"is_deleted": {"$ne": True}}},
+        {"$group": {"_id": "$status", "cost_value": {"$sum": "$purchase_price"}, "retail_value": {"$sum": "$selling_price"}, "count": {"$sum": 1}}},
+        {"$sort": {"cost_value": -1}},
+    ]).to_list(20)
+
+    by_branch = await db["inventory_items"].aggregate([
+        {"$match": {"is_deleted": {"$ne": True}, "status": {"$in": ["available", "reserved"]}}},
+        {"$group": {"_id": "$branch_id", "cost_value": {"$sum": "$purchase_price"}, "retail_value": {"$sum": "$selling_price"}, "count": {"$sum": 1}}},
+        {"$lookup": {"from": "branches", "localField": "_id", "foreignField": "_id", "as": "branch"}},
+        {"$unwind": {"path": "$branch", "preserveNullAndEmptyArrays": True}},
+        {"$project": {"_id": 0, "branch": {"$ifNull": ["$branch.name", "Unallocated / Warehouse"]}, "cost_value": 1, "retail_value": 1, "count": 1}},
+        {"$sort": {"cost_value": -1}},
+    ]).to_list(50)
+
+    sellable = [s for s in by_status if s["_id"] in ("available", "reserved")]
+    total_cost = round(sum(s["cost_value"] or 0 for s in sellable))
+    total_retail = round(sum(s["retail_value"] or 0 for s in sellable))
+
+    return {
+        "total_cost_value": total_cost,
+        "total_retail_value": total_retail,
+        "potential_margin": total_retail - total_cost,
+        "total_units": sum(s["count"] for s in sellable),
+        "by_status": [{"status": s["_id"], "cost_value": round(s["cost_value"] or 0), "retail_value": round(s["retail_value"] or 0), "count": s["count"]} for s in by_status],
+        "by_branch": [{"branch": b["branch"], "cost_value": round(b["cost_value"] or 0), "retail_value": round(b["retail_value"] or 0), "count": b["count"]} for b in by_branch],
+    }
+
+
+async def get_receivables_summary() -> dict:
+    """Outstanding money owed to the store — EMI balances, unpaid online orders, pending pre-booking dues. Matches the admin's Receivables report. Use for 'receivables', 'money owed', 'outstanding dues', 'pending payments' queries."""
+    db = get_db()
+
+    emi_rows = await db["inventory_items"].find(
+        {"is_deleted": {"$ne": True}, "is_emi": True, "status": "sold"},
+        {"unique_item_code": 1, "barcode": 1, "sold_customer_name": 1, "sold_customer_phone": 1, "selling_price": 1, "emi_down_payment": 1},
+    ).to_list(500)
+    online_rows = await db["onlineorders"].find(
+        {"payment_status": "pending"}, {"order_number": 1, "customer_name": 1, "customer_phone": 1, "total": 1},
+    ).to_list(500)
+    prebooking_rows = await db["inventory_items"].find(
+        {"is_deleted": {"$ne": True}, "status": "reserved", "prebooking_advance_id": {"$ne": None}},
+        {"unique_item_code": 1, "barcode": 1, "prebooking_customer_name": 1, "prebooking_customer_phone": 1, "selling_price": 1, "prebooking_advance_amount": 1},
+    ).to_list(500)
+
+    emi_outstanding = [
+        {"type": "emi", "reference": r.get("unique_item_code") or r.get("barcode"), "customer": r.get("sold_customer_name"), "amount": round(max(0, (r.get("selling_price") or 0) - (r.get("emi_down_payment") or 0)))}
+        for r in emi_rows
+    ]
+    emi_outstanding = [r for r in emi_outstanding if r["amount"] > 0]
+
+    online_pending = [
+        {"type": "online_order", "reference": r.get("order_number"), "customer": r.get("customer_name"), "amount": round(r.get("total") or 0)}
+        for r in online_rows
+    ]
+
+    prebooking_pending = [
+        {"type": "prebooking", "reference": r.get("unique_item_code") or r.get("barcode"), "customer": r.get("prebooking_customer_name"), "amount": round(max(0, (r.get("selling_price") or 0) - (r.get("prebooking_advance_amount") or 0)))}
+        for r in prebooking_rows
+    ]
+    prebooking_pending = [r for r in prebooking_pending if r["amount"] > 0]
+
+    total = sum(r["amount"] for r in emi_outstanding) + sum(r["amount"] for r in online_pending) + sum(r["amount"] for r in prebooking_pending)
+
+    return {
+        "total_outstanding": round(total),
+        "emi_outstanding": {"count": len(emi_outstanding), "total": round(sum(r["amount"] for r in emi_outstanding)), "items": emi_outstanding[:15]},
+        "online_pending": {"count": len(online_pending), "total": round(sum(r["amount"] for r in online_pending)), "items": online_pending[:15]},
+        "prebooking_dues": {"count": len(prebooking_pending), "total": round(sum(r["amount"] for r in prebooking_pending)), "items": prebooking_pending[:15]},
+    }

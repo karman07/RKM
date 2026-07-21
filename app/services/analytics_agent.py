@@ -38,6 +38,12 @@ from app.services.analytics_tools import (
     get_stolen_items,
     get_item_attendance_summary,
     get_gold_investment_summary,
+    get_profit_loss_statement,
+    get_balance_sheet,
+    get_cash_flow_summary,
+    get_purchase_register,
+    get_inventory_valuation,
+    get_receivables_summary,
 )
 
 logger = logging.getLogger(__name__)
@@ -75,6 +81,12 @@ TOOL_HANDLERS: dict[str, Any] = {
     "get_stolen_items": get_stolen_items,
     "get_item_attendance_summary": get_item_attendance_summary,
     "get_gold_investment_summary": get_gold_investment_summary,
+    "get_profit_loss_statement": get_profit_loss_statement,
+    "get_balance_sheet": get_balance_sheet,
+    "get_cash_flow_summary": get_cash_flow_summary,
+    "get_purchase_register": get_purchase_register,
+    "get_inventory_valuation": get_inventory_valuation,
+    "get_receivables_summary": get_receivables_summary,
 }
 
 TOOL_DECLARATIONS = [
@@ -337,6 +349,51 @@ TOOL_DECLARATIONS = [
             properties={"days": types.Schema(type="INTEGER", description="Past days for new sign-ups and redemptions. Default 30. Use 730 for all time.")},
         ),
     ),
+    types.FunctionDeclaration(
+        name="get_profit_loss_statement",
+        description="The FULL, authoritative Profit & Loss statement — same numbers as the admin's P&L report (revenue lines, cost of goods sold, gross profit, itemized expenses including payroll/reimbursements/write-offs, net profit). Use for 'P&L', 'profit and loss', 'net profit', 'income statement', 'how much did we actually earn'. Prefer this over get_profit_summary whenever the user asks about NET profit or a formal statement rather than just gross margin on sales.",
+        parameters=types.Schema(
+            type="OBJECT",
+            properties={"days": types.Schema(type="INTEGER", description="Past days. Default 30. Use 730 for all time.")},
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="get_balance_sheet",
+        description="Estimated balance sheet as of a date — assets (cash, inventory at cost, receivables), liabilities (gold investment payable, old gold payable), and equity. Same numbers as the admin's Balance Sheet report. Use for 'balance sheet', 'assets and liabilities', 'net worth', 'equity', 'what do we own vs owe'.",
+        parameters=types.Schema(
+            type="OBJECT",
+            properties={"as_of": types.Schema(type="STRING", description="YYYY-MM-DD date. Defaults to today.")},
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="get_cash_flow_summary",
+        description="Cash in vs cash out over N days (sales, online orders in; old-gold payouts, purchase orders out) and net cash movement. Same numbers as the admin's Cash Flow report. Use for 'cash flow', 'cash position', 'money in and out'.",
+        parameters=types.Schema(
+            type="OBJECT",
+            properties={"days": types.Schema(type="INTEGER", description="Past days. Default 30.")},
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="get_purchase_register",
+        description="Itemized list of every line item purchased from suppliers — same data as the admin's Purchase Register report. ALWAYS use vendor_name when the user names a specific supplier/vendor, e.g. 'items purchased from Martech Acadmey', 'what did we buy from Ryntra Tech', 'Martech's items', 'vendor X spend'. Use for 'purchase register', 'purchase history', 'items from [vendor]', 'what did we buy'.",
+        parameters=types.Schema(
+            type="OBJECT",
+            properties={
+                "days": types.Schema(type="INTEGER", description="Past days. Default 90. Use 730 for all time."),
+                "vendor_name": types.Schema(type="STRING", description="Supplier/vendor name (or partial name) to filter to a single vendor's purchased items. Leave empty for all vendors."),
+            },
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="get_inventory_valuation",
+        description="Current stock valuation (cost value and retail value) broken down by status, and by branch. Same numbers as the admin's Inventory Valuation report. Use for 'stock value', 'inventory valuation', 'how much is our stock worth', 'inventory by branch'.",
+        parameters=types.Schema(type="OBJECT", properties={}, required=[]),
+    ),
+    types.FunctionDeclaration(
+        name="get_receivables_summary",
+        description="Outstanding money owed TO the store — EMI balances still due, unpaid online orders, and pending pre-booking dues. Same numbers as the admin's Receivables report. Use for 'receivables', 'money owed to us', 'outstanding dues', 'pending payments', 'who owes us money'.",
+        parameters=types.Schema(type="OBJECT", properties={}, required=[]),
+    ),
 ]
 
 SYSTEM_PROMPT = """You are RKM Business Intelligence — the private AI analyst for RKM Jewellers with FULL access to the live business database.
@@ -367,6 +424,12 @@ SYSTEM_PROMPT = """You are RKM Business Intelligence — the private AI analyst 
 - REFUNDS/RETURNS: return counts and amounts
 - BRANCHES: sales and revenue by branch
 - GOLD INVESTMENT: subscription plans — active/cancelled counts, accumulated amount, new sign-ups, redemptions
+- PROFIT & LOSS STATEMENT: full P&L — revenue, COGS, gross profit, itemized expenses (payroll, reimbursements, stolen/damaged write-offs), net profit — matches the admin's P&L report exactly
+- BALANCE SHEET: estimated assets, liabilities, and equity as of a date — matches the admin's Balance Sheet report exactly
+- CASH FLOW: cash in vs cash out and net movement — matches the admin's Cash Flow report exactly
+- PURCHASE REGISTER / VENDOR ITEMS: itemized line items purchased from suppliers, filterable by vendor name — matches the admin's Purchase Register report exactly
+- INVENTORY VALUATION: current stock cost/retail value by status and branch — matches the admin's Inventory Valuation report exactly
+- RECEIVABLES: outstanding EMI balances, unpaid online orders, pending pre-booking dues — matches the admin's Receivables report exactly
 
 ━━━ ATTENDANCE ROUTING — FOLLOW EXACTLY ━━━
 | Query type                                      | Tool to call                                   |
@@ -397,6 +460,10 @@ Always show per-branch breakdown when get_branch_attendance is called.
 10. DAMAGED/STOLEN: "damaged items" → get_damaged_items(). "stolen items" / "theft" → get_stolen_items().
 11. ITEM ATTENDANCE: "item scans" / "item attendance" / "which branch is scanning" → get_item_attendance_summary().
 12. GOLD INVESTMENT: "gold plan" / "investment subscriptions" / "how many subscribers" → get_gold_investment_summary().
+13. FINANCIAL STATEMENTS: "P&L" / "profit and loss" / "net profit" / "income statement" → get_profit_loss_statement() (NOT get_profit_summary — that's gross margin only). "balance sheet" / "net worth" / "assets and liabilities" → get_balance_sheet(). "cash flow" / "cash position" → get_cash_flow_summary().
+14. VENDOR / PURCHASE ITEMS: "items purchased from [vendor]" / "what did we buy from [vendor]" / "[vendor]'s items" → get_purchase_register(vendor_name="[vendor]"). General purchase history without a named vendor → get_purchase_register() with no vendor_name.
+15. STOCK VALUE: "inventory valuation" / "stock value" / "how much is our inventory worth" → get_inventory_valuation().
+16. MONEY OWED TO US: "receivables" / "outstanding dues" / "who owes us" → get_receivables_summary().
 
 ━━━ OUTPUT FORMAT ━━━
 - **Bold** all key numbers and names
