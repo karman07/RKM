@@ -34,6 +34,17 @@ export default function PhoneOtpField({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // The invisible recaptcha container unmounts with this field, so the cached
+  // verifier must be cleared too — otherwise remounting reuses a verifier bound
+  // to a dead DOM node and signInWithPhoneNumber fails with auth/invalid-app-credential.
+  useEffect(() => {
+    return () => {
+      try { (window as any)[`_rcv_${fieldKey}`]?.clear(); } catch {}
+      (window as any)[`_rcv_${fieldKey}`] = null;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Reset verification whenever the number changes away from initial
   function handleChange(raw: string) {
     const digits = raw.replace(/\D/g, '').slice(0, 10);

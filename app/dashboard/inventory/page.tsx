@@ -21,6 +21,7 @@ import {
   getSettings,
   getCashiersByBranch,
   getSuppliers,
+  cancelPreBooking,
   type InventoryItem,
   type Lookup,
   type Product,
@@ -32,6 +33,8 @@ import Link from 'next/link';
 import Modal from '@/components/Modal';
 import CustomerSearchPanel, { type CustomerDraft } from '@/components/CustomerSearchPanel';
 import PaymentSplitsInput, { type PaymentSplit } from '@/components/PaymentSplitsInput';
+import PreBookModal from '@/components/PreBookModal';
+import { Bookmark } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
 const Doughnut = dynamic(() => import('react-chartjs-2').then(mod => mod.Doughnut), { ssr: false });
@@ -108,6 +111,8 @@ export default function InventoryPage() {
   const [dbStats, setDbStats] = useState({ totalCount: 0, totalValue: 0, byStatus: {} as any });
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'danger' | 'info' } | null>(null);
   const [user, setUser] = useState<User | null>(null);
+  const [preBookTarget, setPreBookTarget] = useState<InventoryItem | null>(null);
+  const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null);
   const [settings, setSettings] = useState<any>(null);
 
   const [statusFilter, setStatusFilter] = useState('');
@@ -274,6 +279,26 @@ export default function InventoryPage() {
   function showToast(message: string, type: 'success' | 'danger' | 'info' = 'info') {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
+  }
+
+  function handleBooked(updated: InventoryItem) {
+    setItems(prev => prev.map(it => it._id === updated._id ? updated : it));
+    setPreBookTarget(null);
+    showToast(`${updated.unique_item_code} reserved with ₹${(updated.prebooking_advance_amount ?? 0).toLocaleString('en-IN')} advance`, 'success');
+  }
+
+  async function handleCancelPreBooking(item: InventoryItem) {
+    if (!confirm(`Release ${item.unique_item_code} back to available stock? The customer's advance stays on their account as credit.`)) return;
+    setCancellingBookingId(item._id);
+    try {
+      const updated = await cancelPreBooking(item._id);
+      setItems(prev => prev.map(it => it._id === updated._id ? updated : it));
+      showToast('Pre-booking cancelled — item is available again', 'success');
+    } catch (e: any) {
+      showToast(e.message || 'Failed to cancel pre-booking', 'danger');
+    } finally {
+      setCancellingBookingId(null);
+    }
   }
 
   // ─── Data Load ────────────────────────────────────────────────────────────
@@ -898,6 +923,11 @@ export default function InventoryPage() {
                       {/* Status */}
                       <td className="px-4 py-3">
                         <span className={`${badge.wrap} scale-90 origin-left`}><span className={`h-1 w-1 rounded-full ${badge.dot}`} />{lookups.inventory_status?.find(l => l.value === item.status)?.label || (item.status.charAt(0).toUpperCase() + item.status.slice(1))}</span>
+                        {item.status === 'reserved' && item.prebooking_advance_id && (
+                          <p className="text-[9px] font-bold text-blue-600 mt-1 max-w-[160px] truncate" title={`${item.prebooking_customer_name} · ₹${(item.prebooking_advance_amount ?? 0).toLocaleString('en-IN')} advance`}>
+                            {item.prebooking_customer_name} · ₹{(item.prebooking_advance_amount ?? 0).toLocaleString('en-IN')}
+                          </p>
+                        )}
                       </td>
 
                       {/* Actions */}
@@ -925,6 +955,25 @@ export default function InventoryPage() {
                             )
                           )}
                         <div className="flex justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                          {item.status === 'available' && (
+                            <button
+                              onClick={() => setPreBookTarget(item)}
+                              title="Pre-Book with Advance"
+                              className="p-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white transition-all active:scale-90 shadow-sm"
+                            >
+                              <Bookmark size={14} strokeWidth={2.5} />
+                            </button>
+                          )}
+                          {item.status === 'reserved' && item.prebooking_advance_id && (
+                            <button
+                              onClick={() => handleCancelPreBooking(item)}
+                              disabled={cancellingBookingId === item._id}
+                              title="Cancel Pre-Booking"
+                              className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition-all active:scale-90 shadow-sm disabled:opacity-50"
+                            >
+                              <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                          )}
                           {transitions.length > 0 && (
                             <button 
                               onClick={() => { 
@@ -1567,6 +1616,10 @@ export default function InventoryPage() {
           </div>
         )}
       </Modal>
+
+      {preBookTarget && (
+        <PreBookModal item={preBookTarget} onClose={() => setPreBookTarget(null)} onBooked={handleBooked} />
+      )}
 
       {/* Invisible Print Wrapper for Scannable Labels */}
       <div className="hidden print:block print-labels-sheet">

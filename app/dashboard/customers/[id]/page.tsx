@@ -5,7 +5,7 @@ import {
   getCustomerById, getInventory, getSubscriptions, redeemSubscription,
   markGoldCashPayment, addInterestToSubscription, getMe, getGoldLoansByCustomer,
   getCustomerAdvances, createCustomerAdvance, redeemCustomerAdvance,
-  updateCustomer, getCustomFields, uploadUserAvatar, getUsers,
+  updateCustomer, getCustomFields, uploadUserAvatar, getUsers, cancelPreBooking,
   type Customer, type InventoryItem, type GoldSubscription, type User as AdminUser, type GoldLoan,
   type CustomerAdvance, type CustomField, staticUrl,
 } from '@/lib/api';
@@ -21,7 +21,7 @@ import { toast } from 'sonner';
 import {
   Users, Mail, Phone, MapPin, ChevronLeft, Calendar, ShoppingBag,
   CreditCard, Target, ShieldCheck, TrendingUp, Package, Gem, Download, Loader2, Plus, Wallet, X,
-  Receipt, Lock, Pencil, UserCog, Search,
+  Receipt, Lock, Pencil, UserCog, Search, Bookmark,
 } from 'lucide-react';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -1509,6 +1509,8 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
   const params = use(paramsPromise);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [orders, setOrders] = useState<InventoryItem[]>([]);
+  const [prebookedItems, setPrebookedItems] = useState<InventoryItem[]>([]);
+  const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null);
   const [goldSubs, setGoldSubs] = useState<GoldSubscription[]>([]);
   const [goldLoans, setGoldLoans] = useState<GoldLoan[]>([]);
   const [advances, setAdvances] = useState<CustomerAdvance[]>([]);
@@ -1537,8 +1539,9 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
         if (c.phone) query.sold_customer_phone = c.phone;
         else if (c.email) query.sold_customer_email = c.email;
 
-        const [sales, subs, loans, advs, meRes] = await Promise.all([
+        const [sales, prebooked, subs, loans, advs, meRes] = await Promise.all([
           getInventory(query),
+          getInventory({ status: 'reserved', prebooking_customer_id: c._id, limit: '50' }).catch(() => ({ data: [] })),
           c.phone || c.email
             ? getSubscriptions({ phone: c.phone, email: c.email }).catch(() => [])
             : Promise.resolve([]),
@@ -1548,6 +1551,7 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
         ]);
 
         setOrders(sales.data || []);
+        setPrebookedItems(prebooked.data || []);
         setGoldSubs((subs as GoldSubscription[]).filter(s => s.status !== 'pending'));
         setGoldLoans(loans as GoldLoan[]);
         setAdvances(advs as CustomerAdvance[]);
@@ -1567,6 +1571,20 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
 
   function handleAdvanceChanged(updated: CustomerAdvance) {
     setAdvances(prev => prev.map(a => a._id === updated._id ? updated : a));
+  }
+
+  async function handleCancelPreBooking(item: InventoryItem) {
+    if (!confirm(`Release ${item.unique_item_code} back to available stock? The advance stays on this customer's account as credit.`)) return;
+    setCancellingBookingId(item._id);
+    try {
+      await cancelPreBooking(item._id);
+      setPrebookedItems(prev => prev.filter(i => i._id !== item._id));
+      toast.success('Pre-booking cancelled');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to cancel pre-booking');
+    } finally {
+      setCancellingBookingId(null);
+    }
   }
 
   async function handleCreateAdvance(data: { amount: number; making_charges_waiver_pct?: number; mode?: string; note?: string; lock_in_days?: number }) {
@@ -2045,6 +2063,80 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
                 {advances.map(advance => (
                   <AdvanceCard key={advance._id} advance={advance} orders={orders} onChanged={handleAdvanceChanged} />
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* Pre-Booked Items — items reserved for this customer with an advance on file */}
+          {prebookedItems.length > 0 && (
+            <div>
+              <div className="flex items-center gap-3 mb-5">
+                <Bookmark size={18} style={{ color: '#7A1238' }} />
+                <h3 className="text-xl font-serif font-bold text-slate-900">Pre-Booked Items</h3>
+                <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-[#FDF3E7] text-[#5C0828] border border-[#EEE0C8]">
+                  {prebookedItems.length} Reserved
+                </span>
+              </div>
+              <div className="space-y-5">
+                {prebookedItems.map(item => {
+                  const product = typeof item.product_id === 'object' ? item.product_id : null;
+                  const imageUrl = item.image_url || product?.images?.[0];
+                  return (
+                    <div key={item._id} className="bg-white border border-blue-100 rounded-[28px] p-6 shadow-sm">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-center gap-4 min-w-0">
+                          <div className="w-14 h-14 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
+                            {imageUrl ? (
+                              <img src={staticUrl(imageUrl)} alt="Product" className="w-full h-full object-cover" />
+                            ) : (
+                              <Package className="text-slate-200" size={20} />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-[9px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-lg uppercase tracking-widest">
+                              #{item.unique_item_code}
+                            </span>
+                            <h4 className="text-base font-bold text-slate-900 mt-1 truncate">{product?.name || 'Jewellery Item'}</h4>
+                          </div>
+                        </div>
+                        <Link
+                          href="/dashboard/inventory"
+                          className="text-[9px] font-black uppercase tracking-widest text-blue-600 hover:underline shrink-0"
+                        >
+                          Open Inventory
+                        </Link>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-5 pt-5 border-t border-slate-50">
+                        <div>
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Advance Paid</p>
+                          <p className="text-sm font-black text-blue-700">{fmt(item.prebooking_advance_amount ?? 0)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Item Price</p>
+                          <p className="text-sm font-bold text-slate-700">{fmt(item.live_selling_price ?? item.selling_price ?? 0)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Expected Pickup</p>
+                          <p className="text-sm font-bold text-slate-700">{item.prebooking_expected_date ? fmtDate(item.prebooking_expected_date) : '—'}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Booked By</p>
+                          <p className="text-sm font-bold text-slate-700">{item.prebooked_by_name || '—'}</p>
+                        </div>
+                      </div>
+                      {item.prebooking_notes && (
+                        <p className="text-xs text-slate-500 italic mt-4 pt-4 border-t border-slate-50">"{item.prebooking_notes}"</p>
+                      )}
+                      <button
+                        onClick={() => handleCancelPreBooking(item)}
+                        disabled={cancellingBookingId === item._id}
+                        className="w-full mt-5 py-2.5 bg-white border border-red-200 text-red-600 rounded-xl text-[11px] font-black uppercase tracking-wider hover:bg-red-50 transition-all disabled:opacity-50"
+                      >
+                        {cancellingBookingId === item._id ? 'Cancelling…' : 'Cancel Booking'}
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

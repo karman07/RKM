@@ -373,6 +373,16 @@ export interface InventoryItem {
   certificate_url?: string;
   certificate_generated_at?: string | null;
   hallmark?: string;
+  // Pre-Booking
+  prebooking_customer_id?: string | null;
+  prebooking_customer_name?: string;
+  prebooking_customer_phone?: string;
+  prebooking_advance_id?: string | null;
+  prebooking_advance_amount?: number;
+  prebooking_expected_date?: string | null;
+  prebooking_notes?: string;
+  prebooked_by_name?: string;
+  prebooked_at?: string | null;
   createdAt: string;
 }
 
@@ -741,6 +751,25 @@ export const updateInventoryDiscount = (id: string, discounts: { admin_discount?
     method: 'PATCH',
     body: JSON.stringify(discounts),
   });
+
+/** Reserves an available item for a customer and records an advance payment against it */
+export const preBookItem = (id: string, payload: {
+  customer_id: string;
+  advance_amount: number;
+  mode?: string;
+  making_charges_waiver_pct?: number;
+  lock_in_days?: number;
+  expected_date?: string;
+  notes?: string;
+}) =>
+  request<InventoryItem>(`/inventory/${id}/prebook`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+/** Releases a pre-booked item back to available stock. The customer's advance is left untouched as store credit. */
+export const cancelPreBooking = (id: string) =>
+  request<InventoryItem>(`/inventory/${id}/prebook/cancel`, { method: 'PATCH' });
 
 /** Sets/updates the BIS Hallmark HUID on a specific inventory item */
 export const updateInventoryHallmark = (id: string, hallmark: string) =>
@@ -1901,10 +1930,11 @@ export interface SaleEnquiry {
   _id: string;
   sales_agent_id: { _id: string; name: string; email: string } | string;
   customer_id: { _id: string; name: string; phone: string; email?: string } | string;
-  type: 'item_sale' | 'investment';
+  type: 'item_sale' | 'investment' | 'pre_booking';
   description: string;
   amount: number;
   reference: string;
+  mode?: string;
   status: 'pending' | 'approved' | 'rejected';
   admin_note: string;
   reviewed_by?: { _id: string; name: string } | string | null;
