@@ -2,11 +2,13 @@
 import { useEffect, useState, useCallback, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import {
-  getCustomers, searchCustomerByPhone, sendCustomerOtp, verifyCustomerOtp, createCustomer, updateCustomer,
+  getCustomers, searchCustomerByPhone, createCustomer, updateCustomer,
   getInventory, getGoldBalance, getGoldLoansByCustomer, getCustomerAdvances,
   getCustomerCustomFields, uploadUserAvatar, generateCertificate, staticUrl,
   type FullCustomer, type InventoryItem, type GoldBalance, type GoldLoan, type CustomerAdvance, type EmployeeCustomField,
 } from '../../../lib/api';
+import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from 'firebase/auth';
+import { auth } from '../../../lib/firebase';
 
 const PRIMARY   = '#7A1C2A';
 const PRIMARY_D = '#5A0F1A';
@@ -71,12 +73,12 @@ type AddStep = 'phone' | 'otp' | 'details';
 function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreated: (c: FullCustomer) => void }) {
   const [step, setStep]           = useState<AddStep>('phone');
   const [phone, setPhone]         = useState('');
-  const [devOtp, setDevOtp]       = useState<string | null>(null);
   const [sending, setSending]     = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [saving, setSaving]       = useState(false);
   const [err, setErr]             = useState('');
   const [countdown, setCountdown] = useState(0);
+  const confirmRef = useRef<ConfirmationResult | null>(null);
 
   const [matches, setMatches]     = useState<FullCustomer[]>([]);
   const [searching, setSearching] = useState(false);
@@ -115,23 +117,45 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
     return () => clearTimeout(t);
   }, [countdown]);
 
+  function getOrCreateRecaptcha() {
+    if (!(window as any)._rcv_customer) {
+      (window as any)._rcv_customer = new RecaptchaVerifier(auth, 'recaptcha-customer', { size: 'invisible' });
+    }
+    return (window as any)._rcv_customer;
+  }
+
+  // #recaptcha-customer unmounts with this modal, so the cached verifier must be
+  // cleared here too — otherwise reopening the modal reuses a verifier bound to a
+  // dead DOM node and signInWithPhoneNumber fails with auth/invalid-app-credential.
+  useEffect(() => {
+    return () => {
+      try { (window as any)._rcv_customer?.clear(); } catch {}
+      (window as any)._rcv_customer = null;
+    };
+  }, []);
+
   async function handleSendOtp() {
     if (!phone || phone.length < 10) { setErr('Enter a valid 10-digit mobile number'); return; }
     setErr(''); setSending(true);
     try {
-      const res = await sendCustomerOtp(`+91${phone.replace(/^\+91/, '')}`);
-      setDevOtp(res.otp ?? null);
+      const verifier = getOrCreateRecaptcha();
+      const result = await signInWithPhoneNumber(auth, `+91${phone.replace(/^\+91/, '')}`, verifier);
+      confirmRef.current = result;
       setStep('otp'); setCountdown(60);
-    } catch (e: any) { setErr(e.message || 'Failed to send OTP'); }
-    finally { setSending(false); }
+    } catch (e: any) {
+      setErr(e.message || 'Failed to send OTP');
+      try { (window as any)._rcv_customer?.clear(); } catch {}
+      (window as any)._rcv_customer = null;
+    } finally { setSending(false); }
   }
 
   async function handleVerifyOtp(otp: string) {
+    if (!confirmRef.current) return;
     setErr(''); setVerifying(true);
     try {
-      await verifyCustomerOtp(`+91${phone.replace(/^\+91/, '')}`, otp);
+      await confirmRef.current.confirm(otp);
       setStep('details');
-    } catch (e: any) { setErr(e.message || 'Invalid OTP'); }
+    } catch { setErr('Invalid OTP. Please try again.'); }
     finally { setVerifying(false); }
   }
 
@@ -165,6 +189,8 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      {/* Invisible reCAPTCHA container required by Firebase phone auth */}
+      <div id="recaptcha-customer" />
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
 
         {/* Header */}
@@ -271,14 +297,6 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
                   OTP sent to <span className="font-black text-slate-900">+91 {phone}</span>
                 </p>
                 <p className="text-xs text-slate-400 mt-0.5">Ask the customer for the 6-digit code</p>
-                {devOtp && (
-                  <div className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-700 font-bold">
-                    <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Dev OTP: {devOtp}
-                  </div>
-                )}
               </div>
 
               <OtpInput onComplete={otp => !verifying && handleVerifyOtp(otp)} />
@@ -292,8 +310,11 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
               {err && <p className="text-xs text-red-600 font-bold text-center">{err}</p>}
 
               <div className="flex items-center justify-between text-xs">
-                <button onClick={() => { setStep('phone'); setErr(''); setDevOtp(null); }}
-                  className="text-slate-400 hover:text-slate-600 font-bold transition-colors">← Change number</button>
+                <button onClick={() => {
+                  setStep('phone'); setErr(''); confirmRef.current = null;
+                  try { (window as any)._rcv_customer?.clear(); } catch {}
+                  (window as any)._rcv_customer = null;
+                }} className="text-slate-400 hover:text-slate-600 font-bold transition-colors">← Change number</button>
                 {countdown > 0
                   ? <span className="text-slate-400 font-medium">Resend in {countdown}s</span>
                   : <button onClick={handleSendOtp} disabled={sending} className="font-black transition-colors" style={{ color: PRIMARY }}>Resend OTP</button>}
