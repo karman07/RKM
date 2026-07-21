@@ -7,7 +7,7 @@ import Link from 'next/link';
 import {
   ChevronLeft, ShoppingBag, Package, Store, Loader2, MapPin, Clock,
   CheckCircle2, Truck, AlertCircle, RefreshCw, ChevronDown, ChevronUp,
-  Calendar, CreditCard, Phone, Receipt, Tag, Gem, TrendingUp, ShieldCheck
+  Calendar, CreditCard, Phone, Receipt, Tag, Gem, TrendingUp, ShieldCheck, Bookmark, Wallet
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { API_BASE_URL, STATIC_BASE_URL } from '../constants';
@@ -54,6 +54,22 @@ interface OnlineOrderItem {
   image?: string;
   quantity: number;
   price: number;
+}
+
+interface PrebookedItem {
+  _id: string;
+  product_name: string;
+  product_image: string | null;
+  category: string | null;
+  metal: string | null;
+  purity: string | null;
+  unique_item_code: string;
+  selling_price: number;
+  advance_amount: number;
+  balance_due: number;
+  expected_date: string | null;
+  notes: string;
+  prebooked_at: string;
 }
 
 interface OnlineOrder {
@@ -116,7 +132,8 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(false);
   const [storePurchases, setStorePurchases] = useState<StorePurchase[]>([]);
   const [onlineOrders, setOnlineOrders] = useState<OnlineOrder[]>([]);
-  const [tab, setTab] = useState<'all' | 'online' | 'store' | 'plans'>('all');
+  const [prebookedItems, setPrebookedItems] = useState<PrebookedItem[]>([]);
+  const [tab, setTab] = useState<'all' | 'online' | 'store' | 'prebooked' | 'plans'>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [goldSubs, setGoldSubs] = useState<any[]>([]);
   const [certGeneratingId, setCertGeneratingId] = useState<string | null>(null);
@@ -149,6 +166,7 @@ export default function OrdersPage() {
     if (!authState.token) { router.push('/'); return; }
     fetchHistory(authState.token);
     fetchGoldSubs(authState.token);
+    fetchPrebookings(authState.token);
   }, [authState.token]);
 
   async function fetchHistory(token: string) {
@@ -164,6 +182,18 @@ export default function OrdersPage() {
       }
     } catch { /* ignore */ }
     finally { setLoading(false); }
+  }
+
+  async function fetchPrebookings(token: string) {
+    try {
+      const res = await fetch(`${API_BASE_URL}/customers/auth/prebookings`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPrebookedItems(Array.isArray(data) ? data : []);
+      }
+    } catch { /* ignore */ }
   }
 
   async function fetchGoldSubs(token: string) {
@@ -183,6 +213,7 @@ export default function OrdersPage() {
   const allOnline = onlineOrders;
   const allStore = storePurchases;
   const totalCount = allOnline.length + allStore.length + goldSubs.length;
+  const hasAnything = totalCount > 0 || prebookedItems.length > 0;
 
   // merged & sorted by date for "all" tab
   type MixedItem = { date: string; data: StorePurchase | OnlineOrder };
@@ -210,7 +241,7 @@ export default function OrdersPage() {
             </p>
           </div>
           <button
-            onClick={() => authState.token && fetchHistory(authState.token)}
+            onClick={() => authState.token && (fetchHistory(authState.token), fetchPrebookings(authState.token))}
             className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white border border-slate-100 text-slate-400 hover:text-[#7A1238] hover:border-emerald-200 transition-all text-[10px] font-black uppercase tracking-widest shadow-sm"
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
@@ -219,11 +250,12 @@ export default function OrdersPage() {
         </div>
 
         {/* Tabs */}
-        <div className="flex items-center gap-2 mb-8">
+        <div className="flex items-center gap-2 mb-8 flex-wrap">
           {([
-            { key: 'all',    label: 'All Orders',   count: totalCount },
-            { key: 'online', label: 'Online',        count: allOnline.length },
-            { key: 'store',  label: 'In-Store',      count: allStore.length },
+            { key: 'all',       label: 'All Orders',  count: totalCount },
+            { key: 'online',    label: 'Online',       count: allOnline.length },
+            { key: 'store',     label: 'In-Store',     count: allStore.length },
+            { key: 'prebooked', label: 'Pre-Booked',   count: prebookedItems.length },
           ] as const).map(t => (
             <button
               key={t.key}
@@ -247,7 +279,7 @@ export default function OrdersPage() {
           <div className="flex items-center justify-center py-32">
             <Loader2 size={36} className="animate-spin text-[#7A1238]" />
           </div>
-        ) : totalCount === 0 ? (
+        ) : !hasAnything ? (
           <div className="text-center py-32">
             <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6">
               <ShoppingBag size={40} className="text-slate-200" />
@@ -517,6 +549,97 @@ export default function OrdersPage() {
               </>
             )}
 
+            {/* ─── Pre-Booked Items ─────────────────────────────── */}
+            {(tab === 'all' || tab === 'prebooked') && prebookedItems.length > 0 && (
+              <>
+                {tab === 'all' && (
+                  <div className="flex items-center gap-3 mt-8 mb-3">
+                    <Bookmark size={16} className="text-[#7A1238]" />
+                    <span className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-500">Pre-Booked Items</span>
+                    <div className="flex-1 h-px bg-slate-100" />
+                  </div>
+                )}
+                {prebookedItems.map(item => {
+                  const isExpanded = expandedId === item._id;
+                  return (
+                    <div key={item._id} className="bg-white rounded-[2rem] border border-blue-100 overflow-hidden shadow-sm hover:shadow-md transition-all">
+                      <button
+                        onClick={() => setExpandedId(isExpanded ? null : item._id)}
+                        className="w-full px-6 py-5 flex items-start gap-4 text-left"
+                      >
+                        <div className="w-14 h-14 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+                          {item.product_image ? (
+                            <img src={staticImg(item.product_image)} alt={item.product_name} className="w-full h-full object-cover" />
+                          ) : (
+                            <Bookmark size={22} className="text-slate-300" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <span className="text-[8px] font-black uppercase tracking-[0.2em] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Reserved</span>
+                            {item.balance_due > 0 ? (
+                              <span className="flex items-center gap-1 text-[8px] font-black uppercase tracking-[0.15em] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full border border-amber-200">
+                                <AlertCircle size={9} /> Payment Pending
+                              </span>
+                            ) : (
+                              <span className="text-[8px] font-black uppercase tracking-[0.15em] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-100">Paid in Full</span>
+                            )}
+                            {item.metal && (
+                              <span className="text-[8px] font-black uppercase tracking-[0.1em] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full border border-amber-100">
+                                {item.metal}{item.purity ? ` · ${item.purity}` : ''}
+                              </span>
+                            )}
+                          </div>
+                          <p className="font-serif font-bold text-slate-900 text-base leading-tight truncate">{item.product_name}</p>
+                          <p className="text-[10px] font-bold text-slate-400 mt-0.5">
+                            Code: {item.unique_item_code}
+                            {item.expected_date ? ` · Pickup by ${new Date(item.expected_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : ''}
+                          </p>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="font-serif font-bold text-emerald-700 text-lg">₹{item.advance_amount?.toLocaleString('en-IN')}</p>
+                          <p className="text-[9px] font-bold text-slate-400">advance paid</p>
+                          <div className="mt-2 flex justify-end">
+                            {isExpanded ? <ChevronUp size={14} className="text-slate-400" /> : <ChevronDown size={14} className="text-slate-400" />}
+                          </div>
+                        </div>
+                      </button>
+
+                      {isExpanded && (
+                        <div className="px-6 pb-6 border-t border-slate-50 pt-5">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            {[
+                              { label: 'Item Code', value: item.unique_item_code, icon: <Tag size={12} /> },
+                              { label: 'Item Price', value: `₹${item.selling_price?.toLocaleString('en-IN')}`, icon: <CreditCard size={12} /> },
+                              { label: 'Advance Paid', value: `₹${item.advance_amount?.toLocaleString('en-IN')}`, icon: <Wallet size={12} /> },
+                              { label: 'Balance Due', value: `₹${item.balance_due?.toLocaleString('en-IN')}`, icon: <Receipt size={12} /> },
+                              item.metal ? { label: 'Metal', value: item.metal, icon: null } : null,
+                              item.purity ? { label: 'Purity', value: item.purity, icon: null } : null,
+                              item.expected_date ? { label: 'Expected Pickup', value: new Date(item.expected_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }), icon: <Calendar size={12} /> } : null,
+                              item.prebooked_at ? { label: 'Booked On', value: new Date(item.prebooked_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }), icon: <Calendar size={12} /> } : null,
+                            ].filter(Boolean).map((field: any) => (
+                              <div key={field.label} className="bg-slate-50 rounded-2xl p-3 border border-slate-100">
+                                <p className="text-[8px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1 mb-1">
+                                  {field.icon}{field.label}
+                                </p>
+                                <p className="text-sm font-bold text-slate-800">{field.value}</p>
+                              </div>
+                            ))}
+                          </div>
+                          {item.notes && (
+                            <p className="text-xs text-slate-500 italic mt-4 pt-4 border-t border-slate-50">"{item.notes}"</p>
+                          )}
+                          <p className="text-[10px] text-slate-400 mt-4">
+                            Visit the store or contact us to complete this purchase — your advance will be applied automatically.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </>
+            )}
+
             {/* Empty state for filtered view */}
             {tab === 'online' && allOnline.length === 0 && (
               <div className="text-center py-20">
@@ -528,6 +651,12 @@ export default function OrdersPage() {
               <div className="text-center py-20">
                 <Store size={36} className="mx-auto text-slate-200 mb-3" />
                 <p className="text-sm font-bold text-slate-400">No in-store purchases found</p>
+              </div>
+            )}
+            {tab === 'prebooked' && prebookedItems.length === 0 && (
+              <div className="text-center py-20">
+                <Bookmark size={36} className="mx-auto text-slate-200 mb-3" />
+                <p className="text-sm font-bold text-slate-400">No pre-booked items</p>
               </div>
             )}
 

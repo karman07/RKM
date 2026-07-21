@@ -1,5 +1,16 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
+interface ShippingAddress {
+  attention?: string;
+  address?: string;
+  street2?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  country?: string;
+  phone?: string;
+}
+
 interface Customer {
   _id: string;
   name: string;
@@ -9,11 +20,23 @@ interface Customer {
   address: string;
   city: string;
   state: string;
+  pincode?: string;
   country: string;
   profileImage?: string;
   isEmailVerified?: boolean;
   relationship_manager?: { _id: string; name: string; email?: string; mobile_number?: string; role?: string } | string | null;
   customFields?: { key: string; value: string }[];
+  // Editable via the storefront profile page
+  work_phone?: string;
+  salutation?: string;
+  first_name?: string;
+  last_name?: string;
+  company_name?: string;
+  customer_sub_type?: 'business' | 'individual';
+  website?: string;
+  attention?: string;
+  street2?: string;
+  shipping_address?: ShippingAddress | null;
 }
 
 interface AuthState {

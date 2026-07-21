@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppSelector, useAppDispatch } from '../../store/store';
 import { setAuth, logout } from '../../store/authSlice';
-import { Camera, MapPin, User, Mail, Phone, Home, Globe, CheckCircle2, AlertCircle, Loader2, ChevronLeft, LogOut, ShieldCheck, CreditCard, ShoppingBag, Heart, X, Gem, Package, Store, ChevronDown, ChevronUp, UserCog } from 'lucide-react';
+import { Camera, MapPin, User, Mail, Phone, Home, Globe, CheckCircle2, AlertCircle, Loader2, ChevronLeft, LogOut, ShieldCheck, CreditCard, ShoppingBag, Heart, X, Gem, Package, Store, ChevronDown, ChevronUp, UserCog, Bookmark } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import LogoutDialog from '../../components/LogoutDialog';
@@ -30,6 +30,7 @@ export default function ProfilePage() {
   const [goldSubs, setGoldSubs] = useState<any[]>([]);
   const [subsLoading, setSubsLoading] = useState(false);
   const [purchaseHistory, setPurchaseHistory] = useState<{ store_purchases: any[]; online_orders: any[] } | null>(null);
+  const [prebookedItems, setPrebookedItems] = useState<any[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyTab, setHistoryTab] = useState<'all' | 'store' | 'online'>('all');
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
@@ -43,7 +44,22 @@ export default function ProfilePage() {
     address: '',
     city: '',
     state: '',
-    country: ''
+    pincode: '',
+    country: '',
+    customer_sub_type: 'individual' as 'individual' | 'business',
+    company_name: '',
+    salutation: '',
+    first_name: '',
+    last_name: '',
+    work_phone: '',
+    website: '',
+    attention: '',
+    street2: '',
+  });
+
+  const [sameAsBilling, setSameAsBilling] = useState(true);
+  const [shipForm, setShipForm] = useState({
+    attention: '', address: '', street2: '', city: '', state: '', zip: '', country: '', phone: '',
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -68,7 +84,28 @@ export default function ProfilePage() {
         address: authState.customer.address || '',
         city: authState.customer.city || '',
         state: authState.customer.state || '',
-        country: authState.customer.country || ''
+        pincode: authState.customer.pincode || '',
+        country: authState.customer.country || '',
+        customer_sub_type: authState.customer.customer_sub_type || 'individual',
+        company_name: authState.customer.company_name || '',
+        salutation: authState.customer.salutation || '',
+        first_name: authState.customer.first_name || '',
+        last_name: authState.customer.last_name || '',
+        work_phone: authState.customer.work_phone || '',
+        website: authState.customer.website || '',
+        attention: authState.customer.attention || '',
+        street2: authState.customer.street2 || '',
+      });
+      setSameAsBilling(!authState.customer.shipping_address);
+      setShipForm({
+        attention: authState.customer.shipping_address?.attention || '',
+        address: authState.customer.shipping_address?.address || '',
+        street2: authState.customer.shipping_address?.street2 || '',
+        city: authState.customer.shipping_address?.city || '',
+        state: authState.customer.shipping_address?.state || '',
+        zip: authState.customer.shipping_address?.zip || '',
+        country: authState.customer.shipping_address?.country || '',
+        phone: authState.customer.shipping_address?.phone || '',
       });
       const values: Record<string, string> = {};
       (authState.customer.customFields ?? []).forEach(f => { values[f.key] = f.value; });
@@ -80,6 +117,7 @@ export default function ProfilePage() {
     if (!authState.token) return;
     fetchGoldSubscriptions(authState.token);
     fetchPurchaseHistory(authState.token);
+    fetchPrebookedItems(authState.token);
     fetchProfile(authState.token);
     fetchCustomFieldDefs(authState.token);
     // Only re-run when the token itself changes (login/logout) — fetchProfile
@@ -146,6 +184,20 @@ export default function ProfilePage() {
     }
   };
 
+  const fetchPrebookedItems = async (token: string) => {
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/customers/auth/prebookings`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPrebookedItems(Array.isArray(data) ? data : []);
+      }
+    } catch {
+      // Ignore
+    }
+  };
+
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -168,7 +220,11 @@ export default function ProfilePage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${authState.token}`
         },
-        body: JSON.stringify({ ...form, customFields: customFieldDefs.length ? customFields : undefined })
+        body: JSON.stringify({
+          ...form,
+          shipping_address: sameAsBilling ? null : shipForm,
+          customFields: customFieldDefs.length ? customFields : undefined,
+        })
       });
       const data = await res.json();
       if (res.ok && authState.token) {
@@ -377,6 +433,17 @@ export default function ProfilePage() {
                     {purchaseHistory ? (purchaseHistory.store_purchases.length + purchaseHistory.online_orders.length) : 0}
                   </span>
                 </div>
+                {prebookedItems.length > 0 && (
+                  <div className="flex items-center justify-between text-xs py-3 border-t border-slate-50/50 group cursor-pointer" onClick={() => router.push('/orders')}>
+                    <div className="flex items-center gap-3 text-slate-500">
+                      <Bookmark size={16} className="text-slate-300 group-hover:text-[#7A1238] transition-colors" />
+                      <span className="font-bold uppercase tracking-wider group-hover:text-slate-900 transition-colors">Pre-Booked</span>
+                    </div>
+                    <span className="bg-blue-50 text-blue-600 px-2.5 py-1 rounded-lg group-hover:bg-[#FDF3E7] group-hover:text-[#7A1238] transition-colors">
+                      {prebookedItems.length}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -506,6 +573,96 @@ export default function ProfilePage() {
                   </div>
                 </div>
 
+                {/* Business Details Section */}
+                <div className="space-y-6 pt-10 border-t border-slate-50">
+                  <div className="flex items-center gap-3">
+                    <UserCog size={18} className="text-[#7A1238]" />
+                    <h4 className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-900">Business Details</h4>
+                    <span className="text-[9px] font-bold text-slate-300 uppercase tracking-[0.2em]">Optional</span>
+                  </div>
+
+                  <div className="flex gap-3">
+                    {(['individual', 'business'] as const).map(t => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setForm({ ...form, customer_sub_type: t })}
+                        className={`flex-1 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] border transition-all ${form.customer_sub_type === t ? 'bg-[#7A1238] text-white border-[#7A1238]' : 'bg-slate-50 text-slate-400 border-slate-100 hover:bg-slate-100'}`}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+
+                  {form.customer_sub_type === 'business' && (
+                    <div className="space-y-2">
+                      <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Company Name</label>
+                      <input
+                        type="text"
+                        value={form.company_name}
+                        onChange={e => setForm({ ...form, company_name: e.target.value })}
+                        className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:ring-4 focus:ring-emerald-500/5 focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700"
+                        placeholder="Your company / business name"
+                      />
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
+                    <div className="space-y-2">
+                      <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Salutation</label>
+                      <select
+                        value={form.salutation}
+                        onChange={e => setForm({ ...form, salutation: e.target.value })}
+                        className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700 appearance-none"
+                      >
+                        <option value="">—</option>
+                        {['Mr.', 'Mrs.', 'Ms.', 'Dr.'].map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">First Name</label>
+                      <input
+                        type="text"
+                        value={form.first_name}
+                        onChange={e => setForm({ ...form, first_name: e.target.value })}
+                        className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Last Name</label>
+                      <input
+                        type="text"
+                        value={form.last_name}
+                        onChange={e => setForm({ ...form, last_name: e.target.value })}
+                        className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+                    <div className="space-y-2">
+                      <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Work Phone</label>
+                      <input
+                        type="tel"
+                        value={form.work_phone}
+                        onChange={e => setForm({ ...form, work_phone: e.target.value })}
+                        className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700"
+                        placeholder="Landline / office number"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Website</label>
+                      <input
+                        type="text"
+                        value={form.website}
+                        onChange={e => setForm({ ...form, website: e.target.value })}
+                        className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700"
+                        placeholder="https://…"
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 {/* Address Section */}
                 <div className="space-y-6 pt-10 border-t border-slate-50">
                   <div className="flex items-center gap-3">
@@ -514,23 +671,46 @@ export default function ProfilePage() {
                   </div>
 
                   <div className="space-y-8">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Attention (Care Of)</label>
+                        <input
+                          type="text"
+                          value={form.attention}
+                          onChange={e => setForm({ ...form, attention: e.target.value })}
+                          className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700"
+                          placeholder="Optional"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Address Line 2</label>
+                        <input
+                          type="text"
+                          value={form.street2}
+                          onChange={e => setForm({ ...form, street2: e.target.value })}
+                          className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700"
+                          placeholder="Apartment, suite, floor…"
+                        />
+                      </div>
+                    </div>
+
                     <div className="space-y-2">
                       <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Primary Street Address</label>
-                      <input 
-                        type="text" 
-                        value={form.address} 
+                      <input
+                        type="text"
+                        value={form.address}
                         onChange={e => setForm({...form, address: e.target.value})}
                         className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:ring-4 focus:ring-emerald-500/5 focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700"
                         placeholder="Enter full street address"
                       />
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-8">
                       <div className="space-y-2">
                         <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">City</label>
-                        <input 
-                          type="text" 
-                          value={form.city} 
+                        <input
+                          type="text"
+                          value={form.city}
                           onChange={e => setForm({...form, city: e.target.value})}
                           className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700"
                           placeholder="e.g. Haryana"
@@ -538,19 +718,29 @@ export default function ProfilePage() {
                       </div>
                       <div className="space-y-2">
                         <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">State / Province</label>
-                         <input 
-                          type="text" 
-                          value={form.state} 
+                         <input
+                          type="text"
+                          value={form.state}
                           onChange={e => setForm({...form, state: e.target.value})}
                           className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700"
                           placeholder="e.g. Gurgaon"
                         />
                       </div>
                       <div className="space-y-2">
+                        <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Pincode</label>
+                        <input
+                          type="text"
+                          value={form.pincode}
+                          onChange={e => setForm({ ...form, pincode: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+                          className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700"
+                          placeholder="000000"
+                        />
+                      </div>
+                      <div className="space-y-2">
                         <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Country</label>
-                         <input 
-                          type="text" 
-                          value={form.country} 
+                         <input
+                          type="text"
+                          value={form.country}
                           onChange={e => setForm({...form, country: e.target.value})}
                           className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700"
                           placeholder="India"
@@ -558,6 +748,69 @@ export default function ProfilePage() {
                       </div>
                     </div>
                   </div>
+                </div>
+
+                {/* Shipping Address Section */}
+                <div className="space-y-6 pt-10 border-t border-slate-50">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Home size={18} className="text-[#7A1238]" />
+                      <h4 className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-900">Shipping Address</h4>
+                    </div>
+                    <label className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 cursor-pointer">
+                      <input type="checkbox" checked={sameAsBilling} onChange={e => setSameAsBilling(e.target.checked)} />
+                      Same as above
+                    </label>
+                  </div>
+
+                  {!sameAsBilling && (
+                    <div className="space-y-8">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+                        <div className="space-y-2">
+                          <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Attention</label>
+                          <input type="text" value={shipForm.attention} onChange={e => setShipForm({ ...shipForm, attention: e.target.value })}
+                            className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700" />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Phone</label>
+                          <input type="tel" value={shipForm.phone} onChange={e => setShipForm({ ...shipForm, phone: e.target.value })}
+                            className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700" />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Address</label>
+                        <input type="text" value={shipForm.address} onChange={e => setShipForm({ ...shipForm, address: e.target.value })}
+                          className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700" />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Address Line 2</label>
+                        <input type="text" value={shipForm.street2} onChange={e => setShipForm({ ...shipForm, street2: e.target.value })}
+                          className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700" />
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-8">
+                        <div className="space-y-2">
+                          <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">City</label>
+                          <input type="text" value={shipForm.city} onChange={e => setShipForm({ ...shipForm, city: e.target.value })}
+                            className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700" />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">State</label>
+                          <input type="text" value={shipForm.state} onChange={e => setShipForm({ ...shipForm, state: e.target.value })}
+                            className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700" />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">ZIP</label>
+                          <input type="text" value={shipForm.zip} onChange={e => setShipForm({ ...shipForm, zip: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+                            className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700" />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Country</label>
+                          <input type="text" value={shipForm.country} onChange={e => setShipForm({ ...shipForm, country: e.target.value })}
+                            className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:border-[#7A1238] transition-all text-sm font-bold text-slate-700" placeholder="India" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {customFieldDefs.length > 0 && (
