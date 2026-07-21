@@ -11,9 +11,10 @@ import {
 } from 'lucide-react';
 import { useAppTheme } from '@/components/AppThemeContext';
 import { APP_THEME } from '@/lib/theme-constants';
-import { API_BASE, getInventory, fetchAllPages, getAdvanceAnalytics, getMiscPayments, type InventoryItem, type AdvanceAnalytics, type MiscPayment } from '@/lib/api';
+import { API_BASE, getInventory, fetchAllPages, getAdvanceAnalytics, getMiscPayments, type InventoryItem, type AdvanceAnalytics, type MiscPayment, type CustomerAdvance } from '@/lib/api';
 import { downloadCsv } from '@/lib/export-utils';
-import AddMiscPaymentModal from '@/components/AddMiscPaymentModal';
+import AddAdvancePaymentModal from '@/components/AddAdvancePaymentModal';
+import AdvanceReceiptModal from '@/components/AdvanceReceiptModal';
 import { toast } from 'sonner';
 
 const PAYMENT_COLORS: Record<string, string> = {
@@ -69,6 +70,7 @@ export default function PaymentsPage() {
   const [days, setDays] = useState(30);
   const [exporting, setExporting] = useState(false);
   const [showAddPayment, setShowAddPayment] = useState(false);
+  const [newAdvanceReceipt, setNewAdvanceReceipt] = useState<CustomerAdvance | null>(null);
 
   useEffect(() => {
     getAdvanceAnalytics(days).then(setAdvanceData).catch(() => setAdvanceData(null));
@@ -91,9 +93,11 @@ export default function PaymentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [days]);
 
-  function handlePaymentAdded(payment: MiscPayment) {
+  function handlePaymentAdded(advance: CustomerAdvance) {
     setShowAddPayment(false);
-    toast.success(`₹${payment.amount.toLocaleString('en-IN')} payment recorded`);
+    setNewAdvanceReceipt(advance);
+    toast.success(`₹${advance.amount.toLocaleString('en-IN')} advance recorded for ${advance.customerName}`);
+    getAdvanceAnalytics(days).then(setAdvanceData).catch(() => {});
     loadAnalytics();
   }
 
@@ -217,7 +221,11 @@ export default function PaymentsPage() {
       </div>
 
       {showAddPayment && (
-        <AddMiscPaymentModal onClose={() => setShowAddPayment(false)} onAdded={handlePaymentAdded} />
+        <AddAdvancePaymentModal onClose={() => setShowAddPayment(false)} onAdded={handlePaymentAdded} />
+      )}
+
+      {newAdvanceReceipt && (
+        <AdvanceReceiptModal advance={newAdvanceReceipt} onClose={() => setNewAdvanceReceipt(null)} />
       )}
 
       {/* KPI Cards */}

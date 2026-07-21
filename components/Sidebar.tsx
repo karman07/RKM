@@ -91,7 +91,7 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
 
       <nav className="flex-1 overflow-y-auto overflow-x-hidden pt-2 space-y-8 pro-scrollbar">
         {/* System Section */}
-        {(['dashboard','analytics','notifications'].some(k => can(k))) && <section>
+        {(['dashboard','analytics','notifications','payments','reports','analytics-ai'].some(k => can(k))) && <section>
           {!isCollapsed && <p className="px-8 mb-4 text-[10px] font-black uppercase tracking-[0.25em] text-slate-400 animate-[fadeRise_400ms_ease-out]">Master Controls</p>}
           <div className="space-y-2">
             {can('dashboard') && <Link href="/dashboard" onClick={onNavigate} title={isCollapsed ? "Dashboard" : ""} className={navClass(pathname === '/dashboard')} style={getNavStyle(pathname === '/dashboard')}>
@@ -104,21 +104,21 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
               <NavIcon active={pathname === '/dashboard/analytics'} color={pathname === '/dashboard/analytics' ? colors.activeText : colors.textMuted}><path d="M12 20v-6M6 20V10M18 20V4" /></NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Business Intelligence</span>}
             </Link>}
-            <Link href="/dashboard/payments" onClick={onNavigate} title={isCollapsed ? "Payments" : ""} className={navClass(pathname.startsWith('/dashboard/payments'))} style={getNavStyle(pathname.startsWith('/dashboard/payments'))}>
+            {can('payments') && <Link href="/dashboard/payments" onClick={onNavigate} title={isCollapsed ? "Payments" : ""} className={navClass(pathname.startsWith('/dashboard/payments'))} style={getNavStyle(pathname.startsWith('/dashboard/payments'))}>
               {isCollapsed && pathname.startsWith('/dashboard/payments') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
               <NavIcon active={pathname.startsWith('/dashboard/payments')} color={pathname.startsWith('/dashboard/payments') ? colors.activeText : colors.textMuted}>
                 <rect x="1" y="4" width="22" height="16" rx="2" ry="2" /><line x1="1" y1="10" x2="23" y2="10" />
               </NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Payments</span>}
-            </Link>
-            <Link href="/dashboard/reports" onClick={onNavigate} title={isCollapsed ? "Reports" : ""} className={navClass(pathname.startsWith('/dashboard/reports'))} style={getNavStyle(pathname.startsWith('/dashboard/reports'))}>
+            </Link>}
+            {can('reports') && <Link href="/dashboard/reports" onClick={onNavigate} title={isCollapsed ? "Reports" : ""} className={navClass(pathname.startsWith('/dashboard/reports'))} style={getNavStyle(pathname.startsWith('/dashboard/reports'))}>
               {isCollapsed && pathname.startsWith('/dashboard/reports') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
               <NavIcon active={pathname.startsWith('/dashboard/reports')} color={pathname.startsWith('/dashboard/reports') ? colors.activeText : colors.textMuted}>
                 <path d="M9 17V9M13 17v-5M17 17v-9" strokeLinecap="round" /><rect x="3" y="3" width="18" height="18" rx="2" />
               </NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Reports</span>}
-            </Link>
-            <Link href="/dashboard/analytics-ai" onClick={onNavigate} title={isCollapsed ? "AI Insights" : ""} className={navClass(pathname.startsWith('/dashboard/analytics-ai'))} style={getNavStyle(pathname.startsWith('/dashboard/analytics-ai'))}>
+            </Link>}
+            {can('analytics-ai') && <Link href="/dashboard/analytics-ai" onClick={onNavigate} title={isCollapsed ? "AI Insights" : ""} className={navClass(pathname.startsWith('/dashboard/analytics-ai'))} style={getNavStyle(pathname.startsWith('/dashboard/analytics-ai'))}>
               {isCollapsed && pathname.startsWith('/dashboard/analytics-ai') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
               <NavIcon active={pathname.startsWith('/dashboard/analytics-ai')} color={pathname.startsWith('/dashboard/analytics-ai') ? colors.activeText : colors.textMuted}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1 1 .03 2.611-1.31 2.232l-3.714-1.03M5 14.5l-1.402 1.402c-1 1-.03 2.611 1.31 2.232l3.714-1.03" />
@@ -131,7 +131,7 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
                   </span>
                 </span>
               )}
-            </Link>
+            </Link>}
             {can('notifications') && <Link href="/dashboard/notifications" onClick={onNavigate} title={isCollapsed ? "Notifications" : ""} className={navClass(pathname === '/dashboard/notifications')} style={getNavStyle(pathname === '/dashboard/notifications')}>
               {isCollapsed && pathname === '/dashboard/notifications' && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
               <NavIcon active={pathname === '/dashboard/notifications'} color={pathname === '/dashboard/notifications' ? colors.activeText : colors.textMuted}><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></NavIcon>
@@ -214,13 +214,14 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
               <NavIcon active={pathname.startsWith('/dashboard/location-violations')} color={pathname.startsWith('/dashboard/location-violations') ? '#ef4444' : colors.textMuted}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Location Violations</span>}
             </Link>}
-            <Link href="/dashboard/security" onClick={onNavigate} title={isCollapsed ? "Security Center" : ""} className={navClass(pathname.startsWith('/dashboard/security'))} style={getNavStyle(pathname.startsWith('/dashboard/security'))}>
+            {/* Security Center is only shown to full admins (permissions === null) — the route guard already treats it as admin-only, this just stops it being a dead-end link for custom roles */}
+            {permissions === null && <Link href="/dashboard/security" onClick={onNavigate} title={isCollapsed ? "Security Center" : ""} className={navClass(pathname.startsWith('/dashboard/security'))} style={getNavStyle(pathname.startsWith('/dashboard/security'))}>
               {isCollapsed && pathname.startsWith('/dashboard/security') && <div className="absolute left-0 w-1.5 h-6 bg-red-600 rounded-r-full" />}
               <NavIcon active={pathname.startsWith('/dashboard/security')} color={pathname.startsWith('/dashboard/security') ? '#dc2626' : colors.textMuted}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
               </NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Security Center</span>}
-            </Link>
+            </Link>}
             {can('holidays') && <Link href="/dashboard/holidays" onClick={onNavigate} title={isCollapsed ? "Holidays" : ""} className={navClass(pathname.startsWith('/dashboard/holidays'))} style={getNavStyle(pathname.startsWith('/dashboard/holidays'))}>
               {isCollapsed && pathname.startsWith('/dashboard/holidays') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
               <NavIcon active={pathname.startsWith('/dashboard/holidays')} color={pathname.startsWith('/dashboard/holidays') ? colors.activeText : colors.textMuted}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></NavIcon>

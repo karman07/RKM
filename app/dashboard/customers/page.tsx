@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { getCustomers, searchCustomersByPhone, createCustomer, type Customer, staticUrl } from '@/lib/api';
+import { getCustomers, searchCustomersByPhone, createCustomer, GST_TREATMENTS, type Customer, staticUrl } from '@/lib/api';
 import { useAppTheme } from '@/components/AppThemeContext';
 import { APP_THEME } from '@/lib/theme-constants';
 import { getFirebaseAuth } from '@/lib/firebase';
@@ -47,6 +47,19 @@ function AddClientModal({ onClose, onCreated }: { onClose: () => void; onCreated
   const [city, setCity] = useState('');
   const [state, setState] = useState('');
   const [pincode, setPincode] = useState('');
+
+  // Zoho-style optional fields — collapsed behind "More details" by default
+  const [showMore, setShowMore] = useState(false);
+  const [customerSubType, setCustomerSubType] = useState<'individual' | 'business'>('individual');
+  const [companyName, setCompanyName] = useState('');
+  const [salutation, setSalutation] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [workPhone, setWorkPhone] = useState('');
+  const [website, setWebsite] = useState('');
+  const [gstTreatment, setGstTreatment] = useState('');
+  const [gstNo, setGstNo] = useState('');
+  const [placeOfSupply, setPlaceOfSupply] = useState('');
 
   useEffect(() => {
     if (phone.length < 5) { setMatches([]); return; }
@@ -126,6 +139,16 @@ function AddClientModal({ onClose, onCreated }: { onClose: () => void; onCreated
         state: state.trim() || undefined,
         pincode: pincode.trim() || undefined,
         country: 'India',
+        customer_sub_type: customerSubType,
+        company_name: customerSubType === 'business' ? companyName.trim() || undefined : undefined,
+        salutation: salutation || undefined,
+        first_name: firstName.trim() || undefined,
+        last_name: lastName.trim() || undefined,
+        work_phone: workPhone.trim() || undefined,
+        website: website.trim() || undefined,
+        gst_treatment: (gstTreatment || undefined) as any,
+        gst_no: gstNo.trim() || undefined,
+        place_of_supply: placeOfSupply.trim() || undefined,
       });
       onCreated(customer);
     } catch (e: any) {
@@ -255,10 +278,31 @@ function AddClientModal({ onClose, onCreated }: { onClose: () => void; onCreated
               </div>
 
               <div>
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Customer Type</label>
+                <div className="flex gap-2">
+                  {(['individual', 'business'] as const).map(t => (
+                    <button key={t} type="button" onClick={() => setCustomerSubType(t)}
+                      className={`flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-wide border transition-all ${customerSubType === t ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
                 <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Full Name *</label>
                 <input placeholder="Client full name" value={name} onChange={e => setName(e.target.value)}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500" autoFocus />
               </div>
+
+              {customerSubType === 'business' && (
+                <div>
+                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Company Name</label>
+                  <input placeholder="Company / business name" value={companyName} onChange={e => setCompanyName(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500" />
+                </div>
+              )}
+
               <div>
                 <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Email</label>
                 <input type="email" placeholder="email@example.com" value={email} onChange={e => setEmail(e.target.value)}
@@ -286,6 +330,67 @@ function AddClientModal({ onClose, onCreated }: { onClose: () => void; onCreated
                     className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500" />
                 </div>
               </div>
+
+              <button type="button" onClick={() => setShowMore(v => !v)} className="text-[10px] font-black text-blue-600 hover:underline">
+                {showMore ? '− Hide' : '+ Add'} contact person, GST &amp; other details
+              </button>
+
+              {showMore && (
+                <div className="space-y-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Salutation</label>
+                      <select value={salutation} onChange={e => setSalutation(e.target.value)}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none bg-white focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500">
+                        <option value="">—</option>
+                        {['Mr.', 'Mrs.', 'Ms.', 'Dr.'].map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">First Name</label>
+                      <input placeholder="First name" value={firstName} onChange={e => setFirstName(e.target.value)}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Last Name</label>
+                      <input placeholder="Last name" value={lastName} onChange={e => setLastName(e.target.value)}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Work Phone</label>
+                      <input placeholder="Landline / office number" value={workPhone} onChange={e => setWorkPhone(e.target.value)}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Website</label>
+                      <input placeholder="https://…" value={website} onChange={e => setWebsite(e.target.value)}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">GST Treatment</label>
+                    <select value={gstTreatment} onChange={e => setGstTreatment(e.target.value)}
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none bg-white focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500">
+                      <option value="">Select a GST treatment</option>
+                      {GST_TREATMENTS.map(g => <option key={g.value} value={g.value}>{g.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">GST No.</label>
+                      <input placeholder="GSTIN" value={gstNo} onChange={e => setGstNo(e.target.value.toUpperCase())}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Place Of Supply</label>
+                      <input placeholder="State" value={placeOfSupply} onChange={e => setPlaceOfSupply(e.target.value)}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500" />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {err && <p className="text-xs text-red-600 font-bold">{err}</p>}
 

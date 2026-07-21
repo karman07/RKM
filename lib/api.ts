@@ -386,11 +386,46 @@ export interface InventoryItem {
   createdAt: string;
 }
 
+export interface ContactPerson {
+  salutation?: string;
+  first_name: string;
+  last_name?: string;
+  email?: string;
+  phone?: string;
+  mobile?: string;
+  designation?: string;
+  department?: string;
+  is_primary_contact?: boolean;
+}
+
+export interface ShippingAddress {
+  attention?: string;
+  address?: string;
+  street2?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  country?: string;
+  phone?: string;
+}
+
+export const GST_TREATMENTS = [
+  { value: 'registered_business',   label: 'Registered Business' },
+  { value: 'unregistered_business', label: 'Unregistered Business' },
+  { value: 'consumer',              label: 'Consumer' },
+  { value: 'overseas',              label: 'Overseas' },
+  { value: 'special_economic_zone', label: 'Special Economic Zone' },
+  { value: 'deemed_export',         label: 'Deemed Export' },
+] as const;
+
 export interface Customer {
   _id: string;
   name: string;
   email?: string;
+  /** OTP-verified mobile number — the customer's primary identity field */
   phone?: string;
+  /** Secondary landline/office number — not OTP-verified */
+  work_phone?: string;
   gender?: string;
   address?: string;
   city?: string;
@@ -409,6 +444,57 @@ export interface Customer {
   bankName?: string;
   customFields?: { key: string; value: string }[];
   relationship_manager?: { _id: string; name: string; email?: string; mobile_number?: string; role?: string } | string | null;
+  // Zoho-style business/contact fields
+  customer_sub_type?: 'business' | 'individual';
+  salutation?: string;
+  first_name?: string;
+  last_name?: string;
+  company_name?: string;
+  website?: string;
+  attention?: string;
+  street2?: string;
+  shipping_address?: ShippingAddress | null;
+  contact_persons?: ContactPerson[];
+  payment_terms?: string;
+  credit_limit?: number;
+  notes?: string;
+  gst_treatment?: (typeof GST_TREATMENTS)[number]['value'] | null;
+  gst_no?: string;
+  place_of_supply?: string;
+}
+
+/** Zoho-style optional profile fields shared by createCustomer/updateCustomer */
+export interface CustomerProfileFields {
+  email?: string;
+  gender?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  country?: string;
+  aadharCard?: string;
+  panCard?: string;
+  accountNumber?: string;
+  ifscCode?: string;
+  bankName?: string;
+  customFields?: { key: string; value: string }[];
+  work_phone?: string;
+  customer_sub_type?: 'business' | 'individual';
+  salutation?: string;
+  first_name?: string;
+  last_name?: string;
+  company_name?: string;
+  website?: string;
+  attention?: string;
+  street2?: string;
+  shipping_address?: ShippingAddress | null;
+  contact_persons?: ContactPerson[];
+  payment_terms?: string;
+  credit_limit?: number;
+  notes?: string;
+  gst_treatment?: (typeof GST_TREATMENTS)[number]['value'] | null;
+  gst_no?: string;
+  place_of_supply?: string;
 }
 
 export interface PaginatedResponse<T> {
@@ -1402,19 +1488,13 @@ export const getCustomers = (page: number = 1, limit: number = 20) =>
 export const getCustomerById = (id: string) => request<Customer>(`/customers/${id}`);
 export const searchCustomersByPhone = (phone: string) =>
   request<{ data: Customer[] }>(`/customers/search?phone=${encodeURIComponent(phone)}`);
-export const createCustomer = (data: {
-  name: string; phone: string; email?: string; gender?: string;
-  address?: string; city?: string; state?: string; pincode?: string; country?: string;
-  aadharCard?: string; panCard?: string; accountNumber?: string; ifscCode?: string; bankName?: string;
-  customFields?: { key: string; value: string }[];
-}) => request<Customer>('/customers', { method: 'POST', body: JSON.stringify(data) });
-export const updateCustomer = (id: string, data: {
-  name?: string; email?: string; gender?: string;
-  address?: string; city?: string; state?: string; pincode?: string; country?: string;
-  aadharCard?: string; panCard?: string; accountNumber?: string; ifscCode?: string; bankName?: string;
-  customFields?: { key: string; value: string }[];
-  relationship_manager?: string | null;
-}) => request<Customer>(`/customers/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+/** Searches customers by partial name, phone, or email */
+export const searchCustomers = (q: string) =>
+  request<{ data: Customer[] }>(`/customers/search?q=${encodeURIComponent(q)}`);
+export const createCustomer = (data: CustomerProfileFields & { name: string; phone: string }) =>
+  request<Customer>('/customers', { method: 'POST', body: JSON.stringify(data) });
+export const updateCustomer = (id: string, data: CustomerProfileFields & { name?: string; relationship_manager?: string | null }) =>
+  request<Customer>(`/customers/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
 
 // ─── WhatsApp API Helpers ─────────────────────────────────────────────────────
 
@@ -2468,6 +2548,7 @@ export interface CustomerAdvance {
   customer: string;
   customerName: string;
   customerPhone: string;
+  branch_id?: string | { _id: string; name: string; code?: string } | null;
   amount: number;
   amountRedeemed: number;
   amountForfeited: number;
@@ -2506,6 +2587,7 @@ export const createCustomerAdvance = (customerId: string, data: {
   making_charges_waiver_pct?: number;
   mode?: string;
   note?: string;
+  branch_id?: string;
   lock_in_days?: number;
 }) => request<CustomerAdvance>(`/customers/${customerId}/advances`, { method: 'POST', body: JSON.stringify(data) });
 
@@ -2599,6 +2681,9 @@ export const getReportPurchases = (p: DateRangeParams & { groupBy?: 'vendor' | '
 
 export const getReportPurchaseRegister = (p: DateRangeParams = {}) =>
   request<any>(`/reports/purchase-register${toQuery(p)}`);
+
+export const getReportVendorItems = (p: DateRangeParams & { supplierId: string }) =>
+  request<any>(`/reports/vendor-items${toQuery(p)}`);
 
 export const getReportInventoryValuation = () =>
   request<any>('/reports/inventory-valuation');

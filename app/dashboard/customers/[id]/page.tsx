@@ -5,9 +5,9 @@ import {
   getCustomerById, getInventory, getSubscriptions, redeemSubscription,
   markGoldCashPayment, addInterestToSubscription, getMe, getGoldLoansByCustomer,
   getCustomerAdvances, createCustomerAdvance, redeemCustomerAdvance,
-  updateCustomer, getCustomFields, uploadUserAvatar, getUsers, getSettings,
+  updateCustomer, getCustomFields, uploadUserAvatar, getUsers, getSettings, GST_TREATMENTS,
   type Customer, type InventoryItem, type GoldSubscription, type User as AdminUser, type GoldLoan,
-  type CustomerAdvance, type CustomField, type AppSettings, staticUrl,
+  type CustomerAdvance, type CustomField, type AppSettings, type ContactPerson, staticUrl,
 } from '@/lib/api';
 import { downloadCsv } from '@/lib/export-utils';
 import { useAppTheme } from '@/components/AppThemeContext';
@@ -1228,6 +1228,35 @@ function EditClientModal({
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
+  // ── Zoho-style business/contact fields ──
+  const [customerSubType, setCustomerSubType] = useState<'individual' | 'business'>(customer.customer_sub_type ?? 'individual');
+  const [companyName, setCompanyName] = useState(customer.company_name ?? '');
+  const [salutation, setSalutation] = useState(customer.salutation ?? '');
+  const [firstName, setFirstName] = useState(customer.first_name ?? '');
+  const [lastName, setLastName] = useState(customer.last_name ?? '');
+  const [workPhone, setWorkPhone] = useState(customer.work_phone ?? '');
+  const [website, setWebsite] = useState(customer.website ?? '');
+  const [attention, setAttention] = useState(customer.attention ?? '');
+  const [street2, setStreet2] = useState(customer.street2 ?? '');
+  const [gstTreatment, setGstTreatment] = useState(customer.gst_treatment ?? '');
+  const [gstNo, setGstNo] = useState(customer.gst_no ?? '');
+  const [placeOfSupply, setPlaceOfSupply] = useState(customer.place_of_supply ?? '');
+  const [paymentTerms, setPaymentTerms] = useState(customer.payment_terms ?? '');
+  const [creditLimit, setCreditLimit] = useState(customer.credit_limit ? String(customer.credit_limit) : '');
+  const [notes, setNotes] = useState(customer.notes ?? '');
+
+  const [sameAsBilling, setSameAsBilling] = useState(!customer.shipping_address);
+  const [shipAttention, setShipAttention] = useState(customer.shipping_address?.attention ?? '');
+  const [shipAddress, setShipAddress] = useState(customer.shipping_address?.address ?? '');
+  const [shipStreet2, setShipStreet2] = useState(customer.shipping_address?.street2 ?? '');
+  const [shipCity, setShipCity] = useState(customer.shipping_address?.city ?? '');
+  const [shipState, setShipState] = useState(customer.shipping_address?.state ?? '');
+  const [shipZip, setShipZip] = useState(customer.shipping_address?.zip ?? '');
+  const [shipCountry, setShipCountry] = useState(customer.shipping_address?.country ?? 'India');
+  const [shipPhone, setShipPhone] = useState(customer.shipping_address?.phone ?? '');
+
+  const [contactPersons, setContactPersons] = useState<ContactPerson[]>(customer.contact_persons ?? []);
+
   // ── Relationship Manager reassignment (admin-only) ──
   const initialRm = typeof customer.relationship_manager === 'object' && customer.relationship_manager
     ? customer.relationship_manager
@@ -1252,6 +1281,31 @@ function EditClientModal({
     setAccountNumber(customer.accountNumber ?? '');
     setIfscCode(customer.ifscCode ?? '');
     setBankName(customer.bankName ?? '');
+    setCustomerSubType(customer.customer_sub_type ?? 'individual');
+    setCompanyName(customer.company_name ?? '');
+    setSalutation(customer.salutation ?? '');
+    setFirstName(customer.first_name ?? '');
+    setLastName(customer.last_name ?? '');
+    setWorkPhone(customer.work_phone ?? '');
+    setWebsite(customer.website ?? '');
+    setAttention(customer.attention ?? '');
+    setStreet2(customer.street2 ?? '');
+    setGstTreatment(customer.gst_treatment ?? '');
+    setGstNo(customer.gst_no ?? '');
+    setPlaceOfSupply(customer.place_of_supply ?? '');
+    setPaymentTerms(customer.payment_terms ?? '');
+    setCreditLimit(customer.credit_limit ? String(customer.credit_limit) : '');
+    setNotes(customer.notes ?? '');
+    setSameAsBilling(!customer.shipping_address);
+    setShipAttention(customer.shipping_address?.attention ?? '');
+    setShipAddress(customer.shipping_address?.address ?? '');
+    setShipStreet2(customer.shipping_address?.street2 ?? '');
+    setShipCity(customer.shipping_address?.city ?? '');
+    setShipState(customer.shipping_address?.state ?? '');
+    setShipZip(customer.shipping_address?.zip ?? '');
+    setShipCountry(customer.shipping_address?.country ?? 'India');
+    setShipPhone(customer.shipping_address?.phone ?? '');
+    setContactPersons(customer.contact_persons ?? []);
     const values: Record<string, string> = {};
     (customer.customFields ?? []).forEach(f => { values[f.key] = f.value; });
     setDefinedFieldValues(values);
@@ -1297,6 +1351,32 @@ function EditClientModal({
         bankName: bankName.trim() || undefined,
         customFields: definedFields.length ? validDefinedFields : undefined,
         relationship_manager: rmId || null,
+        customer_sub_type: customerSubType,
+        company_name: customerSubType === 'business' ? companyName.trim() || undefined : undefined,
+        salutation: salutation || undefined,
+        first_name: firstName.trim() || undefined,
+        last_name: lastName.trim() || undefined,
+        work_phone: workPhone.trim() || undefined,
+        website: website.trim() || undefined,
+        attention: attention.trim() || undefined,
+        street2: street2.trim() || undefined,
+        gst_treatment: (gstTreatment || null) as any,
+        gst_no: gstNo.trim() || undefined,
+        place_of_supply: placeOfSupply.trim() || undefined,
+        payment_terms: paymentTerms.trim() || undefined,
+        credit_limit: creditLimit ? Number(creditLimit) : undefined,
+        notes: notes.trim() || undefined,
+        shipping_address: sameAsBilling ? null : {
+          attention: shipAttention.trim(),
+          address: shipAddress.trim(),
+          street2: shipStreet2.trim(),
+          city: shipCity.trim(),
+          state: shipState.trim(),
+          zip: shipZip.trim(),
+          country: shipCountry.trim() || 'India',
+          phone: shipPhone.trim(),
+        },
+        contact_persons: contactPersons.filter(p => p.first_name?.trim()),
       });
       onSaved(updated);
     } catch (e: any) {
@@ -1337,27 +1417,235 @@ function EditClientModal({
           </div>
         </div>
 
-        <div>
-          <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Address</label>
-          <input value={address} onChange={e => setAddress(e.target.value)}
-            className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+        <div className="border-t border-slate-100 pt-4 space-y-3">
+          <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Business Details</p>
+          <div className="flex gap-2">
+            {(['individual', 'business'] as const).map(t => (
+              <button key={t} type="button" onClick={() => setCustomerSubType(t)}
+                className={`flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-wide border transition-all ${customerSubType === t ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>
+                {t}
+              </button>
+            ))}
+          </div>
+          {customerSubType === 'business' && (
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Company Name</label>
+              <input value={companyName} onChange={e => setCompanyName(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+            </div>
+          )}
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Salutation</label>
+              <select value={salutation} onChange={e => setSalutation(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all">
+                <option value="">—</option>
+                {['Mr.', 'Mrs.', 'Ms.', 'Dr.'].map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">First Name</label>
+              <input value={firstName} onChange={e => setFirstName(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+            </div>
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Last Name</label>
+              <input value={lastName} onChange={e => setLastName(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Work Phone</label>
+              <input value={workPhone} onChange={e => setWorkPhone(e.target.value)} placeholder="Landline / office number"
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+            </div>
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Website</label>
+              <input value={website} onChange={e => setWebsite(e.target.value)} placeholder="https://…"
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+            </div>
+          </div>
         </div>
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">City</label>
-            <input value={city} onChange={e => setCity(e.target.value)}
-              className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+
+        <div className="border-t border-slate-100 pt-4 space-y-3">
+          <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Billing Address</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Attention</label>
+              <input value={attention} onChange={e => setAttention(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+            </div>
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Address Line 2</label>
+              <input value={street2} onChange={e => setStreet2(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+            </div>
           </div>
           <div>
-            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">State</label>
-            <input value={state} onChange={e => setState(e.target.value)}
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Address</label>
+            <input value={address} onChange={e => setAddress(e.target.value)}
               className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
           </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">City</label>
+              <input value={city} onChange={e => setCity(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+            </div>
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">State</label>
+              <input value={state} onChange={e => setState(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+            </div>
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">PIN</label>
+              <input value={pincode} onChange={e => setPincode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-slate-100 pt-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Shipping Address</p>
+            <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 cursor-pointer">
+              <input type="checkbox" checked={sameAsBilling} onChange={e => setSameAsBilling(e.target.checked)} />
+              Same as billing address
+            </label>
+          </div>
+          {!sameAsBilling && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Attention</label>
+                  <input value={shipAttention} onChange={e => setShipAttention(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Phone</label>
+                  <input value={shipPhone} onChange={e => setShipPhone(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Address</label>
+                <input value={shipAddress} onChange={e => setShipAddress(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+              </div>
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Address Line 2</label>
+                <input value={shipStreet2} onChange={e => setShipStreet2(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+              </div>
+              <div className="grid grid-cols-4 gap-3">
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">City</label>
+                  <input value={shipCity} onChange={e => setShipCity(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">State</label>
+                  <input value={shipState} onChange={e => setShipState(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">ZIP</label>
+                  <input value={shipZip} onChange={e => setShipZip(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Country</label>
+                  <input value={shipCountry} onChange={e => setShipCountry(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="border-t border-slate-100 pt-4 space-y-3">
+          <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">GST &amp; Payment</p>
           <div>
-            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">PIN</label>
-            <input value={pincode} onChange={e => setPincode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">GST Treatment</label>
+            <select value={gstTreatment} onChange={e => setGstTreatment(e.target.value as any)}
+              className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all">
+              <option value="">Not specified</option>
+              {GST_TREATMENTS.map(g => <option key={g.value} value={g.value}>{g.label}</option>)}
+            </select>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">GST No.</label>
+              <input value={gstNo} onChange={e => setGstNo(e.target.value.toUpperCase())} placeholder="GSTIN"
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all uppercase" />
+            </div>
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Place Of Supply</label>
+              <input value={placeOfSupply} onChange={e => setPlaceOfSupply(e.target.value)} placeholder="State"
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Payment Terms</label>
+              <input value={paymentTerms} onChange={e => setPaymentTerms(e.target.value)} placeholder="e.g. Net 15, Due on Receipt"
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+            </div>
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Credit Limit (₹)</label>
+              <input type="number" min={0} value={creditLimit} onChange={e => setCreditLimit(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-slate-100 pt-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Contact Persons</p>
+            <button type="button"
+              onClick={() => setContactPersons(p => [...p, { salutation: '', first_name: '', last_name: '', email: '', phone: '', mobile: '', designation: '', department: '', is_primary_contact: p.length === 0 }])}
+              className="text-[10px] font-black text-blue-600 hover:underline">+ Add Contact</button>
+          </div>
+          {contactPersons.length === 0 && <p className="text-[10px] text-slate-400 font-medium">No additional contact persons.</p>}
+          {contactPersons.map((cp, i) => (
+            <div key={i} className="p-3 bg-slate-50 border border-slate-100 rounded-xl space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 cursor-pointer">
+                  <input type="radio" name="primary-contact" checked={!!cp.is_primary_contact}
+                    onChange={() => setContactPersons(list => list.map((p, j) => ({ ...p, is_primary_contact: j === i })))} />
+                  Primary contact
+                </label>
+                <button type="button" onClick={() => setContactPersons(list => list.filter((_, j) => j !== i))}
+                  className="p-1 text-slate-400 hover:text-red-500 transition-colors"><X className="w-3.5 h-3.5" /></button>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <input placeholder="First name" value={cp.first_name}
+                  onChange={e => setContactPersons(list => list.map((p, j) => j === i ? { ...p, first_name: e.target.value } : p))}
+                  className="w-full border border-slate-200 rounded-lg px-2.5 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+                <input placeholder="Last name" value={cp.last_name}
+                  onChange={e => setContactPersons(list => list.map((p, j) => j === i ? { ...p, last_name: e.target.value } : p))}
+                  className="w-full border border-slate-200 rounded-lg px-2.5 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+                <input placeholder="Designation" value={cp.designation}
+                  onChange={e => setContactPersons(list => list.map((p, j) => j === i ? { ...p, designation: e.target.value } : p))}
+                  className="w-full border border-slate-200 rounded-lg px-2.5 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <input placeholder="Email" value={cp.email}
+                  onChange={e => setContactPersons(list => list.map((p, j) => j === i ? { ...p, email: e.target.value } : p))}
+                  className="w-full border border-slate-200 rounded-lg px-2.5 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+                <input placeholder="Mobile" value={cp.mobile}
+                  onChange={e => setContactPersons(list => list.map((p, j) => j === i ? { ...p, mobile: e.target.value } : p))}
+                  className="w-full border border-slate-200 rounded-lg px-2.5 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="border-t border-slate-100 pt-4 space-y-3">
+          <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Remarks</p>
+          <textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Internal notes about this customer…"
+            className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all resize-none" />
         </div>
 
         <div className="border-t border-slate-100 pt-4 space-y-3">

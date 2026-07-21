@@ -9,8 +9,11 @@ import { APP_THEME } from '@/lib/theme-constants';
 // Map route prefixes to their sidebar permission key
 const ROUTE_PERMISSION: Record<string, string> = {
   '/dashboard/analytics/branches': 'analytics.branches',
+  '/dashboard/analytics-ai':       'analytics-ai',
   '/dashboard/analytics':          'analytics',
   '/dashboard/notifications':      'notifications',
+  '/dashboard/payments':           'payments',
+  '/dashboard/reports':            'reports',
   '/dashboard/inventory/sold':     'inventory.sold',
   '/dashboard/inventory/allocate': 'inventory.allocate',
   '/dashboard/inventory/damaged':  'inventory.damaged',

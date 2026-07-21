@@ -2,7 +2,7 @@
 
 import { useEffect, useState, Fragment } from 'react';
 import Link from 'next/link';
-import { Star, ChevronRight, DollarSign, TrendingUp, Layers, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { Star, ChevronRight, DollarSign, TrendingUp, Layers, ArrowUpRight, ArrowDownRight, Truck } from 'lucide-react';
 import { useAppTheme } from '@/components/AppThemeContext';
 import { APP_THEME } from '@/lib/theme-constants';
 import { getReportOverview } from '@/lib/api';
@@ -86,6 +86,22 @@ export default function ReportsHubPage() {
           colors={colors}
         />
       </div>
+
+      {/* Vendor items lookup — picker-driven, doesn't fit the date-range report table below */}
+      <Link
+        href="/dashboard/reports/vendor-items"
+        className="flex items-center gap-5 p-7 rounded-[2.5rem] border shadow-xl shadow-slate-200/40 hover:-translate-y-1 transition-all duration-300 group"
+        style={{ backgroundColor: colors.bg, borderColor: colors.border }}
+      >
+        <div className="p-3.5 rounded-2xl text-white shadow-lg flex-shrink-0" style={{ backgroundColor: '#f97316', boxShadow: '0 8px 20px -6px #f9731655' }}>
+          <Truck className="w-5 h-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-base font-black text-slate-900">Vendor Items Purchased</p>
+          <p className="text-[11px] font-bold text-slate-400 mt-1">Search a supplier to see every item bought from them, with cost totals</p>
+        </div>
+        <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-blue-500 transition-colors flex-shrink-0" />
+      </Link>
 
       {/* Categorized report list */}
       <div

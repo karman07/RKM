@@ -11,7 +11,10 @@ const PERMISSION_GROUPS = [
     items: [
       { key: 'dashboard',     label: 'Executive Overview' },
       { key: 'analytics',     label: 'Business Intelligence' },
+      { key: 'analytics-ai',  label: 'AI Insights (Beta)' },
       { key: 'notifications', label: 'Notification Center' },
+      { key: 'payments',      label: 'Payments' },
+      { key: 'reports',       label: 'Reports' },
     ],
   },
   {
@@ -39,6 +42,7 @@ const PERMISSION_GROUPS = [
       { key: 'holidays',            label: 'Holidays' },
       { key: 'location-violations', label: 'Location Violations' },
       { key: 'reimbursements',      label: 'Reimbursements' },
+      { key: 'payroll',             label: 'Payroll' },
     ],
   },
   {

@@ -10,6 +10,7 @@ import {
 import Modal from '@/components/Modal';
 import UserHistoryDrawer from '@/components/UserHistoryDrawer';
 import PhoneOtpField from '@/components/PhoneOtpField';
+import EmployeeIdCardModal from '@/components/EmployeeIdCardModal';
 import {
   Plus, Edit2, Trash2, ChevronLeft, ChevronRight, Shield, UserCheck,
   Building2, Mail, Loader2, User as UserIcon, FileText, CreditCard,
@@ -195,6 +196,7 @@ export default function UsersPage() {
   const [toast, setToast]           = useState<{ message: string; type: 'success' | 'danger' } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [historyUser, setHistoryUser]   = useState<User | null>(null);
+  const [newEmployeeCard, setNewEmployeeCard] = useState<User | null>(null);
 
   // Phone OTP verification state (reset when modal opens)
   const [mobileVerified, setMobileVerified]   = useState(false);
@@ -368,8 +370,14 @@ export default function UsersPage() {
         ...(form.blank_check_url   ? { blank_check_url:        form.blank_check_url           } : {}),
       };
       if (!isWorker && (!editTarget || form.password)) payload.password = form.password;
-      if (editTarget) { await updateUser(editTarget._id, payload); showToast(isWorker ? 'Worker updated' : 'User updated', 'success'); }
-      else            { await createUser(payload);                  showToast(isWorker ? 'Worker added' : 'User created', 'success'); }
+      if (editTarget) {
+        await updateUser(editTarget._id, payload);
+        showToast(isWorker ? 'Worker updated' : 'User updated', 'success');
+      } else {
+        const created = await createUser(payload);
+        showToast(isWorker ? 'Worker added' : 'User created', 'success');
+        setNewEmployeeCard(created);
+      }
       setModalOpen(false);
       load();
     } catch (e: any) {
@@ -598,6 +606,10 @@ export default function UsersPage() {
         </div>
 
         {historyUser && <UserHistoryDrawer user={historyUser} onClose={() => setHistoryUser(null)} />}
+
+        {newEmployeeCard && (
+          <EmployeeIdCardModal user={newEmployeeCard} branches={branches} onClose={() => setNewEmployeeCard(null)} />
+        )}
 
         <div className="px-8 py-6 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between">
           <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
@@ -1224,6 +1236,33 @@ export default function UsersPage() {
                   </div>
                 );
               })}
+
+              {/* ID Card — rendered live from current profile data, not a stored/generated file */}
+              <div className="flex items-stretch gap-0 bg-white border border-slate-200 rounded-2xl overflow-hidden hover:border-slate-300 hover:shadow-sm transition-all">
+                <div className="w-1 flex-shrink-0 bg-amber-500" />
+                <div className="flex items-center gap-4 px-5 py-4 flex-1 min-w-0">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#fffbeb' }}>
+                    <UserCog className="w-4.5 h-4.5 text-amber-600" style={{ width: 18, height: 18 }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <p className="text-sm font-black text-slate-900">Employee ID Card</p>
+                      <span className="inline-flex items-center gap-1 text-[9px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full uppercase tracking-wide">
+                        <CheckCircle2 className="w-2.5 h-2.5" /> Ready
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-medium truncate">Photo ID with role, branch &amp; QR code — generated live from the Profile tab.</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 pr-4 flex-shrink-0">
+                  <button
+                    onClick={() => setNewEmployeeCard(editTarget)}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-xl shadow-sm shadow-blue-600/20 transition-all"
+                  >
+                    <Download className="w-3.5 h-3.5" /> View &amp; Download
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
