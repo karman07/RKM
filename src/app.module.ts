@@ -40,6 +40,7 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { GoldLoanModule } from './modules/gold-loan/gold-loan.module';
 import { SmsModule } from './modules/sms/sms.module';
 import { SalesModule } from './modules/sales/sales.module';
+import { MiscPaymentsModule } from './modules/misc-payments/misc-payments.module';
 
 @Module({
   imports: [
@@ -88,6 +89,7 @@ import { SalesModule } from './modules/sales/sales.module';
     GoldLoanModule,
     SmsModule,
     SalesModule,
+    MiscPaymentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

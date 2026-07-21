@@ -14,6 +14,7 @@ import { NotificationsModule } from '../notifications/notifications.module.js';
 import { SmsModule } from '../sms/sms.module.js';
 import { EmailModule } from '../email/email.module.js';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module.js';
+import { MiscPaymentsModule } from '../misc-payments/misc-payments.module.js';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { WhatsAppModule } from '../whatsapp/whatsapp.module.js';
     SmsModule,
     EmailModule,
     WhatsAppModule,
+    MiscPaymentsModule,
   ],
   controllers: [InventoryController, CustomerCertificateController],
   providers: [InventoryService, CertificateService],

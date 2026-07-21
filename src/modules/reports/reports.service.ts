@@ -10,11 +10,13 @@ import { OnlineOrder, OnlineOrderDocument } from '../online-orders/schemas/onlin
 import { User, UserDocument } from '../../users/schemas/user.schema';
 import { Reimbursement, ReimbursementDocument, ReimbursementStatus } from '../hr/schemas/reimbursement.schema';
 import { Incentive, IncentiveDocument } from '../incentives/schemas/incentive.schema';
+import { CustomerAdvance, CustomerAdvanceDocument } from '../customers/schemas/customer-advance.schema';
 
 const BALANCE_SHEET_DISCLAIMER =
   'Estimated from recorded transactions — this store does not maintain a formal double-entry ledger. ' +
   'Figures are a best-effort reconstruction (inventory at cost, cumulative cash movement, gold-investment ' +
-  'payables, cumulative staff payroll, approved miscellaneous expenses, and stolen/damaged inventory write-offs) ' +
+  'payables, cumulative staff payroll, approved miscellaneous expenses, stolen/damaged inventory write-offs, ' +
+  'and outstanding pre-booking balances owed by customers) ' +
   'and are not a substitute for an audited financial statement. Staff cost is estimated from base salary × ' +
   'tenure plus recorded incentives — not an attendance-adjusted payroll run. Stolen and damaged items are ' +
   'already excluded from Inventory at Cost above; the write-off figures below are shown for transparency on ' +
@@ -73,6 +75,7 @@ export class ReportsService {
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Reimbursement.name) private reimbursementModel: Model<ReimbursementDocument>,
     @InjectModel(Incentive.name) private incentiveModel: Model<IncentiveDocument>,
+    @InjectModel(CustomerAdvance.name) private advanceModel: Model<CustomerAdvanceDocument>,
   ) {}
 
   // ── Staff & Miscellaneous Expenses ───────────────────────────────────────────────
@@ -252,7 +255,7 @@ export class ReportsService {
   async getProfitLoss(from?: string, to?: string) {
     const soldMatch = { is_deleted: { $ne: true }, status: InventoryStatus.SOLD, ...rangeMatch('sold_at', from, to) };
 
-    const [salesAgg, onlineAgg, oldGoldAgg] = await Promise.all([
+    const [salesAgg, onlineAgg, oldGoldAgg, forfeitureAgg] = await Promise.all([
       this.inventoryModel.aggregate([
         { $match: soldMatch },
         { $group: { _id: null, revenue: { $sum: '$selling_price' }, cogs: { $sum: '$purchase_price' }, count: { $sum: 1 } } },
@@ -264,6 +267,11 @@ export class ReportsService {
       this.oldGoldModel.aggregate([
         { $match: { status: OGStatus.SETTLED, ...rangeMatch('settled_at', from, to) } },
         { $group: { _id: null, outflow: { $sum: '$settlement_amount' }, count: { $sum: 1 } } },
+      ]),
+      this.advanceModel.aggregate([
+        { $unwind: '$forfeitureHistory' },
+        { $match: rangeMatch('forfeitureHistory.date', from, to) },
+        { $group: { _id: null, total: { $sum: '$forfeitureHistory.amount' }, count: { $sum: 1 } } },
       ]),
     ]);
 
@@ -278,8 +286,9 @@ export class ReportsService {
     const sales = salesAgg[0] ?? { revenue: 0, cogs: 0, count: 0 };
     const online = onlineAgg[0] ?? { revenue: 0, count: 0 };
     const oldGold = oldGoldAgg[0] ?? { outflow: 0, count: 0 };
+    const forfeiture = forfeitureAgg[0] ?? { total: 0, count: 0 };
 
-    const totalRevenue = sales.revenue + online.revenue;
+    const totalRevenue = sales.revenue + online.revenue + forfeiture.total;
     const grossProfit = totalRevenue - sales.cogs;
     const totalExpenses = oldGold.outflow + staffExpense.total + miscExpense + inventoryLoss.total;
     const netProfit = grossProfit - totalExpenses;
@@ -290,6 +299,7 @@ export class ReportsService {
       revenue: [
         { label: 'In-Store Sales', amount: sales.revenue, count: sales.count },
         { label: 'Online Orders', amount: online.revenue, count: online.count },
+        { label: 'Pre-Booking Cancellation Fees', amount: forfeiture.total, count: forfeiture.count },
       ],
       totalRevenue,
       costOfGoodsSold: [{ label: 'Cost of Items Sold', amount: sales.cogs }],
@@ -396,7 +406,7 @@ export class ReportsService {
       cashInSales, cashInOnline, cashInInvestment,
       cashOutOldGold, cashOutPo, cashOutInvestment,
       inventoryAtCost, emiOutstanding, onlinePending,
-      investmentPayable, oldGoldPayable,
+      investmentPayable, oldGoldPayable, prebookingReceivable,
     ] = await Promise.all([
       this.inventoryModel.aggregate([
         { $match: { is_deleted: { $ne: true }, status: InventoryStatus.SOLD, ...upTo('sold_at') } },
@@ -456,6 +466,23 @@ export class ReportsService {
         { $match: { status: OGStatus.MELTING_AUTHORIZED, ...upTo('melt_authorized_at') } },
         { $group: { _id: null, total: { $sum: '$total_value' }, count: { $sum: 1 } } },
       ]),
+      this.inventoryModel.aggregate([
+        {
+          $match: {
+            is_deleted: { $ne: true },
+            status: InventoryStatus.RESERVED,
+            prebooking_advance_id: { $ne: null },
+            ...upTo('prebooked_at'),
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: { $max: [0, { $subtract: ['$selling_price', { $ifNull: ['$prebooking_advance_amount', 0] }] }] } },
+            count: { $sum: 1 },
+          },
+        },
+      ]),
     ]);
 
     const [staffExpense, miscExpense, inventoryLoss] = await Promise.all([
@@ -469,10 +496,17 @@ export class ReportsService {
       - (cashOutOldGold[0]?.total ?? 0) - (cashOutPo[0]?.total ?? 0) - (cashOutInvestment[0]?.total ?? 0)
       - staffExpense.total - miscExpense;
 
+    const emiOutstandingTotal = emiOutstanding[0]?.total ?? 0;
+    const onlinePendingTotal = onlinePending[0]?.total ?? 0;
+    const prebookingDuesTotal = prebookingReceivable[0]?.total ?? 0;
+
     const assets = {
       cashAndBank: cashPosition,
       inventoryAtCost: inventoryAtCost[0]?.total ?? 0,
-      accountsReceivable: (emiOutstanding[0]?.total ?? 0) + (onlinePending[0]?.total ?? 0),
+      accountsReceivable: emiOutstandingTotal + onlinePendingTotal + prebookingDuesTotal,
+      emiOutstanding: emiOutstandingTotal,
+      onlinePending: onlinePendingTotal,
+      prebookingDues: prebookingDuesTotal,
     };
     const totalAssets = assets.cashAndBank + assets.inventoryAtCost + assets.accountsReceivable;
 
@@ -494,6 +528,7 @@ export class ReportsService {
           inventoryItemCount: inventoryAtCost[0]?.count ?? 0,
           emiOutstandingCount: emiOutstanding[0]?.count ?? 0,
           onlinePendingCount: onlinePending[0]?.count ?? 0,
+          prebookingPendingCount: prebookingReceivable[0]?.count ?? 0,
         },
       },
       totalAssets,
@@ -940,7 +975,7 @@ export class ReportsService {
   // ── Receivables ──────────────────────────────────────────────────────────────────
 
   async getReceivables() {
-    const [emiRows, onlineRows] = await Promise.all([
+    const [emiRows, onlineRows, prebookingRows] = await Promise.all([
       this.inventoryModel
         .find({ is_deleted: { $ne: true }, is_emi: true, status: InventoryStatus.SOLD })
         .select('unique_item_code barcode sold_customer_name sold_customer_phone selling_price emi_down_payment sold_at')
@@ -949,6 +984,11 @@ export class ReportsService {
       this.onlineOrderModel
         .find({ payment_status: 'pending' })
         .select('order_number customer_name customer_phone total createdAt')
+        .lean()
+        .exec(),
+      this.inventoryModel
+        .find({ is_deleted: { $ne: true }, status: InventoryStatus.RESERVED, prebooking_advance_id: { $ne: null } })
+        .select('unique_item_code barcode prebooking_customer_name prebooking_customer_phone selling_price prebooking_advance_amount prebooked_at')
         .lean()
         .exec(),
     ]);
@@ -973,11 +1013,28 @@ export class ReportsService {
       date: r.createdAt,
     }));
 
-    const rows = [...emiOutstanding, ...onlinePending].sort(
+    const prebookingPending = prebookingRows
+      .map((r: any) => ({
+        type: 'prebooking' as const,
+        reference: r.unique_item_code || r.barcode,
+        customerName: r.prebooking_customer_name,
+        customerPhone: r.prebooking_customer_phone,
+        amount: Math.max(0, (r.selling_price ?? 0) - (r.prebooking_advance_amount ?? 0)),
+        date: r.prebooked_at,
+      }))
+      .filter((r: any) => r.amount > 0);
+
+    const rows = [...emiOutstanding, ...onlinePending, ...prebookingPending].sort(
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
     );
     const totalOutstanding = rows.reduce((s, r) => s + r.amount, 0);
 
-    return { rows, totalOutstanding, emiCount: emiOutstanding.length, onlineCount: onlinePending.length };
+    return {
+      rows,
+      totalOutstanding,
+      emiCount: emiOutstanding.length,
+      onlineCount: onlinePending.length,
+      prebookingCount: prebookingPending.length,
+    };
   }
 }

@@ -200,4 +200,13 @@ export class UpdateSettingsDto {
   @Min(0)
   @Max(100)
   sales_commission_rate_percentage?: number;
+
+  // ── Pre-Booking Cancellation Policy ─────────────────────────────────────────
+
+  /** Default deduction (% of the advance) suggested when cancelling a pre-booking */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  prebooking_cancellation_deduction_pct?: number;
 }

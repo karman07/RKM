@@ -219,6 +219,15 @@ export class Settings {
   /** Commission rate (%) applied to approved sale/investment enquiries. */
   @Prop({ type: Number, min: 0, max: 100, default: 2 })
   sales_commission_rate_percentage: number;
+
+  // ── Pre-Booking Cancellation Policy ──────────────────────────────────────────
+
+  /**
+   * Default deduction (% of the advance paid) suggested when admin/manager cancels a
+   * pre-booking. Staff can still override this or waive it entirely per cancellation.
+   */
+  @Prop({ type: Number, min: 0, max: 100, default: 0 })
+  prebooking_cancellation_deduction_pct: number;
 }
 
 export const SettingsSchema = SchemaFactory.createForClass(Settings);

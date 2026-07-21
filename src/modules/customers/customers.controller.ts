@@ -65,4 +65,11 @@ export class CustomersController {
   async getPurchaseHistory(@Request() req: any) {
     return this.customersService.getPurchaseHistory(req.user.phone);
   }
+
+  /** Items this customer has pre-booked (reserved with an advance on file) but not yet collected */
+  @UseGuards(CustomerJwtAuthGuard)
+  @Get('prebookings')
+  async getPrebookings(@Request() req: any) {
+    return this.customersService.getPrebookedItems(req.user._id.toString());
+  }
 }

@@ -14,6 +14,7 @@ import { Branch, BranchSchema } from '../branches/schemas/branch.schema';
 import { User, UserSchema } from '../../users/schemas/user.schema';
 import { Reimbursement, ReimbursementSchema } from '../hr/schemas/reimbursement.schema';
 import { Incentive, IncentiveSchema } from '../incentives/schemas/incentive.schema';
+import { CustomerAdvance, CustomerAdvanceSchema } from '../customers/schemas/customer-advance.schema';
 import { SettingsModule } from '../settings/settings.module';
 
 @Module({
@@ -29,6 +30,7 @@ import { SettingsModule } from '../settings/settings.module';
       { name: User.name, schema: UserSchema },
       { name: Reimbursement.name, schema: ReimbursementSchema },
       { name: Incentive.name, schema: IncentiveSchema },
+      { name: CustomerAdvance.name, schema: CustomerAdvanceSchema },
     ]),
     SettingsModule,
   ],

@@ -60,9 +60,6 @@ if (!admin.apps.length) {
 
 @Injectable()
 export class CustomersService {
-  // In-memory OTP store: phone -> { otp, expiresAt }
-  private readonly otpStore = new Map<string, { otp: string; expiresAt: number }>();
-
   constructor(
     @InjectModel(Customer.name) private customerModel: Model<CustomerDocument>,
     @InjectModel(InventoryItem.name) private inventoryModel: Model<InventoryItemDocument>,
@@ -269,23 +266,30 @@ export class CustomersService {
     };
   }
 
-  async sendOtp(phone: string): Promise<{ otp: string; message: string }> {
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    this.otpStore.set(phone, { otp, expiresAt: Date.now() + 5 * 60 * 1000 });
-    console.log(`[OTP] Phone: ${phone} → ${otp}`); // Replace with SMS service in production
-    // TODO: integrate Twilio/MSG91 here to send actual SMS
-    return { otp, message: 'OTP sent' };
-  }
+  /** Items currently reserved for this customer with an advance on file (via prebooking) */
+  async getPrebookedItems(customerId: string) {
+    const items = await this.inventoryModel
+      .find({ prebooking_customer_id: customerId, status: 'reserved' })
+      .populate('product_id', 'name images category metal purity')
+      .sort({ prebooked_at: -1 })
+      .lean()
+      .exec();
 
-  async verifyOtp(phone: string, otp: string): Promise<boolean> {
-    const stored = this.otpStore.get(phone);
-    if (!stored || Date.now() > stored.expiresAt) {
-      this.otpStore.delete(phone);
-      return false;
-    }
-    if (stored.otp !== otp) return false;
-    this.otpStore.delete(phone);
-    return true;
+    return items.map((item: any) => ({
+      _id: item._id,
+      product_name: item.product_id?.name || item.unique_item_code,
+      product_image: item.product_id?.images?.[0] || null,
+      category: item.product_id?.category || null,
+      metal: item.product_id?.metal || null,
+      purity: item.product_id?.purity || null,
+      unique_item_code: item.unique_item_code,
+      selling_price: item.selling_price,
+      advance_amount: item.prebooking_advance_amount ?? 0,
+      balance_due: Math.max(0, (item.selling_price ?? 0) - (item.prebooking_advance_amount ?? 0)),
+      expected_date: item.prebooking_expected_date || null,
+      notes: item.prebooking_notes || '',
+      prebooked_at: item.prebooked_at || item.createdAt,
+    }));
   }
 
   async searchByPhone(phone: string) {

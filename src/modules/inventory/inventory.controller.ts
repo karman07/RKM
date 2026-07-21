@@ -24,6 +24,8 @@ import { QueryInventoryDto } from './dto/query-inventory.dto';
 import { UpdateInventoryDiscountDto } from './dto/update-inventory-discount.dto';
 import { UpdateInventoryHallmarkDto } from './dto/update-inventory-hallmark.dto';
 import { PreBookItemDto } from './dto/prebook-item.dto';
+import { CompletePreBookingDto } from './dto/complete-prebooking.dto';
+import { CancelPreBookingDto } from './dto/cancel-prebooking.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -284,13 +286,37 @@ export class InventoryController {
 
   /**
    * PATCH /inventory/:id/prebook/cancel
-   * Admin/Manager: releases a pre-booked item back to available stock.
-   * The customer's advance is left untouched as store credit.
+   * Admin/Manager: releases a pre-booked item back to available stock. By default the
+   * customer's advance is left untouched as store credit; an optional deduction_amount
+   * forfeits part of it as a cancellation fee instead.
    */
   @Patch(':id/prebook/cancel')
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
-  cancelPreBooking(@Param('id') id: string) {
-    return this.inventoryService.cancelPreBooking(id);
+  cancelPreBooking(
+    @Param('id') id: string,
+    @Body() dto: CancelPreBookingDto,
+    @Request() req: any,
+  ) {
+    const userId = req.user?.userId || req.user?.sub || req.user?._id || req.user?.id;
+    return this.inventoryService.cancelPreBooking(id, dto, userId?.toString());
+  }
+
+  /**
+   * POST /inventory/:id/prebook/complete
+   * Admin/Manager: collects the remaining balance on a pre-booked item and marks it SOLD.
+   * The advance already on file is redeemed automatically.
+   */
+  @Post(':id/prebook/complete')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  completePreBooking(
+    @Param('id') id: string,
+    @Body() dto: CompletePreBookingDto,
+    @Request() req: any,
+  ) {
+    const userId = req.user?.userId || req.user?.sub || req.user?._id || req.user?.id;
+    const userBranchId = req.user?.branch?._id || req.user?.branch || undefined;
+    const userRole = req.user?.role;
+    return this.inventoryService.completePreBooking(id, dto, userId?.toString(), userBranchId?.toString(), userRole);
   }
 
   /**

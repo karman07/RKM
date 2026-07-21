@@ -40,23 +40,7 @@ export class CustomersAdminController {
     return this.customersService.findById(id);
   }
 
-  /** Send OTP to customer phone for verification */
-  @Post('otp/send')
-  async sendOtp(@Body() body: { phone: string }) {
-    if (!body?.phone) throw new BadRequestException('phone is required');
-    return this.customersService.sendOtp(body.phone);
-  }
-
-  /** Verify OTP entered by manager */
-  @Post('otp/verify')
-  async verifyOtp(@Body() body: { phone: string; otp: string }) {
-    if (!body?.phone || !body?.otp) throw new BadRequestException('phone and otp are required');
-    const valid = await this.customersService.verifyOtp(body.phone, body.otp);
-    if (!valid) throw new BadRequestException('Invalid or expired OTP');
-    return { verified: true };
-  }
-
-  /** Create a new customer (manager flow — phone must be OTP-verified first) */
+  /** Create a new customer (manager/cashier flow — phone is verified client-side via Firebase Phone Auth first) */
   @Post()
   async createCustomer(@Body() body: {
     name: string;

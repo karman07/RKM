@@ -31,7 +31,7 @@ export class CustomerAdvanceService {
 
   private withBalance(doc: CustomerAdvanceDocument) {
     const obj = doc.toObject() as any;
-    obj.availableBalance = Math.max(0, (obj.amount || 0) - (obj.amountRedeemed || 0));
+    obj.availableBalance = Math.max(0, (obj.amount || 0) - (obj.amountRedeemed || 0) - (obj.amountForfeited || 0));
     obj.locked = !!(obj.lock_in_expires_at && new Date(obj.lock_in_expires_at) > new Date());
     return obj;
   }
@@ -94,7 +94,7 @@ export class CustomerAdvanceService {
       );
     }
 
-    const available = Math.max(0, (advance.amount || 0) - (advance.amountRedeemed || 0));
+    const available = Math.max(0, (advance.amount || 0) - (advance.amountRedeemed || 0) - (advance.amountForfeited || 0));
     if (!dto.amount || dto.amount <= 0) throw new BadRequestException('amount must be greater than 0');
     if (dto.amount > available + 0.5) {
       throw new BadRequestException(`Redemption amount (₹${dto.amount}) exceeds available balance (₹${available.toFixed(0)})`);
@@ -113,7 +113,39 @@ export class CustomerAdvanceService {
       },
     ];
 
-    if (advance.amount - advance.amountRedeemed < 1) {
+    if (advance.amount - advance.amountRedeemed - advance.amountForfeited < 1) {
+      advance.status = CustomerAdvanceStatus.CLOSED;
+    }
+
+    await advance.save();
+    const populated = await advance.populate('createdBy', 'name role');
+    return this.withBalance(populated);
+  }
+
+  /**
+   * Forfeits part (or all) of an advance's remaining balance as a cancellation deduction —
+   * the store keeps this amount instead of it staying redeemable as customer credit.
+   */
+  async forfeitAmount(id: string, amount: number, reason?: string, staffId?: string, reference?: string) {
+    const advance = await this.advanceModel.findById(id).exec();
+    if (!advance) throw new NotFoundException('Advance not found');
+    if (advance.status !== CustomerAdvanceStatus.ACTIVE) {
+      throw new BadRequestException('This advance is already closed');
+    }
+
+    const available = Math.max(0, (advance.amount || 0) - (advance.amountRedeemed || 0) - (advance.amountForfeited || 0));
+    if (!amount || amount <= 0) throw new BadRequestException('amount must be greater than 0');
+    if (amount > available + 0.5) {
+      throw new BadRequestException(`Deduction amount (₹${amount}) exceeds available balance (₹${available.toFixed(0)})`);
+    }
+
+    advance.amountForfeited = (advance.amountForfeited || 0) + amount;
+    advance.forfeitureHistory = [
+      ...(advance.forfeitureHistory || []),
+      { amount, reason: reason?.trim() || '', date: new Date(), reference, staffId },
+    ];
+
+    if (advance.amount - advance.amountRedeemed - advance.amountForfeited < 1) {
       advance.status = CustomerAdvanceStatus.CLOSED;
     }
 

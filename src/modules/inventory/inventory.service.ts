@@ -27,6 +27,8 @@ import { SellBatchDto } from './dto/sell-batch.dto.js';
 import { QueryInventoryDto } from './dto/query-inventory.dto.js';
 import { UpdateInventoryDiscountDto } from './dto/update-inventory-discount.dto.js';
 import { PreBookItemDto } from './dto/prebook-item.dto.js';
+import { CompletePreBookingDto } from './dto/complete-prebooking.dto.js';
+import { CancelPreBookingDto } from './dto/cancel-prebooking.dto.js';
 import { BranchesService } from '../branches/branches.service.js';
 import { CustomersService } from '../customers/customers.service.js';
 import { CustomerAdvanceService } from '../customers/customer-advance.service.js';
@@ -39,6 +41,7 @@ import { NotificationsService } from '../notifications/notifications.service.js'
 import { SmsService } from '../sms/sms.service.js';
 import { EmailService } from '../email/email.service.js';
 import { WhatsAppService } from '../whatsapp/services/whatsapp.service.js';
+import { MiscPaymentsService } from '../misc-payments/misc-payments.service.js';
 
 // Allowed status transitions
 const STATUS_TRANSITIONS: Record<InventoryStatus, InventoryStatus[]> = {
@@ -71,6 +74,7 @@ export class InventoryService {
     private readonly smsService: SmsService,
     private readonly emailService: EmailService,
     private readonly whatsappService: WhatsAppService,
+    private readonly miscPaymentsService: MiscPaymentsService,
   ) {
     this.razorpay = new Razorpay({
       key_id: this.configService.get<string>('RAZORPAY_ID'),
@@ -1990,15 +1994,33 @@ export class InventoryService {
   }
 
   /**
-   * Releases a pre-booked item back to AVAILABLE. The linked CustomerAdvance is left untouched —
-   * it remains active on the customer's ledger as store credit, redeemable against any future sale.
+   * Releases a pre-booked item back to AVAILABLE. By default the linked CustomerAdvance is left
+   * untouched — it remains active on the customer's ledger as store credit, redeemable against
+   * any future sale. If `dto.deduction_amount` is set, that portion of the advance is forfeited
+   * (kept by the store as a cancellation fee) instead of staying redeemable.
    */
-  async cancelPreBooking(id: string): Promise<InventoryItemDocument> {
+  async cancelPreBooking(id: string, dto?: CancelPreBookingDto, requestingUserId?: string): Promise<InventoryItemDocument> {
     this.validateObjectId(id);
     const item = await this.inventoryModel.findById(id);
     if (!item) throw new NotFoundException(`Inventory item ${id} not found`);
     if (item.status !== InventoryStatus.RESERVED || !item.prebooking_advance_id) {
       throw new BadRequestException('This item does not have an active pre-booking to cancel');
+    }
+
+    const deduction = Math.max(0, Number(dto?.deduction_amount) || 0);
+    if (deduction > 0) {
+      if (deduction > (item.prebooking_advance_amount ?? 0)) {
+        throw new BadRequestException(
+          `Deduction (₹${deduction.toLocaleString('en-IN')}) cannot exceed the advance amount of ₹${(item.prebooking_advance_amount ?? 0).toLocaleString('en-IN')}`,
+        );
+      }
+      await this.customerAdvanceService.forfeitAmount(
+        item.prebooking_advance_id,
+        deduction,
+        dto?.deduction_reason,
+        requestingUserId,
+        item.unique_item_code,
+      );
     }
 
     item.status = InventoryStatus.AVAILABLE;
@@ -2015,6 +2037,65 @@ export class InventoryService {
     item.prebooked_at = null;
 
     return item.save();
+  }
+
+  /**
+   * Collects the remaining balance on a pre-booked item and completes the sale.
+   * The advance already on file is redeemed automatically (as an `advance_balance` payment
+   * split) alongside whatever the customer pays now — the caller only needs to supply the
+   * payment covering the gap between the advance and the final price. Delegates the actual
+   * SOLD transition to `updateStatus` so every existing sale side-effect (customer sync,
+   * traceability, WhatsApp/notifications, certificate eligibility) applies unchanged.
+   */
+  async completePreBooking(
+    id: string,
+    dto: CompletePreBookingDto,
+    requestingUserId?: string,
+    requestingUserBranchId?: string,
+    requestingUserRole?: string,
+  ): Promise<InventoryItemDocument> {
+    this.validateObjectId(id);
+    const item = await this.inventoryModel.findById(id);
+    if (!item) throw new NotFoundException(`Inventory item ${id} not found`);
+    if (item.status !== InventoryStatus.RESERVED || !item.prebooking_advance_id) {
+      throw new BadRequestException('This item does not have an active pre-booking to complete');
+    }
+
+    const advanceAmount = item.prebooking_advance_amount ?? 0;
+    const finalPrice = dto.selling_price != null ? dto.selling_price : item.selling_price;
+    const balanceSplits = (dto.payment_splits ?? []).filter(s => Number(s.amount) > 0);
+    const balanceTotal = balanceSplits.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+    const expectedBalance = Math.max(0, finalPrice - advanceAmount);
+    if (Math.abs(balanceTotal - expectedBalance) > 0.5) {
+      throw new BadRequestException(
+        `Payment splits (₹${balanceTotal.toLocaleString('en-IN')}) must cover the remaining balance of ₹${expectedBalance.toLocaleString('en-IN')}`,
+      );
+    }
+
+    const statusDto: UpdateInventoryStatusDto = {
+      status: InventoryStatus.SOLD,
+      selling_price: finalPrice,
+      sold_customer_name: item.prebooking_customer_name,
+      sold_customer_phone: item.prebooking_customer_phone,
+      sold_customer_email: dto.sold_customer_email,
+      shipping_address: dto.shipping_address?.trim() || 'Store Collection — Pre-Booking',
+      shipping_city: dto.shipping_city,
+      shipping_state: dto.shipping_state,
+      shipping_pincode: dto.shipping_pincode,
+      shipping_country: dto.shipping_country,
+      sale_channel: dto.sale_channel?.trim() || 'store',
+      payment_mode: balanceSplits[0]?.mode || 'advance_balance',
+      payment_splits: [
+        { mode: 'advance_balance', amount: advanceAmount, reference: item.prebooking_advance_id },
+        ...balanceSplits,
+      ],
+      advance_redeemed: advanceAmount,
+      advance_id: item.prebooking_advance_id,
+      sold_by_user_id: dto.sold_by_user_id,
+      sold_at_branch_id: dto.sold_at_branch_id,
+    } as UpdateInventoryStatusDto;
+
+    return this.updateStatus(id, statusDto, requestingUserId, requestingUserBranchId, requestingUserRole);
   }
 
   private generateBarcode(): string {
@@ -2086,6 +2167,7 @@ export class InventoryService {
       summaryStats,
       recentTransactions,
       revenueByDayOfWeek,
+      miscPayments,
     ] = await Promise.all([
       // Daily revenue over time
       this.inventoryModel.aggregate([
@@ -2205,9 +2287,12 @@ export class InventoryService {
         },
         { $sort: { _id: 1 } },
       ]),
+
+      // Miscellaneous income (repair charges, service fees, rent, etc.) — not tied to a sale
+      this.miscPaymentsService.findSince(since),
     ]);
 
-    const summary = summaryStats[0] ?? {
+    const salesSummary = summaryStats[0] ?? {
       totalRevenue: 0,
       totalTransactions: 0,
       avgTransactionValue: 0,
@@ -2216,19 +2301,99 @@ export class InventoryService {
       totalProfit: 0,
     };
 
+    const miscAmounts = (miscPayments as any[]).map(p => p.amount || 0);
+    const miscTotal = miscAmounts.reduce((s, a) => s + a, 0);
+    const miscCount = miscAmounts.length;
+    const totalTransactions = salesSummary.totalTransactions + miscCount;
+    const totalRevenue = salesSummary.totalRevenue + miscTotal;
+    const allAmountsForMinMax = [
+      ...(salesSummary.totalTransactions > 0 ? [salesSummary.maxSale, salesSummary.minSale] : []),
+      ...miscAmounts,
+    ];
+    const summary = {
+      totalRevenue,
+      totalTransactions,
+      avgTransactionValue: totalTransactions ? totalRevenue / totalTransactions : 0,
+      maxSale: allAmountsForMinMax.length ? Math.max(...allAmountsForMinMax) : 0,
+      minSale: allAmountsForMinMax.length ? Math.min(...allAmountsForMinMax) : 0,
+      totalProfit: salesSummary.totalProfit + miscTotal, // misc income carries no cost basis — pure profit
+    };
+
+    // Merge misc payments into the daily revenue timeline
+    const revenueByDate = new Map<string, { _id: string; revenue: number; count: number }>(
+      revenueOverTime.map((r: any) => [r._id, { ...r }]),
+    );
+    for (const p of miscPayments as any[]) {
+      const key = new Date(p.createdAt).toISOString().slice(0, 10);
+      const existing = revenueByDate.get(key);
+      if (existing) { existing.revenue += p.amount; existing.count += 1; }
+      else revenueByDate.set(key, { _id: key, revenue: p.amount, count: 1 });
+    }
+    const mergedRevenueOverTime = Array.from(revenueByDate.values()).sort((a, b) => a._id.localeCompare(b._id));
+
+    // Merge misc payments into the payment-mode breakdown
+    const modeMap = new Map<string, { _id: string; total: number; count: number }>(
+      paymentModeBreakdown.map((m: any) => [m._id, { ...m }]),
+    );
+    for (const p of miscPayments as any[]) {
+      const key = (p.mode || 'cash').toLowerCase();
+      const existing = modeMap.get(key);
+      if (existing) { existing.total += p.amount; existing.count += 1; }
+      else modeMap.set(key, { _id: key, total: p.amount, count: 1 });
+    }
+    const mergedPaymentModeBreakdown = Array.from(modeMap.values()).sort((a, b) => b.total - a.total);
+
+    // Merge misc payments into branch revenue
+    const branchMap = new Map<string, { branch_name: string; branch_code?: string; revenue: number; count: number }>(
+      branchRevenue.map((b: any) => [b.branch_name, { ...b }]),
+    );
+    for (const p of miscPayments as any[]) {
+      const name = (p.branch_id as any)?.name || 'Unallocated';
+      const code = (p.branch_id as any)?.code;
+      const existing = branchMap.get(name);
+      if (existing) { existing.revenue += p.amount; existing.count += 1; }
+      else branchMap.set(name, { branch_name: name, branch_code: code, revenue: p.amount, count: 1 });
+    }
+    const mergedBranchRevenue = Array.from(branchMap.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 10);
+
+    // Merge misc payments into revenue-by-day-of-week
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const revenueByDay = revenueByDayOfWeek.map((d: any) => ({
-      day: dayNames[d._id - 1] ?? 'Unknown',
-      revenue: d.revenue,
-      count: d.count,
+    const dayMap = new Map<string, { day: string; revenue: number; count: number }>(
+      revenueByDayOfWeek.map((d: any) => [dayNames[d._id - 1] ?? 'Unknown', { day: dayNames[d._id - 1] ?? 'Unknown', revenue: d.revenue, count: d.count }]),
+    );
+    for (const p of miscPayments as any[]) {
+      const name = dayNames[new Date(p.createdAt).getDay()];
+      const existing = dayMap.get(name);
+      if (existing) { existing.revenue += p.amount; existing.count += 1; }
+      else dayMap.set(name, { day: name, revenue: p.amount, count: 1 });
+    }
+    const revenueByDay = dayNames
+      .map(name => dayMap.get(name))
+      .filter((d): d is { day: string; revenue: number; count: number } => !!d);
+
+    // Merge misc payments into the recent-transactions feed
+    const taggedSales = (recentTransactions as any[]).map(tx => ({ ...tx, type: 'sale' as const }));
+    const taggedMisc = (miscPayments as any[]).map(p => ({
+      _id: p._id,
+      type: 'misc' as const,
+      reason: p.reason,
+      selling_price: p.amount,
+      payment_mode: p.mode,
+      sold_at: p.createdAt,
+      sold_at_branch_id: p.branch_id,
+      sold_by_user_id: p.recorded_by,
+      notes: p.notes,
     }));
+    const mergedRecentTransactions = [...taggedSales, ...taggedMisc]
+      .sort((a, b) => new Date(b.sold_at).getTime() - new Date(a.sold_at).getTime())
+      .slice(0, 20);
 
     return {
       summary,
-      revenueOverTime,
-      paymentModeBreakdown,
-      branchRevenue,
-      recentTransactions,
+      revenueOverTime: mergedRevenueOverTime,
+      paymentModeBreakdown: mergedPaymentModeBreakdown,
+      branchRevenue: mergedBranchRevenue,
+      recentTransactions: mergedRecentTransactions,
       revenueByDay,
     };
   }

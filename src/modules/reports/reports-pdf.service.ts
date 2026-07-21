@@ -405,7 +405,10 @@ export class ReportsPdfService {
     sectionHeading(doc, 'ASSETS');
     statementRow(doc, 'Cash & Bank (Estimated)', data.assets.cashAndBank);
     statementRow(doc, `Inventory at Cost (${data.assets.breakdown.inventoryItemCount} items)`, data.assets.inventoryAtCost);
-    statementRow(doc, 'Accounts Receivable (EMI + Online Pending)', data.assets.accountsReceivable);
+    statementRow(doc, `Accounts Receivable — EMI Outstanding (${data.assets.breakdown.emiOutstandingCount})`, data.assets.emiOutstanding);
+    statementRow(doc, `Accounts Receivable — Online Orders Pending (${data.assets.breakdown.onlinePendingCount})`, data.assets.onlinePending);
+    statementRow(doc, `Accounts Receivable — Pre-Booking Dues (${data.assets.breakdown.prebookingPendingCount})`, data.assets.prebookingDues);
+    statementRow(doc, 'Total Accounts Receivable', data.assets.accountsReceivable, { bold: true });
     statementRow(doc, 'TOTAL ASSETS', data.totalAssets, { bold: true, color: NAVY, ruleAbove: true, ruleBelow: true });
 
     doc.moveDown(0.4);

@@ -30,6 +30,10 @@ export class CustomerAdvance {
   @Prop({ default: 0 })
   amountRedeemed: number;
 
+  /** Amount forfeited as a cancellation deduction (kept by the store, no longer available as credit) */
+  @Prop({ default: 0 })
+  amountForfeited: number;
+
   /** % of making charges this advance waives when redeemed against a sale */
   @Prop({ default: 0 })
   making_charges_waiver_pct: number;
@@ -74,6 +78,27 @@ export class CustomerAdvance {
     date: Date;
     saleReference?: string;
     note?: string;
+    staffId?: string;
+  }[];
+
+  /** Audit trail of cancellation deductions — amount kept by the store instead of returned as credit */
+  @Prop({
+    type: [
+      {
+        amount: { type: Number, required: true },
+        reason: { type: String, default: '' },
+        date: { type: Date, required: true },
+        reference: { type: String },
+        staffId: { type: String },
+      },
+    ],
+    default: [],
+  })
+  forfeitureHistory: {
+    amount: number;
+    reason?: string;
+    date: Date;
+    reference?: string;
     staffId?: string;
   }[];
 }
