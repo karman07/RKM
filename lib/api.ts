@@ -922,12 +922,6 @@ export const searchCustomerByPhone = (phone: string) =>
 export const searchCustomers = (q: string) =>
   request<{ data: FullCustomer[] }>(`/customers/search?q=${encodeURIComponent(q)}`);
 
-export const sendCustomerOtp = (phone: string) =>
-  request<{ otp: string; message: string }>('/customers/otp/send', { method: 'POST', body: JSON.stringify({ phone }) });
-
-export const verifyCustomerOtp = (phone: string, otp: string) =>
-  request<{ verified: boolean }>('/customers/otp/verify', { method: 'POST', body: JSON.stringify({ phone, otp }) });
-
 export const createCustomer = (data: {
   name: string; phone: string; email?: string; gender?: string;
   address?: string; city?: string; state?: string; pincode?: string; country?: string;
