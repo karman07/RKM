@@ -48,7 +48,7 @@ export default function TermsConditions() {
             <div className="mt-16 p-8 bg-gray-50 border-l-4" style={{ borderColor: THEME.colors.secondary }}>
               <p className="m-0 text-sm">
                 For questions regarding these terms, please reach out to our legal department:<br/>
-                <a href="mailto:legal@verdantcarat.com" className="font-semibold" style={{ color: THEME.colors.primaryDark }}>legal@verdantcarat.com</a>
+                <a href="mailto:info@rkmjewellers.com" className="font-semibold" style={{ color: THEME.colors.primaryDark }}>info@rkmjewellers.com</a>
               </p>
             </div>
           </div>
