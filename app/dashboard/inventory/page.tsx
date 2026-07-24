@@ -1502,6 +1502,9 @@ export default function InventoryPage() {
             <button onClick={() => setStatusModal(null)} className="flex-1 py-4 rounded-2xl border border-slate-200 text-[11px] font-bold uppercase tracking-widest text-slate-400">Cancel</button>
             <button onClick={async () => {
               try {
+                if (newStatus === 'sold' && !soldAtBranchId) {
+                  throw new Error('Sale branch is required.');
+                }
                 const splits = paymentSplits.filter(s => parseFloat(s.amount) > 0).map(s => ({
                   mode: s.mode, amount: parseFloat(s.amount), reference: s.reference || undefined,
                 }));
