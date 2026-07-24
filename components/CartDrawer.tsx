@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../store/store";
 import { removeFromCart, updateQuantity } from "../store/cartSlice";
-import { API_BASE_URL } from "../app/constants";
+import { STATIC_BASE_URL } from "../app/constants";
 import Link from "next/link";
 
 const GOLD = "#B8975A";
@@ -109,7 +109,7 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                   item.images && item.images.length > 0
                     ? item.images[0].startsWith("http")
                       ? item.images[0]
-                      : `${API_BASE_URL.replace("/api", "")}${
+                      : `${STATIC_BASE_URL}${
                           item.images[0].startsWith("/static")
                             ? item.images[0]
                             : "/static" + item.images[0]

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { API_BASE_URL } from "../app/constants";
+import { API_BASE_URL, STATIC_BASE_URL } from "../app/constants";
 import { SearchIcon, BagIcon, HeartIcon } from "./Icons";
 import Link from "next/link";
 import CartDrawer from "./CartDrawer";
@@ -341,7 +341,7 @@ export default function Navbar() {
                       product.images?.length > 0
                         ? product.images[0].startsWith("http")
                           ? product.images[0]
-                          : `${API_BASE_URL.replace("/api", "")}${product.images[0].startsWith("/static")
+                          : `${STATIC_BASE_URL}${product.images[0].startsWith("/static")
                             ? product.images[0]
                             : "/static" + product.images[0]
                           }`
