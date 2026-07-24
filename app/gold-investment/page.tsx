@@ -358,7 +358,7 @@ export default function GoldInvestmentPage() {
                     <div className="mt-auto">
                       {isEnrolledInThis ? (
                         <button onClick={() => router.push('/profile')} className="w-full py-5 rounded-2xl bg-[#5C0828] text-white shadow-xl shadow-[#5C0828]/20 text-xs font-black uppercase tracking-[0.25em] flex items-center justify-center gap-3 hover:-translate-y-[2px] transition-all">
-                          View in Dashboard <ArrowRight size={18} />
+                          <span>View in Dashboard</span><ArrowRight size={18} />
                         </button>
                       ) : (
                         <button
@@ -367,9 +367,9 @@ export default function GoldInvestmentPage() {
                           className="w-full py-5 rounded-2xl text-white shadow-xl transition-all text-xs font-black uppercase tracking-[0.25em] flex items-center justify-center gap-3 disabled:opacity-30 bg-[#5C0828] hover:bg-[#7A1238] shadow-[#5C0828]/10"
                         >
                           {subscribeLoading === p._id ? (
-                            <><Loader2 size={16} className="animate-spin" /> Processing…</>
+                            <><Loader2 size={16} className="animate-spin" /><span>Processing…</span></>
                           ) : (
-                            <>Enroll & Setup Autopay <ArrowRight size={18} /></>
+                            <><span>Enroll & Setup Autopay</span><ArrowRight size={18} /></>
                           )}
                         </button>
                       )}
