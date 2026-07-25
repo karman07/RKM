@@ -17,7 +17,7 @@ export default function TermsConditions() {
           <div className="prose prose-lg max-w-none text-[15px] leading-loose" style={{ color: THEME.colors.textMuted }}>
             <h2 className="font-serif text-2xl mt-12 mb-6" style={{ color: THEME.colors.primaryDark }}>1. Acceptance of Terms</h2>
             <p className="mb-6">
-              By accessing and using Verdant Carat ("we", "our", "us"), you accept and agree to be bound by the terms 
+              By accessing and using RKM Jewellers ("we", "our", "us"), you accept and agree to be bound by the terms
               and provision of this agreement. In addition, when using these particular services, you shall be subject 
               to any posted guidelines or rules applicable to such services.
             </p>
@@ -40,7 +40,7 @@ export default function TermsConditions() {
 
             <h2 className="font-serif text-2xl mt-12 mb-6" style={{ color: THEME.colors.primaryDark }}>4. Intellectual Property</h2>
             <p className="mb-6">
-              All designs, images, and content on this site are the exclusive property of Verdant Carat LLC. Reproduction, 
+              All designs, images, and content on this site are the exclusive property of RKM Jewellers. Reproduction,
               distribution, or any use of our intellectual property without express written consent is strictly prohibited and 
               may be subject to legal action.
             </p>
