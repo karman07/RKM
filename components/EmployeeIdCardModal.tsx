@@ -41,6 +41,7 @@ export default function EmployeeIdCardModal({ user, branches, onClose }: Employe
   const branchRecord = typeof user.branch === 'object' ? user.branch : branches.find(b => b._id === branchId);
   const branchName = branchRecord?.name;
   const branchPhone = branchRecord?.phone;
+  const branchEmail = branchRecord?.email;
   const mobile = (user as any).mobile_number as string | undefined;
   const cardNo = `RKM-${(user.employee_id || user._id.slice(-6)).replace(/[^A-Z0-9]/gi, '')}`;
 
@@ -134,7 +135,7 @@ export default function EmployeeIdCardModal({ user, branches, onClose }: Employe
                 { label: 'Branch', value: branchName || 'Unassigned' },
                 ...(branchPhone ? [{ label: 'Branch Phone', value: branchPhone }] : []),
                 ...(mobile ? [{ label: 'Contact', value: mobile }] : []),
-                ...(!isWorker && user.email ? [{ label: 'Email', value: user.email }] : []),
+                ...(branchEmail ? [{ label: 'Email', value: branchEmail }] : []),
                 ...(user.joining_date ? [{ label: 'Joined', value: fmtDate(user.joining_date) }] : []),
               ].map(row => (
                 <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', padding: '5px 0', fontSize: '11px' }}>
