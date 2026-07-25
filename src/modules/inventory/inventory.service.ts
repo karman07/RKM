@@ -922,6 +922,77 @@ export class InventoryService {
     };
   }
 
+  /**
+   * Personal sales dashboard for the requesting cashier/manager — everything scoped to
+   * items sold under *their own* reference (sold_by_user_id for cashiers; sold_by_manager_id,
+   * or sold_by_user_id when they process a sale directly, for managers). Unlike getBranchStats
+   * this never exposes another staff member's figures.
+   */
+  async getMyStats(userId: string, role?: string) {
+    this.validateObjectId(userId);
+    const uid = new Types.ObjectId(userId);
+
+    const attribution =
+      role === 'manager'
+        ? { $or: [{ sold_by_manager_id: uid }, { sold_by_user_id: uid }] }
+        : { sold_by_user_id: uid };
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const baseMatch = { is_deleted: { $ne: true }, status: InventoryStatus.SOLD, ...attribution };
+
+    const [salesToday, salesLifetime, salesTrend7d, salesTrend30d, topProducts, recentSales] = await Promise.all([
+      this.inventoryModel.aggregate([
+        { $match: { ...baseMatch, sold_at: { $gte: today } } },
+        { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$selling_price' } } },
+      ]),
+      this.inventoryModel.aggregate([
+        { $match: baseMatch },
+        { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$selling_price' } } },
+      ]),
+      this.inventoryModel.aggregate([
+        { $match: { ...baseMatch, sold_at: { $gte: sevenDaysAgo } } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$sold_at' } }, count: { $sum: 1 }, revenue: { $sum: '$selling_price' } } },
+        { $sort: { _id: 1 } },
+      ]),
+      this.inventoryModel.aggregate([
+        { $match: { ...baseMatch, sold_at: { $gte: thirtyDaysAgo } } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$sold_at' } }, count: { $sum: 1 }, revenue: { $sum: '$selling_price' } } },
+        { $sort: { _id: 1 } },
+      ]),
+      this.inventoryModel.aggregate([
+        { $match: baseMatch },
+        { $group: { _id: '$product_id', count: { $sum: 1 }, revenue: { $sum: '$selling_price' } } },
+        { $lookup: { from: 'products', localField: '_id', foreignField: '_id', as: 'product' } },
+        { $unwind: { path: '$product', preserveNullAndEmptyArrays: true } },
+        { $project: { product_name: { $ifNull: ['$product.name', 'Unknown'] }, product_sku: '$product.sku', count: 1, revenue: 1, _id: 0 } },
+        { $sort: { count: -1 } },
+        { $limit: 5 },
+      ]),
+      this.inventoryModel
+        .find(baseMatch as any)
+        .populate({ path: 'product_id', select: 'name sku images' })
+        .populate({ path: 'sold_at_branch_id', select: 'name code' })
+        .sort({ sold_at: -1 })
+        .limit(10)
+        .lean(),
+    ]);
+
+    return {
+      salesToday: { count: salesToday[0]?.count || 0, revenue: salesToday[0]?.revenue || 0 },
+      salesLifetime: { count: salesLifetime[0]?.count || 0, revenue: salesLifetime[0]?.revenue || 0 },
+      salesTrend7d,
+      salesTrend30d,
+      topProducts,
+      recentSales,
+    };
+  }
+
   // ─── Get Damaged Items ─────────────────────────────────────────────────────
 
   async getDamagedItems(page = 1, limit = 20, branchId?: string) {

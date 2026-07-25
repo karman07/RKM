@@ -187,6 +187,19 @@ export class InventoryController {
     return this.inventoryService.getAllBranchStats();
   }
 
+  /**
+   * GET /inventory/stats/my
+   * Personal sales dashboard for the logged-in cashier/manager — scoped to items
+   * sold under their own reference only (never another staff member's figures).
+   */
+  @Get('stats/my')
+  @Roles(UserRole.MANAGER, UserRole.CASHIER)
+  getMyStats(@Request() req: any) {
+    const userId = req.user?.userId || req.user?.sub || req.user?._id || req.user?.id;
+    const userRole = req.user?.role;
+    return this.inventoryService.getMyStats(userId, userRole);
+  }
+
   @Get('payments/analytics')
   @Roles(UserRole.ADMIN)
   getPaymentsAnalytics(@Query('days') days?: string) {
