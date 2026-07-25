@@ -22,9 +22,13 @@ export default function CancelPreBookingModal({ item, defaultDeductionPct, onClo
   const advancePaid = item.prebooking_advance_amount ?? 0;
   const suggestedDeduction = Math.round(advancePaid * ((defaultDeductionPct || 0) / 100));
 
+  const policyReason = defaultDeductionPct
+    ? `${defaultDeductionPct}% cancellation deduction as per store policy`
+    : '';
+
   const [applyDeduction, setApplyDeduction] = useState(suggestedDeduction > 0);
   const [deduction, setDeduction] = useState(suggestedDeduction);
-  const [reason, setReason] = useState('');
+  const [reason, setReason] = useState(suggestedDeduction > 0 ? policyReason : '');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 

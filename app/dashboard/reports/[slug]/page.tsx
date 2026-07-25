@@ -48,6 +48,62 @@ function formatValue(value: any, format?: FieldFormat): string {
 function isPlainNumberField(key: string) {
   return /count|weight/i.test(key);
 }
+type StatementCsvRow = { label: string; amount: number | string };
+
+/** Flattens a 'statement' mode report (profit-loss, cash-flow, balance-sheet) into Line Item / Amount rows for CSV export. */
+function buildStatementCsvRows(slug: string, data: any): StatementCsvRow[] {
+  if (slug === 'profit-loss') {
+    return [
+      ...data.revenue.map((r: any) => ({ label: `${r.label} (${r.count})`, amount: r.amount })),
+      { label: 'Total Revenue', amount: data.totalRevenue },
+      ...data.costOfGoodsSold.map((r: any) => ({ label: r.label, amount: r.amount })),
+      { label: 'Total COGS', amount: data.totalCogs },
+      ...data.expenses.map((r: any) => ({ label: `${r.label} (${r.count})`, amount: r.amount })),
+      { label: 'Total Expenses', amount: data.totalExpenses },
+      { label: 'Gross Profit', amount: data.grossProfit },
+      { label: 'Gross Margin %', amount: data.grossMarginPct.toFixed(1) },
+      { label: 'Net Profit', amount: data.netProfit },
+      { label: 'Net Margin %', amount: data.netMarginPct.toFixed(1) },
+    ];
+  }
+
+  if (slug === 'cash-flow') {
+    return [
+      { label: 'Total Cash In', amount: data.totalCashIn },
+      { label: 'Total Cash Out', amount: data.totalCashOut },
+      { label: 'Net Cash Flow', amount: data.netCashFlow },
+      ...data.breakdown.cashIn.map((r: any) => ({ label: `Inflow — ${r.label}`, amount: r.amount })),
+      ...data.breakdown.cashOut.map((r: any) => ({ label: `Outflow — ${r.label}`, amount: r.amount })),
+    ];
+  }
+
+  if (slug === 'balance-sheet') {
+    const exp = data.expensesToDate ?? {};
+    return [
+      { label: 'Cash & Bank (Estimated)', amount: data.assets.cashAndBank },
+      { label: 'Inventory at Cost', amount: data.assets.inventoryAtCost },
+      { label: 'Receivable — EMI Outstanding', amount: data.assets.emiOutstanding },
+      { label: 'Receivable — Online Orders Pending', amount: data.assets.onlinePending },
+      { label: 'Receivable — Pre-Booking Dues', amount: data.assets.prebookingDues },
+      { label: 'Total Accounts Receivable', amount: data.assets.accountsReceivable },
+      { label: 'Total Assets', amount: data.totalAssets },
+      { label: 'Gold Investment Payable', amount: data.liabilities.goldInvestmentPayable },
+      { label: 'Old Gold Payable', amount: data.liabilities.oldGoldPayable },
+      { label: 'Total Liabilities', amount: data.totalLiabilities },
+      { label: "Owner's Equity", amount: data.equity },
+      { label: 'Staff Base Payroll', amount: exp.staffBase ?? 0 },
+      { label: 'Staff Incentives', amount: exp.staffIncentives ?? 0 },
+      { label: 'Total Staff & Payroll', amount: exp.staffPayroll ?? 0 },
+      { label: 'Miscellaneous Expenses (Reimbursements)', amount: exp.miscellaneous ?? 0 },
+      { label: 'Stolen Inventory Write-off', amount: exp.stolenWriteOff ?? 0 },
+      { label: 'Damaged Inventory Write-off', amount: exp.damagedWriteOff ?? 0 },
+      { label: 'Total Stolen/Damaged Write-offs', amount: exp.totalWriteOffs ?? 0 },
+    ];
+  }
+
+  return [];
+}
+
 function isoDaysAgo(days: number) {
   const d = new Date();
   d.setDate(d.getDate() - days);
@@ -140,6 +196,11 @@ export default function ReportDetailPage({ params: paramsPromise }: { params: Pr
         ...(section.countField ? [{ header: 'Count', accessor: (r: any) => r[section.countField as string] }] : []),
         ...(section.extraFields ?? []).map(f => ({ header: f.label, accessor: (r: any) => r[f.field] })),
       ]);
+    } else if (config.mode === 'statement' && data) {
+      downloadCsv(config.slug, buildStatementCsvRows(config.slug, data), [
+        { header: 'Line Item', accessor: 'label' },
+        { header: 'Amount', accessor: 'amount' },
+      ]);
     }
   }
 
@@ -173,7 +234,7 @@ export default function ReportDetailPage({ params: paramsPromise }: { params: Pr
               <DatePicker value={asOf} max={todayIso()} onChange={setAsOf} align="right" />
             </div>
           )}
-          {config.exportPdfPath && (
+          {config.exportPdfPath && config.mode !== 'statement' && (
             <button
               onClick={handlePdfExport}
               disabled={exportingPdf}
@@ -191,7 +252,7 @@ export default function ReportDetailPage({ params: paramsPromise }: { params: Pr
               {exportingExcel ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSpreadsheet className="w-3.5 h-3.5" />} Excel
             </button>
           )}
-          {(config.mode === 'list' || config.mode === 'breakdown' || config.mode === 'register') && (
+          {(config.mode === 'list' || config.mode === 'breakdown' || config.mode === 'register' || config.mode === 'statement') && (
             <button
               onClick={handleCsvExport}
               className="inline-flex items-center gap-2 px-4 py-2.5 border text-slate-600 text-[11px] font-black uppercase tracking-widest rounded-2xl hover:bg-slate-50 transition-all"

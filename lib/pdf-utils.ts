@@ -1,7 +1,11 @@
 /**
- * Renders a DOM node into a jsPDF document (best-fit on A4), for the "Download PDF"
- * and "Share" actions on printable receipts (Tax Invoice, Advance Receipt, etc).
+ * Renders a DOM node into a jsPDF document, for the "Download PDF" and "Share" actions
+ * on printable receipts (Tax Invoice, Advance Receipt, Account Statement, etc).
  * Libraries are dynamically imported so they only load when actually needed.
+ *
+ * Content that fits on one A4 page is centered on a single page, same as a short receipt.
+ * Taller content (e.g. a long transaction history) is split across multiple pages instead
+ * of being squeezed down to fit one page unreadably small.
  */
 export async function renderElementToPdf(elementId: string) {
   const el = document.getElementById(elementId);
@@ -13,23 +17,41 @@ export async function renderElementToPdf(elementId: string) {
   ]);
 
   const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
-  const imgData = canvas.toDataURL('image/png');
 
   const orientation = canvas.width > canvas.height ? 'landscape' : 'portrait';
   const pdf = new jsPDF({ orientation, unit: 'pt', format: 'a4' });
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
 
-  const imgRatio = canvas.height / canvas.width;
-  let renderWidth = pageWidth;
-  let renderHeight = pageWidth * imgRatio;
-  if (renderHeight > pageHeight) {
-    renderHeight = pageHeight;
-    renderWidth = pageHeight / imgRatio;
+  const renderWidth = pageWidth;
+  const scale = renderWidth / canvas.width;
+  const pageHeightPx = Math.floor(pageHeight / scale);
+
+  if (canvas.height <= pageHeightPx) {
+    const renderHeight = canvas.height * scale;
+    const y = Math.max(0, (pageHeight - renderHeight) / 2);
+    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, y, renderWidth, renderHeight);
+    return pdf;
   }
-  const x = (pageWidth - renderWidth) / 2;
-  const y = (pageHeight - renderHeight) / 2;
-  pdf.addImage(imgData, 'PNG', x, y, renderWidth, renderHeight);
+
+  let renderedPx = 0;
+  let pageIndex = 0;
+  while (renderedPx < canvas.height) {
+    const slicePx = Math.min(pageHeightPx, canvas.height - renderedPx);
+
+    const pageCanvas = document.createElement('canvas');
+    pageCanvas.width = canvas.width;
+    pageCanvas.height = slicePx;
+    const ctx = pageCanvas.getContext('2d')!;
+    ctx.drawImage(canvas, 0, -renderedPx);
+
+    if (pageIndex > 0) pdf.addPage();
+    pdf.addImage(pageCanvas.toDataURL('image/png'), 'PNG', 0, 0, renderWidth, slicePx * scale);
+
+    renderedPx += slicePx;
+    pageIndex += 1;
+  }
+
   return pdf;
 }
 

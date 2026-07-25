@@ -117,7 +117,7 @@ export default function SettingsPage() {
   // Sales Team Commission
   const [salesCommissionWindow, setSalesCommissionWindow] = useState('6');
   const [salesCommissionRate, setSalesCommissionRate] = useState('2');
-  const [prebookingDeductionPct, setPrebookingDeductionPct] = useState('0');
+  const [prebookingDeductionPct, setPrebookingDeductionPct] = useState('5');
 
   // Fetch purity lookups from database
   useEffect(() => {
@@ -220,7 +220,7 @@ export default function SettingsPage() {
     setSignInWindow(String(settings.sign_in_window_hours ?? 2));
     setSalesCommissionWindow(String((settings as any).sales_commission_window_months ?? 6));
     setSalesCommissionRate(String((settings as any).sales_commission_rate_percentage ?? 2));
-    setPrebookingDeductionPct(String((settings as any).prebooking_cancellation_deduction_pct ?? 0));
+    setPrebookingDeductionPct(String((settings as any).prebooking_cancellation_deduction_pct ?? 5));
   }, [loading, lookupsLoading, settings, purityLookups, metalConfig]);
 
   function showToast(message: string, type: 'success' | 'danger' | 'info' = 'info') {

@@ -38,9 +38,9 @@ export default function EmployeeIdCardModal({ user, branches, onClose }: Employe
   const photo = (user as any).avatar ? staticUrl((user as any).avatar) : '';
   const roleLabel = isWorker && (user as any).job_title ? (user as any).job_title : user.role;
   const branchId = typeof user.branch === 'object' ? user.branch?._id : user.branch;
-  const branchName = typeof user.branch === 'object'
-    ? user.branch?.name
-    : branches.find(b => b._id === branchId)?.name;
+  const branchRecord = typeof user.branch === 'object' ? user.branch : branches.find(b => b._id === branchId);
+  const branchName = branchRecord?.name;
+  const branchPhone = branchRecord?.phone;
   const mobile = (user as any).mobile_number as string | undefined;
   const cardNo = `RKM-${(user.employee_id || user._id.slice(-6)).replace(/[^A-Z0-9]/gi, '')}`;
 
@@ -132,6 +132,7 @@ export default function EmployeeIdCardModal({ user, branches, onClose }: Employe
               {[
                 { label: 'Employee ID', value: user.employee_id || '—' },
                 { label: 'Branch', value: branchName || 'Unassigned' },
+                ...(branchPhone ? [{ label: 'Branch Phone', value: branchPhone }] : []),
                 ...(mobile ? [{ label: 'Contact', value: mobile }] : []),
                 ...(!isWorker && user.email ? [{ label: 'Email', value: user.email }] : []),
                 ...(user.joining_date ? [{ label: 'Joined', value: fmtDate(user.joining_date) }] : []),

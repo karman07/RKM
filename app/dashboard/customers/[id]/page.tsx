@@ -9,7 +9,6 @@ import {
   type Customer, type InventoryItem, type GoldSubscription, type User as AdminUser, type GoldLoan,
   type CustomerAdvance, type CustomField, type AppSettings, type ContactPerson, staticUrl,
 } from '@/lib/api';
-import { downloadCsv } from '@/lib/export-utils';
 import { useAppTheme } from '@/components/AppThemeContext';
 import { APP_THEME } from '@/lib/theme-constants';
 import BillModal from '@/components/BillModal';
@@ -18,11 +17,12 @@ import AdvanceReceiptModal from '@/components/AdvanceReceiptModal';
 import Modal from '@/components/Modal';
 import CompletePreBookingModal from '@/components/CompletePreBookingModal';
 import CancelPreBookingModal from '@/components/CancelPreBookingModal';
+import AccountStatementModal from '@/components/AccountStatementModal';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import {
   Users, Mail, Phone, MapPin, ChevronLeft, Calendar, ShoppingBag,
-  CreditCard, Target, ShieldCheck, TrendingUp, Package, Gem, Download, Loader2, Plus, Wallet, X,
+  CreditCard, Target, ShieldCheck, TrendingUp, Package, Gem, Download, Plus, Wallet, X,
   Receipt, Lock, Pencil, UserCog, Search, Bookmark, CheckCircle2, AlertTriangle,
 } from 'lucide-react';
 
@@ -74,6 +74,67 @@ function glComputedStatus(loan: GoldLoan): string {
   if (loan.status !== 'active' || !loan.disbursed_at) return loan.status;
   const hasMissed = (loan.emiLedger || []).some(e => e.status === 'missed');
   return hasMissed ? 'overdue' : 'active';
+}
+
+/** Overdue EMI interest owed on an active gold loan — missed months plus any unmarked month past its grace period. Mirrors the backend's `annotate()` in gold-loan.service.ts. */
+function computeLoanOverdueAmount(loan: GoldLoan): number {
+  if (loan.status !== 'active' || !loan.disbursed_at || loan.computed_status !== 'overdue') return 0;
+
+  const GRACE_MS = 5 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const disbursedAt = new Date(loan.disbursed_at);
+  const monthsElapsed = Math.floor((now - disbursedAt.getTime()) / (1000 * 60 * 60 * 24 * 30));
+  const expectedPerMonth = Math.round((loan.loan_amount * loan.interest_rate_monthly) / 100);
+
+  let overdue = 0;
+  for (let m = 1; m <= monthsElapsed; m++) {
+    const dueDate = new Date(disbursedAt);
+    dueDate.setMonth(dueDate.getMonth() + m);
+    if (now < dueDate.getTime() + GRACE_MS) continue;
+
+    const entry = (loan.emiLedger || []).find(e => e.month === m);
+    if (!entry) overdue += expectedPerMonth;
+    else if (entry.status === 'missed') overdue += entry.expected_amount;
+  }
+  return overdue;
+}
+
+/** Pending installment amount on a gold investment plan once autopay has lapsed and manual payment is required. Mirrors `sendWhatsappReminder()` in gold-investment.service.ts. */
+function computeSubscriptionPendingDue(sub: GoldSubscription): number {
+  if (!sub.requiresManualPayment) return 0;
+  const pendingMonths = Math.max(0, (sub.plan?.durationMonths || 0) - (sub.installmentsPaid || 0));
+  return pendingMonths * (sub.plan?.monthlyAmount || 0);
+}
+
+type PendingDue = { label: string; amount: number; reference: string };
+
+function computePendingDues(goldLoans: GoldLoan[], goldSubs: GoldSubscription[], prebookedItems: InventoryItem[]): PendingDue[] {
+  const dues: PendingDue[] = [];
+
+  prebookedItems.forEach(item => {
+    const price = item.live_selling_price ?? item.selling_price ?? 0;
+    const balanceDue = Math.max(0, price - (item.prebooking_advance_amount ?? 0));
+    if (balanceDue > 0) {
+      const product = typeof item.product_id === 'object' ? item.product_id : null;
+      dues.push({ label: `Pre-Booking Balance — ${product?.name || item.unique_item_code} (${item.unique_item_code})`, amount: balanceDue, reference: item.unique_item_code });
+    }
+  });
+
+  goldLoans.forEach(loan => {
+    const amount = computeLoanOverdueAmount(loan);
+    if (amount > 0) {
+      dues.push({ label: `Gold Loan EMI Overdue — ${loan.loan_number}`, amount, reference: loan.loan_number });
+    }
+  });
+
+  goldSubs.forEach(sub => {
+    const amount = computeSubscriptionPendingDue(sub);
+    if (amount > 0) {
+      dues.push({ label: `Gold Plan Pending Installments — ${sub.plan?.name || 'Gold Savings Plan'}`, amount, reference: sub._id });
+    }
+  });
+
+  return dues;
 }
 
 // ── Account Statement (unified credit/debit ledger) ────────────────────────────
@@ -1826,7 +1887,7 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
   const [loading, setLoading] = useState(true);
   const [selectedBill, setSelectedBill] = useState<InventoryItem | null>(null);
   const [me, setMe] = useState<AdminUser | null>(null);
-  const [exporting, setExporting] = useState(false);
+  const [showStatement, setShowStatement] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [customFieldDefs, setCustomFieldDefs] = useState<CustomField[]>([]);
   const { theme } = useAppTheme();
@@ -1909,22 +1970,7 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
 
   function handleExportHistory() {
     if (!customer) return;
-    setExporting(true);
-    try {
-      const rows = [...buildLedgerRows(orders, goldSubs, advances, goldLoans)].reverse();
-
-      downloadCsv(`${customer.name.replace(/\s+/g, '-').toLowerCase()}-history`, rows, [
-        { header: 'Date', accessor: r => (r.date ? new Date(r.date).toLocaleDateString('en-IN') : '') },
-        { header: 'Type', accessor: 'type' },
-        { header: 'Description', accessor: 'description' },
-        { header: 'Credit', accessor: r => (r.direction === 'credit' ? r.amount : '') },
-        { header: 'Debit', accessor: r => (r.direction === 'debit' ? r.amount : '') },
-        { header: 'Balance', accessor: 'balance' },
-        { header: 'Reference', accessor: 'reference' },
-      ]);
-    } finally {
-      setExporting(false);
-    }
+    setShowStatement(true);
   }
 
   if (loading) {
@@ -1960,6 +2006,9 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
   const ledgerRows = buildLedgerRows(orders, goldSubs, advances, goldLoans);
   const totalCredit = ledgerRows.filter(r => r.direction === 'credit').reduce((s, r) => s + r.amount, 0);
   const totalDebit = ledgerRows.filter(r => r.direction === 'debit').reduce((s, r) => s + r.amount, 0);
+
+  const pendingDues = computePendingDues(goldLoans, goldSubs, prebookedItems);
+  const totalAllPendingDues = pendingDues.reduce((s, d) => s + d.amount, 0);
 
   return (
     <div className="p-8 max-w-[1600px] mx-auto animate-in fade-in slide-in-from-bottom-5 duration-700">
@@ -2009,10 +2058,9 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
           </button>
           <button
             onClick={handleExportHistory}
-            disabled={exporting}
-            className="inline-flex items-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-blue-500/20 transition-all disabled:opacity-60"
+            className="inline-flex items-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-blue-500/20 transition-all"
           >
-            {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />} Download Full History
+            <Download className="w-3.5 h-3.5" /> Download Full History
           </button>
         </div>
       </div>
@@ -2330,8 +2378,30 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Net Balance</p>
                   <p className="text-base font-black text-slate-900">{fmt(totalCredit - totalDebit)}</p>
                 </div>
+                <div className="text-right">
+                  <p className="text-[9px] font-black text-red-500 uppercase tracking-widest mb-0.5">Pending Dues</p>
+                  <p className={`text-base font-black ${totalAllPendingDues > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {totalAllPendingDues > 0 ? fmt(totalAllPendingDues) : 'None'}
+                  </p>
+                </div>
               </div>
             </div>
+
+            {pendingDues.length > 0 && (
+              <div className="mx-10 mt-6 rounded-2xl border border-red-200 bg-red-50 px-6 py-5">
+                <p className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-red-600 mb-3">
+                  <AlertTriangle size={14} /> Pending Dues — {fmt(totalAllPendingDues)} Owed
+                </p>
+                <div className="space-y-2">
+                  {pendingDues.map((d, i) => (
+                    <div key={i} className="flex items-center justify-between gap-4 text-xs">
+                      <span className="text-red-700 font-medium">{d.label}</span>
+                      <span className="text-red-700 font-black whitespace-nowrap">{fmt(d.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {ledgerRows.length > 0 ? (
               <div className="overflow-x-auto">
@@ -2626,6 +2696,17 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
 
       {newAdvanceReceipt && (
         <AdvanceReceiptModal advance={newAdvanceReceipt} onClose={() => setNewAdvanceReceipt(null)} />
+      )}
+
+      {showStatement && (
+        <AccountStatementModal
+          customer={customer}
+          rows={ledgerRows}
+          totalCredit={totalCredit}
+          totalDebit={totalDebit}
+          pendingDues={pendingDues}
+          onClose={() => setShowStatement(false)}
+        />
       )}
 
       {completeSaleTarget && (
