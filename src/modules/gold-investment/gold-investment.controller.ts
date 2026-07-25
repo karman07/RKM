@@ -18,6 +18,7 @@ import {
   RedeemBalanceDto,
   MarkCashPaymentDto,
   AddInterestDto,
+  VerifyEmiPaymentDto,
 } from './dto/gold-investment.dto';
 
 @Controller('gold-investment')
@@ -87,6 +88,24 @@ export class GoldInvestmentController {
   @Post('my-subscriptions/verify')
   verifySubscription(@Body() dto: any) {
     return this.svc.verifyCustomerSubscription(dto);
+  }
+
+  /** Creates a one-time Razorpay order for the full plan value, to be paid via bank/card EMI */
+  @UseGuards(CustomerJwtAuthGuard)
+  @Post('my-subscriptions/emi')
+  createEmiOrder(@Req() req: any, @Body() dto: { planId: string }) {
+    return this.svc.createEmiOrder({
+      planId: dto.planId,
+      customerName: req.user.name,
+      customerEmail: req.user.email,
+      customerPhone: req.user.phone,
+    });
+  }
+
+  @UseGuards(CustomerJwtAuthGuard)
+  @Post('my-subscriptions/emi/verify')
+  verifyEmiPayment(@Body() dto: VerifyEmiPaymentDto) {
+    return this.svc.verifyEmiPayment(dto);
   }
 
   // ── SUBSCRIPTIONS ────────────────────────────────────────────────

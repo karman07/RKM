@@ -77,6 +77,33 @@ export class CreateSubscriptionDto {
   customerPhone?: string;
 }
 
+export class CreateEmiOrderDto {
+  @IsString()
+  planId: string;
+
+  @IsString()
+  customerName: string;
+
+  @IsString()
+  @IsOptional()
+  customerEmail?: string;
+
+  @IsString()
+  @IsOptional()
+  customerPhone?: string;
+}
+
+export class VerifyEmiPaymentDto {
+  @IsString()
+  razorpay_order_id: string;
+
+  @IsString()
+  razorpay_payment_id: string;
+
+  @IsString()
+  razorpay_signature: string;
+}
+
 export class UpdateSubscriptionDto {
   @IsString()
   @IsOptional()

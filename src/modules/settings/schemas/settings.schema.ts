@@ -224,9 +224,11 @@ export class Settings {
 
   /**
    * Default deduction (% of the advance paid) suggested when admin/manager cancels a
-   * pre-booking. Staff can still override this or waive it entirely per cancellation.
+   * pre-booking — i.e. the customer redeems their advance without buying an item.
+   * Store policy is 5% by default; staff can still override this or waive it entirely
+   * per cancellation, and admin can change the rate here at any time.
    */
-  @Prop({ type: Number, min: 0, max: 100, default: 0 })
+  @Prop({ type: Number, min: 0, max: 100, default: 5 })
   prebooking_cancellation_deduction_pct: number;
 }
 

@@ -7,7 +7,7 @@ import * as crypto from 'crypto';
 import * as https from 'https';
 
 import { InvestmentPlan, InvestmentPlanDocument } from './schemas/investment-plan.schema';
-import { Subscription, SubscriptionDocument, SubscriptionStatus } from './schemas/subscription.schema';
+import { Subscription, SubscriptionDocument, SubscriptionStatus, PaymentMode } from './schemas/subscription.schema';
 import {
   CreateInvestmentPlanDto,
   UpdateInvestmentPlanDto,
@@ -16,6 +16,8 @@ import {
   RedeemBalanceDto,
   MarkCashPaymentDto,
   AddInterestDto,
+  CreateEmiOrderDto,
+  VerifyEmiPaymentDto,
 } from './dto/gold-investment.dto';
 
 @Injectable()
@@ -59,6 +61,39 @@ export class GoldInvestmentService {
     return this.planModel.create({ ...dto, razorpayPlanId: rzpPlan.id });
   }
 
+  /**
+   * Returns a Razorpay plan_id that's guaranteed valid for the currently configured
+   * key (live vs test). Plans created under a since-replaced key (e.g. test → live
+   * migration) 404 on Razorpay's side even though our DB still has the old id —
+   * this transparently recreates the Razorpay plan and persists the fresh id so
+   * subscribing never fails on a stale/wrong-mode plan_id.
+   */
+  private async ensureLiveRazorpayPlan(plan: InvestmentPlanDocument): Promise<string> {
+    if (plan.razorpayPlanId) {
+      try {
+        await this.razorpay.plans.fetch(plan.razorpayPlanId);
+        return plan.razorpayPlanId;
+      } catch (err) {
+        this.logger.warn(`Stored Razorpay plan ${plan.razorpayPlanId} is invalid for the active key (likely a test/live mismatch); regenerating.`);
+      }
+    }
+
+    const rzpPlan = await this.razorpay.plans.create({
+      period: 'monthly',
+      interval: 1,
+      item: {
+        name: plan.name,
+        amount: Math.round(plan.monthlyAmount * 100),
+        currency: 'INR',
+        description: plan.description || `RKM Gold Investment – ${plan.durationMonths} months`,
+      },
+    } as any);
+
+    plan.razorpayPlanId = rzpPlan.id;
+    await plan.save();
+    return rzpPlan.id;
+  }
+
   async findAllPlans(): Promise<InvestmentPlanDocument[]> {
     return this.planModel.find().sort({ createdAt: -1 }).exec();
   }
@@ -72,6 +107,9 @@ export class GoldInvestmentService {
   async updatePlan(id: string, dto: UpdateInvestmentPlanDto): Promise<InvestmentPlanDocument> {
     const plan = await this.planModel.findByIdAndUpdate(id, dto, { new: true }).exec();
     if (!plan) throw new NotFoundException('Investment plan not found');
+    // Keep the displayed Razorpay id honest: heals it here too (not just at subscribe time)
+    // so admins see a valid, current-mode id immediately after saving.
+    await this.ensureLiveRazorpayPlan(plan);
     return plan;
   }
 
@@ -129,9 +167,10 @@ export class GoldInvestmentService {
     try {
       const totalCount = plan.durationMonths;
       const startAt = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60);
+      const razorpayPlanId = await this.ensureLiveRazorpayPlan(plan);
 
       rzpSub = await (this.razorpay.subscriptions as any).create({
-        plan_id: plan.razorpayPlanId,
+        plan_id: razorpayPlanId,
         total_count: totalCount > 1 ? totalCount - 1 : 1,
         quantity: 1,
         start_at: startAt,
@@ -226,6 +265,125 @@ export class GoldInvestmentService {
       this.logger.error('Client-side Verification Failed:', e);
       throw new BadRequestException('Could not verify subscription sync. Please wait for processing.');
     }
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // BANK EMI (one-time order for the full plan value; the bank/card
+  // issuer finances the customer's repayment, Razorpay settles the
+  // full amount to us upfront exactly like any other payment method)
+  // ─────────────────────────────────────────────────────────────────
+
+  async createEmiOrder(dto: CreateEmiOrderDto): Promise<any> {
+    const plan = await this.planModel.findById(dto.planId).exec();
+    if (!plan) throw new NotFoundException('Investment plan not found');
+    if (!plan.isActive) throw new BadRequestException('This plan is no longer active');
+
+    const existingActiveForPlan = await this.subModel.findOne({
+      $or: [
+        { customerEmail: dto.customerEmail },
+        { customerPhone: dto.customerPhone },
+      ],
+      plan: plan._id,
+      status: { $in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.HALTED] },
+    }).exec();
+
+    if (existingActiveForPlan) {
+      throw new BadRequestException('You already have an active subscription for this plan. You cannot set up another one until it completes.');
+    }
+
+    await this.subModel.deleteMany({
+      $or: [
+        { customerEmail: dto.customerEmail },
+        { customerPhone: dto.customerPhone },
+      ],
+      plan: plan._id,
+      status: SubscriptionStatus.PENDING,
+    }).exec();
+
+    const totalAmount = plan.monthlyAmount * plan.durationMonths;
+
+    let order: any;
+    try {
+      order = await this.razorpay.orders.create({
+        amount: Math.round(totalAmount * 100),
+        currency: 'INR',
+        payment_capture: true,
+        notes: {
+          plan_name: plan.name,
+          customer_name: dto.customerName,
+          customer_phone: dto.customerPhone || '',
+        },
+      } as any);
+    } catch (err) {
+      this.logger.error('Razorpay EMI order creation failed', err);
+      throw new BadRequestException(`Razorpay error: ${err.error?.description || err.message}`);
+    }
+
+    const sub = await this.subModel.create({
+      plan: plan._id,
+      customerName: dto.customerName,
+      customerEmail: dto.customerEmail,
+      customerPhone: dto.customerPhone,
+      razorpayOrderId: order.id,
+      paymentMode: PaymentMode.EMI,
+      status: SubscriptionStatus.PENDING,
+      amountAccumulated: 0,
+      interestAccumulated: 0,
+      installmentsPaid: 0,
+      paymentLedger: [],
+      requiresManualPayment: false,
+      whatsappRemindersCount: 0,
+    });
+
+    return {
+      subscription: sub,
+      order,
+      amount: totalAmount,
+      razorpayKey: this.configService.get<string>('RAZORPAY_ID'),
+    };
+  }
+
+  async verifyEmiPayment(dto: VerifyEmiPaymentDto) {
+    const secret = this.configService.get<string>('RAZORPAY_SECRET') || '';
+    const expected = crypto
+      .createHmac('sha256', secret)
+      .update(`${dto.razorpay_order_id}|${dto.razorpay_payment_id}`)
+      .digest('hex');
+
+    if (expected !== dto.razorpay_signature) {
+      throw new BadRequestException('Payment signature verification failed');
+    }
+
+    const sub = await this.subModel.findOne({ razorpayOrderId: dto.razorpay_order_id }).populate('plan').exec();
+    if (!sub) throw new NotFoundException('Subscription not found for this order');
+
+    if (sub.status !== SubscriptionStatus.COMPLETED) {
+      const plan = sub.plan as any;
+      const monthlyAmount = plan.monthlyAmount || 0;
+      const totalMonths = plan.durationMonths || 0;
+      const totalAmount = monthlyAmount * totalMonths;
+
+      const startedAt = new Date();
+      const maturesAt = new Date(startedAt);
+      maturesAt.setMonth(maturesAt.getMonth() + totalMonths);
+
+      sub.status = SubscriptionStatus.ACTIVE;
+      sub.startedAt = startedAt;
+      sub.maturesAt = maturesAt;
+      sub.installmentsPaid = totalMonths;
+      sub.amountAccumulated = totalAmount;
+      sub.paymentLedger = Array.from({ length: totalMonths }, (_, i) => ({
+        month: i + 1,
+        amount: monthlyAmount,
+        date: startedAt,
+        type: 'emi' as const,
+        razorpayPaymentId: dto.razorpay_payment_id,
+      }));
+
+      await sub.save();
+    }
+
+    return sub;
   }
 
   async findAllSubscriptions(filter?: { status?: string; planId?: string; phone?: string; email?: string }) {

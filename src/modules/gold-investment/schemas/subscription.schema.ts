@@ -15,6 +15,12 @@ export enum PaymentEntryType {
   AUTOPAY = 'autopay',
   CASH = 'cash',
   WHATSAPP_LINK = 'whatsapp_link',
+  EMI = 'emi',
+}
+
+export enum PaymentMode {
+  AUTOPAY = 'autopay',
+  EMI = 'emi',
 }
 
 @Schema({ timestamps: true })
@@ -31,13 +37,21 @@ export class Subscription {
   @Prop({ trim: true })
   customerPhone: string;
 
-  /** The Razorpay subscription id */
-  @Prop({ required: true })
+  /** The Razorpay subscription id (autopay plans only) */
+  @Prop()
   razorpaySubscriptionId: string;
 
   /** Razorpay customer id (if created) */
   @Prop()
   razorpayCustomerId: string;
+
+  /** The Razorpay order id (bank EMI plans only — one-time order for the full plan value) */
+  @Prop()
+  razorpayOrderId: string;
+
+  /** How this subscription's principal was collected. EMI plans are paid in full upfront via a bank/card EMI order and settled to the business immediately, same as any other payment method. */
+  @Prop({ enum: PaymentMode, default: PaymentMode.AUTOPAY })
+  paymentMode: PaymentMode;
 
   @Prop({ enum: SubscriptionStatus, default: SubscriptionStatus.PENDING })
   status: SubscriptionStatus;
@@ -108,7 +122,7 @@ export class Subscription {
         month: { type: Number, required: true },
         amount: { type: Number, required: true },
         date: { type: Date, required: true },
-        type: { type: String, enum: ['autopay', 'cash', 'whatsapp_link'], required: true },
+        type: { type: String, enum: ['autopay', 'cash', 'whatsapp_link', 'emi'], required: true },
         razorpayPaymentId: { type: String },
         staffId: { type: String },
         note: { type: String },
@@ -120,7 +134,7 @@ export class Subscription {
     month: number;
     amount: number;
     date: Date;
-    type: 'autopay' | 'cash' | 'whatsapp_link';
+    type: 'autopay' | 'cash' | 'whatsapp_link' | 'emi';
     razorpayPaymentId?: string;
     staffId?: string;
     note?: string;
