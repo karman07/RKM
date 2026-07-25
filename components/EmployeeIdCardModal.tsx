@@ -18,11 +18,6 @@ const PRODUCTS_URL = 'https://rkmjewellers.com/products';
 /** Brand accent — matches the maroon used for "Sales" elsewhere in the admin */
 const MAROON = '#5A0F1A';
 
-function fmtDate(d?: string | null) {
-  if (!d) return '';
-  return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-}
-
 export default function EmployeeIdCardModal({ user, branches, onClose }: EmployeeIdCardModalProps) {
   const [generatingPdf, setGeneratingPdf] = useState<'download' | 'share' | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState('');
@@ -42,7 +37,6 @@ export default function EmployeeIdCardModal({ user, branches, onClose }: Employe
   const branchName = branchRecord?.name;
   const branchPhone = branchRecord?.phone;
   const branchEmail = branchRecord?.email;
-  const mobile = (user as any).mobile_number as string | undefined;
   const cardNo = `RKM-${(user.employee_id || user._id.slice(-6)).replace(/[^A-Z0-9]/gi, '')}`;
 
   const handleDownload = async () => {
@@ -133,10 +127,8 @@ export default function EmployeeIdCardModal({ user, branches, onClose }: Employe
               {[
                 { label: 'Employee ID', value: user.employee_id || '—' },
                 { label: 'Branch', value: branchName || 'Unassigned' },
-                ...(branchPhone ? [{ label: 'Branch Phone', value: branchPhone }] : []),
-                ...(mobile ? [{ label: 'Contact', value: mobile }] : []),
+                ...(branchPhone ? [{ label: 'Contact', value: branchPhone }] : []),
                 ...(branchEmail ? [{ label: 'Email', value: branchEmail }] : []),
-                ...(user.joining_date ? [{ label: 'Joined', value: fmtDate(user.joining_date) }] : []),
               ].map(row => (
                 <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', padding: '5px 0', fontSize: '11px' }}>
                   <span style={{ color: MAROON, fontWeight: 700, textTransform: 'uppercase', fontSize: '8.5px', letterSpacing: '0.5px', paddingTop: '2px' }}>{row.label}</span>
