@@ -140,9 +140,11 @@ export default function Footer() {
 
       <div className="max-w-[1440px] mx-auto border-t pt-8 flex flex-col md:flex-row justify-between items-center gap-6 text-[10px] uppercase tracking-[0.1em] opacity-40 font-bold" style={{ borderColor: '#ffffff10' }}>
         <p>&copy; {new Date().getFullYear()} RKM Jewellers Mohali. Empowering Elegance Every Day.</p>
-        <div className="flex gap-10">
+        <div className="flex flex-wrap gap-10">
           <Link href="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link>
           <Link href="/terms" className="hover:text-white transition-colors">Terms of Service</Link>
+          <Link href="/cancellation-policy" className="hover:text-white transition-colors">Cancellation Policy</Link>
+          <Link href="/refund-policy" className="hover:text-white transition-colors">Refund Policy</Link>
         </div>
       </div>
     </footer>
