@@ -504,6 +504,18 @@ export const proposeReturnValuation = (
 export const getBranchAnalytics = (branchId: string) =>
   request<BranchAnalytics>(`/inventory/stats/branch/${branchId}`);
 
+export interface MyStats {
+  salesToday: { count: number; revenue: number };
+  salesLifetime: { count: number; revenue: number };
+  salesTrend7d: { _id: string; count: number; revenue: number }[];
+  salesTrend30d: { _id: string; count: number; revenue: number }[];
+  topProducts: { product_name: string; product_sku: string; count: number; revenue: number }[];
+  recentSales: InventoryItem[];
+}
+
+/** Personal sales dashboard scoped to items sold under this manager's own reference */
+export const getMyStats = () => request<MyStats>('/inventory/stats/my');
+
 // ── Branches ───────────────────────────────────────────────────
 export const getBranch = (id: string) =>
   request<Branch>(`/branches/${id}`);
