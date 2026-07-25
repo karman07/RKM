@@ -22,6 +22,17 @@ const MODULES = [
     ],
   },
   {
+    id: 'my-sales',
+    label: 'My Sales',
+    desc: 'Sales tracked under your reference',
+    icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z',
+    color: '#5A0F1A',
+    bg: 'from-[#5A0F1A] to-[#7A1C2A]',
+    actions: [
+      { label: 'My Sales Dashboard', href: '/dashboard/my-sales', desc: 'Revenue & sales attributed to you', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
+    ],
+  },
+  {
     id: 'item-attendance',
     label: 'Item Audit',
     desc: 'Scan & mark items present',
@@ -139,7 +150,8 @@ export default function CashierDashboard() {
           <div>
             <p className="text-[11px] font-black text-[#5A0F1A] uppercase tracking-widest mb-1">Cashier Role</p>
             <p className="text-sm font-medium text-slate-600">
-              You can view inventory, scan items for audits, and manage your HR requests. Sales & returns are processed by the Manager.
+              You can view inventory, scan items for audits, and manage your HR requests. Submit sale requests for manager
+              approval — once approved, they're tracked under your reference on the My Sales dashboard.
             </p>
           </div>
         </div>

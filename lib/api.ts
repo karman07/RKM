@@ -200,6 +200,15 @@ export interface PaginatedResponse<T> {
   meta: { total: number; page: number; limit: number; total_pages: number };
 }
 
+export interface MyStats {
+  salesToday: { count: number; revenue: number };
+  salesLifetime: { count: number; revenue: number };
+  salesTrend7d: { _id: string; count: number; revenue: number }[];
+  salesTrend30d: { _id: string; count: number; revenue: number }[];
+  topProducts: { product_name: string; product_sku: string; count: number; revenue: number }[];
+  recentSales: InventoryItem[];
+}
+
 // ── Auth ───────────────────────────────────────────────────────
 export const getProfile = () => request<UserProfile>('/auth/profile');
 
@@ -235,6 +244,9 @@ export const getInventoryByBarcode = (barcode: string) =>
 /** Fills the RKM Certificate of Authenticity PDF (diamond template if the item has stones, gold template otherwise) */
 export const generateCertificate = (id: string) =>
   request<{ url: string }>(`/inventory/${id}/generate-certificate`, { method: 'POST' });
+
+/** Personal sales dashboard scoped to items sold under this cashier's own reference */
+export const getMyStats = () => request<MyStats>('/inventory/stats/my');
 
 // ── Categories ─────────────────────────────────────────────────
 export const getCategories = () => request<Category[]>('/categories');
