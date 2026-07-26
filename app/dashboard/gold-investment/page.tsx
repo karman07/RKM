@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import {
   getGoldStats, getInvestmentPlans, getGoldSubscriptions, updateGoldSubscription,
-  markGoldCashPayment, sendGoldReminder,
+  markGoldCashPayment, sendGoldReminder, restartGoldSubscription,
   GoldInvestmentPlan, GoldSubscription, GoldStats,
 } from '@/lib/api';
 
@@ -55,6 +56,9 @@ export default function ManagerGoldInvestment() {
   // WhatsApp reminder
   const [reminderLoading, setReminderLoading] = useState(false);
   const [reminderMsg, setReminderMsg] = useState('');
+
+  // Restart (cancelled/halted mandate)
+  const [restartLoading, setRestartLoading] = useState(false);
 
   const loadAll = async () => {
     setLoading(true);
@@ -134,6 +138,26 @@ export default function ManagerGoldInvestment() {
       setReminderMsg(e.message || 'Failed to send');
     } finally {
       setReminderLoading(false);
+    }
+  };
+
+  const handleRestart = async () => {
+    if (!selectedSub) return;
+    if (!confirm(`Restart autopay for ${selectedSub.customerName}?`)) return;
+    setRestartLoading(true);
+    try {
+      const { mode, subscription } = await restartGoldSubscription(selectedSub._id);
+      setSelectedSub(subscription);
+      await loadAll();
+      toast.success(
+        mode === 'resumed'
+          ? 'Mandate resumed directly — autopay is active again.'
+          : 'Previous mandate was dead — a new authorization link was sent to the customer via WhatsApp.',
+      );
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to restart subscription');
+    } finally {
+      setRestartLoading(false);
     }
   };
 
@@ -252,6 +276,7 @@ export default function ManagerGoldInvestment() {
                       <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase border ${statusColor[s.status]}`}>{s.status}</span>
                       {s.redeemed && <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase bg-blue-100 text-blue-700 border border-blue-200">Redeemed</span>}
                       {(s as any).requiresManualPayment && <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase bg-amber-100 text-amber-700 border border-amber-200">Manual Payments</span>}
+                      {s.pausedForCashMonth != null && <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase bg-emerald-100 text-emerald-700 border border-emerald-200">Paused (Cash Covered)</span>}
                     </div>
                     <p className="text-xs text-slate-400 font-bold">{s.customerPhone} · {s.customerEmail}</p>
                     <p className="text-xs font-bold text-slate-500">{s.plan?.name} · {s.installmentsPaid}/{s.plan?.durationMonths} payments</p>
@@ -344,6 +369,29 @@ export default function ManagerGoldInvestment() {
                       </div>
                     ))}
                   </div>
+
+                  {selectedSub.pausedForCashMonth != null && (
+                    <div className="border border-emerald-100 rounded-2xl p-4 bg-emerald-50">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-emerald-700 mb-1">Autopay Paused — Cash Covers Month {selectedSub.pausedForCashMonth}</p>
+                      <p className="text-[10px] text-emerald-800">
+                        Autopay won't charge this cycle again. It resumes automatically{selectedSub.autopayResumeAt ? ` on ${new Date(selectedSub.autopayResumeAt).toLocaleDateString('en-IN', { dateStyle: 'medium' })}` : ' before the next cycle'}.
+                      </p>
+                    </div>
+                  )}
+
+                  {(selectedSub.status === 'cancelled' || selectedSub.status === 'halted') && (
+                    <div className="border border-rose-100 rounded-2xl p-4 bg-rose-50">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-rose-700 mb-1">Autopay Stopped</p>
+                      <p className="text-[10px] text-rose-800 mb-3">
+                        {selectedSub.status === 'halted'
+                          ? 'This mandate is halted. Restarting will try to resume it directly with Razorpay.'
+                          : 'This mandate was cancelled by the bank and can\'t be revived — restarting issues a brand-new mandate and sends the customer a fresh authorization link. Their balance and history carry over.'}
+                      </p>
+                      <button onClick={handleRestart} disabled={restartLoading} className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-black uppercase rounded-xl transition-all disabled:opacity-50">
+                        {restartLoading ? 'Restarting…' : 'Restart Autopay'}
+                      </button>
+                    </div>
+                  )}
 
                   {(selectedSub as any).requiresManualPayment && (
                     <div className="border border-amber-100 rounded-2xl p-4 bg-amber-50">

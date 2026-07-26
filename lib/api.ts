@@ -1158,6 +1158,12 @@ export interface GoldSubscription {
   requiresManualPayment: boolean;
   whatsappRemindersCount: number;
   adminNotes?: string;
+  /** Set while autopay is paused because a cash payment already covered the current cycle */
+  pausedForCashMonth?: number | null;
+  /** When the scheduler will auto-resume autopay after a cash-covered pause */
+  autopayResumeAt?: string | null;
+  replacedBy?: string | null;
+  previousSubscriptionId?: string | null;
   createdAt: string;
 }
 
@@ -1190,6 +1196,10 @@ export const redeemGoldSubscription = (id: string, data: { amount: number; saleR
 
 export const markGoldCashPayment = (id: string, data: { month: number; staffId?: string; note?: string }) =>
   request<GoldSubscription>(`/gold-investment/subscriptions/${id}/mark-payment`, { method: 'POST', body: JSON.stringify(data) });
+
+/** Restarts a cancelled/halted subscription — resumes the mandate directly if Razorpay allows it, otherwise issues a fresh one and messages the customer a new authorization link. */
+export const restartGoldSubscription = (id: string) =>
+  request<{ mode: 'resumed' | 'new_mandate'; subscription: GoldSubscription }>(`/gold-investment/subscriptions/${id}/restart`, { method: 'POST' });
 
 export const sendGoldReminder = (id: string) =>
   request<{ sent: boolean; message: string }>(`/gold-investment/subscriptions/${id}/send-reminder`, { method: 'POST' });
