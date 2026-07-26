@@ -74,7 +74,7 @@ export class UsersService implements OnModuleInit {
     const query: any = { role: UserRole.WORKER, is_deleted: { $ne: true } };
     if (branchId) query.branch = branchId;
     const [data, total] = await Promise.all([
-      this.userModel.find(query).select('-password').populate('branch').skip(skip).limit(limit).sort({ createdAt: -1 }).exec(),
+      this.userModel.find(query).select('-password').populate('branch').populate('custom_role').skip(skip).limit(limit).sort({ createdAt: -1 }).exec(),
       this.userModel.countDocuments(query).exec(),
     ]);
     return { data, meta: { total, page, limit, total_pages: Math.ceil(total / limit) } };
@@ -87,6 +87,7 @@ export class UsersService implements OnModuleInit {
       this.userModel.find(query)
         .select('-password')
         .populate('branch')
+        .populate('custom_role')
         .skip(skip)
         .limit(limit)
         .sort({ createdAt: -1 })
@@ -113,20 +114,21 @@ export class UsersService implements OnModuleInit {
       this.userModel.find(query)
         .select('-password')
         .populate('branch')
+        .populate('custom_role')
         .skip(skip)
         .limit(limit)
         .sort({ createdAt: -1 })
         .exec(),
       this.userModel.countDocuments(query).exec(),
     ]);
-    return { 
-      data, 
+    return {
+      data,
       meta: {
         total,
         page,
         limit,
         total_pages: Math.ceil(total / limit)
-      } 
+      }
     };
   }
 
@@ -134,6 +136,7 @@ export class UsersService implements OnModuleInit {
     const user = await this.userModel.findById(id)
       .select('-password')
       .populate('branch')
+      .populate('custom_role')
       .populate('reporting_manager_id', 'name role employee_id')
       .exec();
     if (!user) throw new NotFoundException(`User ${id} not found`);
