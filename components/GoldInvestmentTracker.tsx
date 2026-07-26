@@ -36,6 +36,10 @@ export interface GoldSub {
   nextDueDate?: string;
   startedAt?: string;
   requiresManualPayment?: boolean;
+  /** Set while autopay is paused because a cash payment already covered the current cycle */
+  pausedForCashMonth?: number | null;
+  /** When autopay will automatically resume after a cash-covered pause */
+  autopayResumeAt?: string | null;
   paymentLedger?: PaymentLedgerEntry[];
   amountRedeemed?: number;
   redemptionHistory?: RedemptionEntry[];
@@ -209,7 +213,16 @@ export default function GoldInvestmentTracker({ sub }: { sub: GoldSub }) {
   const ledgerByMonth: Record<number, PaymentLedgerEntry> = {};
   (sub.paymentLedger || []).forEach(e => { ledgerByMonth[e.month] = e; });
 
+  // Which installments were actually received — derived from the real ledger,
+  // not just an assumed 1..installmentsPaid sequence (cash payments can be
+  // recorded for any month, so this keeps "received" grounded in real data).
+  const receivedMonths = new Set((sub.paymentLedger || []).map(e => e.month));
+  const paidMonthsList = months.filter(m => receivedMonths.has(m.month));
+  const unpaidMonthsList = months.filter(m => !receivedMonths.has(m.month));
+  const nextUnpaidMonth = unpaidMonthsList[0]?.month;
+
   const isCancelled = sub.status === 'cancelled' || sub.status === 'halted';
+  const isAutopayPaused = sub.pausedForCashMonth != null;
 
   return (
     <div ref={ref} className="bg-white rounded-[28px] border border-[#EDEAE4] shadow-[0_16px_48px_rgba(0,0,0,0.05)] overflow-hidden">
@@ -313,6 +326,24 @@ export default function GoldInvestmentTracker({ sub }: { sub: GoldSub }) {
         </div>
       )}
 
+      {/* ── Autopay paused (cash already covered this cycle) ── */}
+      {isAutopayPaused && (
+        <div className="mx-6 mt-4 rounded-2xl px-4 py-3 flex items-start gap-3 border border-emerald-200 bg-emerald-50">
+          <CheckCircle2 size={15} className="text-emerald-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-[10px] font-black text-emerald-800 uppercase tracking-wider mb-0.5">
+              Autopay Paused — Month {sub.pausedForCashMonth} Paid by Cash
+            </p>
+            <p className="text-[10px] text-emerald-700 leading-relaxed">
+              You paid month {sub.pausedForCashMonth} in cash at the store, so autopay was paused to avoid a duplicate charge.
+              {sub.autopayResumeAt
+                ? ` It resumes automatically on ${new Date(sub.autopayResumeAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}.`
+                : ' It will resume automatically before your next payment is due.'}
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="px-6 py-6 space-y-5">
 
         {/* ── Plan progress bar ── */}
@@ -340,7 +371,7 @@ export default function GoldInvestmentTracker({ sub }: { sub: GoldSub }) {
             <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-400 flex items-center gap-2">
               <TrendingUp size={11} /> Payment Ledger
             </p>
-            <span className="text-[8px] font-bold text-slate-300">{displayedPaid} received</span>
+            <span className="text-[8px] font-bold text-slate-300">{paidMonthsList.length} received</span>
           </div>
 
           <div
@@ -348,8 +379,8 @@ export default function GoldInvestmentTracker({ sub }: { sub: GoldSub }) {
             className="space-y-2 overflow-y-auto pr-1"
             style={{ maxHeight: 300, scrollbarWidth: 'thin', scrollbarColor: '#EDEAE4 transparent' }}
           >
-            {/* Paid months */}
-            {months.slice(0, visibleMonths).map((m) => {
+            {/* Paid months — received, per the real payment ledger */}
+            {paidMonthsList.slice(0, visibleMonths).map((m) => {
               const ledgerEntry = ledgerByMonth[m.month];
               const interestPending = m.month === visibleMonths && !timeBasedComplete;
               const rowTotal = interestPending
@@ -406,11 +437,12 @@ export default function GoldInvestmentTracker({ sub }: { sub: GoldSub }) {
               );
             })}
 
-            {/* Upcoming months */}
-            {months.slice(displayedPaid).map((m) => {
-              const isNext = m.month === displayedPaid + 1;
+            {/* Upcoming months — not yet in the payment ledger */}
+            {unpaidMonthsList.map((m) => {
+              const isNext = m.month === nextUnpaidMonth;
               const dueLabel = (() => {
                 if (!isNext) return 'Upcoming';
+                if (isAutopayPaused) return 'Autopay Paused';
                 if (isCancelled) return 'Pending Manual Payment';
                 if (daysUntilNextPayment !== null && daysUntilNextPayment > 0) return `Due in ${daysUntilNextPayment} day${daysUntilNextPayment === 1 ? '' : 's'}`;
                 if (daysUntilNextPayment === 0) return 'Due today';
@@ -418,25 +450,27 @@ export default function GoldInvestmentTracker({ sub }: { sub: GoldSub }) {
                 return 'Due next month';
               })();
 
+              const nextIsPaused = isNext && isAutopayPaused;
+
               return (
                 <div key={m.month}
                   className="flex items-center gap-3 rounded-2xl px-4 py-3 border"
                   style={{
-                    background: isNext ? (isCancelled ? '#FFF7ED' : '#FDFAF5') : '#F9F8F6',
-                    borderColor: isNext ? (isCancelled ? '#FBD38D' : '#B8975A') : '#F0EDEA',
+                    background: isNext ? (nextIsPaused ? '#ECFDF5' : isCancelled ? '#FFF7ED' : '#FDFAF5') : '#F9F8F6',
+                    borderColor: isNext ? (nextIsPaused ? '#A7F3D0' : isCancelled ? '#FBD38D' : '#B8975A') : '#F0EDEA',
                     opacity: isNext ? 1 : 0.45,
                   }}>
                   <div
-                    className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center border-2 ${isNext ? 'rkm-upcoming' : ''}`}
-                    style={{ borderColor: isNext ? (isCancelled ? '#F59E0B' : '#B8975A') : '#E5E2DE', background: 'white' }}>
+                    className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center border-2 ${isNext && !nextIsPaused ? 'rkm-upcoming' : ''}`}
+                    style={{ borderColor: isNext ? (nextIsPaused ? '#10b981' : isCancelled ? '#F59E0B' : '#B8975A') : '#E5E2DE', background: 'white' }}>
                     {isNext
-                      ? <div className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ background: isCancelled ? '#F59E0B' : '#B8975A' }} />
+                      ? <div className={`w-2.5 h-2.5 rounded-full ${nextIsPaused ? '' : 'animate-pulse'}`} style={{ background: nextIsPaused ? '#10b981' : isCancelled ? '#F59E0B' : '#B8975A' }} />
                       : <ArrowRight size={12} color="#C5C0BA" />
                     }
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-[10px] font-black" style={{ color: isNext ? '#5C0828' : '#A09890' }}>Month {m.month}</p>
-                    <p className="text-[9px] font-bold" style={{ color: isNext ? (isCancelled ? '#B45309' : '#7A1238') : '#C5C0BA' }}>{dueLabel}</p>
+                    <p className="text-[9px] font-bold" style={{ color: isNext ? (nextIsPaused ? '#047857' : isCancelled ? '#B45309' : '#7A1238') : '#C5C0BA' }}>{dueLabel}</p>
                   </div>
                   <div className="text-right px-3 py-1 rounded-xl" style={{ background: isNext ? 'rgba(184,151,90,0.06)' : 'transparent' }}>
                     <p className="text-[8px] font-bold" style={{ color: '#C5C0BA' }}>will earn</p>
