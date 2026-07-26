@@ -5,6 +5,8 @@ import {
   searchCustomers, createCustomerAdvance, createCustomer, getBranches,
   type Customer, type Branch, type CustomerAdvance,
 } from '@/lib/api';
+import { getFirebaseAuth } from '@/lib/firebase';
+import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from 'firebase/auth';
 import Modal from './Modal';
 import { Wallet, Search } from 'lucide-react';
 
@@ -28,6 +30,39 @@ interface AddAdvancePaymentModalProps {
   onAdded: (advance: CustomerAdvance) => void;
 }
 
+// ── OTP Input ─────────────────────────────────────────────────────────────────
+function OtpInput({ onComplete }: { onComplete: (otp: string) => void }) {
+  const [digits, setDigits] = useState(['', '', '', '', '', '']);
+  const refs = [useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null),
+                useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null)];
+
+  function handleChange(idx: number, val: string) {
+    const d = val.replace(/\D/g, '').slice(-1);
+    const next = [...digits];
+    next[idx] = d;
+    setDigits(next);
+    if (d && idx < 5) refs[idx + 1].current?.focus();
+    if (next.every(x => x)) onComplete(next.join(''));
+  }
+  function handleKeyDown(idx: number, e: React.KeyboardEvent) {
+    if (e.key === 'Backspace' && !digits[idx] && idx > 0) refs[idx - 1].current?.focus();
+  }
+
+  return (
+    <div className="flex gap-2 justify-center">
+      {digits.map((d, i) => (
+        <input key={i} ref={refs[i]} type="text" inputMode="numeric" maxLength={1} value={d}
+          onChange={e => handleChange(i, e.target.value)}
+          onKeyDown={e => handleKeyDown(i, e)}
+          className="w-10 h-11 text-center text-lg font-black border-2 rounded-xl focus:outline-none transition-colors"
+          style={{ borderColor: d ? '#2563eb' : '#e2e8f0', color: '#1d4ed8' }} />
+      ))}
+    </div>
+  );
+}
+
+type CreateStep = 'closed' | 'phone' | 'otp' | 'details';
+
 export default function AddAdvancePaymentModal({ onClose, onAdded }: AddAdvancePaymentModalProps) {
   const [branches, setBranches] = useState<Branch[]>([]);
 
@@ -48,13 +83,18 @@ export default function AddAdvancePaymentModal({ onClose, onAdded }: AddAdvanceP
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
-  // Inline "create new customer" — shown when a search finds no matches
-  const [showCreateCustomer, setShowCreateCustomer] = useState(false);
-  const [newName, setNewName] = useState('');
+  // Inline "create new customer" — shown when a search finds no matches. Phone is
+  // OTP-verified via Firebase before the customer is actually created.
+  const [createStep, setCreateStep] = useState<CreateStep>('closed');
   const [newPhone, setNewPhone] = useState('');
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpVerifying, setOtpVerifying] = useState(false);
+  const [otpCountdown, setOtpCountdown] = useState(0);
+  const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [creatingCustomer, setCreatingCustomer] = useState(false);
   const [createErr, setCreateErr] = useState('');
+  const confirmRef = useRef<ConfirmationResult | null>(null);
 
   useEffect(() => {
     getBranches().then(setBranches).catch(() => setBranches([]));
@@ -74,24 +114,83 @@ export default function AddAdvancePaymentModal({ onClose, onAdded }: AddAdvanceP
     return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
   }, [query]);
 
+  useEffect(() => {
+    if (otpCountdown <= 0) return;
+    const t = setTimeout(() => setOtpCountdown(c => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [otpCountdown]);
+
+  function getOrCreateRecaptcha() {
+    if (!(window as any)._rcv_advance_payment) {
+      (window as any)._rcv_advance_payment = new RecaptchaVerifier(getFirebaseAuth(), 'recaptcha-advance-payment', { size: 'invisible' });
+    }
+    return (window as any)._rcv_advance_payment;
+  }
+
+  // #recaptcha-advance-payment unmounts with this modal, so the cached verifier must be
+  // cleared here too — otherwise reopening the modal reuses a verifier bound to a dead
+  // DOM node and signInWithPhoneNumber fails with auth/invalid-app-credential.
+  useEffect(() => {
+    return () => {
+      try { (window as any)._rcv_advance_payment?.clear(); } catch {}
+      (window as any)._rcv_advance_payment = null;
+    };
+  }, []);
+
   function openCreateCustomer() {
     const looksLikePhone = /^[\d\s+()-]+$/.test(query.trim()) && query.trim().length > 0;
-    setNewPhone(looksLikePhone ? query.trim() : '');
+    setNewPhone(looksLikePhone ? query.trim().replace(/\D/g, '').slice(-10) : '');
     setNewName(looksLikePhone ? '' : query.trim());
     setNewEmail('');
     setCreateErr('');
-    setShowCreateCustomer(true);
+    setCreateStep('phone');
+  }
+
+  async function handleSendOtp() {
+    if (!newPhone || newPhone.length < 10) { setCreateErr('Enter a valid 10-digit mobile number'); return; }
+    setCreateErr('');
+    setOtpSending(true);
+    try {
+      const verifier = getOrCreateRecaptcha();
+      const result = await signInWithPhoneNumber(getFirebaseAuth(), `+91${newPhone.replace(/^\+91/, '')}`, verifier);
+      confirmRef.current = result;
+      setCreateStep('otp');
+      setOtpCountdown(60);
+    } catch (e: any) {
+      setCreateErr(e.message || 'Failed to send OTP');
+      try { (window as any)._rcv_advance_payment?.clear(); } catch {}
+      (window as any)._rcv_advance_payment = null;
+    } finally {
+      setOtpSending(false);
+    }
+  }
+
+  async function handleVerifyOtp(otp: string) {
+    if (!confirmRef.current) return;
+    setCreateErr('');
+    setOtpVerifying(true);
+    try {
+      await confirmRef.current.confirm(otp);
+      setCreateStep('details');
+    } catch {
+      setCreateErr('Invalid OTP. Please try again.');
+    } finally {
+      setOtpVerifying(false);
+    }
   }
 
   async function handleCreateCustomer() {
     if (!newName.trim()) { setCreateErr('Name is required'); return; }
-    if (!newPhone.trim()) { setCreateErr('Phone is required'); return; }
     setCreateErr('');
     setCreatingCustomer(true);
     try {
-      const created = await createCustomer({ name: newName.trim(), phone: newPhone.trim(), email: newEmail.trim() || undefined });
+      const created = await createCustomer({
+        name: newName.trim(),
+        phone: `+91${newPhone.replace(/^\+91/, '')}`,
+        email: newEmail.trim() || undefined,
+      });
       setCustomer(created);
-      setShowCreateCustomer(false);
+      setCreateStep('closed');
       setQuery('');
       setMatches([]);
     } catch (e: any) {
@@ -157,7 +256,7 @@ export default function AddAdvancePaymentModal({ onClose, onAdded }: AddAdvanceP
                 placeholder="Search by name or mobile number…"
                 className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none transition-all"
               />
-              {query.trim().length >= 2 && !showCreateCustomer && (
+              {query.trim().length >= 2 && createStep === 'closed' && (
                 <div className="absolute z-10 top-full mt-2 left-0 right-0 bg-white border border-slate-200 rounded-2xl shadow-2xl max-h-56 overflow-y-auto">
                   {searching ? (
                     <div className="p-4 text-center text-xs text-slate-400 font-bold">Searching…</div>
@@ -189,40 +288,92 @@ export default function AddAdvancePaymentModal({ onClose, onAdded }: AddAdvanceP
             </div>
           )}
 
-          {showCreateCustomer && (
+          {createStep !== 'closed' && (
             <div className="mt-3 p-4 rounded-2xl border border-blue-200 bg-blue-50/50 space-y-3">
+              {/* Invisible reCAPTCHA container required by Firebase phone auth */}
+              <div id="recaptcha-advance-payment" />
               <div className="flex items-center justify-between">
-                <p className="text-xs font-black text-blue-900 uppercase tracking-widest">New Customer</p>
-                <button type="button" onClick={() => setShowCreateCustomer(false)} className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600">Cancel</button>
+                <p className="text-xs font-black text-blue-900 uppercase tracking-widest">
+                  New Customer — {createStep === 'phone' ? 'Verify Phone' : createStep === 'otp' ? 'Enter OTP' : 'Details'}
+                </p>
+                <button type="button" onClick={() => { setCreateStep('closed'); setCreateErr(''); }}
+                  className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600">Cancel</button>
               </div>
-              <input
-                value={newName}
-                onChange={e => setNewName(e.target.value)}
-                placeholder="Full name"
-                className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold focus:outline-none"
-              />
-              <input
-                value={newPhone}
-                onChange={e => setNewPhone(e.target.value)}
-                placeholder="Phone number"
-                className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold focus:outline-none"
-              />
-              <input
-                value={newEmail}
-                onChange={e => setNewEmail(e.target.value)}
-                placeholder="Email (optional)"
-                className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold focus:outline-none"
-              />
-              {createErr && <p className="text-xs text-red-600 font-bold">{createErr}</p>}
-              <button
-                type="button"
-                onClick={handleCreateCustomer}
-                disabled={creatingCustomer || !newName.trim() || !newPhone.trim()}
-                className="w-full py-2.5 rounded-xl text-white text-xs font-black bg-blue-600 hover:bg-blue-700 transition-all disabled:opacity-40 flex items-center justify-center gap-2"
-              >
-                {creatingCustomer && <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
-                {creatingCustomer ? 'Creating…' : 'Create & Select Customer'}
-              </button>
+
+              {createStep === 'phone' && (
+                <>
+                  <div className="flex rounded-xl border border-slate-200 overflow-hidden bg-white">
+                    <div className="flex items-center px-3 bg-slate-50 border-r border-slate-200 text-sm font-bold text-slate-600 whitespace-nowrap">
+                      🇮🇳 +91
+                    </div>
+                    <input
+                      type="tel"
+                      value={newPhone}
+                      onChange={e => setNewPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                      placeholder="10-digit mobile number"
+                      className="flex-1 px-3 py-2.5 text-sm font-bold focus:outline-none"
+                    />
+                  </div>
+                  {createErr && <p className="text-xs text-red-600 font-bold">{createErr}</p>}
+                  <button type="button" onClick={handleSendOtp} disabled={otpSending || newPhone.length < 10}
+                    className="w-full py-2.5 rounded-xl text-white text-xs font-black bg-blue-600 hover:bg-blue-700 transition-all disabled:opacity-40 flex items-center justify-center gap-2">
+                    {otpSending && <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
+                    {otpSending ? 'Sending OTP…' : 'Send OTP'}
+                  </button>
+                </>
+              )}
+
+              {createStep === 'otp' && (
+                <>
+                  <p className="text-xs text-center text-slate-500 font-medium">
+                    OTP sent to <span className="font-black text-slate-900">+91 {newPhone}</span>
+                  </p>
+                  <OtpInput onComplete={otp => !otpVerifying && handleVerifyOtp(otp)} />
+                  {otpVerifying && (
+                    <div className="flex justify-center">
+                      <div className="w-4 h-4 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+                    </div>
+                  )}
+                  {createErr && <p className="text-xs text-red-600 font-bold text-center">{createErr}</p>}
+                  <div className="flex items-center justify-between text-[10px]">
+                    <button type="button" onClick={() => { setCreateStep('phone'); setCreateErr(''); confirmRef.current = null; }}
+                      className="text-slate-400 hover:text-slate-600 font-black uppercase tracking-widest">← Change number</button>
+                    {otpCountdown > 0
+                      ? <span className="text-slate-400 font-bold">Resend in {otpCountdown}s</span>
+                      : <button type="button" onClick={handleSendOtp} className="text-blue-600 hover:underline font-black uppercase tracking-widest">Resend OTP</button>}
+                  </div>
+                </>
+              )}
+
+              {createStep === 'details' && (
+                <>
+                  <p className="text-[10px] font-black text-emerald-600 flex items-center gap-1">
+                    ✓ Phone verified — +91 {newPhone}
+                  </p>
+                  <input
+                    value={newName}
+                    onChange={e => setNewName(e.target.value)}
+                    placeholder="Full name"
+                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold focus:outline-none"
+                  />
+                  <input
+                    value={newEmail}
+                    onChange={e => setNewEmail(e.target.value)}
+                    placeholder="Email (optional)"
+                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold focus:outline-none"
+                  />
+                  {createErr && <p className="text-xs text-red-600 font-bold">{createErr}</p>}
+                  <button
+                    type="button"
+                    onClick={handleCreateCustomer}
+                    disabled={creatingCustomer || !newName.trim()}
+                    className="w-full py-2.5 rounded-xl text-white text-xs font-black bg-blue-600 hover:bg-blue-700 transition-all disabled:opacity-40 flex items-center justify-center gap-2"
+                  >
+                    {creatingCustomer && <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
+                    {creatingCustomer ? 'Creating…' : 'Create & Select Customer'}
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
