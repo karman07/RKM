@@ -1248,6 +1248,7 @@ export const createCustomerAdvance = (customerId: string, data: {
   amount: number;
   making_charges_waiver_pct?: number;
   mode?: string;
+  branch_id?: string;
   note?: string;
   lock_in_days?: number;
 }) => request<CustomerAdvance>(`/customers/${customerId}/advances`, { method: 'POST', body: JSON.stringify(data) });
@@ -1263,6 +1264,17 @@ export const redeemCustomerAdvance = (id: string, data: {
   saleReference?: string;
   note?: string;
 }) => request<CustomerAdvance>(`/customers/advances/${id}/redeem`, { method: 'POST', body: JSON.stringify(data) });
+
+export interface AdvanceAnalytics {
+  totalReceived: number;
+  count: number;
+  byMode: { _id: string; total: number; count: number }[];
+  recent: CustomerAdvance[];
+}
+
+/** Aggregate advance-deposit stats for the Payments analytics page */
+export const getAdvanceAnalytics = (days = 30) =>
+  request<AdvanceAnalytics>(`/customers/advances/analytics?days=${days}`);
 
 // ── Sale Requests ─────────────────────────────────────────────────────────────
 
