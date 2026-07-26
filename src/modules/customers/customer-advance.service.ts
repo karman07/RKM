@@ -8,6 +8,7 @@ interface CreateAdvanceDto {
   amount: number;
   making_charges_waiver_pct?: number;
   mode?: string;
+  payment_splits?: Array<{ mode: string; amount: number; reference?: string }>;
   note?: string;
   branch_id?: string;
   lock_in_days?: number;
@@ -46,6 +47,18 @@ export class CustomerAdvanceService {
       ? new Date(Date.now() + lockInDays * 24 * 60 * 60 * 1000)
       : null;
 
+    // Normalise payment splits (if any were provided) and make sure they actually add up
+    // to the advance amount — mirrors how sale payment_splits are validated.
+    const splits = (dto.payment_splits ?? [])
+      .filter(s => s && s.mode && Number(s.amount) > 0)
+      .map(s => ({ mode: s.mode.trim(), amount: Number(s.amount), reference: s.reference?.trim() || undefined }));
+    if (splits.length > 0) {
+      const splitTotal = splits.reduce((sum, s) => sum + s.amount, 0);
+      if (Math.abs(splitTotal - Number(dto.amount)) > 0.5) {
+        throw new BadRequestException(`Payment methods total (₹${splitTotal}) does not match the advance amount (₹${dto.amount})`);
+      }
+    }
+
     const advance = await this.advanceModel.create({
       customer: customer._id,
       customerName: customer.name,
@@ -53,7 +66,8 @@ export class CustomerAdvanceService {
       branch_id: dto.branch_id && Types.ObjectId.isValid(dto.branch_id) ? new Types.ObjectId(dto.branch_id) : null,
       amount: Number(dto.amount),
       making_charges_waiver_pct: Number(dto.making_charges_waiver_pct) || 0,
-      mode: dto.mode?.trim() || 'cash',
+      mode: dto.mode?.trim() || splits[0]?.mode || 'cash',
+      payment_splits: splits,
       note: dto.note?.trim() || '',
       lock_in_days: lockInDays,
       lock_in_expires_at: lockInExpiresAt,
@@ -170,7 +184,21 @@ export class CustomerAdvanceService {
       ]),
       this.advanceModel.aggregate([
         { $match: { createdAt: { $gte: since } } },
-        { $group: { _id: { $toLower: { $ifNull: ['$mode', 'cash'] } }, total: { $sum: '$amount' }, count: { $sum: 1 } } },
+        {
+          // Split advances contribute one row per payment method so the breakdown
+          // reflects what was actually paid in each mode, not just the primary one.
+          $project: {
+            splits: {
+              $cond: {
+                if: { $gt: [{ $size: { $ifNull: ['$payment_splits', []] } }, 0] },
+                then: '$payment_splits',
+                else: [{ mode: { $ifNull: ['$mode', 'cash'] }, amount: '$amount' }],
+              },
+            },
+          },
+        },
+        { $unwind: '$splits' },
+        { $group: { _id: { $toLower: '$splits.mode' }, total: { $sum: '$splits.amount' }, count: { $sum: 1 } } },
         { $sort: { total: -1 } },
       ]),
       this.advanceModel

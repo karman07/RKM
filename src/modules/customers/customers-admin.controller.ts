@@ -109,7 +109,15 @@ export class CustomersAdminController {
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   async createAdvance(
     @Param('id') id: string,
-    @Body() body: { amount: number; making_charges_waiver_pct?: number; mode?: string; note?: string; branch_id?: string; lock_in_days?: number },
+    @Body() body: {
+      amount: number;
+      making_charges_waiver_pct?: number;
+      mode?: string;
+      payment_splits?: Array<{ mode: string; amount: number; reference?: string }>;
+      note?: string;
+      branch_id?: string;
+      lock_in_days?: number;
+    },
     @Req() req: any,
   ) {
     return this.customerAdvanceService.createAdvance(id, body, req.user?.userId);

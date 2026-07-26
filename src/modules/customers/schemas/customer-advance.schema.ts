@@ -38,8 +38,16 @@ export class CustomerAdvance {
   @Prop({ default: 0 })
   making_charges_waiver_pct: number;
 
+  /** Primary/first payment method — kept in sync with payment_splits[0] for legacy display & analytics grouping */
   @Prop({ default: 'cash', trim: true })
   mode: string;
+
+  /** How this advance was actually paid — supports splitting one advance across multiple methods (e.g. part cash + part card) */
+  @Prop({
+    type: [{ mode: String, amount: Number, reference: String }],
+    default: [],
+  })
+  payment_splits: Array<{ mode: string; amount: number; reference?: string }>;
 
   @Prop({ trim: true, default: '' })
   note: string;
