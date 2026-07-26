@@ -29,9 +29,15 @@ export default function EmployeeIdCardModal({ user, branches, onClose }: Employe
   }, []);
 
   const isWorker = user.role === 'worker';
+  const isCustom = user.role === 'custom';
   const initials = user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
   const photo = (user as any).avatar ? staticUrl((user as any).avatar) : '';
-  const roleLabel = isWorker && (user as any).job_title ? (user as any).job_title : user.role;
+  const customRoleName = typeof user.custom_role === 'object' ? user.custom_role?.name : undefined;
+  const roleLabel = isWorker && (user as any).job_title
+    ? (user as any).job_title
+    : isCustom && customRoleName
+    ? customRoleName
+    : user.role;
   const branchId = typeof user.branch === 'object' ? user.branch?._id : user.branch;
   const branchRecord = typeof user.branch === 'object' ? user.branch : branches.find(b => b._id === branchId);
   const branchName = branchRecord?.name;

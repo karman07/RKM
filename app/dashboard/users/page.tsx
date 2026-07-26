@@ -25,6 +25,7 @@ const roleBadge: Record<string, { wrap: string; dot: string; icon: any }> = {
   cashier: { wrap: 'bg-slate-50 text-slate-600 border-slate-100',     dot: 'bg-slate-400',  icon: UserIcon  },
   worker:  { wrap: 'bg-amber-50 text-amber-700 border-amber-100',     dot: 'bg-amber-500',  icon: Wrench    },
   sales:   { wrap: 'bg-[#5A0F1A]/10 text-[#5A0F1A] border-[#5A0F1A]/20', dot: 'bg-[#5A0F1A]', icon: Briefcase },
+  custom:  { wrap: 'bg-teal-50 text-teal-700 border-teal-100',        dot: 'bg-teal-600',   icon: UserCog   },
 };
 
 interface UserForm {
@@ -516,7 +517,11 @@ export default function UsersPage() {
                             <p className="text-sm font-black text-slate-900 leading-tight">{u.name}</p>
                             <div className="flex items-center gap-1.5 mt-0.5">
                               <span className={`text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border ${badge.wrap}`}>
-                                {isWorker && (u as any).job_title ? (u as any).job_title : u.role}
+                                {isWorker && (u as any).job_title
+                                  ? (u as any).job_title
+                                  : u.role === 'custom' && typeof u.custom_role === 'object' && u.custom_role?.name
+                                  ? u.custom_role.name
+                                  : u.role}
                               </span>
                               {isWorker && (
                                 <span className="text-[8px] font-bold text-amber-600 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded uppercase tracking-wider">No Login</span>
