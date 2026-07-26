@@ -118,7 +118,7 @@ export default function AdvanceReceiptModal({ advance, onClose }: AdvanceReceipt
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', borderBottom: '1.5px solid #000', textAlign: 'center' }}>
           {[
             { label: 'Amount Received', value: fmt(advance.amount) },
-            { label: 'Mode', value: advance.mode.replace('_', ' ').toUpperCase() },
+            { label: 'Mode', value: (advance.payment_splits?.length ?? 0) > 1 ? `Split (${advance.payment_splits!.length})` : advance.mode.replace('_', ' ').toUpperCase() },
             { label: 'Available Balance', value: fmt(advance.availableBalance) },
           ].map((s, i) => (
             <div key={i} style={{ padding: '10px 8px', borderRight: i < 2 ? '1px solid #ccc' : undefined }}>
@@ -127,6 +127,31 @@ export default function AdvanceReceiptModal({ advance, onClose }: AdvanceReceipt
             </div>
           ))}
         </div>
+
+        {/* Payment methods breakdown — only shown when the advance was split across more than one method */}
+        {(advance.payment_splits?.length ?? 0) > 1 && (
+          <div style={{ padding: '10px 20px', borderBottom: '1px solid #ccc' }}>
+            <div style={{ fontSize: '8px', fontWeight: 700, color: '#555', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '4px' }}>Payment Methods</div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10px' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #ddd', color: '#666' }}>
+                  <th style={{ textAlign: 'left', padding: '3px 0' }}>Mode</th>
+                  <th style={{ textAlign: 'left', padding: '3px 0' }}>Reference</th>
+                  <th style={{ textAlign: 'right', padding: '3px 0' }}>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {advance.payment_splits!.map((s, i) => (
+                  <tr key={i} style={{ borderBottom: '1px dotted #eee' }}>
+                    <td style={{ padding: '4px 0', fontWeight: 700 }}>{s.mode.replace('_', ' ').toUpperCase()}</td>
+                    <td style={{ padding: '4px 0', color: '#555', fontFamily: 'monospace' }}>{s.reference || '—'}</td>
+                    <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: 700 }}>{fmt(s.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {/* Terms */}
         <div style={{ padding: '12px 20px', borderBottom: '1px solid #ccc', fontSize: '10px', lineHeight: 1.8 }}>

@@ -8,15 +8,8 @@ import {
 import { getFirebaseAuth } from '@/lib/firebase';
 import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from 'firebase/auth';
 import Modal from './Modal';
+import PaymentSplitsInput, { type PaymentSplit } from './PaymentSplitsInput';
 import { Wallet, Search } from 'lucide-react';
-
-const PAYMENT_MODES = [
-  { value: 'cash', label: 'Cash' },
-  { value: 'card', label: 'Card' },
-  { value: 'upi', label: 'UPI' },
-  { value: 'bank_transfer', label: 'Bank Transfer' },
-  { value: 'cheque', label: 'Cheque' },
-];
 
 const LOCK_IN_PRESETS = [
   { label: 'No Lock', days: 0 },
@@ -74,7 +67,7 @@ export default function AddAdvancePaymentModal({ onClose, onAdded }: AddAdvanceP
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [amount, setAmount] = useState('');
-  const [mode, setMode] = useState('cash');
+  const [paymentSplits, setPaymentSplits] = useState<PaymentSplit[]>([{ mode: 'cash', amount: '', reference: '' }]);
   const [branchId, setBranchId] = useState('');
   const [waiverPct, setWaiverPct] = useState('');
   const [lockInDays, setLockInDays] = useState(0);
@@ -92,6 +85,11 @@ export default function AddAdvancePaymentModal({ onClose, onAdded }: AddAdvanceP
   const [otpCountdown, setOtpCountdown] = useState(0);
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
+  const [newAddress, setNewAddress] = useState('');
+  const [newCity, setNewCity] = useState('');
+  const [newState, setNewState] = useState('');
+  const [newPincode, setNewPincode] = useState('');
+  const [newCountry, setNewCountry] = useState('India');
   const [creatingCustomer, setCreatingCustomer] = useState(false);
   const [createErr, setCreateErr] = useState('');
   const confirmRef = useRef<ConfirmationResult | null>(null);
@@ -120,6 +118,16 @@ export default function AddAdvancePaymentModal({ onClose, onAdded }: AddAdvanceP
     return () => clearTimeout(t);
   }, [otpCountdown]);
 
+  // Fill the default single payment split with the amount, but only while the user
+  // hasn't typed a split amount themselves.
+  useEffect(() => {
+    setPaymentSplits(prev =>
+      prev.length === 1 && prev[0].amount === ''
+        ? [{ ...prev[0], amount: amount ? String(Math.round(parseFloat(amount) || 0)) : '' }]
+        : prev
+    );
+  }, [amount]);
+
   function getOrCreateRecaptcha() {
     if (!(window as any)._rcv_advance_payment) {
       (window as any)._rcv_advance_payment = new RecaptchaVerifier(getFirebaseAuth(), 'recaptcha-advance-payment', { size: 'invisible' });
@@ -142,6 +150,11 @@ export default function AddAdvancePaymentModal({ onClose, onAdded }: AddAdvanceP
     setNewPhone(looksLikePhone ? query.trim().replace(/\D/g, '').slice(-10) : '');
     setNewName(looksLikePhone ? '' : query.trim());
     setNewEmail('');
+    setNewAddress('');
+    setNewCity('');
+    setNewState('');
+    setNewPincode('');
+    setNewCountry('India');
     setCreateErr('');
     setCreateStep('phone');
   }
@@ -188,6 +201,11 @@ export default function AddAdvancePaymentModal({ onClose, onAdded }: AddAdvanceP
         name: newName.trim(),
         phone: `+91${newPhone.replace(/^\+91/, '')}`,
         email: newEmail.trim() || undefined,
+        address: newAddress.trim() || undefined,
+        city: newCity.trim() || undefined,
+        state: newState.trim() || undefined,
+        pincode: newPincode.trim() || undefined,
+        country: newCountry.trim() || 'India',
       });
       setCustomer(created);
       setCreateStep('closed');
@@ -204,12 +222,24 @@ export default function AddAdvancePaymentModal({ onClose, onAdded }: AddAdvanceP
     if (!customer) { setErr('Select a customer first — every advance must be tied to a customer'); return; }
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) { setErr('Enter a valid amount'); return; }
+
+    const splits = paymentSplits
+      .filter(s => parseFloat(s.amount) > 0)
+      .map(s => ({ mode: s.mode, amount: parseFloat(s.amount), reference: s.reference || undefined }));
+    if (splits.length === 0) { setErr('Add at least one payment method with an amount'); return; }
+    const splitTotal = splits.reduce((s, sp) => s + sp.amount, 0);
+    if (Math.abs(splitTotal - amt) > 0.5) {
+      setErr(`Payment methods total (₹${splitTotal.toLocaleString('en-IN')}) must equal the advance amount (₹${amt.toLocaleString('en-IN')})`);
+      return;
+    }
+
     setErr('');
     setSaving(true);
     try {
       const created = await createCustomerAdvance(customer._id, {
         amount: amt,
-        mode,
+        mode: splits[0]?.mode,
+        payment_splits: splits,
         branch_id: branchId || undefined,
         making_charges_waiver_pct: waiverPct ? parseFloat(waiverPct) : undefined,
         lock_in_days: lockInDays || undefined,
@@ -237,7 +267,14 @@ export default function AddAdvancePaymentModal({ onClose, onAdded }: AddAdvanceP
         </div>
 
         <div>
-          <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Customer *</label>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block">Customer *</label>
+            {!customer && createStep === 'closed' && (
+              <button type="button" onClick={openCreateCustomer} className="text-[10px] font-black uppercase tracking-widest text-blue-600 hover:underline">
+                + New Customer
+              </button>
+            )}
+          </div>
           {customer ? (
             <div className="flex items-center gap-3 border border-blue-200 bg-blue-50 rounded-2xl px-4 py-3">
               <div className="flex-1 min-w-0">
@@ -353,7 +390,7 @@ export default function AddAdvancePaymentModal({ onClose, onAdded }: AddAdvanceP
                   <input
                     value={newName}
                     onChange={e => setNewName(e.target.value)}
-                    placeholder="Full name"
+                    placeholder="Full name *"
                     className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold focus:outline-none"
                   />
                   <input
@@ -362,6 +399,38 @@ export default function AddAdvancePaymentModal({ onClose, onAdded }: AddAdvanceP
                     placeholder="Email (optional)"
                     className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold focus:outline-none"
                   />
+                  <input
+                    value={newAddress}
+                    onChange={e => setNewAddress(e.target.value)}
+                    placeholder="Address (optional)"
+                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold focus:outline-none"
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      value={newCity}
+                      onChange={e => setNewCity(e.target.value)}
+                      placeholder="City"
+                      className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold focus:outline-none"
+                    />
+                    <input
+                      value={newState}
+                      onChange={e => setNewState(e.target.value)}
+                      placeholder="State"
+                      className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold focus:outline-none"
+                    />
+                    <input
+                      value={newPincode}
+                      onChange={e => setNewPincode(e.target.value)}
+                      placeholder="Pincode"
+                      className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold focus:outline-none"
+                    />
+                    <input
+                      value={newCountry}
+                      onChange={e => setNewCountry(e.target.value)}
+                      placeholder="Country"
+                      className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold focus:outline-none"
+                    />
+                  </div>
                   {createErr && <p className="text-xs text-red-600 font-bold">{createErr}</p>}
                   <button
                     type="button"
@@ -391,16 +460,6 @@ export default function AddAdvancePaymentModal({ onClose, onAdded }: AddAdvanceP
             />
           </div>
           <div>
-            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Mode</label>
-            <select value={mode} onChange={e => setMode(e.target.value)}
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none transition-all">
-              {PAYMENT_MODES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-            </select>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Branch</label>
             <select value={branchId} onChange={e => setBranchId(e.target.value)}
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none transition-all">
@@ -408,19 +467,22 @@ export default function AddAdvancePaymentModal({ onClose, onAdded }: AddAdvanceP
               {branches.map(b => <option key={b._id} value={b._id}>{b.name}</option>)}
             </select>
           </div>
-          <div>
-            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Making Charges Waiver (%)</label>
-            <input
-              type="number"
-              min={0}
-              max={100}
-              step={0.1}
-              value={waiverPct}
-              onChange={e => setWaiverPct(e.target.value)}
-              placeholder="0"
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none transition-all"
-            />
-          </div>
+        </div>
+
+        <PaymentSplitsInput splits={paymentSplits} onChange={setPaymentSplits} totalAmount={parseFloat(amount) || 0} />
+
+        <div>
+          <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Making Charges Waiver (%)</label>
+          <input
+            type="number"
+            min={0}
+            max={100}
+            step={0.1}
+            value={waiverPct}
+            onChange={e => setWaiverPct(e.target.value)}
+            placeholder="0"
+            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none transition-all"
+          />
         </div>
 
         <div>

@@ -6,7 +6,7 @@ import {
   type InventoryItem, type Branch, type User,
 } from '@/lib/api';
 import Modal from './Modal';
-import CustomerSearchPanel, { type CustomerDraft } from './CustomerSearchPanel';
+import VerifiedCustomerPanel, { type CustomerDraft } from './VerifiedCustomerPanel';
 import PaymentSplitsInput, { type PaymentSplit } from './PaymentSplitsInput';
 import { Search, Trash2, Receipt, ScanBarcode } from 'lucide-react';
 import { toast } from 'sonner';
@@ -56,6 +56,7 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
   const [customerDraft, setCustomerDraft] = useState<CustomerDraft>({
     name: '', phone: '', email: '', address: '', city: '', state: '', pincode: '', country: 'India',
   });
+  const [customerVerified, setCustomerVerified] = useState(false);
   const [soldAtBranchId, setSoldAtBranchId] = useState('');
   const [soldByUserId, setSoldByUserId] = useState('');
   const [paymentSplits, setPaymentSplits] = useState<PaymentSplit[]>([{ mode: 'cash', amount: '', reference: '' }]);
@@ -169,6 +170,7 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
     if (cart.length === 0) { setError('Add at least one item to the bill.'); return; }
     if (!customerDraft.name.trim()) { setError('Customer name is required.'); return; }
     if (!customerDraft.phone.trim()) { setError('Customer phone is required.'); return; }
+    if (!customerVerified) { setError('Verify the customer\'s phone number (search an existing customer or complete OTP verification) before creating the invoice.'); return; }
     if (!soldAtBranchId) { setError('Select a sale branch.'); return; }
 
     for (const { item, price } of cart) {
@@ -349,7 +351,7 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
         {/* ── Customer ─────────────────────────────────────────────────── */}
         <div>
           <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Customer Details</p>
-          <CustomerSearchPanel value={customerDraft} onChange={setCustomerDraft} />
+          <VerifiedCustomerPanel value={customerDraft} onChange={setCustomerDraft} onVerifiedChange={setCustomerVerified} />
         </div>
 
         {/* ── Sale details ─────────────────────────────────────────────── */}
@@ -381,7 +383,7 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
           <button onClick={onClose} className="flex-1 py-3.5 border border-slate-200 rounded-2xl text-sm font-bold text-slate-500 hover:bg-slate-50 transition-all">
             Cancel
           </button>
-          <button onClick={handleSubmit} disabled={submitting || cart.length === 0 || hasBelowFloorLine}
+          <button onClick={handleSubmit} disabled={submitting || cart.length === 0 || hasBelowFloorLine || !customerVerified}
             className="flex-[2] py-3.5 rounded-2xl text-white text-sm font-black bg-blue-600 hover:bg-blue-700 transition-all disabled:opacity-40 flex items-center justify-center gap-2">
             {submitting && <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
             {submitting ? 'Creating…' : `Create Invoice (${cart.length})`}

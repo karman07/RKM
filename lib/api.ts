@@ -2555,6 +2555,7 @@ export interface CustomerAdvance {
   availableBalance: number;
   making_charges_waiver_pct: number;
   mode: string;
+  payment_splits?: { mode: string; amount: number; reference?: string }[];
   note: string;
   status: 'active' | 'closed';
   lock_in_days: number;
@@ -2586,6 +2587,7 @@ export const createCustomerAdvance = (customerId: string, data: {
   amount: number;
   making_charges_waiver_pct?: number;
   mode?: string;
+  payment_splits?: { mode: string; amount: number; reference?: string }[];
   note?: string;
   branch_id?: string;
   lock_in_days?: number;
