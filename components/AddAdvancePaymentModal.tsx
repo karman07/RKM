@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
-  searchCustomers, createCustomerAdvance, getBranches,
+  searchCustomers, createCustomerAdvance, createCustomer, getBranches,
   type Customer, type Branch, type CustomerAdvance,
 } from '@/lib/api';
 import Modal from './Modal';
@@ -48,6 +48,14 @@ export default function AddAdvancePaymentModal({ onClose, onAdded }: AddAdvanceP
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
+  // Inline "create new customer" — shown when a search finds no matches
+  const [showCreateCustomer, setShowCreateCustomer] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newPhone, setNewPhone] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [creatingCustomer, setCreatingCustomer] = useState(false);
+  const [createErr, setCreateErr] = useState('');
+
   useEffect(() => {
     getBranches().then(setBranches).catch(() => setBranches([]));
   }, []);
@@ -65,6 +73,33 @@ export default function AddAdvancePaymentModal({ onClose, onAdded }: AddAdvanceP
     }, 400);
     return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
   }, [query]);
+
+  function openCreateCustomer() {
+    const looksLikePhone = /^[\d\s+()-]+$/.test(query.trim()) && query.trim().length > 0;
+    setNewPhone(looksLikePhone ? query.trim() : '');
+    setNewName(looksLikePhone ? '' : query.trim());
+    setNewEmail('');
+    setCreateErr('');
+    setShowCreateCustomer(true);
+  }
+
+  async function handleCreateCustomer() {
+    if (!newName.trim()) { setCreateErr('Name is required'); return; }
+    if (!newPhone.trim()) { setCreateErr('Phone is required'); return; }
+    setCreateErr('');
+    setCreatingCustomer(true);
+    try {
+      const created = await createCustomer({ name: newName.trim(), phone: newPhone.trim(), email: newEmail.trim() || undefined });
+      setCustomer(created);
+      setShowCreateCustomer(false);
+      setQuery('');
+      setMatches([]);
+    } catch (e: any) {
+      setCreateErr(e.message || 'Failed to create customer');
+    } finally {
+      setCreatingCustomer(false);
+    }
+  }
 
   async function handleSave() {
     if (!customer) { setErr('Select a customer first — every advance must be tied to a customer'); return; }
@@ -122,25 +157,72 @@ export default function AddAdvancePaymentModal({ onClose, onAdded }: AddAdvanceP
                 placeholder="Search by name or mobile number…"
                 className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none transition-all"
               />
-              {query.trim().length >= 2 && (
+              {query.trim().length >= 2 && !showCreateCustomer && (
                 <div className="absolute z-10 top-full mt-2 left-0 right-0 bg-white border border-slate-200 rounded-2xl shadow-2xl max-h-56 overflow-y-auto">
                   {searching ? (
                     <div className="p-4 text-center text-xs text-slate-400 font-bold">Searching…</div>
                   ) : matches.length === 0 ? (
-                    <div className="p-4 text-center text-xs text-slate-400 font-bold">
-                      No customer found. Add them from Customers first.
+                    <div className="p-4 text-center">
+                      <p className="text-xs text-slate-400 font-bold mb-2">No customer found.</p>
+                      <button type="button" onClick={openCreateCustomer}
+                        className="text-xs font-black text-blue-600 hover:underline">
+                        + Create new customer
+                      </button>
                     </div>
                   ) : (
-                    matches.map(c => (
-                      <button key={c._id} type="button" onClick={() => { setCustomer(c); setMatches([]); }}
-                        className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-blue-50 transition-colors text-left">
-                        <span className="text-sm font-bold text-slate-900">{c.name}</span>
-                        <span className="text-xs text-slate-400">{c.phone}</span>
+                    <>
+                      {matches.map(c => (
+                        <button key={c._id} type="button" onClick={() => { setCustomer(c); setMatches([]); }}
+                          className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-blue-50 transition-colors text-left">
+                          <span className="text-sm font-bold text-slate-900">{c.name}</span>
+                          <span className="text-xs text-slate-400">{c.phone}</span>
+                        </button>
+                      ))}
+                      <button type="button" onClick={openCreateCustomer}
+                        className="w-full px-4 py-2.5 text-left text-xs font-black text-blue-600 hover:bg-blue-50 transition-colors border-t border-slate-50">
+                        + Create new customer instead
                       </button>
-                    ))
+                    </>
                   )}
                 </div>
               )}
+            </div>
+          )}
+
+          {showCreateCustomer && (
+            <div className="mt-3 p-4 rounded-2xl border border-blue-200 bg-blue-50/50 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-black text-blue-900 uppercase tracking-widest">New Customer</p>
+                <button type="button" onClick={() => setShowCreateCustomer(false)} className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600">Cancel</button>
+              </div>
+              <input
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                placeholder="Full name"
+                className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold focus:outline-none"
+              />
+              <input
+                value={newPhone}
+                onChange={e => setNewPhone(e.target.value)}
+                placeholder="Phone number"
+                className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold focus:outline-none"
+              />
+              <input
+                value={newEmail}
+                onChange={e => setNewEmail(e.target.value)}
+                placeholder="Email (optional)"
+                className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold focus:outline-none"
+              />
+              {createErr && <p className="text-xs text-red-600 font-bold">{createErr}</p>}
+              <button
+                type="button"
+                onClick={handleCreateCustomer}
+                disabled={creatingCustomer || !newName.trim() || !newPhone.trim()}
+                className="w-full py-2.5 rounded-xl text-white text-xs font-black bg-blue-600 hover:bg-blue-700 transition-all disabled:opacity-40 flex items-center justify-center gap-2"
+              >
+                {creatingCustomer && <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
+                {creatingCustomer ? 'Creating…' : 'Create & Select Customer'}
+              </button>
             </div>
           )}
         </div>

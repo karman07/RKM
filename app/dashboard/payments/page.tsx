@@ -7,7 +7,7 @@ import {
 } from 'recharts';
 import {
   TrendingUp, CreditCard, DollarSign, ShoppingBag,
-  ArrowUpRight, Calendar, Building2, Banknote, Repeat, Download, Loader2, Plus,
+  ArrowUpRight, Calendar, Building2, Banknote, Repeat, Download, Loader2, Plus, Receipt,
 } from 'lucide-react';
 import { useAppTheme } from '@/components/AppThemeContext';
 import { APP_THEME } from '@/lib/theme-constants';
@@ -15,6 +15,8 @@ import { API_BASE, getInventory, fetchAllPages, getAdvanceAnalytics, getMiscPaym
 import { downloadCsv } from '@/lib/export-utils';
 import AddAdvancePaymentModal from '@/components/AddAdvancePaymentModal';
 import AdvanceReceiptModal from '@/components/AdvanceReceiptModal';
+import CreateInvoiceModal from '@/components/CreateInvoiceModal';
+import BillModal from '@/components/BillModal';
 import { toast } from 'sonner';
 
 const PAYMENT_COLORS: Record<string, string> = {
@@ -71,6 +73,8 @@ export default function PaymentsPage() {
   const [exporting, setExporting] = useState(false);
   const [showAddPayment, setShowAddPayment] = useState(false);
   const [newAdvanceReceipt, setNewAdvanceReceipt] = useState<CustomerAdvance | null>(null);
+  const [showCreateInvoice, setShowCreateInvoice] = useState(false);
+  const [newInvoiceItems, setNewInvoiceItems] = useState<InventoryItem[] | null>(null);
 
   useEffect(() => {
     getAdvanceAnalytics(days).then(setAdvanceData).catch(() => setAdvanceData(null));
@@ -98,6 +102,13 @@ export default function PaymentsPage() {
     setNewAdvanceReceipt(advance);
     toast.success(`₹${advance.amount.toLocaleString('en-IN')} advance recorded for ${advance.customerName}`);
     getAdvanceAnalytics(days).then(setAdvanceData).catch(() => {});
+    loadAnalytics();
+  }
+
+  function handleInvoiceCreated(soldItems: InventoryItem[]) {
+    setShowCreateInvoice(false);
+    setNewInvoiceItems(soldItems);
+    toast.success(`Invoice created — ${soldItems.length} item${soldItems.length !== 1 ? 's' : ''} billed`);
     loadAnalytics();
   }
 
@@ -211,6 +222,12 @@ export default function PaymentsPage() {
             <Plus className="w-3.5 h-3.5" /> Add Payment
           </button>
           <button
+            onClick={() => setShowCreateInvoice(true)}
+            className="inline-flex items-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-emerald-500/20 transition-all"
+          >
+            <Receipt className="w-3.5 h-3.5" /> Create Invoice
+          </button>
+          <button
             onClick={handleExportHistory}
             disabled={exporting}
             className="inline-flex items-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-blue-500/20 transition-all disabled:opacity-60"
@@ -226,6 +243,18 @@ export default function PaymentsPage() {
 
       {newAdvanceReceipt && (
         <AdvanceReceiptModal advance={newAdvanceReceipt} onClose={() => setNewAdvanceReceipt(null)} />
+      )}
+
+      {showCreateInvoice && (
+        <CreateInvoiceModal onClose={() => setShowCreateInvoice(false)} onCreated={handleInvoiceCreated} />
+      )}
+
+      {newInvoiceItems && (
+        <BillModal
+          items={newInvoiceItems}
+          date={new Date().toLocaleDateString('en-US', { dateStyle: 'long' })}
+          onClose={() => setNewInvoiceItems(null)}
+        />
       )}
 
       {/* KPI Cards */}
