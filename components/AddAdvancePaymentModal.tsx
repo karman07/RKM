@@ -66,7 +66,6 @@ export default function AddAdvancePaymentModal({ onClose, onAdded }: AddAdvanceP
   const [customer, setCustomer] = useState<Customer | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [amount, setAmount] = useState('');
   const [paymentSplits, setPaymentSplits] = useState<PaymentSplit[]>([{ mode: 'cash', amount: '', reference: '' }]);
   const [branchId, setBranchId] = useState('');
   const [waiverPct, setWaiverPct] = useState('');
@@ -118,15 +117,9 @@ export default function AddAdvancePaymentModal({ onClose, onAdded }: AddAdvanceP
     return () => clearTimeout(t);
   }, [otpCountdown]);
 
-  // Fill the default single payment split with the amount, but only while the user
-  // hasn't typed a split amount themselves.
-  useEffect(() => {
-    setPaymentSplits(prev =>
-      prev.length === 1 && prev[0].amount === ''
-        ? [{ ...prev[0], amount: amount ? String(Math.round(parseFloat(amount) || 0)) : '' }]
-        : prev
-    );
-  }, [amount]);
+  // The advance amount is never typed separately — it's always the sum of whatever
+  // payment methods are entered below, so it can never drift out of sync with them.
+  const totalAmount = paymentSplits.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
 
   function getOrCreateRecaptcha() {
     if (!(window as any)._rcv_advance_payment) {
@@ -220,24 +213,17 @@ export default function AddAdvancePaymentModal({ onClose, onAdded }: AddAdvanceP
 
   async function handleSave() {
     if (!customer) { setErr('Select a customer first — every advance must be tied to a customer'); return; }
-    const amt = parseFloat(amount);
-    if (!amt || amt <= 0) { setErr('Enter a valid amount'); return; }
 
     const splits = paymentSplits
       .filter(s => parseFloat(s.amount) > 0)
       .map(s => ({ mode: s.mode, amount: parseFloat(s.amount), reference: s.reference || undefined }));
-    if (splits.length === 0) { setErr('Add at least one payment method with an amount'); return; }
-    const splitTotal = splits.reduce((s, sp) => s + sp.amount, 0);
-    if (Math.abs(splitTotal - amt) > 0.5) {
-      setErr(`Payment methods total (₹${splitTotal.toLocaleString('en-IN')}) must equal the advance amount (₹${amt.toLocaleString('en-IN')})`);
-      return;
-    }
+    if (splits.length === 0 || totalAmount <= 0) { setErr('Enter at least one payment amount'); return; }
 
     setErr('');
     setSaving(true);
     try {
       const created = await createCustomerAdvance(customer._id, {
-        amount: amt,
+        amount: totalAmount,
         mode: splits[0]?.mode,
         payment_splits: splits,
         branch_id: branchId || undefined,
@@ -449,15 +435,10 @@ export default function AddAdvancePaymentModal({ onClose, onAdded }: AddAdvanceP
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Amount (₹) *</label>
-            <input
-              type="number"
-              min={0}
-              value={amount}
-              onChange={e => setAmount(e.target.value)}
-              placeholder="0"
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none transition-all"
-            />
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Total Advance Amount</label>
+            <div className="w-full px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-lg font-black text-blue-700">
+              ₹{totalAmount.toLocaleString('en-IN')}
+            </div>
           </div>
           <div>
             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Branch</label>
@@ -469,7 +450,11 @@ export default function AddAdvancePaymentModal({ onClose, onAdded }: AddAdvanceP
           </div>
         </div>
 
-        <PaymentSplitsInput splits={paymentSplits} onChange={setPaymentSplits} totalAmount={parseFloat(amount) || 0} />
+        <div>
+          <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Amount Received *</label>
+          <p className="text-[11px] text-slate-400 mb-2">Enter what the customer is actually paying, split across as many methods as needed — the total above updates automatically.</p>
+          <PaymentSplitsInput splits={paymentSplits} onChange={setPaymentSplits} totalAmount={totalAmount} enforceTotal={false} />
+        </div>
 
         <div>
           <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Making Charges Waiver (%)</label>
@@ -526,7 +511,7 @@ export default function AddAdvancePaymentModal({ onClose, onAdded }: AddAdvanceP
           <button onClick={onClose} className="flex-1 py-3.5 border border-slate-200 rounded-2xl text-sm font-bold text-slate-500 hover:bg-slate-50 transition-all">
             Cancel
           </button>
-          <button onClick={handleSave} disabled={saving || !customer || !amount}
+          <button onClick={handleSave} disabled={saving || !customer || totalAmount <= 0}
             className="flex-1 py-3.5 rounded-2xl text-white text-sm font-black bg-blue-600 hover:bg-blue-700 transition-all disabled:opacity-40 flex items-center justify-center gap-2">
             {saving && <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
             {saving ? 'Saving…' : 'Add Payment'}
