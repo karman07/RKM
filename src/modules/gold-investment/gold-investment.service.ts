@@ -8,6 +8,7 @@ import * as https from 'https';
 
 import { InvestmentPlan, InvestmentPlanDocument } from './schemas/investment-plan.schema';
 import { Subscription, SubscriptionDocument, SubscriptionStatus, PaymentMode } from './schemas/subscription.schema';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   CreateInvestmentPlanDto,
   UpdateInvestmentPlanDto,
@@ -29,6 +30,7 @@ export class GoldInvestmentService {
     @InjectModel(InvestmentPlan.name) private planModel: Model<InvestmentPlanDocument>,
     @InjectModel(Subscription.name) private subModel: Model<SubscriptionDocument>,
     private configService: ConfigService,
+    private notificationsService: NotificationsService,
   ) {
     this.razorpay = new Razorpay({
       key_id: this.configService.get<string>('RAZORPAY_ID'),
@@ -94,6 +96,61 @@ export class GoldInvestmentService {
     return rzpPlan.id;
   }
 
+  /** Creates a Razorpay customer + a live autopay subscription mandate against `plan` for the
+   *  given customer. Shared by createSubscription (first-time signup) and restartSubscription
+   *  (re-issuing a mandate after the previous one was cancelled). */
+  private async createRazorpaySubscriptionFor(
+    plan: InvestmentPlanDocument,
+    customerName: string,
+    customerEmail: string | undefined,
+    customerPhone: string | undefined,
+  ): Promise<{ rzpSub: any; rzpCustomer: any }> {
+    let rzpCustomer: any;
+    try {
+      rzpCustomer = await this.razorpay.customers.create({
+        name: customerName,
+        email: customerEmail || '',
+        contact: customerPhone || '',
+      });
+    } catch (err) {
+      this.logger.warn('Razorpay customer create failed; proceeding without customer id');
+    }
+
+    let rzpSub: any;
+    try {
+      const totalCount = plan.durationMonths;
+      const startAt = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60);
+      const razorpayPlanId = await this.ensureLiveRazorpayPlan(plan);
+
+      rzpSub = await (this.razorpay.subscriptions as any).create({
+        plan_id: razorpayPlanId,
+        total_count: totalCount > 1 ? totalCount - 1 : 1,
+        quantity: 1,
+        start_at: startAt,
+        customer_id: rzpCustomer?.id,
+        notify_info: {
+          notify_phone: customerPhone,
+          notify_email: customerEmail,
+        },
+        customer_notify: 1,
+        addons: [
+          {
+            item: {
+              name: `First Month Payment - ${plan.name}`,
+              amount: plan.monthlyAmount * 100,
+              currency: 'INR',
+            },
+          },
+        ],
+      });
+    } catch (err) {
+      this.logger.error('Razorpay subscription creation failed', err);
+      throw new BadRequestException(`Razorpay error: ${err.error?.description || err.message}`);
+    }
+
+    return { rzpSub, rzpCustomer };
+  }
+
   async findAllPlans(): Promise<InvestmentPlanDocument[]> {
     return this.planModel.find().sort({ createdAt: -1 }).exec();
   }
@@ -150,50 +207,9 @@ export class GoldInvestmentService {
       status: SubscriptionStatus.PENDING,
     }).exec();
 
-    // Create Razorpay customer
-    let rzpCustomer: any;
-    try {
-      rzpCustomer = await this.razorpay.customers.create({
-        name: dto.customerName,
-        email: dto.customerEmail || '',
-        contact: dto.customerPhone || '',
-      });
-    } catch (err) {
-      this.logger.warn('Razorpay customer create failed; proceeding without customer id');
-    }
-
-    // Create Razorpay autopay subscription
-    let rzpSub: any;
-    try {
-      const totalCount = plan.durationMonths;
-      const startAt = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60);
-      const razorpayPlanId = await this.ensureLiveRazorpayPlan(plan);
-
-      rzpSub = await (this.razorpay.subscriptions as any).create({
-        plan_id: razorpayPlanId,
-        total_count: totalCount > 1 ? totalCount - 1 : 1,
-        quantity: 1,
-        start_at: startAt,
-        customer_id: rzpCustomer?.id,
-        notify_info: {
-          notify_phone: dto.customerPhone,
-          notify_email: dto.customerEmail,
-        },
-        customer_notify: 1,
-        addons: [
-          {
-            item: {
-              name: `First Month Payment - ${plan.name}`,
-              amount: plan.monthlyAmount * 100,
-              currency: 'INR',
-            },
-          },
-        ],
-      });
-    } catch (err) {
-      this.logger.error('Razorpay subscription creation failed', err);
-      throw new BadRequestException(`Razorpay error: ${err.error?.description || err.message}`);
-    }
+    const { rzpSub, rzpCustomer } = await this.createRazorpaySubscriptionFor(
+      plan, dto.customerName, dto.customerEmail, dto.customerPhone,
+    );
 
     const startedAt = new Date();
     const maturesAt = new Date(startedAt);
@@ -222,6 +238,78 @@ export class GoldInvestmentService {
       shortUrl: rzpSub.short_url || '',
       razorpayKey: this.configService.get<string>('RAZORPAY_ID'),
     };
+  }
+
+  /**
+   * Restarts a stopped subscription. HALTED ones can usually be resumed directly via
+   * Razorpay's own resume API — the mandate is intact, just paused. CANCELLED ones are
+   * permanently dead on Razorpay's side (no un-cancel API), so a brand-new mandate is
+   * created instead and the customer is sent a fresh authorization link; the customer's
+   * accumulated balance, ledger, and original start date (for lock-in) all carry over.
+   */
+  async restartSubscription(id: string, staffId?: string): Promise<{ mode: 'resumed' | 'new_mandate'; subscription: SubscriptionDocument }> {
+    const sub = await this.subModel.findById(id).populate('plan').exec();
+    if (!sub) throw new NotFoundException('Subscription not found');
+    if (![SubscriptionStatus.CANCELLED, SubscriptionStatus.HALTED].includes(sub.status)) {
+      throw new BadRequestException('Only cancelled or halted subscriptions can be restarted');
+    }
+    const plan = sub.plan as any;
+    if (!plan) throw new BadRequestException('Subscription has no associated plan');
+
+    if (sub.status === SubscriptionStatus.HALTED && sub.razorpaySubscriptionId) {
+      try {
+        await (this.razorpay.subscriptions as any).resume(sub.razorpaySubscriptionId, { resume_at: 'now' });
+        sub.status = SubscriptionStatus.ACTIVE;
+        sub.requiresManualPayment = false;
+        sub.pausedForCashMonth = null;
+        sub.autopayResumeAt = null;
+        await sub.save();
+        this.logger.log(`Resumed halted subscription ${id} directly via Razorpay`);
+        return { mode: 'resumed', subscription: sub };
+      } catch (err) {
+        this.logger.warn(`Direct resume failed for subscription ${id}, falling back to a new mandate`, err);
+      }
+    }
+
+    // Cancelled (or resume failed above) — issue a fresh mandate, carrying the customer's
+    // existing progress forward so a bank-side mandate failure never costs them balance.
+    const { rzpSub, rzpCustomer } = await this.createRazorpaySubscriptionFor(
+      plan, sub.customerName, sub.customerEmail, sub.customerPhone,
+    );
+
+    const newSub = await this.subModel.create({
+      plan: plan._id,
+      customerName: sub.customerName,
+      customerEmail: sub.customerEmail,
+      customerPhone: sub.customerPhone,
+      razorpaySubscriptionId: rzpSub.id,
+      razorpayCustomerId: rzpCustomer?.id,
+      status: SubscriptionStatus.PENDING,
+      amountAccumulated: sub.amountAccumulated,
+      interestAccumulated: sub.interestAccumulated,
+      bonusInterest: sub.bonusInterest,
+      interestAdjustments: sub.interestAdjustments,
+      startedAt: sub.startedAt,
+      maturesAt: sub.maturesAt,
+      installmentsPaid: sub.installmentsPaid,
+      paymentLedger: sub.paymentLedger,
+      redeemed: sub.redeemed,
+      amountRedeemed: sub.amountRedeemed,
+      redemptionHistory: sub.redemptionHistory,
+      requiresManualPayment: false,
+      whatsappRemindersCount: 0,
+      previousSubscriptionId: sub._id,
+    });
+
+    sub.replacedBy = newSub._id as any;
+    await sub.save();
+
+    await this.sendMandateAuthorizationMessage(newSub, plan, rzpSub.short_url).catch(err =>
+      this.logger.error('Failed to send mandate authorization WhatsApp message', err),
+    );
+
+    this.logger.log(`Restarted subscription ${id} with new mandate ${newSub._id} (staff: ${staffId || 'unknown'})`);
+    return { mode: 'new_mandate', subscription: newSub };
   }
 
   async verifyCustomerSubscription(dto: any) {
@@ -494,6 +582,23 @@ export class GoldInvestmentService {
       sub.endedAt = new Date();
       sub.interestStopped = false;
       this.logger.log(`Subscription ${id} marked COMPLETED after cash payment of month ${dto.month}`);
+    } else if (
+      sub.status === SubscriptionStatus.ACTIVE &&
+      sub.paymentMode === PaymentMode.AUTOPAY &&
+      sub.razorpaySubscriptionId
+    ) {
+      // Cash already covers this cycle — pause the live mandate for exactly one billing cycle
+      // so autopay doesn't charge the customer again for the same month. Never let a pause
+      // failure block the cash payment itself.
+      try {
+        const rzpSub = await (this.razorpay.subscriptions as any).fetch(sub.razorpaySubscriptionId);
+        await (this.razorpay.subscriptions as any).pause(sub.razorpaySubscriptionId, { pause_at: 'now' });
+        sub.pausedForCashMonth = dto.month;
+        sub.autopayResumeAt = rzpSub.current_end ? new Date(rzpSub.current_end * 1000) : null;
+        this.logger.log(`Paused autopay for subscription ${id} — cash covers month ${dto.month}, resumes ${sub.autopayResumeAt}`);
+      } catch (err) {
+        this.logger.error(`Failed to pause autopay for subscription ${id} after cash payment`, err);
+      }
     }
 
     await sub.save();
@@ -609,6 +714,34 @@ export class GoldInvestmentService {
     );
   }
 
+  private buildMandateAuthorizationMessage(name: string, planName: string, amount: number, link: string): string {
+    return (
+      `Dear ${name},\n\n` +
+      `Your RKM Jewellers Gold Savings Plan *${planName}* needs a new autopay authorization — your previous mandate was cancelled or halted by your bank.\n\n` +
+      `Monthly amount: *₹${amount.toLocaleString('en-IN')}*\n\n` +
+      `Please authorize your new autopay mandate here:\n${link}\n\n` +
+      `Your accumulated balance and payment history carry over — this only sets up future payments.\n\n` +
+      `_RKM Jewellers – Building your gold future, one month at a time._`
+    );
+  }
+
+  /** Sends the WhatsApp message pointing the customer at a freshly created mandate's Razorpay authorization link. */
+  private async sendMandateAuthorizationMessage(sub: SubscriptionDocument, plan: any, shortUrl: string): Promise<void> {
+    if (!sub.customerPhone) return;
+
+    const whatsappApiUrl = this.configService.get<string>('WHATSAPP_API_URL');
+    const whatsappToken = this.configService.get<string>('WHATSAPP_API_TOKEN');
+    const link = shortUrl || 'Please contact RKM Jewellers to set up your new autopay mandate.';
+    const message = this.buildMandateAuthorizationMessage(sub.customerName, plan?.name, plan?.monthlyAmount || 0, link);
+
+    if (whatsappApiUrl && whatsappToken) {
+      await this.callWhatsappApi(whatsappApiUrl, whatsappToken, sub.customerPhone, message);
+      this.logger.log(`Mandate authorization WhatsApp sent to ${sub.customerPhone} for subscription ${sub._id}`);
+    } else {
+      this.logger.log(`[WhatsApp stub] Would message ${sub.customerPhone}: new mandate authorization link ${link}`);
+    }
+  }
+
   private callWhatsappApi(apiUrl: string, token: string, phone: string, message: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const payload = JSON.stringify({ phone, message, token });
@@ -694,6 +827,7 @@ export class GoldInvestmentService {
         this.sendWhatsappReminder(String(sub._id)).catch(err =>
           this.logger.error('WhatsApp on-cancel failed', err),
         );
+        this.notifyAdminsOfStoppedAutopay(sub, plan, 'cancelled');
         break;
 
       case 'subscription.halted':
@@ -703,6 +837,7 @@ export class GoldInvestmentService {
         this.sendWhatsappReminder(String(sub._id)).catch(err =>
           this.logger.error('WhatsApp on-halt failed', err),
         );
+        this.notifyAdminsOfStoppedAutopay(sub, plan, 'halted');
         break;
 
       case 'subscription.completed':
@@ -714,6 +849,16 @@ export class GoldInvestmentService {
 
     await sub.save();
     return { received: true };
+  }
+
+  /** Push a notification to all admins when a customer's autopay mandate stops — the
+   *  customer already gets a WhatsApp message, but until now staff had no visibility at all. */
+  private notifyAdminsOfStoppedAutopay(sub: SubscriptionDocument, plan: any, reason: 'cancelled' | 'halted') {
+    this.notificationsService.notifyAdmins(
+      'Gold Plan Autopay Stopped',
+      `${sub.customerName}'s autopay for "${plan?.name || 'a gold plan'}" was ${reason}. Payment is now paused until resolved — mark cash payments or restart the mandate from the Autopay Registry.`,
+      { subscriptionId: String(sub._id), event: reason, type: 'gold_autopay_stopped' },
+    ).catch(err => this.logger.error('Admin notify on cancel/halt failed', err));
   }
 
   // ─────────────────────────────────────────────────────────────────

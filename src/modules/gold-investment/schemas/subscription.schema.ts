@@ -167,6 +167,25 @@ export class Subscription {
   @Prop({ default: 0 })
   bonusInterest: number;
 
+  /** Set when a cash payment covers a month that autopay would otherwise still charge — the live
+   *  Razorpay subscription is paused for exactly that cycle. Cleared once the scheduler resumes it. */
+  @Prop({ default: null })
+  pausedForCashMonth: number | null;
+
+  /** When the scheduler should call razorpay.subscriptions.resume() to un-pause this subscription
+   *  (set to the cycle's `current_end` from Razorpay at pause time — not guessed). */
+  @Prop({ type: Date, default: null })
+  autopayResumeAt: Date | null;
+
+  /** If this subscription was replaced by a fresh mandate via the admin "Restart" action
+   *  (only possible when the old mandate was fully CANCELLED, not just HALTED). */
+  @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'Subscription', default: null })
+  replacedBy: mongoose.Types.ObjectId | null;
+
+  /** The subscription this one replaced, if it was created via the "Restart" action. */
+  @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'Subscription', default: null })
+  previousSubscriptionId: mongoose.Types.ObjectId | null;
+
   /** Audit trail of manual interest credits applied by an admin */
   @Prop({
     type: [

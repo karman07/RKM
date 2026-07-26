@@ -150,6 +150,14 @@ export class GoldInvestmentController {
     return this.svc.markCashPayment(id, dto);
   }
 
+  /** Restart a cancelled/halted subscription — resumes the mandate directly if possible, otherwise issues a new one */
+  @Post('subscriptions/:id/restart')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  restartSubscription(@Param('id') id: string, @Req() req: any) {
+    return this.svc.restartSubscription(id, req.user?.userId);
+  }
+
   /** Send WhatsApp payment reminder to a single subscriber */
   @Post('subscriptions/:id/send-reminder')
   @UseGuards(JwtAuthGuard, RolesGuard)
