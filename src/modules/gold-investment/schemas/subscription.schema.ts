@@ -169,7 +169,7 @@ export class Subscription {
 
   /** Set when a cash payment covers a month that autopay would otherwise still charge — the live
    *  Razorpay subscription is paused for exactly that cycle. Cleared once the scheduler resumes it. */
-  @Prop({ default: null })
+  @Prop({ type: Number, default: null })
   pausedForCashMonth: number | null;
 
   /** When the scheduler should call razorpay.subscriptions.resume() to un-pause this subscription
