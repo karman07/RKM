@@ -116,16 +116,26 @@ export default function AdvanceReceiptModal({ advance, onClose }: AdvanceReceipt
 
         {/* Amount summary */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', borderBottom: '1.5px solid #000', textAlign: 'center' }}>
-          {[
-            { label: 'Amount Received', value: fmt(advance.amount) },
-            { label: 'Mode', value: (advance.payment_splits?.length ?? 0) > 1 ? `Split (${advance.payment_splits!.length})` : advance.mode.replace('_', ' ').toUpperCase() },
-            { label: 'Available Balance', value: fmt(advance.availableBalance) },
-          ].map((s, i) => (
-            <div key={i} style={{ padding: '10px 8px', borderRight: i < 2 ? '1px solid #ccc' : undefined }}>
-              <div style={{ fontSize: '8px', fontWeight: 700, color: '#555', textTransform: 'uppercase', letterSpacing: '1px' }}>{s.label}</div>
-              <div style={{ fontSize: '14px', fontWeight: 900, marginTop: '2px' }}>{s.value}</div>
-            </div>
-          ))}
+          <div style={{ padding: '10px 8px', borderRight: '1px solid #ccc' }}>
+            <div style={{ fontSize: '8px', fontWeight: 700, color: '#555', textTransform: 'uppercase', letterSpacing: '1px' }}>Amount Received</div>
+            <div style={{ fontSize: '14px', fontWeight: 900, marginTop: '2px' }}>{fmt(advance.amount)}</div>
+          </div>
+          <div style={{ padding: '10px 8px', borderRight: '1px solid #ccc' }}>
+            <div style={{ fontSize: '8px', fontWeight: 700, color: '#555', textTransform: 'uppercase', letterSpacing: '1px' }}>Mode</div>
+            {(advance.payment_splits?.length ?? 0) > 1 ? (
+              <div style={{ fontSize: '9.5px', fontWeight: 900, marginTop: '3px', lineHeight: 1.5 }}>
+                {advance.payment_splits!.map((s, i) => (
+                  <div key={i}>{s.mode.replace('_', ' ').toUpperCase()} {fmt(s.amount)}</div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: '14px', fontWeight: 900, marginTop: '2px' }}>{advance.mode.replace('_', ' ').toUpperCase()}</div>
+            )}
+          </div>
+          <div style={{ padding: '10px 8px' }}>
+            <div style={{ fontSize: '8px', fontWeight: 700, color: '#555', textTransform: 'uppercase', letterSpacing: '1px' }}>Available Balance</div>
+            <div style={{ fontSize: '14px', fontWeight: 900, marginTop: '2px' }}>{fmt(advance.availableBalance)}</div>
+          </div>
         </div>
 
         {/* Payment methods breakdown — only shown when the advance was split across more than one method */}
