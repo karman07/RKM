@@ -40,7 +40,6 @@ export default function EmployeeIdCardModal({ user, branches, onClose }: Employe
     : user.role;
   const branchId = typeof user.branch === 'object' ? user.branch?._id : user.branch;
   const branchRecord = typeof user.branch === 'object' ? user.branch : branches.find(b => b._id === branchId);
-  const branchName = branchRecord?.name;
   const branchPhone = branchRecord?.phone;
   const branchEmail = branchRecord?.email;
   const cardNo = `RKM-${(user.employee_id || user._id.slice(-6)).replace(/[^A-Z0-9]/gi, '')}`;
@@ -132,7 +131,6 @@ export default function EmployeeIdCardModal({ user, branches, onClose }: Employe
             <div style={{ width: '100%', marginTop: '18px', borderTop: `1px dashed ${MAROON}55`, paddingTop: '14px' }}>
               {[
                 { label: 'Employee ID', value: user.employee_id || '—' },
-                { label: 'Branch', value: branchName || 'Unassigned' },
                 ...(branchPhone ? [{ label: 'Contact', value: branchPhone }] : []),
                 ...(branchEmail ? [{ label: 'Email', value: branchEmail }] : []),
               ].map(row => (
