@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   getInventory, getInventoryByBarcode, getBranches, getCashiersByBranch, sellItemsBatch, staticUrl,
-  type InventoryItem, type Branch, type User,
+  getGoldBalance, redeemGoldSubscription, getAdvanceBalance,
+  type InventoryItem, type Branch, type User, type GoldBalance, type CustomerAdvance,
 } from '@/lib/api';
 import Modal from './Modal';
 import VerifiedCustomerPanel, { type CustomerDraft } from './VerifiedCustomerPanel';
 import PaymentSplitsInput, { type PaymentSplit } from './PaymentSplitsInput';
-import { Search, Trash2, Receipt, ScanBarcode } from 'lucide-react';
+import { Search, Trash2, Receipt, ScanBarcode, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface CartLine {
@@ -61,6 +62,18 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
   const [soldByUserId, setSoldByUserId] = useState('');
   const [paymentSplits, setPaymentSplits] = useState<PaymentSplit[]>([{ mode: 'cash', amount: '', reference: '' }]);
 
+  // Investment balance — multiple plans can be checked and redeemed together (planId -> amount applied)
+  const [investmentPlans, setInvestmentPlans] = useState<GoldBalance[]>([]);
+  const [investmentApplied, setInvestmentApplied] = useState<Record<string, number>>({});
+  const [loadingInvestment, setLoadingInvestment] = useState(false);
+  const [investmentError, setInvestmentError] = useState('');
+
+  // Advance balance — multiple advances can be checked and redeemed together (advanceId -> amount applied)
+  const [advances, setAdvances] = useState<CustomerAdvance[]>([]);
+  const [advanceApplied, setAdvanceApplied] = useState<Record<string, number>>({});
+  const [loadingAdvance, setLoadingAdvance] = useState(false);
+  const [advanceError, setAdvanceError] = useState('');
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -69,6 +82,120 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
   useEffect(() => {
     getCashiersByBranch(soldAtBranchId || undefined).then(r => setCashiers(r.data)).catch(() => setCashiers([]));
   }, [soldAtBranchId]);
+
+  async function fetchInvestmentBalance(phone: string) {
+    setLoadingInvestment(true);
+    setInvestmentPlans([]);
+    setInvestmentApplied({});
+    setInvestmentError('');
+    try {
+      const data = await getGoldBalance(phone);
+      const withBalance = (Array.isArray(data) ? data : []).filter(b => b.availableBalance > 0);
+      setInvestmentPlans(withBalance);
+      if (withBalance.length === 1) setInvestmentApplied({ [withBalance[0]._id]: 0 });
+    } catch (e: any) {
+      setInvestmentPlans([]);
+      setInvestmentError(e?.message || 'Could not check investment balance — please retry.');
+    } finally {
+      setLoadingInvestment(false);
+    }
+  }
+
+  async function fetchAdvanceBalance(phone: string) {
+    setLoadingAdvance(true);
+    setAdvances([]);
+    setAdvanceApplied({});
+    setAdvanceError('');
+    try {
+      const data = await getAdvanceBalance(phone);
+      const withBalance = (Array.isArray(data) ? data : []).filter(a => a.availableBalance > 0);
+      setAdvances(withBalance);
+      if (withBalance.length === 1 && !withBalance[0].locked) setAdvanceApplied({ [withBalance[0]._id]: 0 });
+    } catch (e: any) {
+      setAdvances([]);
+      setAdvanceError(e?.message || 'Could not check advance balance — please retry.');
+    } finally {
+      setLoadingAdvance(false);
+    }
+  }
+
+  // As soon as a customer's phone is verified (existing customer selected, or new customer
+  // OTP-verified), check whether they have any redeemable investment/advance balance.
+  useEffect(() => {
+    if (customerVerified && customerDraft.phone) {
+      fetchInvestmentBalance(customerDraft.phone);
+      fetchAdvanceBalance(customerDraft.phone);
+    } else {
+      setInvestmentPlans([]); setInvestmentApplied({});
+      setAdvances([]); setAdvanceApplied({});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerVerified, customerDraft.phone]);
+
+  const totalInvestmentApplied = Object.values(investmentApplied).reduce((s, n) => s + (n || 0), 0);
+  const totalAdvanceApplied = Object.values(advanceApplied).reduce((s, n) => s + (n || 0), 0);
+  const selectedInvestmentPlans = investmentPlans.filter(p => (investmentApplied[p._id] ?? 0) > 0);
+  const selectedAdvances = advances.filter(a => (advanceApplied[a._id] ?? 0) > 0);
+  // When multiple plans/advances are combined, use the best single waiver % rather than
+  // stacking them — avoids waiving more than 100% of making charges at once.
+  const investmentRedemptionDiscountPct = selectedInvestmentPlans.reduce((max, p) => Math.max(max, p.plan?.redemptionDiscount ?? 0), 0);
+  const advanceWaiverPct = selectedAdvances.reduce((max, a) => Math.max(max, a.making_charges_waiver_pct ?? 0), 0);
+
+  function toggleInvestmentPlan(id: string) {
+    setInvestmentApplied(prev => {
+      if (id in prev) { const next = { ...prev }; delete next[id]; return next; }
+      return { ...prev, [id]: 0 };
+    });
+  }
+  function setInvestmentPlanAmount(id: string, amount: number) {
+    setInvestmentApplied(prev => ({ ...prev, [id]: amount }));
+  }
+  function applyMaxInvestment(cap: number, ids?: string[]) {
+    const targets = ids ?? Object.keys(investmentApplied);
+    let remaining = Math.max(0, cap);
+    const next: Record<string, number> = {};
+    for (const plan of investmentPlans) {
+      if (!targets.includes(plan._id)) continue;
+      const amt = Math.max(0, Math.min(plan.availableBalance, remaining));
+      next[plan._id] = amt;
+      remaining -= amt;
+    }
+    setInvestmentApplied(next);
+  }
+  function selectAllInvestments(cap: number) {
+    applyMaxInvestment(cap, investmentPlans.map(p => p._id));
+  }
+  function clearInvestments() {
+    setInvestmentApplied({});
+  }
+
+  function toggleAdvance(id: string) {
+    setAdvanceApplied(prev => {
+      if (id in prev) { const next = { ...prev }; delete next[id]; return next; }
+      return { ...prev, [id]: 0 };
+    });
+  }
+  function setAdvanceAmount(id: string, amount: number) {
+    setAdvanceApplied(prev => ({ ...prev, [id]: amount }));
+  }
+  function applyMaxAdvance(cap: number, ids?: string[]) {
+    const targets = ids ?? Object.keys(advanceApplied);
+    let remaining = Math.max(0, cap);
+    const next: Record<string, number> = {};
+    for (const advance of advances) {
+      if (advance.locked || !targets.includes(advance._id)) continue;
+      const amt = Math.max(0, Math.min(advance.availableBalance, remaining));
+      next[advance._id] = amt;
+      remaining -= amt;
+    }
+    setAdvanceApplied(next);
+  }
+  function selectAllAdvances(cap: number) {
+    applyMaxAdvance(cap, advances.filter(a => !a.locked).map(a => a._id));
+  }
+  function clearAdvances() {
+    setAdvanceApplied({});
+  }
 
   // Debounced search over available inventory — by product name, SKU, or barcode
   useEffect(() => {
@@ -139,15 +266,25 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
   const cartTotal = cart.reduce((s, c) => s + (parseFloat(c.price) || 0), 0);
   const hasBelowFloorLine = cart.some(c => (parseFloat(c.price) || 0) < floorInfo(c.item).floor);
 
-  // Fill the default single payment split with the running total, but only while
+  // Redemption caps: an investment plan can only cover what advances haven't already
+  // covered, and vice versa, so the two never combine to exceed the bill total.
+  const investmentCap = Math.max(0, cartTotal - totalAdvanceApplied);
+  const advanceCap = Math.max(0, cartTotal - totalInvestmentApplied);
+  const cartMakingCharges = cart.reduce((sum, c) => sum + ((c.item as any).pricing_breakdown?.making_charges ?? 0), 0);
+  const investmentMakingChargesDiscount = totalInvestmentApplied > 0 ? Math.round(cartMakingCharges * investmentRedemptionDiscountPct / 100) : 0;
+  const advanceMakingChargesDiscount = totalAdvanceApplied > 0 ? Math.round(cartMakingCharges * advanceWaiverPct / 100) : 0;
+  // What's left to collect via real payment methods (cash/card/etc.) after redemptions
+  const amountDue = Math.max(0, cartTotal - totalInvestmentApplied - investmentMakingChargesDiscount - totalAdvanceApplied - advanceMakingChargesDiscount);
+
+  // Fill the default single payment split with the amount due, but only while
   // the user hasn't typed an amount themselves.
   useEffect(() => {
     setPaymentSplits(prev =>
       prev.length === 1 && prev[0].amount === ''
-        ? [{ ...prev[0], amount: cartTotal > 0 ? String(Math.round(cartTotal)) : '' }]
+        ? [{ ...prev[0], amount: amountDue > 0 ? String(Math.round(amountDue)) : '' }]
         : prev
     );
-  }, [cartTotal]);
+  }, [amountDue]);
 
   function addItem(item: InventoryItem) {
     setCart(prev => (prev.some(c => c.item._id === item._id)
@@ -182,10 +319,20 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
       }
     }
 
-    const splits = paymentSplits
+    const manualSplits = paymentSplits
       .filter(s => parseFloat(s.amount) > 0)
       .map(s => ({ mode: s.mode, amount: parseFloat(s.amount), reference: s.reference || undefined }));
-    if (splits.length === 0) { setError('Add at least one payment method with an amount.'); return; }
+    if (manualSplits.length === 0 && amountDue > 0) { setError('Add at least one payment method with an amount.'); return; }
+
+    const investmentEntries = Object.entries(investmentApplied).filter(([, amt]) => amt > 0);
+    const advanceEntries = Object.entries(advanceApplied).filter(([, amt]) => amt > 0);
+
+    // Redemption splits are prepended so the bill's payment_splits reflect the full
+    // breakdown (real money + balances applied), same convention as the Inventory page.
+    const splits: { mode: string; amount: number; reference?: string }[] = [];
+    investmentEntries.forEach(([id, amt]) => splits.push({ mode: 'investment_balance', amount: amt, reference: id }));
+    advanceEntries.forEach(([id, amt]) => splits.push({ mode: 'advance_balance', amount: amt, reference: id }));
+    splits.push(...manualSplits);
 
     setSubmitting(true);
     try {
@@ -202,15 +349,37 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
         shipping_pincode: customerDraft.pincode || undefined,
         shipping_country: customerDraft.country || 'India',
         sale_channel: 'store',
-        payment_mode: splits[0]?.mode ?? 'cash',
+        payment_mode: manualSplits[0]?.mode ?? 'cash',
         payment_splits: splits,
+        investment_redeemed: totalInvestmentApplied > 0 ? totalInvestmentApplied : undefined,
+        investment_sub_id: investmentEntries[0]?.[0],
+        making_charges_discount: investmentMakingChargesDiscount > 0 ? investmentMakingChargesDiscount : undefined,
+        advance_redeemed: totalAdvanceApplied > 0 ? totalAdvanceApplied : undefined,
+        advance_id: advanceEntries[0]?.[0],
+        advance_making_charges_discount: advanceMakingChargesDiscount > 0 ? advanceMakingChargesDiscount : undefined,
       });
+
+      // Advance redemption happens atomically server-side as part of sellItemsBatch (above) —
+      // the sale fails outright if it fails, so there's nothing left to do here. Investment
+      // plan redemption is a separate best-effort call, mirroring the Inventory page's flow.
+      const saleReference = sold[0]?.sale_reference;
+      const redemptionFailures: string[] = [];
+      await Promise.all(investmentEntries.map(async ([id, amt]) => {
+        const plan = investmentPlans.find(p => p._id === id);
+        try {
+          await redeemGoldSubscription(id, { amount: amt, saleReference, note: `Redeemed against sale (${saleReference})` });
+        } catch {
+          redemptionFailures.push(plan?.plan?.name || 'an investment plan');
+        }
+      }));
+      if (redemptionFailures.length > 0) {
+        toast.error(`Sale recorded but balance deduction failed for ${redemptionFailures.join(', ')} — please do it manually.`);
+      }
 
       // sellItemsBatch returns the raw saved documents — product_id, sold_at_branch_id etc.
       // come back as bare ids, not populated. BillModal needs them populated (pricing
       // breakdown, branch address, product image/SKU all read off the populated objects),
       // so re-fetch the same items through the listing endpoint, which does populate.
-      const saleReference = sold[0]?.sale_reference;
       let billItems = sold;
       if (saleReference) {
         try {
@@ -354,6 +523,198 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
           <VerifiedCustomerPanel value={customerDraft} onChange={setCustomerDraft} onVerifiedChange={setCustomerVerified} />
         </div>
 
+        {/* ── Investment Balance Redemption ──────────────────────────────── */}
+        {customerVerified && (
+          <div className="rounded-2xl border-2 border-amber-200 bg-amber-50/40 p-5 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Investment Balance Redemption</p>
+              {investmentPlans.length > 1 && (
+                <button type="button" onClick={() => selectAllInvestments(investmentCap)}
+                  className="text-[9px] font-black uppercase tracking-widest text-amber-700 hover:text-amber-800 underline underline-offset-2">
+                  Select All
+                </button>
+              )}
+            </div>
+
+            {loadingInvestment && (
+              <div className="flex items-center gap-2 text-xs text-amber-600 font-bold">
+                <div className="w-4 h-4 border-2 border-amber-300 border-t-amber-600 rounded-full animate-spin" />
+                Checking investment balance…
+              </div>
+            )}
+
+            {!loadingInvestment && investmentError && (
+              <div className="flex items-center justify-between gap-3 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
+                <p className="text-xs text-red-600 font-bold">{investmentError}</p>
+                <button type="button" onClick={() => fetchInvestmentBalance(customerDraft.phone)}
+                  className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-red-700 transition-colors whitespace-nowrap">
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {!loadingInvestment && !investmentError && investmentPlans.length === 0 && (
+              <p className="text-xs text-slate-400 font-medium">No redeemable investment balance found for this customer.</p>
+            )}
+
+            {!loadingInvestment && investmentPlans.length > 0 && (
+              <>
+                <div className="space-y-2">
+                  {investmentPlans.map(plan => {
+                    const checked = plan._id in investmentApplied;
+                    const amt = investmentApplied[plan._id] ?? 0;
+                    return (
+                      <div key={plan._id} className={`rounded-xl border-2 transition-all ${checked ? 'border-amber-500 bg-amber-50' : 'border-slate-200 bg-white hover:border-amber-300'}`}>
+                        <label className="w-full flex items-center gap-3 px-4 py-3 cursor-pointer">
+                          <input type="checkbox" checked={checked} onChange={() => toggleInvestmentPlan(plan._id)}
+                            className="w-4 h-4 rounded accent-amber-600 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-black text-slate-900">{plan.plan?.name}</p>
+                            <p className="text-[10px] text-slate-400">{plan.installmentsPaid} months paid</p>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-sm font-black text-amber-700">₹{plan.availableBalance.toLocaleString('en-IN')}</p>
+                            <p className="text-[9px] text-slate-400 font-medium">available</p>
+                          </div>
+                        </label>
+                        {checked && (
+                          <div className="px-4 pb-3">
+                            <input type="number" min={0} max={plan.availableBalance} value={amt || ''}
+                              onChange={e => setInvestmentPlanAmount(plan._id, Math.min(parseFloat(e.target.value) || 0, plan.availableBalance))}
+                              placeholder={`Amount to apply (max ₹${plan.availableBalance.toLocaleString('en-IN')})`}
+                              className="w-full bg-white border-2 border-amber-300 rounded-xl px-4 py-2.5 text-sm font-black text-amber-800 focus:outline-none focus:border-amber-500 shadow-sm"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {Object.keys(investmentApplied).length > 0 && (
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={() => applyMaxInvestment(investmentCap)}
+                      className="px-4 py-2.5 rounded-xl bg-amber-600 text-white text-xs font-black hover:bg-amber-700 transition-colors whitespace-nowrap">
+                      Apply Max Across Selected
+                    </button>
+                    <button type="button" onClick={clearInvestments}
+                      className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-500 text-xs font-black hover:bg-slate-50 transition-colors">
+                      Clear
+                    </button>
+                  </div>
+                )}
+
+                {totalInvestmentApplied > 0 && (
+                  <p className="text-[10px] text-amber-700 font-bold flex items-center gap-1.5">
+                    <CheckCircle2 size={11} />
+                    ₹{totalInvestmentApplied.toLocaleString('en-IN')} will be deducted from {selectedInvestmentPlans.length > 1 ? `${selectedInvestmentPlans.length} investment plans` : 'investment balance'} on sale confirmation
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── Advance Balance Redemption ─────────────────────────────────── */}
+        {customerVerified && (
+          <div className="rounded-2xl border-2 border-blue-200 bg-blue-50/40 p-5 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">Advance Balance Redemption</p>
+              {advances.filter(a => !a.locked).length > 1 && (
+                <button type="button" onClick={() => selectAllAdvances(advanceCap)}
+                  className="text-[9px] font-black uppercase tracking-widest text-blue-700 hover:text-blue-800 underline underline-offset-2">
+                  Select All
+                </button>
+              )}
+            </div>
+
+            {loadingAdvance && (
+              <div className="flex items-center gap-2 text-xs text-blue-600 font-bold">
+                <div className="w-4 h-4 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" />
+                Checking advance balance…
+              </div>
+            )}
+
+            {!loadingAdvance && advanceError && (
+              <div className="flex items-center justify-between gap-3 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
+                <p className="text-xs text-red-600 font-bold">{advanceError}</p>
+                <button type="button" onClick={() => fetchAdvanceBalance(customerDraft.phone)}
+                  className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-red-700 transition-colors whitespace-nowrap">
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {!loadingAdvance && !advanceError && advances.length === 0 && (
+              <p className="text-xs text-slate-400 font-medium">No redeemable advance balance found for this customer.</p>
+            )}
+
+            {!loadingAdvance && advances.length > 0 && (
+              <>
+                <div className="space-y-2">
+                  {advances.map(a => {
+                    const checked = a._id in advanceApplied;
+                    const amt = advanceApplied[a._id] ?? 0;
+                    return (
+                      <div key={a._id} className={`rounded-xl border-2 transition-all ${a.locked ? 'border-slate-100 bg-slate-50 opacity-70' : checked ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white hover:border-blue-300'}`}>
+                        <label className={`w-full flex items-center gap-3 px-4 py-3 ${a.locked ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                          <input type="checkbox" checked={checked} disabled={a.locked} onChange={() => toggleAdvance(a._id)}
+                            className="w-4 h-4 rounded accent-blue-600 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-black text-slate-900 flex items-center gap-1.5">
+                              {new Date(a.createdAt).toLocaleDateString('en-IN', { dateStyle: 'medium' })}
+                              {a.locked && <span className="text-[9px] font-black uppercase text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">Locked</span>}
+                            </p>
+                            {a.making_charges_waiver_pct > 0 && <p className="text-[10px] text-slate-400">{a.making_charges_waiver_pct}% making charges waiver</p>}
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-sm font-black text-blue-700">₹{a.availableBalance.toLocaleString('en-IN')}</p>
+                            <p className="text-[9px] text-slate-400 font-medium">available</p>
+                          </div>
+                        </label>
+                        {a.locked && (
+                          <div className="flex items-center gap-2 px-4 pb-3 text-[10px] text-amber-700 font-bold">
+                            Locked until {new Date(a.lock_in_expires_at!).toLocaleDateString('en-IN', { dateStyle: 'medium' })} — cannot be redeemed yet.
+                          </div>
+                        )}
+                        {checked && !a.locked && (
+                          <div className="px-4 pb-3">
+                            <input type="number" min={0} max={a.availableBalance} value={amt || ''}
+                              onChange={e => setAdvanceAmount(a._id, Math.min(parseFloat(e.target.value) || 0, a.availableBalance))}
+                              placeholder={`Amount to apply (max ₹${a.availableBalance.toLocaleString('en-IN')})`}
+                              className="w-full bg-white border-2 border-blue-300 rounded-xl px-4 py-2.5 text-sm font-black text-blue-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {Object.keys(advanceApplied).length > 0 && (
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={() => applyMaxAdvance(advanceCap)}
+                      className="px-4 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black hover:bg-blue-700 transition-colors whitespace-nowrap">
+                      Apply Max Across Selected
+                    </button>
+                    <button type="button" onClick={clearAdvances}
+                      className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-500 text-xs font-black hover:bg-slate-50 transition-colors">
+                      Clear
+                    </button>
+                  </div>
+                )}
+
+                {totalAdvanceApplied > 0 && (
+                  <p className="text-[10px] text-blue-700 font-bold flex items-center gap-1.5">
+                    <CheckCircle2 size={11} />
+                    ₹{totalAdvanceApplied.toLocaleString('en-IN')} will be deducted from {selectedAdvances.length > 1 ? `${selectedAdvances.length} advances` : 'the advance balance'} on sale confirmation
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
         {/* ── Sale details ─────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -375,7 +736,25 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
         </div>
 
         {/* ── Payment ──────────────────────────────────────────────────── */}
-        <PaymentSplitsInput splits={paymentSplits} onChange={setPaymentSplits} totalAmount={cartTotal} />
+        {(totalInvestmentApplied > 0 || totalAdvanceApplied > 0) && (
+          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 space-y-1.5 text-xs">
+            <div className="flex justify-between font-bold text-slate-500"><span>Bill Total</span><span>₹{fmt(cartTotal)}</span></div>
+            {totalInvestmentApplied > 0 && (
+              <div className="flex justify-between font-bold text-amber-700"><span>Investment Balance Applied</span><span>− ₹{fmt(totalInvestmentApplied)}</span></div>
+            )}
+            {investmentMakingChargesDiscount > 0 && (
+              <div className="flex justify-between font-bold text-amber-700"><span>Making Charges Waived (Investment)</span><span>− ₹{fmt(investmentMakingChargesDiscount)}</span></div>
+            )}
+            {totalAdvanceApplied > 0 && (
+              <div className="flex justify-between font-bold text-blue-700"><span>Advance Balance Applied</span><span>− ₹{fmt(totalAdvanceApplied)}</span></div>
+            )}
+            {advanceMakingChargesDiscount > 0 && (
+              <div className="flex justify-between font-bold text-blue-700"><span>Making Charges Waived (Advance)</span><span>− ₹{fmt(advanceMakingChargesDiscount)}</span></div>
+            )}
+            <div className="flex justify-between font-black text-slate-900 pt-1.5 border-t border-slate-200"><span>Amount Due</span><span>₹{fmt(amountDue)}</span></div>
+          </div>
+        )}
+        <PaymentSplitsInput splits={paymentSplits} onChange={setPaymentSplits} totalAmount={amountDue} enforceTotal={amountDue > 0} />
 
         {error && <p className="text-xs text-red-600 font-bold">{error}</p>}
 

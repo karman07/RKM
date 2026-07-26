@@ -45,6 +45,14 @@ function modeLabel(mode: string) {
   return mode.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
+/** How an advance's payment mode should read in a compact table cell */
+function advanceModeSummary(a: CustomerAdvance) {
+  if (Array.isArray(a.payment_splits) && a.payment_splits.length > 1) {
+    return a.payment_splits.map(s => `${modeLabel(s.mode)} ${fmtFull(s.amount)}`).join(' + ');
+  }
+  return modeLabel(a.mode);
+}
+
 const PALETTE = ['#3b82f6', '#8b5cf6', '#10b981', '#f97316', '#ec4899', '#06b6d4', '#f59e0b', '#84cc16'];
 
 function fmt(n: number) {
@@ -327,6 +335,41 @@ export default function PaymentsPage() {
               </div>
             </div>
           </div>
+
+          {/* Individual advance records — every advance added shows up here, click to view/reprint its receipt */}
+          {advanceData.recent && advanceData.recent.length > 0 && (
+            <div className="mt-6 pt-6 border-t" style={{ borderColor: colors.border }}>
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Recent Advances</p>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-50">
+                      {['Customer', 'Amount', 'Mode', 'Recorded By', 'Date'].map(h => (
+                        <th key={h} className="text-left text-[10px] font-black uppercase tracking-widest text-slate-400 pb-2 pr-6 last:pr-0 whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {advanceData.recent.map(a => (
+                      <tr
+                        key={a._id}
+                        onClick={() => setNewAdvanceReceipt(a)}
+                        className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60 transition-colors cursor-pointer"
+                      >
+                        <td className="py-3 pr-6 text-sm font-bold text-slate-800 truncate max-w-[160px]">{a.customerName}</td>
+                        <td className="py-3 pr-6 text-sm font-black text-slate-900">{fmtFull(a.amount)}</td>
+                        <td className="py-3 pr-6 text-[11px] font-semibold text-slate-500">{advanceModeSummary(a)}</td>
+                        <td className="py-3 pr-6 text-sm font-semibold text-slate-500 truncate max-w-[140px]">{typeof a.createdBy === 'object' ? a.createdBy?.name : '—'}</td>
+                        <td className="py-3 text-[12px] font-bold text-slate-400 whitespace-nowrap">
+                          {new Date(a.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

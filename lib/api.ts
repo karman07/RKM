@@ -1028,6 +1028,12 @@ export const sellItemsBatch = (payload: {
   sale_channel: string;
   payment_mode: string;
   payment_splits: { mode: string; amount: number; reference?: string }[];
+  investment_redeemed?: number;
+  investment_sub_id?: string;
+  making_charges_discount?: number;
+  advance_redeemed?: number;
+  advance_id?: string;
+  advance_making_charges_discount?: number;
 }) => request<InventoryItem[]>('/inventory/sell-batch', { method: 'POST', body: JSON.stringify(payload) });
 
 /** Fills the RKM Certificate of Authenticity PDF template (unchanged artwork) with this sold item's data */
@@ -1805,6 +1811,12 @@ export interface GoldSubscription {
     note?: string;
     staffId?: string;
   }[];
+  /** Set while autopay is paused because a cash payment already covered the current cycle */
+  pausedForCashMonth?: number | null;
+  /** When the scheduler will auto-resume autopay after a cash-covered pause */
+  autopayResumeAt?: string | null;
+  replacedBy?: string | null;
+  previousSubscriptionId?: string | null;
   createdAt: string;
 }
 
@@ -1860,6 +1872,11 @@ export async function redeemSubscription(id: string, data: { amount: number; sal
 
 export async function markGoldCashPayment(id: string, data: { month: number; staffId?: string; note?: string }): Promise<GoldSubscription> {
   return request<GoldSubscription>(`/gold-investment/subscriptions/${id}/mark-payment`, { method: 'POST', body: JSON.stringify(data) });
+}
+
+/** Restarts a cancelled/halted subscription — resumes the mandate directly if Razorpay allows it, otherwise issues a fresh one and messages the customer a new authorization link. */
+export async function restartGoldSubscription(id: string): Promise<{ mode: 'resumed' | 'new_mandate'; subscription: GoldSubscription }> {
+  return request<{ mode: 'resumed' | 'new_mandate'; subscription: GoldSubscription }>(`/gold-investment/subscriptions/${id}/restart`, { method: 'POST' });
 }
 
 /** Admin-only: manually credit bonus interest onto a subscription's balance */
