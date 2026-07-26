@@ -108,7 +108,7 @@ export default function GoldInvestmentPage() {
     setError('');
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/gold-investment/my-subscriptions/emi`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/gold-investment/my-subscriptions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -124,40 +124,21 @@ export default function GoldInvestmentPage() {
 
       const options = {
         key: data.razorpayKey,
-        order_id: data.order.id,
-        amount: data.order.amount,
-        currency: data.order.currency,
+        subscription_id: data.subscription.razorpaySubscriptionId,
         name: 'RKM Jewellers',
-        description: 'Systematic Gold Investment Plan – Bank EMI',
+        description: 'Systematic Gold Investment Plan – Autopay',
         image: 'https://via.placeholder.com/150/064E3B/FFFFFF?text=RKM',
-        // Restrict Checkout to EMI instruments only (credit-card EMI + bank/NBFC
-        // cardless EMI). The bank finances the customer's repayment; Razorpay
-        // settles the full order amount to us upfront, same as any other method.
-        config: {
-          display: {
-            blocks: {
-              emiBlock: {
-                name: 'Pay via Bank EMI',
-                instruments: [
-                  { method: 'emi' },
-                  { method: 'cardless_emi' },
-                ],
-              },
-            },
-            sequence: ['block.emiBlock'],
-            preferences: { show_default_blocks: false },
-          },
-        },
+        recurring: true,
         handler: async (response: any) => {
           try {
-            await fetch(`${process.env.NEXT_PUBLIC_API_URL}/gold-investment/my-subscriptions/emi/verify`, {
+            await fetch(`${process.env.NEXT_PUBLIC_API_URL}/gold-investment/my-subscriptions/verify`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${authState.token}`,
               },
               body: JSON.stringify({
-                razorpay_order_id: response.razorpay_order_id,
+                razorpay_subscription_id: response.razorpay_subscription_id,
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_signature: response.razorpay_signature,
               }),
@@ -208,7 +189,7 @@ export default function GoldInvestmentPage() {
               </span>
             </h1>
             <p className="max-w-3xl mx-auto text-slate-500 font-medium md:text-xl mb-12 leading-relaxed animate-in fade-in slide-in-from-bottom-6 duration-1000 delay-300 fill-mode-both">
-              Lock in your full plan value today via Bank EMI, then let it grow — with guaranteed interest and exclusive redemption discounts at RKM Jewellers.
+              Set up Autopay once, then let it grow automatically every month — with guaranteed interest and exclusive redemption discounts at RKM Jewellers.
             </p>
             <div className="flex items-center gap-6 animate-in fade-in slide-in-from-bottom-6 duration-1000 delay-500 fill-mode-both">
               <a href="#plans" className="px-8 py-4 bg-[#5C0828] text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-[#5C0828]/20 hover:-translate-y-1 hover:shadow-2xl hover:shadow-[#5C0828]/30 transition-all duration-300">
@@ -232,7 +213,7 @@ export default function GoldInvestmentPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
             {[
               { icon: <Clock />, title: 'Select Duration', desc: 'Choose a 6, 10 or 12-month savings period that fits your lifestyle.' },
-              { icon: <Zap />, title: 'Pay via Bank EMI', desc: 'Pay the full plan value in one go through your bank or card issuer\'s EMI facility — they finance it, you repay them in instalments.' },
+              { icon: <Zap />, title: 'Authorize Autopay', desc: 'Set up a secure UPI or card autopay mandate once — your monthly instalment is then collected automatically, no manual payment needed.' },
               { icon: <TrendingUp />, title: 'Earn Returns', desc: 'Your principal earns fixed monthly interest, growing your value every single day.' },
               { icon: <Store />, title: 'Shop Jewellery', desc: 'At maturity, redeem your total plus a special RKM discount on making charges at any branch.' },
             ].map((step, i) => (
@@ -252,16 +233,16 @@ export default function GoldInvestmentPage() {
         </div>
       </section>
 
-      {/* ── Bank EMI callout ── */}
+      {/* ── Autopay callout ── */}
       <section className="py-10 bg-amber-50 border-y border-amber-100">
         <div className="max-w-4xl mx-auto px-6 flex items-start gap-5">
           <div className="w-10 h-10 rounded-2xl bg-amber-100 flex items-center justify-center text-amber-700 shrink-0 mt-0.5">
             <RefreshCw size={18} />
           </div>
           <div>
-            <p className="font-bold text-amber-900 mb-1">Paid in full via your bank, upfront</p>
+            <p className="font-bold text-amber-900 mb-1">Automatic monthly payments via Autopay</p>
             <p className="text-sm text-amber-800 leading-relaxed">
-              When you enrol, your bank or card issuer settles the full plan value to RKM Jewellers immediately through their EMI facility. You then repay your bank directly, in instalments, on the terms they offer you at checkout.
+              When you enrol, you authorize a secure recurring mandate (UPI Autopay or card) once — Razorpay then collects your monthly instalment automatically. If a payment ever fails, you can always settle it in cash at any RKM Jewellers store.
             </p>
           </div>
         </div>
@@ -357,12 +338,12 @@ export default function GoldInvestmentPage() {
                       <div className="flex items-center justify-between">
                         <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Payment Mode</span>
                         <span className="flex items-center gap-1.5 bg-[#B8975A]/10 text-[#5C0828] px-3 py-1 rounded-lg text-sm font-bold">
-                          <Zap size={12} /> Bank EMI
+                          <RefreshCw size={12} /> Autopay
                         </span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Payable Today (via EMI)</span>
-                        <span className="text-xl font-bold text-slate-900">{fmt(p.monthlyAmount * p.durationMonths)}</span>
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Monthly Payment</span>
+                        <span className="text-xl font-bold text-slate-900">{fmt(p.monthlyAmount)}</span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Plan Duration</span>
@@ -418,8 +399,8 @@ export default function GoldInvestmentPage() {
             <div className="space-y-8">
               {[
                 { title: 'Monthly Earnings', desc: 'Unlike standard jewellery advance schemes, we calculate your benefit monthly, ensuring your money never sits idle.' },
-                { title: 'Bank-Financed EMI', desc: 'Your bank or card issuer settles the full plan value to us the moment you check out. You repay them directly, in instalments, on their terms.' },
-                { title: 'One Payment, Fully Secured', desc: 'There\'s no recurring mandate on our side to maintain or cancel — your full plan value is locked in from day one.' },
+                { title: 'Automatic Autopay', desc: 'Authorize your mandate once via UPI or card — your monthly instalment is then collected automatically, no need to remember or revisit.' },
+                { title: 'Cash Fallback, Always', desc: 'If a bank ever cancels or pauses your mandate, we notify you immediately — just visit any RKM Jewellers store to pay that month in cash and keep your plan on track.' },
               ].map((info, i) => (
                 <div
                   key={i}
@@ -459,9 +440,9 @@ export default function GoldInvestmentPage() {
             <div className="w-20 h-20 bg-[#B8975A]/10 rounded-full flex items-center justify-center mx-auto mb-6">
               <CheckCircle2 className="text-[#5C0828]" size={40} />
             </div>
-            <h3 className="text-2xl font-serif font-black text-slate-900 mb-3">Plan Activated!</h3>
+            <h3 className="text-2xl font-serif font-black text-slate-900 mb-3">Autopay Authorized!</h3>
             <p className="text-slate-500 mb-8 text-sm leading-relaxed">
-              Your bank has settled the full plan value via EMI. Your gold savings plan is now active and will start earning interest right away.
+              Your first month's payment is being processed and your autopay mandate is now active. Your gold savings plan will start earning interest right away, with future instalments collected automatically each month.
             </p>
             <button
               onClick={() => { setShowSuccessDialog(false); router.push('/profile'); }}
