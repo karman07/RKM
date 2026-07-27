@@ -53,7 +53,7 @@ function computeTimeBasedBalance(sub: GoldSubscription) {
   return { principal, interest, bonusInterest, balance, displayedPaid };
 }
 
-interface LedgerRow {
+interface MonthLedgerRow {
   month: number;
   received: boolean;
   entry?: GoldSubscription['paymentLedger'][number];
@@ -63,7 +63,7 @@ interface LedgerRow {
 
 /** Builds a full 1..durationMonths ledger — which installments actually landed (per the real
  *  paymentLedger, not just an assumed sequential count) vs. which are still due. */
-function buildLedgerRows(sub: GoldSubscription): LedgerRow[] {
+function buildMonthLedgerRows(sub: GoldSubscription): MonthLedgerRow[] {
   const totalMonths = sub.plan?.durationMonths || 0;
   const receivedByMonth = new Map((sub.paymentLedger || []).map(e => [e.month, e]));
   const isTerminal = sub.status === 'cancelled' || sub.status === 'halted';
@@ -858,7 +858,7 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
             <span className="text-[9px] font-bold text-slate-300">{displayedPaid} received</span>
           </div>
           <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
-            {buildLedgerRows(sub).map(row => {
+            {buildMonthLedgerRows(sub).map(row => {
               if (row.received && row.entry) {
                 const p = row.entry;
                 return (
