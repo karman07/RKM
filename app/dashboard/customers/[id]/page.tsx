@@ -53,6 +53,41 @@ function computeTimeBasedBalance(sub: GoldSubscription) {
   return { principal, interest, bonusInterest, balance, displayedPaid };
 }
 
+interface LedgerRow {
+  month: number;
+  received: boolean;
+  entry?: GoldSubscription['paymentLedger'][number];
+  isNext: boolean;
+  dueDate: Date | null;
+}
+
+/** Builds a full 1..durationMonths ledger — which installments actually landed (per the real
+ *  paymentLedger, not just an assumed sequential count) vs. which are still due. */
+function buildLedgerRows(sub: GoldSubscription): LedgerRow[] {
+  const totalMonths = sub.plan?.durationMonths || 0;
+  const receivedByMonth = new Map((sub.paymentLedger || []).map(e => [e.month, e]));
+  const isTerminal = sub.status === 'cancelled' || sub.status === 'halted';
+
+  let calendarStart: Date | null = sub.startedAt ? new Date(sub.startedAt) : null;
+  let firstUnpaidSeen = false;
+
+  return Array.from({ length: totalMonths }, (_, i) => {
+    const month = i + 1;
+    const entry = receivedByMonth.get(month);
+    const received = !!entry;
+    const isNext = !received && !firstUnpaidSeen;
+    if (!received) firstUnpaidSeen = true;
+
+    let dueDate: Date | null = null;
+    if (!received && calendarStart && !isTerminal) {
+      dueDate = new Date(calendarStart);
+      dueDate.setMonth(dueDate.getMonth() + month);
+    }
+
+    return { month, received, entry, isNext, dueDate };
+  });
+}
+
 const statusColors: Record<string, string> = {
   active: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   completed: 'bg-blue-50 text-blue-700 border-blue-200',
@@ -798,21 +833,76 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
         </div>
       )}
 
-      {/* Payment History (receipts) */}
-      {(sub.paymentLedger?.length ?? 0) > 0 && (
+      {/* Autopay paused (cash already covered this cycle) */}
+      {sub.pausedForCashMonth != null && (
+        <div className="mx-8 mb-5 px-5 py-4 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-start gap-3">
+          <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-[9px] font-black uppercase tracking-widest text-emerald-700 mb-0.5">
+              Autopay Paused — Month {sub.pausedForCashMonth} Paid by Cash
+            </p>
+            <p className="text-[10px] text-emerald-700/80 font-bold">
+              {sub.autopayResumeAt
+                ? `Resumes automatically on ${fmtDate(sub.autopayResumeAt)}.`
+                : 'Resumes automatically before the next cycle is due.'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Ledger — every month, received or still due */}
+      {totalMonths > 0 && (
         <div className="px-8 pb-5">
-          <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-3">Payment History</p>
-          <div className="space-y-2">
-            {[...sub.paymentLedger].sort((a, b) => b.month - a.month).map((p, i) => (
-              <div key={i} className="flex items-center justify-between bg-slate-50 rounded-xl px-4 py-3 border border-slate-100">
-                <div>
-                  <p className="text-xs font-bold text-slate-900">Month {p.month} · {fmt(p.amount)}</p>
-                  <p className="text-[9px] text-slate-400">{new Date(p.date).toLocaleDateString('en-IN', { dateStyle: 'medium' })}</p>
-                  {p.note && <p className="text-[9px] text-slate-400 italic">{p.note}</p>}
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Payment Ledger</p>
+            <span className="text-[9px] font-bold text-slate-300">{displayedPaid} received</span>
+          </div>
+          <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+            {buildLedgerRows(sub).map(row => {
+              if (row.received && row.entry) {
+                const p = row.entry;
+                return (
+                  <div key={row.month} className="flex items-center justify-between bg-slate-50 rounded-xl px-4 py-3 border border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center shrink-0">
+                        <CheckCircle2 size={12} color="white" strokeWidth={2.5} />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-900">Month {p.month} · {fmt(p.amount)}</p>
+                        <p className="text-[9px] text-slate-400">{new Date(p.date).toLocaleDateString('en-IN', { dateStyle: 'medium' })}</p>
+                        {p.note && <p className="text-[9px] text-slate-400 italic">{p.note}</p>}
+                      </div>
+                    </div>
+                    <span className="text-[8px] font-black uppercase text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-lg whitespace-nowrap">{p.type.replace('_', ' ')}</span>
+                  </div>
+                );
+              }
+              const dueLabel = !row.isNext
+                ? 'Upcoming'
+                : sub.pausedForCashMonth != null
+                ? 'Autopay Paused'
+                : sub.status === 'cancelled' || sub.status === 'halted'
+                ? 'Pending Manual Payment'
+                : row.dueDate
+                ? `Due ${row.dueDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`
+                : 'Due next month';
+              return (
+                <div key={row.month}
+                  className="flex items-center justify-between rounded-xl px-4 py-3 border"
+                  style={{ background: row.isNext ? '#F8FAFC' : '#FBFCFD', borderColor: row.isNext ? '#DBEAFE' : '#F1F5F9', opacity: row.isNext ? 1 : 0.55 }}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0" style={{ borderColor: row.isNext ? '#3b82f6' : '#E2E8F0' }}>
+                      {row.isNext && <div className="w-2 h-2 rounded-full bg-blue-500" />}
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-700">Month {row.month}</p>
+                      <p className="text-[9px] font-bold text-slate-400">{dueLabel}</p>
+                    </div>
+                  </div>
+                  <span className="text-[8px] font-black uppercase text-slate-400 bg-white border border-slate-200 px-2 py-0.5 rounded-lg whitespace-nowrap">Not Received</span>
                 </div>
-                <span className="text-[8px] font-black uppercase text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-lg">{p.type.replace('_', ' ')}</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
