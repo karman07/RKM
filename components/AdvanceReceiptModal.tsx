@@ -28,6 +28,18 @@ export default function AdvanceReceiptModal({ advance, onClose }: AdvanceReceipt
   const [generatingPdf, setGeneratingPdf] = useState<'download' | 'share' | null>(null);
   const receiptNo = `ADV-${advance._id.slice(-8).toUpperCase()}`;
 
+  // Branch details (actual data from branch_id, when populated)
+  const branchData = advance.branch_id && typeof advance.branch_id === 'object' ? advance.branch_id as any : null;
+  const branchAddressParts = [
+    branchData?.address,
+    branchData?.city,
+    branchData?.state,
+    branchData?.pincode ? `- ${branchData.pincode}` : null,
+  ].filter(Boolean);
+  const branchAddress = branchAddressParts.join(', ') || '';
+
+  const customerId = advance.customer ? advance.customer.slice(-8).toUpperCase() : '—';
+
   const handleDownload = async () => {
     setGeneratingPdf('download');
     try {
@@ -96,7 +108,13 @@ export default function AdvanceReceiptModal({ advance, onClose }: AdvanceReceipt
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '16px 20px', borderBottom: '2px solid #000' }}>
           <div>
             <div style={{ fontSize: '22px', fontWeight: 900, letterSpacing: '3px', fontFamily: '"Georgia", serif' }}>RKM JEWELLERS</div>
-            <div style={{ fontSize: '9px', letterSpacing: '2px', color: '#555' }}>FINE JEWELLERY • EST. 2005</div>
+            <div style={{ fontSize: '9px', letterSpacing: '2px', color: '#555', marginBottom: '4px' }}>
+              FINE JEWELLERY • EST. 2005{branchData?.name ? ` • ${branchData.name.toUpperCase()} BRANCH` : ''}
+            </div>
+            <div style={{ fontSize: '9px', lineHeight: 1.6, color: '#333' }}>
+              {branchAddress && <div>{branchAddress}</div>}
+              {branchData?.phone && <div>Phone: {branchData.phone}</div>}
+            </div>
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: '18px', fontWeight: 900, letterSpacing: '2px' }}>ADVANCE RECEIPT</div>
@@ -108,10 +126,16 @@ export default function AdvanceReceiptModal({ advance, onClose }: AdvanceReceipt
         </div>
 
         {/* Customer info */}
-        <div style={{ padding: '12px 20px', borderBottom: '1.5px solid #000' }}>
-          <div style={{ fontSize: '8px', fontWeight: 700, color: '#555', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '4px' }}>Customer</div>
-          <div style={{ fontWeight: 700, fontSize: '12px', marginBottom: '2px' }}>{advance.customerName}</div>
-          {advance.customerPhone && <div>Phone: {advance.customerPhone}</div>}
+        <div style={{ padding: '12px 20px', borderBottom: '1.5px solid #000', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+          <div>
+            <div style={{ fontSize: '8px', fontWeight: 700, color: '#555', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '4px' }}>Customer</div>
+            <div style={{ fontWeight: 700, fontSize: '12px', marginBottom: '2px' }}>{advance.customerName}</div>
+            {advance.customerPhone && <div>Phone: {advance.customerPhone}</div>}
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '8px', fontWeight: 700, color: '#555', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '4px' }}>Customer ID</div>
+            <div style={{ fontFamily: 'monospace', fontWeight: 700 }}>{customerId}</div>
+          </div>
         </div>
 
         {/* Amount summary */}
