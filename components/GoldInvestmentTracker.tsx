@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { CheckCircle2, Gem, TrendingUp, Sparkles, ArrowRight, Wallet, Clock, Zap, Banknote, MessageCircle, AlertCircle, Download, Receipt, FileText } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { CheckCircle2, Gem, TrendingUp, Sparkles, ArrowRight, Wallet, Clock, Zap, Banknote, MessageCircle, AlertCircle, Download, Receipt, FileText, RefreshCw } from 'lucide-react';
 import InvestmentReceiptModal from './InvestmentReceiptModal';
 
 interface PaymentLedgerEntry {
@@ -47,6 +48,7 @@ export interface GoldSub {
   interestAdjustments?: InterestAdjustment[];
   interestStopped?: boolean;
   plan: {
+    _id?: string;
     name: string;
     monthlyAmount: number;
     durationMonths: number;
@@ -120,6 +122,7 @@ const paymentTypeLabel = (type: 'autopay' | 'cash' | 'whatsapp_link') => {
 };
 
 export default function GoldInvestmentTracker({ sub }: { sub: GoldSub }) {
+  const router = useRouter();
   const [started, setStarted] = useState(false);
   const [visibleMonths, setVisibleMonths] = useState(0);
   const [showReceipt, setShowReceipt] = useState(false);
@@ -223,6 +226,7 @@ export default function GoldInvestmentTracker({ sub }: { sub: GoldSub }) {
 
   const isCancelled = sub.status === 'cancelled' || sub.status === 'halted';
   const isAutopayPaused = sub.pausedForCashMonth != null;
+  const isMatured = sub.status === 'completed';
 
   return (
     <div ref={ref} className="bg-white rounded-[28px] border border-[#EDEAE4] shadow-[0_16px_48px_rgba(0,0,0,0.05)] overflow-hidden">
@@ -312,6 +316,29 @@ export default function GoldInvestmentTracker({ sub }: { sub: GoldSub }) {
           </div>
         </div>
       </div>
+
+      {/* ── Plan matured — renew notice ── */}
+      {isMatured && (
+        <div className="mx-6 mt-4 rounded-2xl px-4 py-3 flex items-center justify-between gap-3 border" style={{ borderColor: '#EEE0C8', background: '#FDF3E7' }}>
+          <div className="flex items-start gap-3">
+            <Sparkles size={15} className="shrink-0 mt-0.5" style={{ color: '#B8975A' }} />
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-wider mb-0.5" style={{ color: '#5C0828' }}>Plan Matured</p>
+              <p className="text-[10px] text-slate-600 leading-relaxed">
+                This plan has completed its {total}-month term. Start a fresh plan to keep growing your gold savings.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => router.push(sub.plan._id ? `/gold-investment?renew=${sub.plan._id}#plans` : '/gold-investment#plans')}
+            className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-white px-4 py-2.5 rounded-xl shrink-0 hover:-translate-y-[1px] transition-all"
+            style={{ background: '#5C0828' }}
+          >
+            <RefreshCw size={11} /> Renew
+          </button>
+        </div>
+      )}
 
       {/* ── Manual payment notice ── */}
       {isCancelled && sub.requiresManualPayment && paid < total && (

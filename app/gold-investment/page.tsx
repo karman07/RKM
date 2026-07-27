@@ -5,7 +5,7 @@ import { useAppSelector } from '../../store/store';
 import { useRouter } from 'next/navigation';
 import {
   CheckCircle2, ShieldCheck, Gem, ArrowRight, Loader2,
-  Zap, Clock, Store, TrendingUp, Wallet, RefreshCw
+  Zap, Clock, Store, TrendingUp, Wallet, RefreshCw, Sparkles
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -172,6 +172,8 @@ export default function GoldInvestmentPage() {
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(val);
 
   const activeSubs = userSubs.filter(s => ['active', 'pending', 'halted'].includes(s.status));
+  const maturedSubs = userSubs.filter(s => s.status === 'completed');
+  const maturedPlanIds = new Set(maturedSubs.map(s => s.plan?._id).filter(Boolean));
 
   return (
     <div className="min-h-screen bg-[#FDFCFB]">
@@ -284,6 +286,38 @@ export default function GoldInvestmentPage() {
           </div>
         )}
 
+        {maturedSubs.length > 0 && (
+          <div className="max-w-3xl mx-auto px-6 mb-20 animate-in fade-in slide-in-from-bottom-5 duration-700">
+            <h3 className="text-xl font-serif font-bold text-slate-900 mb-6 flex items-center gap-3">
+              <Sparkles className="text-[#B8975A]" size={24} /> Matured Plan{maturedSubs.length > 1 ? 's' : ''} — Ready to Renew
+            </h3>
+            <div className="space-y-6">
+              {maturedSubs.map(sub => (
+                <div key={sub._id} className="bg-[#FDF3E7] rounded-[2.5rem] p-10 border border-[#EEE0C8] shadow-sm">
+                  <div className="flex justify-between items-center gap-6 flex-wrap">
+                    <div>
+                      <h4 className="font-serif font-black text-2xl text-slate-900 mb-2">{sub.plan?.name}</h4>
+                      <p className="text-sm font-bold text-emerald-700">COMPLETED: {sub.installmentsPaid} / {sub.plan?.durationMonths} MONTHS</p>
+                      <p className="font-black text-[#7A1238] text-2xl mt-4">{fmt(sub.amountAccumulated)}</p>
+                    </div>
+                    <button
+                      onClick={() => sub.plan?._id && handleSubscribe(sub.plan._id)}
+                      disabled={!!subscribeLoading || !sub.plan?._id}
+                      className="px-8 py-4 rounded-2xl bg-[#5C0828] text-white shadow-xl shadow-[#5C0828]/20 text-xs font-black uppercase tracking-[0.18em] flex items-center justify-center gap-3 hover:-translate-y-[2px] transition-all disabled:opacity-40"
+                    >
+                      {subscribeLoading === sub.plan?._id ? (
+                        <><Loader2 size={16} className="animate-spin" /><span>Processing…</span></>
+                      ) : (
+                        <><RefreshCw size={16} /><span>Renew Plan</span></>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="max-w-6xl mx-auto px-6 mb-16 text-center">
           <h2 className="text-4xl font-serif font-black text-slate-900 mb-4">Available Investment Tiers</h2>
           <p className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.4em]">Choose the monthly commitment that fits your lifestyle</p>
@@ -302,6 +336,7 @@ export default function GoldInvestmentPage() {
           ) : (
             plans.map((p, index) => {
               const isEnrolledInThis = activeSubs.some(s => s.plan?._id === p._id);
+              const canRenewThis = !isEnrolledInThis && maturedPlanIds.has(p._id);
 
               return (
                 <div
@@ -316,6 +351,14 @@ export default function GoldInvestmentPage() {
                       <div className="absolute top-6 right-8">
                         <span className="flex items-center gap-1.5 text-[8px] font-black uppercase tracking-widest text-white bg-[#5C0828] px-3 py-1.5 rounded-full shadow-lg">
                           <CheckCircle2 size={10} /> Active Plan
+                        </span>
+                      </div>
+                    )}
+
+                    {canRenewThis && (
+                      <div className="absolute top-6 right-8">
+                        <span className="flex items-center gap-1.5 text-[8px] font-black uppercase tracking-widest text-white bg-[#B8975A] px-3 py-1.5 rounded-full shadow-lg">
+                          <RefreshCw size={10} /> Matured — Renew
                         </span>
                       </div>
                     )}
@@ -372,6 +415,8 @@ export default function GoldInvestmentPage() {
                         >
                           {subscribeLoading === p._id ? (
                             <><Loader2 size={16} className="animate-spin" /><span>Processing…</span></>
+                          ) : canRenewThis ? (
+                            <><RefreshCw size={16} /><span>Renew Plan</span></>
                           ) : (
                             <><span>Enroll</span><ArrowRight size={18} /></>
                           )}
