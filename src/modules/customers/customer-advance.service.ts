@@ -76,7 +76,7 @@ export class CustomerAdvanceService {
 
     const populated = await advance.populate([
       { path: 'createdBy', select: 'name role' },
-      { path: 'branch_id', select: 'name code' },
+      { path: 'branch_id', select: 'name code address city state pincode phone gstin' },
     ]);
     return this.withBalance(populated);
   }
@@ -86,6 +86,7 @@ export class CustomerAdvanceService {
       .find({ customer: customerId })
       .sort({ createdAt: -1 })
       .populate('createdBy', 'name role')
+      .populate('branch_id', 'name code address city state pincode phone gstin')
       .exec();
     return advances.map(a => this.withBalance(a));
   }
@@ -95,6 +96,7 @@ export class CustomerAdvanceService {
       .find({ customerPhone: phone, status: CustomerAdvanceStatus.ACTIVE })
       .sort({ createdAt: -1 })
       .populate('createdBy', 'name role')
+      .populate('branch_id', 'name code address city state pincode phone gstin')
       .exec();
     return advances.map(a => this.withBalance(a));
   }
@@ -135,7 +137,10 @@ export class CustomerAdvanceService {
     }
 
     await advance.save();
-    const populated = await advance.populate('createdBy', 'name role');
+    const populated = await advance.populate([
+      { path: 'createdBy', select: 'name role' },
+      { path: 'branch_id', select: 'name code address city state pincode phone gstin' },
+    ]);
     return this.withBalance(populated);
   }
 
@@ -167,7 +172,10 @@ export class CustomerAdvanceService {
     }
 
     await advance.save();
-    const populated = await advance.populate('createdBy', 'name role');
+    const populated = await advance.populate([
+      { path: 'createdBy', select: 'name role' },
+      { path: 'branch_id', select: 'name code address city state pincode phone gstin' },
+    ]);
     return this.withBalance(populated);
   }
 
@@ -206,6 +214,7 @@ export class CustomerAdvanceService {
         .sort({ createdAt: -1 })
         .limit(20)
         .populate('createdBy', 'name')
+        .populate('branch_id', 'name code address city state pincode phone gstin')
         .exec(),
     ]);
 

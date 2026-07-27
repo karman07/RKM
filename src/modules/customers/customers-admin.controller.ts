@@ -120,6 +120,10 @@ export class CustomersAdminController {
     },
     @Req() req: any,
   ) {
-    return this.customerAdvanceService.createAdvance(id, body, req.user?.userId);
+    // Fall back to the requesting staff member's own branch when the client didn't supply one
+    // (e.g. the manager panel's add-advance flow, which has no branch selector) so the advance
+    // receipt can always show a branch address.
+    const branchId = body.branch_id || req.user?.branch_id || undefined;
+    return this.customerAdvanceService.createAdvance(id, { ...body, branch_id: branchId }, req.user?.userId);
   }
 }
