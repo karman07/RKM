@@ -1237,6 +1237,7 @@ export interface CustomerAdvance {
   customer: string;
   customerName: string;
   customerPhone: string;
+  branch_id?: string | { _id: string; name: string; code?: string; address?: string; city?: string; state?: string; pincode?: string; phone?: string; gstin?: string } | null;
   amount: number;
   amountRedeemed: number;
   availableBalance: number;
