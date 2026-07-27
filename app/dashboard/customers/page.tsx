@@ -4,9 +4,9 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   getCustomers, searchCustomerByPhone, createCustomer, updateCustomer, GST_TREATMENTS,
-  getInventory, getGoldBalance, getCustomerAdvances, createCustomerAdvance, getGoldLoansByCustomer,
+  getInventory, getSubscriptions, getCustomerAdvances, createCustomerAdvance, getGoldLoansByCustomer,
   getCustomerCustomFields, uploadUserAvatar, generateCertificate, staticUrl,
-  type FullCustomer, type InventoryItem, type GoldBalance, type CustomerAdvance, type GoldLoan, type EmployeeCustomField, type ContactPerson,
+  type FullCustomer, type InventoryItem, type GoldSubscription, type CustomerAdvance, type GoldLoan, type EmployeeCustomField, type ContactPerson,
 } from '../../../lib/api';
 import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from 'firebase/auth';
 import { auth } from '../../../lib/firebase';
@@ -23,6 +23,41 @@ function fmt(d: string) {
 
 function initials(name: string) {
   return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+}
+
+interface MonthLedgerRow {
+  month: number;
+  received: boolean;
+  entry?: GoldSubscription['paymentLedger'][number];
+  isNext: boolean;
+  dueDate: Date | null;
+}
+
+/** Builds a full 1..durationMonths ledger — which installments actually landed (per the real
+ *  paymentLedger, not just an assumed sequential count) vs. which are still due. */
+function buildMonthLedgerRows(sub: GoldSubscription): MonthLedgerRow[] {
+  const totalMonths = sub.plan?.durationMonths || 0;
+  const receivedByMonth = new Map((sub.paymentLedger || []).map(e => [e.month, e]));
+  const isTerminal = sub.status === 'cancelled' || sub.status === 'halted';
+
+  const calendarStart: Date | null = sub.startedAt ? new Date(sub.startedAt) : null;
+  let firstUnpaidSeen = false;
+
+  return Array.from({ length: totalMonths }, (_, i) => {
+    const month = i + 1;
+    const entry = receivedByMonth.get(month);
+    const received = !!entry;
+    const isNext = !received && !firstUnpaidSeen;
+    if (!received) firstUnpaidSeen = true;
+
+    let dueDate: Date | null = null;
+    if (!received && calendarStart && !isTerminal) {
+      dueDate = new Date(calendarStart);
+      dueDate.setMonth(dueDate.getMonth() + month);
+    }
+
+    return { month, received, entry, isNext, dueDate };
+  });
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
@@ -1056,7 +1091,7 @@ function CustomerDrawer({ customer, onClose, onUpdated }: { customer: FullCustom
   const [tab, setTab] = useState<'purchases' | 'plans' | 'advance' | 'loans'>('purchases');
   const [showEdit, setShowEdit] = useState(false);
   const [purchases, setPurchases] = useState<InventoryItem[]>([]);
-  const [plans, setPlans] = useState<GoldBalance[]>([]);
+  const [plans, setPlans] = useState<GoldSubscription[]>([]);
   const [advances, setAdvances] = useState<CustomerAdvance[]>([]);
   const [loans, setLoans] = useState<GoldLoan[]>([]);
   const [loadingPurchases, setLoadingPurchases] = useState(true);
@@ -1111,8 +1146,8 @@ function CustomerDrawer({ customer, onClose, onUpdated }: { customer: FullCustom
       .catch(() => setPurchases([]))
       .finally(() => setLoadingPurchases(false));
     setLoadingPlans(true);
-    getGoldBalance(customer.phone)
-      .then(data => setPlans(Array.isArray(data) ? data : []))
+    getSubscriptions({ phone: customer.phone })
+      .then(data => setPlans(Array.isArray(data) ? data.filter(s => s.status !== 'pending') : []))
       .catch(() => setPlans([]))
       .finally(() => setLoadingPlans(false));
   }, [customer.phone]);
@@ -1371,6 +1406,74 @@ function CustomerDrawer({ customer, onClose, onUpdated }: { customer: FullCustom
                           </div>
                         )}
                       </div>
+
+                      {plan.pausedForCashMonth != null && (
+                        <div className="mx-4 mb-4 px-4 py-3 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-start gap-2.5">
+                          <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} className="text-emerald-600 shrink-0 mt-0.5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                          <div>
+                            <p className="text-[9px] font-black uppercase tracking-widest text-emerald-700 mb-0.5">
+                              Autopay Paused — Month {plan.pausedForCashMonth} Paid by Cash
+                            </p>
+                            <p className="text-[10px] text-emerald-700/80 font-bold">
+                              {plan.autopayResumeAt ? `Resumes automatically on ${fmt(plan.autopayResumeAt)}.` : 'Resumes automatically before the next cycle is due.'}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {totalMonths > 0 && (
+                        <div className="px-4 pb-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Payment Ledger</p>
+                            <span className="text-[9px] font-bold text-slate-300">{paid} received</span>
+                          </div>
+                          <div className="space-y-1.5 max-h-[360px] overflow-y-auto pr-1">
+                            {buildMonthLedgerRows(plan).map(row => {
+                              if (row.received && row.entry) {
+                                const p = row.entry;
+                                return (
+                                  <div key={row.month} className="flex items-center justify-between bg-slate-50 rounded-xl px-3.5 py-2.5 border border-slate-100">
+                                    <div className="flex items-center gap-2.5">
+                                      <div className="w-5 h-5 rounded-full bg-emerald-600 flex items-center justify-center shrink-0">
+                                        <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                      </div>
+                                      <div>
+                                        <p className="text-[11px] font-bold text-slate-900">Month {p.month} · {fmtMoney(p.amount)}</p>
+                                        <p className="text-[9px] text-slate-400">{new Date(p.date).toLocaleDateString('en-IN', { dateStyle: 'medium' })}</p>
+                                      </div>
+                                    </div>
+                                    <span className="text-[8px] font-black uppercase whitespace-nowrap px-2 py-0.5 rounded-lg" style={{ color: PRIMARY, background: `${PRIMARY}0f`, border: `1px solid ${PRIMARY}25` }}>{p.type.replace('_', ' ')}</span>
+                                  </div>
+                                );
+                              }
+                              const dueLabel = !row.isNext
+                                ? 'Upcoming'
+                                : plan.pausedForCashMonth != null
+                                ? 'Autopay Paused'
+                                : plan.status === 'cancelled' || plan.status === 'halted'
+                                ? 'Pending Manual Payment'
+                                : row.dueDate
+                                ? `Due ${row.dueDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`
+                                : 'Due next month';
+                              return (
+                                <div key={row.month} className="flex items-center justify-between rounded-xl px-3.5 py-2.5 border"
+                                  style={{ background: row.isNext ? '#FAFAFA' : '#FBFBFB', borderColor: row.isNext ? `${PRIMARY}25` : '#F1F5F9', opacity: row.isNext ? 1 : 0.55 }}>
+                                  <div className="flex items-center gap-2.5">
+                                    <div className="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0" style={{ borderColor: row.isNext ? PRIMARY : '#E2E8F0' }}>
+                                      {row.isNext && <div className="w-1.5 h-1.5 rounded-full" style={{ background: PRIMARY }} />}
+                                    </div>
+                                    <div>
+                                      <p className="text-[11px] font-bold text-slate-700">Month {row.month}</p>
+                                      <p className="text-[9px] font-bold text-slate-400">{dueLabel}</p>
+                                    </div>
+                                  </div>
+                                  <span className="text-[8px] font-black uppercase text-slate-400 bg-white border border-slate-200 px-2 py-0.5 rounded-lg whitespace-nowrap">Not Received</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

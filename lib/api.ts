@@ -1188,6 +1188,15 @@ export const getGoldSubscriptions = (params?: { status?: string }) => {
   return request<GoldSubscription[]>(`/gold-investment/subscriptions?${q.toString()}`);
 };
 
+export const getSubscriptions = (params?: { status?: string; planId?: string; phone?: string; email?: string }) => {
+  const q = new URLSearchParams();
+  if (params?.status) q.set('status', params.status);
+  if (params?.planId) q.set('planId', params.planId);
+  if (params?.phone) q.set('phone', params.phone);
+  if (params?.email) q.set('email', params.email);
+  return request<GoldSubscription[]>(`/gold-investment/subscriptions?${q.toString()}`);
+};
+
 export const updateGoldSubscription = (id: string, data: { adminNotes?: string }) =>
   request<GoldSubscription>(`/gold-investment/subscriptions/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
 
