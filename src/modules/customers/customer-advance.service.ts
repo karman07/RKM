@@ -21,12 +21,16 @@ interface RedeemAdvanceDto {
   saleReference?: string;
   note?: string;
   staffId?: string;
-  /** True when the customer is withdrawing the advance as cash without buying anything — a NO_PURCHASE_PENALTY_PCT penalty is deducted and kept by the store */
-  no_purchase?: boolean;
 }
 
-/** Cash withdrawn from an advance without a purchase forfeits this % as a store-kept penalty */
-const NO_PURCHASE_PENALTY_PCT = 5;
+/**
+ * Redemptions with no linked sale (blank saleReference) are treated as a cash withdrawal
+ * rather than money applied to a purchase, and automatically forfeit this % as a
+ * store-kept penalty — enforced here, not left to an optional client-side flag.
+ */
+const NO_SALE_PENALTY_PCT = 5;
+/** Stable machine-readable marker on forfeitureHistory entries created by this penalty (vs. a manual pre-booking-cancellation forfeiture) */
+const NO_SALE_PENALTY_TAG = 'no_sale_redemption_penalty';
 
 @Injectable()
 export class CustomerAdvanceService {
@@ -127,10 +131,14 @@ export class CustomerAdvanceService {
       throw new BadRequestException(`Redemption amount (₹${dto.amount}) exceeds available balance (₹${available.toFixed(0)})`);
     }
 
-    // A no-purchase withdrawal forfeits NO_PURCHASE_PENALTY_PCT% as a store-kept penalty —
-    // the rest is tracked as the actual redemption (what the customer walks away with).
-    const isNoPurchase = !!dto.no_purchase;
-    const penaltyAmount = isNoPurchase ? Math.round((dto.amount * NO_PURCHASE_PENALTY_PCT) / 100) : 0;
+    // Any redemption with no linked sale is treated as a cash withdrawal, not money applied
+    // to a purchase — it automatically forfeits NO_SALE_PENALTY_PCT% as a store-kept penalty.
+    // Providing a saleReference (picked from a recorded sale, or typed manually) is what
+    // exempts a redemption from the penalty — this is enforced here regardless of what the
+    // client sends, so it can't be bypassed by simply not passing a flag.
+    const hasSaleReference = !!dto.saleReference && dto.saleReference.trim().length > 0;
+    const isNoSaleWithdrawal = !hasSaleReference;
+    const penaltyAmount = isNoSaleWithdrawal ? Math.round((dto.amount * NO_SALE_PENALTY_PCT) / 100) : 0;
     const payoutAmount = dto.amount - penaltyAmount;
 
     advance.amountRedeemed = (advance.amountRedeemed || 0) + payoutAmount;
@@ -138,11 +146,11 @@ export class CustomerAdvanceService {
       ...(advance.redemptionHistory || []),
       {
         amount: payoutAmount,
-        making_charges_discount: isNoPurchase ? 0 : Number(dto.making_charges_discount) || 0,
+        making_charges_discount: isNoSaleWithdrawal ? 0 : Number(dto.making_charges_discount) || 0,
         date: new Date(),
-        saleReference: isNoPurchase ? undefined : dto.saleReference,
-        note: isNoPurchase
-          ? `No-purchase cash withdrawal — ${NO_PURCHASE_PENALTY_PCT}% penalty (₹${penaltyAmount}) deducted${dto.note ? `. ${dto.note}` : ''}`
+        saleReference: hasSaleReference ? dto.saleReference!.trim() : undefined,
+        note: isNoSaleWithdrawal
+          ? `No sale linked — ${NO_SALE_PENALTY_PCT}% penalty (₹${penaltyAmount}) deducted${dto.note ? `. ${dto.note}` : ''}`
           : dto.note,
         staffId: dto.staffId,
       },
@@ -154,8 +162,9 @@ export class CustomerAdvanceService {
         ...(advance.forfeitureHistory || []),
         {
           amount: penaltyAmount,
-          reason: `No-purchase redemption penalty (${NO_PURCHASE_PENALTY_PCT}%)`,
+          reason: `No-sale redemption penalty (${NO_SALE_PENALTY_PCT}%)`,
           date: new Date(),
+          reference: NO_SALE_PENALTY_TAG,
           staffId: dto.staffId,
         },
       ];

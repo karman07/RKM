@@ -524,8 +524,21 @@ export class GoldInvestmentService {
     const update: any = {};
     if (dto.adminNotes !== undefined) update.adminNotes = dto.adminNotes;
     if (dto.redeemed !== undefined) {
+      if (dto.redeemed) {
+        // Marking a plan redeemed pays out its balance same as redeemFromSubscription — it
+        // must respect the same minimum lock-in, otherwise this endpoint is a bypass.
+        const existing = await this.subModel.findById(id).exec();
+        if (!existing) throw new NotFoundException('Subscription not found');
+        const monthsElapsed = this.monthsSinceStart(existing.startedAt);
+        if (monthsElapsed < GoldInvestmentService.MIN_REDEMPTION_LOCK_MONTHS) {
+          const remaining = GoldInvestmentService.MIN_REDEMPTION_LOCK_MONTHS - monthsElapsed;
+          throw new BadRequestException(
+            `This plan has a minimum lock-in of ${GoldInvestmentService.MIN_REDEMPTION_LOCK_MONTHS} months and cannot be redeemed yet. ${remaining} month${remaining !== 1 ? 's' : ''} remaining.`,
+          );
+        }
+        update.redemptionDate = new Date();
+      }
       update.redeemed = dto.redeemed;
-      if (dto.redeemed) update.redemptionDate = new Date();
     }
     const sub = await this.subModel.findByIdAndUpdate(id, update, { new: true }).populate('plan').exec();
     if (!sub) throw new NotFoundException('Subscription not found');

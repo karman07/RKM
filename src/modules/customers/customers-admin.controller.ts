@@ -97,7 +97,7 @@ export class CustomersAdminController {
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   async redeemAdvance(
     @Param('advanceId') advanceId: string,
-    @Body() body: { amount: number; making_charges_discount?: number; saleReference?: string; note?: string; no_purchase?: boolean },
+    @Body() body: { amount: number; making_charges_discount?: number; saleReference?: string; note?: string },
     @Req() req: any,
   ) {
     return this.customerAdvanceService.redeemAdvance(advanceId, { ...body, staffId: req.user?.userId });
