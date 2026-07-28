@@ -2617,14 +2617,12 @@ export const createCustomerAdvance = (customerId: string, data: {
 export const getAdvanceBalance = (phone: string) =>
   request<CustomerAdvance[]>(`/customers/advances/balance?phone=${encodeURIComponent(phone)}`);
 
-/** Redeems (applies) an amount from an advance against a sale */
+/** Redeems (applies) an amount from an advance — omitting saleReference (no linked sale) automatically incurs a 5% penalty, enforced server-side */
 export const redeemCustomerAdvance = (id: string, data: {
   amount: number;
   making_charges_discount?: number;
   saleReference?: string;
   note?: string;
-  /** Customer is withdrawing cash without buying anything — a 5% penalty is deducted and kept by the store */
-  no_purchase?: boolean;
 }) => request<CustomerAdvance>(`/customers/advances/${id}/redeem`, { method: 'POST', body: JSON.stringify(data) });
 
 export interface AdvanceAnalytics {

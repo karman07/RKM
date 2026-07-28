@@ -54,6 +54,19 @@ function computeTimeBasedBalance(sub: GoldSubscription) {
   return { principal, interest, bonusInterest, balance, displayedPaid };
 }
 
+/** No gold investment plan can be redeemed before this many months from start. Mirrors MIN_REDEMPTION_LOCK_MONTHS in gold-investment.service.ts. */
+const GOLD_PLAN_MIN_REDEMPTION_LOCK_MONTHS = 8;
+
+/** Full calendar months elapsed since a plan started. Mirrors monthsSinceStart() in gold-investment.service.ts. */
+function monthsSinceStart(startedAt?: string | null): number {
+  if (!startedAt) return 0;
+  const start = new Date(startedAt);
+  const now = new Date();
+  let months = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
+  if (now.getDate() < start.getDate()) months -= 1;
+  return Math.max(0, months);
+}
+
 interface MonthLedgerRow {
   month: number;
   received: boolean;
@@ -239,13 +252,16 @@ function buildLedgerRows(
       });
     });
     (a.forfeitureHistory || []).forEach(f => {
+      const isNoSalePenalty = f.reference === 'no_sale_redemption_penalty';
       rows.push({
         date: f.date,
-        type: 'Cancellation Fee',
-        description: `Pre-booking cancelled — advance deduction kept by store${f.reason ? ` (${f.reason})` : ''}`,
+        type: isNoSalePenalty ? 'No-Sale Redemption Penalty' : 'Cancellation Fee',
+        description: isNoSalePenalty
+          ? `Advance redeemed with no sale linked — ${f.reason || '5% penalty kept by store'}`
+          : `Pre-booking cancelled — advance deduction kept by store${f.reason ? ` (${f.reason})` : ''}`,
         direction: 'debit',
         amount: f.amount,
-        reference: f.reference || a._id,
+        reference: isNoSalePenalty ? '' : (f.reference || a._id),
       });
     });
   });
@@ -366,20 +382,21 @@ function AdvanceCard({ advance, orders, onChanged }: { advance: CustomerAdvance;
   const [redeemNote, setRedeemNote] = useState('');
   const [redeemLoading, setRedeemLoading] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
-  const [noPurchase, setNoPurchase] = useState(false);
   const creator = creatorName(advance.createdBy);
   const redeemableSales = orders.filter(o => o.sale_reference);
-  const NO_PURCHASE_PENALTY_PCT = 5;
+  const NO_SALE_PENALTY_PCT = 5;
+  // No linked sale ⇒ treated as a cash withdrawal ⇒ penalty applies automatically (enforced server-side too).
+  const hasSaleRef = redeemRef.trim().length > 0;
   const redeemAmtNum = parseFloat(redeemAmount) || 0;
-  const noPurchasePenalty = Math.round(redeemAmtNum * NO_PURCHASE_PENALTY_PCT / 100);
-  const noPurchasePayout = redeemAmtNum - noPurchasePenalty;
+  const noSalePenalty = Math.round(redeemAmtNum * NO_SALE_PENALTY_PCT / 100);
+  const noSalePayout = redeemAmtNum - noSalePenalty;
 
   async function handleRedeem() {
     const amt = parseFloat(redeemAmount);
     if (!amt || amt <= 0) return;
     if (amt > advance.availableBalance + 0.5) { alert(`Exceeds available balance of ${fmt(advance.availableBalance)}`); return; }
-    const confirmMsg = noPurchase
-      ? `Withdraw ${fmt(amt)} for ${advance.customerName} with no purchase? A ${NO_PURCHASE_PENALTY_PCT}% penalty (${fmt(noPurchasePenalty)}) will be deducted — they'll receive ${fmt(noPurchasePayout)}.`
+    const confirmMsg = !hasSaleRef
+      ? `Redeem ${fmt(amt)} for ${advance.customerName} with no sale linked? A ${NO_SALE_PENALTY_PCT}% penalty (${fmt(noSalePenalty)}) will be deducted — they'll receive ${fmt(noSalePayout)}.`
       : `Redeem ${fmt(amt)} for ${advance.customerName}?`;
     if (!confirm(confirmMsg)) return;
     setRedeemLoading(true);
@@ -388,13 +405,12 @@ function AdvanceCard({ advance, orders, onChanged }: { advance: CustomerAdvance;
       const updated = await redeemCustomerAdvance(advance._id, {
         amount: amt,
         making_charges_discount: makingChargesDiscount,
-        saleReference: noPurchase ? undefined : redeemRef,
+        saleReference: redeemRef || undefined,
         note: redeemNote,
-        no_purchase: noPurchase,
       });
       onChanged(updated);
       setShowRedeem(false);
-      setRedeemAmount(''); setRedeemRef(''); setManualRef(false); setRedeemNote(''); setNoPurchase(false);
+      setRedeemAmount(''); setRedeemRef(''); setManualRef(false); setRedeemNote('');
       toast.success('Redemption recorded');
     } catch (e: any) {
       toast.error(e?.message || 'Failed to redeem balance');
@@ -519,60 +535,55 @@ function AdvanceCard({ advance, orders, onChanged }: { advance: CustomerAdvance;
                 placeholder={`Amount to redeem (max ${fmt(advance.availableBalance)})`}
                 className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-blue-500 bg-white"
               />
-              <label className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl border border-amber-200 bg-amber-50 cursor-pointer">
-                <input
-                  type="checkbox" checked={noPurchase}
-                  onChange={e => { setNoPurchase(e.target.checked); if (e.target.checked) { setRedeemRef(''); setManualRef(false); } }}
-                  className="mt-0.5 w-3.5 h-3.5 rounded accent-amber-600 flex-shrink-0"
-                />
-                <span className="text-[10px] font-bold text-amber-800 leading-snug">
-                  No purchase — cash withdrawal ({NO_PURCHASE_PENALTY_PCT}% penalty applies)
-                  {noPurchase && redeemAmtNum > 0 && (
-                    <span className="block mt-1 text-amber-700">
-                      Penalty: {fmt(noPurchasePenalty)} · Customer receives: <b>{fmt(noPurchasePayout)}</b>
-                    </span>
+              {!manualRef ? (
+                <div className="space-y-1.5">
+                  <select
+                    value={redeemRef}
+                    onChange={e => {
+                      if (e.target.value === '__manual__') { setManualRef(true); setRedeemRef(''); }
+                      else setRedeemRef(e.target.value);
+                    }}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-blue-500 bg-white"
+                  >
+                    <option value="">No sale linked</option>
+                    {redeemableSales.map(o => (
+                      <option key={o._id} value={o.sale_reference}>
+                        {o.sale_reference} · {productLabel(o)} · {fmt(o.selling_price)} · {fmtDate(o.sold_at)}
+                      </option>
+                    ))}
+                    <option value="__manual__">Other / not in system — enter manually</option>
+                  </select>
+                  {redeemableSales.length === 0 && (
+                    <p className="text-[10px] text-slate-400 font-medium px-1">No recorded sales found for this customer yet.</p>
                   )}
-                </span>
-              </label>
-              {!noPurchase && (
-                !manualRef ? (
-                  <div className="space-y-1.5">
-                    <select
-                      value={redeemRef}
-                      onChange={e => {
-                        if (e.target.value === '__manual__') { setManualRef(true); setRedeemRef(''); }
-                        else setRedeemRef(e.target.value);
-                      }}
-                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-blue-500 bg-white"
-                    >
-                      <option value="">Link to a sale (optional)</option>
-                      {redeemableSales.map(o => (
-                        <option key={o._id} value={o.sale_reference}>
-                          {o.sale_reference} · {productLabel(o)} · {fmt(o.selling_price)} · {fmtDate(o.sold_at)}
-                        </option>
-                      ))}
-                      <option value="__manual__">Other / not in system — enter manually</option>
-                    </select>
-                    {redeemableSales.length === 0 && (
-                      <p className="text-[10px] text-slate-400 font-medium px-1">No recorded sales found for this customer yet.</p>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <input
+                    type="text" value={redeemRef} onChange={e => setRedeemRef(e.target.value)}
+                    placeholder="Bill / sale reference"
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-blue-500 bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => { setManualRef(false); setRedeemRef(''); }}
+                    className="text-[10px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-700 px-1"
+                  >
+                    ← Pick from recorded sales instead
+                  </button>
+                </div>
+              )}
+              {!hasSaleRef && (
+                <div className="px-3 py-2.5 rounded-xl border border-amber-200 bg-amber-50">
+                  <p className="text-[10px] font-bold text-amber-800 leading-snug">
+                    No sale linked — a {NO_SALE_PENALTY_PCT}% penalty applies automatically.
+                    {redeemAmtNum > 0 && (
+                      <span className="block mt-1 text-amber-700">
+                        Penalty: {fmt(noSalePenalty)} · Customer receives: <b>{fmt(noSalePayout)}</b>
+                      </span>
                     )}
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    <input
-                      type="text" value={redeemRef} onChange={e => setRedeemRef(e.target.value)}
-                      placeholder="Bill / sale reference"
-                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-blue-500 bg-white"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => { setManualRef(false); setRedeemRef(''); }}
-                      className="text-[10px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-700 px-1"
-                    >
-                      ← Pick from recorded sales instead
-                    </button>
-                  </div>
-                )
+                  </p>
+                </div>
               )}
               <input
                 type="text" value={redeemNote} onChange={e => setRedeemNote(e.target.value)}
@@ -716,6 +727,9 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
   const progressPct = totalMonths > 0 ? (displayedPaid / totalMonths) * 100 : 0;
   const canAddPayment = displayedPaid < totalMonths && sub.status !== 'completed' && sub.status !== 'cancelled';
   const redeemableSales = orders.filter(o => o.sale_reference);
+  const monthsElapsed = monthsSinceStart(sub.startedAt);
+  const isRedemptionLocked = monthsElapsed < GOLD_PLAN_MIN_REDEMPTION_LOCK_MONTHS;
+  const monthsUntilUnlocked = GOLD_PLAN_MIN_REDEMPTION_LOCK_MONTHS - monthsElapsed;
 
   const [showRedeem, setShowRedeem] = useState(false);
   const [redeemAmount, setRedeemAmount] = useState('');
@@ -1061,8 +1075,18 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
         </div>
       )}
 
+      {/* Redemption lock — no plan can be redeemed before GOLD_PLAN_MIN_REDEMPTION_LOCK_MONTHS months from start */}
+      {balance > 0 && isRedemptionLocked && (
+        <div className="px-8 pb-7">
+          <div className="flex items-center gap-2 px-4 py-3 bg-amber-50 border border-amber-100 rounded-2xl text-xs text-amber-700 font-bold">
+            <Lock className="w-3.5 h-3.5 flex-shrink-0" />
+            Locked — redeemable after {GOLD_PLAN_MIN_REDEMPTION_LOCK_MONTHS} months ({monthsUntilUnlocked} month{monthsUntilUnlocked !== 1 ? 's' : ''} remaining).
+          </div>
+        </div>
+      )}
+
       {/* Process Redemption */}
-      {balance > 0 && (
+      {balance > 0 && !isRedemptionLocked && (
         <div className="px-8 pb-7">
           {!showRedeem ? (
             <button
@@ -1159,7 +1183,8 @@ function BatchRedeemPanel({
   const redeemableAdvances = advances.filter(a => a.status === 'active' && a.availableBalance > 0 && !a.locked);
   const redeemableSubs = goldSubs
     .map(sub => ({ sub, balance: computeTimeBasedBalance(sub).balance }))
-    .filter(x => x.balance > 0 && x.sub.status !== 'cancelled' && x.sub.status !== 'completed');
+    .filter(x => x.balance > 0 && x.sub.status !== 'cancelled' && x.sub.status !== 'completed'
+      && monthsSinceStart(x.sub.startedAt) >= GOLD_PLAN_MIN_REDEMPTION_LOCK_MONTHS);
   const redeemableSales = orders.filter(o => o.sale_reference);
 
   const [open, setOpen] = useState(false);
@@ -1220,7 +1245,10 @@ function BatchRedeemPanel({
 
   async function handleSubmit() {
     if (totalSelected <= 0) return;
-    if (!confirm(`Redeem ${fmt(totalSelected)} across ${Object.values(advanceAmounts).filter(v => v > 0).length + Object.values(subAmounts).filter(v => v > 0).length} source(s)${saleRef ? ` against ${saleRef}` : ''}?`)) return;
+    const penaltyNote = !saleRef && totalAdvance > 0
+      ? ` No sale linked — a 5% penalty (${fmt(Math.round(totalAdvance * 0.05))}) will be deducted from the ${fmt(totalAdvance)} in advances.`
+      : '';
+    if (!confirm(`Redeem ${fmt(totalSelected)} across ${Object.values(advanceAmounts).filter(v => v > 0).length + Object.values(subAmounts).filter(v => v > 0).length} source(s)${saleRef ? ` against ${saleRef}` : ''}?${penaltyNote}`)) return;
     setSubmitting(true);
     try {
       await Promise.all([
@@ -1373,6 +1401,14 @@ function BatchRedeemPanel({
                 className="text-[10px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-700 px-1">
                 ← Pick from recorded sales instead
               </button>
+            </div>
+          )}
+
+          {!saleRef && totalAdvance > 0 && (
+            <div className="px-3 py-2.5 rounded-xl border border-amber-200 bg-amber-50">
+              <p className="text-[10px] font-bold text-amber-800 leading-snug">
+                No sale linked — the {fmt(totalAdvance)} in advances will incur a 5% no-sale penalty automatically ({fmt(Math.round(totalAdvance * 0.05))}).
+              </p>
             </div>
           )}
 
