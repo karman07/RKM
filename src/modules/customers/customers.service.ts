@@ -175,7 +175,8 @@ export class CustomersService {
 
   async findAll(page: number = 1, limit: number = 20, relationshipManagerId?: string) {
     const skip = (page - 1) * limit;
-    const filter = relationshipManagerId ? { relationship_manager: relationshipManagerId } : {};
+    const filter: Record<string, unknown> = { is_deleted: { $ne: true } };
+    if (relationshipManagerId) filter.relationship_manager = relationshipManagerId;
     const [data, total] = await Promise.all([
       this.customerModel.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit)
         .populate('relationship_manager', 'name email mobile_number role').exec(),
@@ -295,7 +296,7 @@ export class CustomersService {
   async searchByPhone(phone: string) {
     if (!phone) return [];
     const regex = new RegExp(phone.replace(/[+]/g, '\\+'), 'i');
-    return this.customerModel.find({ phone: regex }).limit(10).exec();
+    return this.customerModel.find({ phone: regex, is_deleted: { $ne: true } }).limit(10).exec();
   }
 
   async searchByQuery(q: string) {
@@ -303,8 +304,23 @@ export class CustomersService {
     const escaped = q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const regex = new RegExp(escaped, 'i');
     return this.customerModel.find({
+      is_deleted: { $ne: true },
       $or: [{ name: regex }, { phone: regex }, { email: regex }],
     }).limit(15).exec();
+  }
+
+  /** Admin-only soft delete — hides the customer from listings/search while preserving
+   *  referential integrity for any advances, sales, loans, or investment records tied to them. */
+  async deleteCustomer(id: string, reason?: string) {
+    const customer = await this.customerModel.findById(id).exec();
+    if (!customer) throw new NotFoundException('Customer not found');
+
+    customer.is_deleted = true;
+    customer.deleted_at = new Date();
+    customer.deletion_reason = reason?.trim() || '';
+    await customer.save();
+
+    return { deleted: true, customer_id: id };
   }
 
   async createByManager(data: CustomerProfileFields & {

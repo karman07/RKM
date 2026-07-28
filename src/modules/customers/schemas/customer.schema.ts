@@ -229,6 +229,17 @@ export class Customer {
   /** Staff member (admin/manager/cashier) who registered this customer — set once at creation, never reassigned automatically */
   @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null })
   relationship_manager: mongoose.Types.ObjectId | null;
+
+  /** Soft-delete flag — hides the customer from listings/search while preserving referential
+   *  integrity for existing advances, sales, loans, and investment records that reference them. */
+  @Prop({ default: false })
+  is_deleted: boolean;
+
+  @Prop({ type: Date, default: null })
+  deleted_at: Date | null;
+
+  @Prop({ trim: true, default: '' })
+  deletion_reason: string;
 }
 
 export const CustomerSchema = SchemaFactory.createForClass(Customer);

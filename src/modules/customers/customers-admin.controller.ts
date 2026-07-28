@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Param, UseGuards, Query, Body, BadRequestException, ForbiddenException, Req } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, UseGuards, Query, Body, BadRequestException, ForbiddenException, Req } from '@nestjs/common';
 import { CustomersService } from './customers.service';
 import { CustomerAdvanceService } from './customer-advance.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -64,6 +64,14 @@ export class CustomersAdminController {
     return this.customersService.updateByStaff(id, body);
   }
 
+  /** Delete a customer record (soft delete — admin only) */
+  @Delete(':id')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async deleteCustomer(@Param('id') id: string, @Body() body: { reason?: string }) {
+    return this.customersService.deleteCustomer(id, body?.reason);
+  }
+
   // ── Customer Advances ───────────────────────────────────────────────────────
 
   /** Look up active advance balances for a customer by phone — used at time of sale */
@@ -89,7 +97,7 @@ export class CustomersAdminController {
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   async redeemAdvance(
     @Param('advanceId') advanceId: string,
-    @Body() body: { amount: number; making_charges_discount?: number; saleReference?: string; note?: string },
+    @Body() body: { amount: number; making_charges_discount?: number; saleReference?: string; note?: string; no_purchase?: boolean },
     @Req() req: any,
   ) {
     return this.customerAdvanceService.redeemAdvance(advanceId, { ...body, staffId: req.user?.userId });

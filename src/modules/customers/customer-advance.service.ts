@@ -21,7 +21,12 @@ interface RedeemAdvanceDto {
   saleReference?: string;
   note?: string;
   staffId?: string;
+  /** True when the customer is withdrawing the advance as cash without buying anything — a NO_PURCHASE_PENALTY_PCT penalty is deducted and kept by the store */
+  no_purchase?: boolean;
 }
+
+/** Cash withdrawn from an advance without a purchase forfeits this % as a store-kept penalty */
+const NO_PURCHASE_PENALTY_PCT = 5;
 
 @Injectable()
 export class CustomerAdvanceService {
@@ -122,18 +127,39 @@ export class CustomerAdvanceService {
       throw new BadRequestException(`Redemption amount (₹${dto.amount}) exceeds available balance (₹${available.toFixed(0)})`);
     }
 
-    advance.amountRedeemed = (advance.amountRedeemed || 0) + dto.amount;
+    // A no-purchase withdrawal forfeits NO_PURCHASE_PENALTY_PCT% as a store-kept penalty —
+    // the rest is tracked as the actual redemption (what the customer walks away with).
+    const isNoPurchase = !!dto.no_purchase;
+    const penaltyAmount = isNoPurchase ? Math.round((dto.amount * NO_PURCHASE_PENALTY_PCT) / 100) : 0;
+    const payoutAmount = dto.amount - penaltyAmount;
+
+    advance.amountRedeemed = (advance.amountRedeemed || 0) + payoutAmount;
     advance.redemptionHistory = [
       ...(advance.redemptionHistory || []),
       {
-        amount: dto.amount,
-        making_charges_discount: Number(dto.making_charges_discount) || 0,
+        amount: payoutAmount,
+        making_charges_discount: isNoPurchase ? 0 : Number(dto.making_charges_discount) || 0,
         date: new Date(),
-        saleReference: dto.saleReference,
-        note: dto.note,
+        saleReference: isNoPurchase ? undefined : dto.saleReference,
+        note: isNoPurchase
+          ? `No-purchase cash withdrawal — ${NO_PURCHASE_PENALTY_PCT}% penalty (₹${penaltyAmount}) deducted${dto.note ? `. ${dto.note}` : ''}`
+          : dto.note,
         staffId: dto.staffId,
       },
     ];
+
+    if (penaltyAmount > 0) {
+      advance.amountForfeited = (advance.amountForfeited || 0) + penaltyAmount;
+      advance.forfeitureHistory = [
+        ...(advance.forfeitureHistory || []),
+        {
+          amount: penaltyAmount,
+          reason: `No-purchase redemption penalty (${NO_PURCHASE_PENALTY_PCT}%)`,
+          date: new Date(),
+          staffId: dto.staffId,
+        },
+      ];
+    }
 
     if (advance.amount - advance.amountRedeemed - advance.amountForfeited < 1) {
       advance.status = CustomerAdvanceStatus.CLOSED;
