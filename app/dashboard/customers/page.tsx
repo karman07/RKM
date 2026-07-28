@@ -4,7 +4,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   getCustomers, searchCustomerByPhone, createCustomer, updateCustomer, GST_TREATMENTS,
-  getInventory, getSubscriptions, getCustomerAdvances, createCustomerAdvance, getGoldLoansByCustomer,
+  getInventory, getSubscriptions, getCustomerAdvances, createCustomerAdvance, redeemCustomerAdvance, getGoldLoansByCustomer,
   getCustomerCustomFields, uploadUserAvatar, generateCertificate, staticUrl,
   type FullCustomer, type InventoryItem, type GoldSubscription, type CustomerAdvance, type GoldLoan, type EmployeeCustomField, type ContactPerson,
 } from '../../../lib/api';
@@ -23,6 +23,10 @@ function fmt(d: string) {
 
 function initials(name: string) {
   return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+}
+
+function fmtMoney(n: number) {
+  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
 }
 
 interface MonthLedgerRow {
@@ -1085,6 +1089,238 @@ function EditCustomerModal({
   );
 }
 
+// ── Advance List Item (with redemption, incl. no-purchase 5% penalty withdrawal) ──────────
+
+function productLabel(item: InventoryItem) {
+  return typeof item.product_id === 'object' ? item.product_id.name : item.unique_item_code;
+}
+
+const NO_PURCHASE_PENALTY_PCT = 5;
+
+function AdvanceListItem({
+  advance, orders, onChanged, onReceipt,
+}: {
+  advance: CustomerAdvance;
+  orders: InventoryItem[];
+  onChanged: (updated: CustomerAdvance) => void;
+  onReceipt: () => void;
+}) {
+  const [showRedeem, setShowRedeem] = useState(false);
+  const [redeemAmount, setRedeemAmount] = useState('');
+  const [redeemRef, setRedeemRef] = useState('');
+  const [manualRef, setManualRef] = useState(false);
+  const [redeemNote, setRedeemNote] = useState('');
+  const [redeemLoading, setRedeemLoading] = useState(false);
+  const [noPurchase, setNoPurchase] = useState(false);
+  const creator = advance.createdBy && typeof advance.createdBy === 'object' ? advance.createdBy.name : null;
+  const redeemableSales = orders.filter(o => o.sale_reference);
+  const redeemAmtNum = parseFloat(redeemAmount) || 0;
+  const noPurchasePenalty = Math.round(redeemAmtNum * NO_PURCHASE_PENALTY_PCT / 100);
+  const noPurchasePayout = redeemAmtNum - noPurchasePenalty;
+
+  async function handleRedeem() {
+    const amt = parseFloat(redeemAmount);
+    if (!amt || amt <= 0) return;
+    if (amt > advance.availableBalance + 0.5) { alert(`Exceeds available balance of ${fmtMoney(advance.availableBalance)}`); return; }
+    const confirmMsg = noPurchase
+      ? `Withdraw ${fmtMoney(amt)} for ${advance.customerName} with no purchase? A ${NO_PURCHASE_PENALTY_PCT}% penalty (${fmtMoney(noPurchasePenalty)}) will be deducted — they'll receive ${fmtMoney(noPurchasePayout)}.`
+      : `Redeem ${fmtMoney(amt)} for ${advance.customerName}?`;
+    if (!confirm(confirmMsg)) return;
+    setRedeemLoading(true);
+    try {
+      const makingChargesDiscount = Math.round(amt * (advance.making_charges_waiver_pct || 0) / 100);
+      const updated = await redeemCustomerAdvance(advance._id, {
+        amount: amt,
+        making_charges_discount: makingChargesDiscount,
+        saleReference: noPurchase ? undefined : redeemRef,
+        note: redeemNote,
+        no_purchase: noPurchase,
+      });
+      onChanged(updated);
+      setShowRedeem(false);
+      setRedeemAmount(''); setRedeemRef(''); setManualRef(false); setRedeemNote(''); setNoPurchase(false);
+      toast.success('Redemption recorded');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to redeem balance');
+    } finally {
+      setRedeemLoading(false);
+    }
+  }
+
+  return (
+    <div className="border border-slate-100 rounded-2xl p-4">
+      <div className="flex items-start justify-between mb-2">
+        <div>
+          <p className="text-sm font-black text-slate-900">{fmtMoney(advance.amount)}</p>
+          <p className="text-[10px] text-slate-400 mt-0.5">
+            {fmt(advance.createdAt)} · {advance.mode.replace('_', ' ')}{creator && ` · by ${creator}`}
+          </p>
+        </div>
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex items-center gap-1.5">
+            <button onClick={onReceipt} className="px-2 py-1 rounded-full text-[8px] font-black uppercase border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-all">
+              Receipt
+            </button>
+            <span className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase border ${advance.status === 'active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+              {advance.status}
+            </span>
+          </div>
+          {advance.locked && (
+            <span className="px-2 py-0.5 rounded-full text-[8px] font-black uppercase border bg-amber-50 text-amber-700 border-amber-200">
+              Locked till {fmt(advance.lock_in_expires_at!)}
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-2 mb-2">
+        <div className="rounded-xl p-2.5 bg-slate-50 border border-slate-100">
+          <p className="text-[8px] font-black uppercase text-slate-300 mb-0.5">Redeemed</p>
+          <p className="text-xs font-bold text-slate-800">{fmtMoney(advance.amountRedeemed || 0)}</p>
+        </div>
+        <div className="rounded-xl p-2.5 bg-emerald-50 border border-emerald-100">
+          <p className="text-[8px] font-black uppercase text-emerald-400 mb-0.5">Available</p>
+          <p className="text-xs font-bold text-emerald-700">{fmtMoney(advance.availableBalance)}</p>
+        </div>
+        <div className="rounded-xl p-2.5 bg-slate-50 border border-slate-100">
+          <p className="text-[8px] font-black uppercase text-slate-300 mb-0.5">Waiver</p>
+          <p className="text-xs font-bold text-slate-800">{advance.making_charges_waiver_pct || 0}%</p>
+        </div>
+      </div>
+      {advance.note && <p className="text-[10px] text-slate-400 italic mb-2">{advance.note}</p>}
+
+      {(advance.redemptionHistory?.length ?? 0) > 0 && (
+        <div className="mt-2 mb-2 space-y-1.5">
+          <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Redemption History</p>
+          {advance.redemptionHistory.map((r, i) => (
+            <div key={i} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
+              <div>
+                <p className="text-[11px] font-bold text-slate-900">
+                  {fmtMoney(r.amount)}
+                  {r.making_charges_discount > 0 && <span className="text-[9px] font-bold text-blue-600"> · {fmtMoney(r.making_charges_discount)} waived</span>}
+                </p>
+                <p className="text-[9px] text-slate-400">{fmt(r.date)}{r.saleReference ? ` · Bill: ${r.saleReference}` : ''}</p>
+                {r.note && <p className="text-[9px] text-slate-400 italic">{r.note}</p>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {(advance.forfeitureHistory?.length ?? 0) > 0 && (
+        <div className="mb-2 space-y-1.5">
+          <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Penalties &amp; Forfeitures</p>
+          {advance.forfeitureHistory.map((f, i) => (
+            <div key={i} className="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2 border border-amber-100">
+              <div>
+                <p className="text-[11px] font-bold text-slate-900">{fmtMoney(f.amount)}</p>
+                <p className="text-[9px] text-amber-700 italic">{f.reason || 'Kept by store'} · {fmt(f.date)}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {advance.status === 'active' && advance.availableBalance > 0 && advance.locked && (
+        <div className="flex items-center gap-2 px-4 py-3 bg-amber-50 border border-amber-100 rounded-xl text-xs text-amber-700 font-bold">
+          Locked until {fmt(advance.lock_in_expires_at!)} — cannot be redeemed yet.
+        </div>
+      )}
+
+      {advance.status === 'active' && advance.availableBalance > 0 && !advance.locked && (
+        !showRedeem ? (
+          <button
+            onClick={() => setShowRedeem(true)}
+            className="w-full py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 transition-all"
+            style={{ borderColor: PRIMARY, color: PRIMARY }}
+          >
+            Process Redemption
+          </button>
+        ) : (
+          <div className="border border-slate-200 rounded-xl p-4 space-y-2.5" style={{ background: `${PRIMARY}08` }}>
+            <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: PRIMARY }}>Process Redemption</p>
+            <input
+              type="number" min="1" max={advance.availableBalance} value={redeemAmount}
+              onChange={e => setRedeemAmount(e.target.value)}
+              placeholder={`Amount to redeem (max ${fmtMoney(advance.availableBalance)})`}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none bg-white"
+            />
+            <label className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl border border-amber-200 bg-amber-50 cursor-pointer">
+              <input
+                type="checkbox" checked={noPurchase}
+                onChange={e => { setNoPurchase(e.target.checked); if (e.target.checked) { setRedeemRef(''); setManualRef(false); } }}
+                className="mt-0.5 w-3.5 h-3.5 rounded accent-amber-600 flex-shrink-0"
+              />
+              <span className="text-[10px] font-bold text-amber-800 leading-snug">
+                No purchase — cash withdrawal ({NO_PURCHASE_PENALTY_PCT}% penalty applies)
+                {noPurchase && redeemAmtNum > 0 && (
+                  <span className="block mt-1 text-amber-700">
+                    Penalty: {fmtMoney(noPurchasePenalty)} · Customer receives: <b>{fmtMoney(noPurchasePayout)}</b>
+                  </span>
+                )}
+              </span>
+            </label>
+            {!noPurchase && (
+              !manualRef ? (
+                <div className="space-y-1.5">
+                  <select
+                    value={redeemRef}
+                    onChange={e => {
+                      if (e.target.value === '__manual__') { setManualRef(true); setRedeemRef(''); }
+                      else setRedeemRef(e.target.value);
+                    }}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none bg-white"
+                  >
+                    <option value="">Link to a sale (optional)</option>
+                    {redeemableSales.map(o => (
+                      <option key={o._id} value={o.sale_reference}>
+                        {o.sale_reference} · {productLabel(o)} · {fmtMoney(o.selling_price)}
+                      </option>
+                    ))}
+                    <option value="__manual__">Other / not in system — enter manually</option>
+                  </select>
+                  {redeemableSales.length === 0 && (
+                    <p className="text-[10px] text-slate-400 font-medium px-1">No recorded sales found for this customer yet.</p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <input
+                    type="text" value={redeemRef} onChange={e => setRedeemRef(e.target.value)}
+                    placeholder="Bill / sale reference"
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => { setManualRef(false); setRedeemRef(''); }}
+                    className="text-[10px] font-black uppercase tracking-widest px-1"
+                    style={{ color: PRIMARY }}
+                  >
+                    ← Pick from recorded sales instead
+                  </button>
+                </div>
+              )
+            )}
+            <input
+              type="text" value={redeemNote} onChange={e => setRedeemNote(e.target.value)}
+              placeholder="Note (optional)"
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none bg-white"
+            />
+            <div className="flex gap-3">
+              <button onClick={() => setShowRedeem(false)} className="flex-1 py-2.5 border border-slate-200 text-slate-600 text-[10px] font-black uppercase rounded-xl hover:bg-slate-50 transition-all">
+                Cancel
+              </button>
+              <button onClick={handleRedeem} disabled={redeemLoading || !redeemAmount}
+                className="flex-1 py-2.5 text-white text-[10px] font-black uppercase rounded-xl transition-all disabled:opacity-50" style={{ background: PRIMARY }}>
+                {redeemLoading ? 'Processing...' : 'Confirm Redemption'}
+              </button>
+            </div>
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
 // ── Customer Drawer ───────────────────────────────────────────────────────────
 
 function CustomerDrawer({ customer, onClose, onUpdated }: { customer: FullCustomer; onClose: () => void; onUpdated: (c: FullCustomer) => void }) {
@@ -1582,51 +1818,15 @@ function CustomerDrawer({ customer, onClose, onUpdated }: { customer: FullCustom
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {advances.map(a => {
-                    const creator = a.createdBy && typeof a.createdBy === 'object' ? a.createdBy.name : null;
-                    return (
-                    <div key={a._id} className="border border-slate-100 rounded-2xl p-4">
-                      <div className="flex items-start justify-between mb-2">
-                        <div>
-                          <p className="text-sm font-black text-slate-900">{fmtMoney(a.amount)}</p>
-                          <p className="text-[10px] text-slate-400 mt-0.5">
-                            {fmt(a.createdAt)} · {a.mode.replace('_', ' ')}{creator && ` · by ${creator}`}
-                          </p>
-                        </div>
-                        <div className="flex flex-col items-end gap-1">
-                          <div className="flex items-center gap-1.5">
-                            <button onClick={() => setReceiptAdvance(a)} className="px-2 py-1 rounded-full text-[8px] font-black uppercase border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-all">
-                              Receipt
-                            </button>
-                            <span className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase border ${a.status === 'active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
-                              {a.status}
-                            </span>
-                          </div>
-                          {a.locked && (
-                            <span className="px-2 py-0.5 rounded-full text-[8px] font-black uppercase border bg-amber-50 text-amber-700 border-amber-200">
-                              Locked till {fmt(a.lock_in_expires_at!)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-3 gap-2 mb-2">
-                        <div className="rounded-xl p-2.5 bg-slate-50 border border-slate-100">
-                          <p className="text-[8px] font-black uppercase text-slate-300 mb-0.5">Redeemed</p>
-                          <p className="text-xs font-bold text-slate-800">{fmtMoney(a.amountRedeemed || 0)}</p>
-                        </div>
-                        <div className="rounded-xl p-2.5 bg-emerald-50 border border-emerald-100">
-                          <p className="text-[8px] font-black uppercase text-emerald-400 mb-0.5">Available</p>
-                          <p className="text-xs font-bold text-emerald-700">{fmtMoney(a.availableBalance)}</p>
-                        </div>
-                        <div className="rounded-xl p-2.5 bg-slate-50 border border-slate-100">
-                          <p className="text-[8px] font-black uppercase text-slate-300 mb-0.5">Waiver</p>
-                          <p className="text-xs font-bold text-slate-800">{a.making_charges_waiver_pct || 0}%</p>
-                        </div>
-                      </div>
-                      {a.note && <p className="text-[10px] text-slate-400 italic">{a.note}</p>}
-                    </div>
-                    );
-                  })}
+                  {advances.map(a => (
+                    <AdvanceListItem
+                      key={a._id}
+                      advance={a}
+                      orders={purchases}
+                      onReceipt={() => setReceiptAdvance(a)}
+                      onChanged={updated => setAdvances(prev => prev.map(x => x._id === updated._id ? updated : x))}
+                    />
+                  ))}
                 </div>
               )}
             </div>

@@ -232,7 +232,10 @@ export default function AdvanceReceiptModal({ advance, onClose }: AdvanceReceipt
                 {advance.redemptionHistory.map((r, i) => (
                   <tr key={i} style={{ borderBottom: '1px dotted #eee' }}>
                     <td style={{ padding: '4px 0' }}>{fmtDate(r.date)}</td>
-                    <td style={{ padding: '4px 0', fontFamily: 'monospace' }}>{r.saleReference || '—'}</td>
+                    <td style={{ padding: '4px 0', fontFamily: 'monospace' }}>
+                      {r.saleReference || '—'}
+                      {r.note && <div style={{ fontFamily: 'inherit', color: '#888', fontSize: '8px', marginTop: '1px' }}>{r.note}</div>}
+                    </td>
                     <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: 700 }}>{fmt(r.amount)}</td>
                   </tr>
                 ))}
@@ -240,6 +243,31 @@ export default function AdvanceReceiptModal({ advance, onClose }: AdvanceReceipt
             </table>
           )}
         </div>
+
+        {/* Penalties / Forfeitures — e.g. the 5% deduction on a no-purchase cash withdrawal */}
+        {(advance.forfeitureHistory?.length ?? 0) > 0 && (
+          <div style={{ padding: '0 20px 12px' }}>
+            <div style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '6px' }}>Penalties &amp; Forfeitures</div>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #ddd', color: '#666' }}>
+                  <th style={{ textAlign: 'left', padding: '3px 0' }}>Date</th>
+                  <th style={{ textAlign: 'left', padding: '3px 0' }}>Reason</th>
+                  <th style={{ textAlign: 'right', padding: '3px 0' }}>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {advance.forfeitureHistory!.map((f, i) => (
+                  <tr key={i} style={{ borderBottom: '1px dotted #eee' }}>
+                    <td style={{ padding: '4px 0' }}>{fmtDate(f.date)}</td>
+                    <td style={{ padding: '4px 0' }}>{f.reason || '—'}</td>
+                    <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: 700, color: '#b3122e' }}>{fmt(f.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         <div style={{ padding: '10px 20px', borderTop: '1.5px solid #000', fontSize: '8.5px', color: '#666', textAlign: 'center' }}>
           This is a computer-generated advance receipt. E&amp;OE.

@@ -1240,6 +1240,7 @@ export interface CustomerAdvance {
   branch_id?: string | { _id: string; name: string; code?: string; address?: string; city?: string; state?: string; pincode?: string; phone?: string; gstin?: string } | null;
   amount: number;
   amountRedeemed: number;
+  amountForfeited: number;
   availableBalance: number;
   making_charges_waiver_pct: number;
   mode: string;
@@ -1257,6 +1258,12 @@ export interface CustomerAdvance {
     date: string;
     saleReference?: string;
     note?: string;
+  }[];
+  forfeitureHistory: {
+    amount: number;
+    reason?: string;
+    date: string;
+    reference?: string;
   }[];
 }
 
@@ -1285,6 +1292,8 @@ export const redeemCustomerAdvance = (id: string, data: {
   making_charges_discount?: number;
   saleReference?: string;
   note?: string;
+  /** Customer is withdrawing cash without buying anything — a 5% penalty is deducted and kept by the store */
+  no_purchase?: boolean;
 }) => request<CustomerAdvance>(`/customers/advances/${id}/redeem`, { method: 'POST', body: JSON.stringify(data) });
 
 export interface AdvanceAnalytics {
