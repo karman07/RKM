@@ -2623,6 +2623,8 @@ export const redeemCustomerAdvance = (id: string, data: {
   making_charges_discount?: number;
   saleReference?: string;
   note?: string;
+  /** Customer is withdrawing cash without buying anything — a 5% penalty is deducted and kept by the store */
+  no_purchase?: boolean;
 }) => request<CustomerAdvance>(`/customers/advances/${id}/redeem`, { method: 'POST', body: JSON.stringify(data) });
 
 export interface AdvanceAnalytics {
