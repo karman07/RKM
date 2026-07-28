@@ -242,12 +242,13 @@ export const updateCustomer = (id: string, data: CustomerProfileFields & { name?
 
 export interface CustomerAdvance {
   _id: string;
-  customer: string;
+  customer: string | { _id: string; name?: string; phone?: string; address?: string; city?: string; state?: string; pincode?: string; country?: string };
   customerName: string;
   customerPhone: string;
   branch_id?: string | { _id: string; name: string; code?: string; address?: string; city?: string; state?: string; pincode?: string; phone?: string; gstin?: string } | null;
   amount: number;
   amountRedeemed: number;
+  amountForfeited: number;
   availableBalance: number;
   making_charges_waiver_pct: number;
   mode: string;
@@ -265,6 +266,12 @@ export interface CustomerAdvance {
     date: string;
     saleReference?: string;
     note?: string;
+  }[];
+  forfeitureHistory: {
+    amount: number;
+    reason?: string;
+    date: string;
+    reference?: string;
   }[];
 }
 

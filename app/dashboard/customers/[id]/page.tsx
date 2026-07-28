@@ -443,7 +443,7 @@ export default function CustomerDetailPage() {
               <h1 className="text-xl font-black text-slate-900">{customer.name}</h1>
               <p className="text-sm text-slate-500 font-medium mt-0.5">{customer.phone}{customer.email ? ` · ${customer.email}` : ''}</p>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                ID: {customer._id.slice(-8).toUpperCase()}
+                ID: RKM{customer._id.slice(-8).toUpperCase()}
                 {(customer.city || customer.state) && ` · ${[customer.city, customer.state].filter(Boolean).join(', ')}`}
               </p>
             </div>
