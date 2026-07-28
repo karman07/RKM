@@ -5,9 +5,11 @@ import Link from 'next/link';
 import {
   getCustomerById, getMyEnquiries, getCustomerPurchases, getCustomerGoldBalance, getCustomerCustomFields,
   updateCustomer, uploadUserAvatar, generateCertificate, staticUrl, checkSessionExpiry, GST_TREATMENTS,
-  type FullCustomer, type SaleEnquiry, type InventoryItem, type GoldBalance, type EmployeeCustomField, type ContactPerson,
+  getCustomerAdvances, createCustomerAdvance,
+  type FullCustomer, type SaleEnquiry, type InventoryItem, type GoldBalance, type EmployeeCustomField, type ContactPerson, type CustomerAdvance,
 } from '../../../../lib/api';
 import Modal from '../../../../components/Modal';
+import AdvanceReceiptModal from '../../../../components/AdvanceReceiptModal';
 
 function fmt(d: string) {
   return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -316,11 +318,25 @@ export default function CustomerDetailPage() {
   const [plans, setPlans] = useState<GoldBalance[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingHistory, setLoadingHistory] = useState(true);
-  const [tab, setTab] = useState<'enquiries' | 'purchases' | 'plans'>('enquiries');
+  const [tab, setTab] = useState<'enquiries' | 'purchases' | 'plans' | 'advances'>('enquiries');
   const [customFieldDefs, setCustomFieldDefs] = useState<EmployeeCustomField[]>([]);
   const [showEdit, setShowEdit] = useState(false);
   const [certGeneratingId, setCertGeneratingId] = useState<string | null>(null);
   const [certError, setCertError] = useState('');
+
+  // Customer advances (money taken against a future purchase)
+  const [advances, setAdvances] = useState<CustomerAdvance[]>([]);
+  const [loadingAdvances, setLoadingAdvances] = useState(true);
+  const [showAddAdvance, setShowAddAdvance] = useState(false);
+  const [advAmount, setAdvAmount] = useState('');
+  const [advWaiverPct, setAdvWaiverPct] = useState('');
+  const [advMode, setAdvMode] = useState('cash');
+  const [advLockInDays, setAdvLockInDays] = useState(0);
+  const [advCustomLock, setAdvCustomLock] = useState(false);
+  const [advNote, setAdvNote] = useState('');
+  const [savingAdvance, setSavingAdvance] = useState(false);
+  const [advanceError, setAdvanceError] = useState('');
+  const [receiptAdvance, setReceiptAdvance] = useState<CustomerAdvance | null>(null);
 
   async function handleGenerateCertificate(item: InventoryItem) {
     setCertGeneratingId(item._id);
@@ -332,6 +348,30 @@ export default function CustomerDetailPage() {
       setCertError(e.message || 'Certificate generation failed');
     } finally {
       setCertGeneratingId(null);
+    }
+  }
+
+  async function handleAddAdvance() {
+    const amt = parseFloat(advAmount);
+    if (!amt || amt <= 0) return;
+    setAdvanceError('');
+    setSavingAdvance(true);
+    try {
+      const created = await createCustomerAdvance(id, {
+        amount: amt,
+        making_charges_waiver_pct: parseFloat(advWaiverPct) || 0,
+        mode: advMode,
+        note: advNote || undefined,
+        lock_in_days: advLockInDays || 0,
+      });
+      setAdvances(prev => [created, ...prev]);
+      setShowAddAdvance(false);
+      setAdvAmount(''); setAdvWaiverPct(''); setAdvNote(''); setAdvLockInDays(0); setAdvCustomLock(false);
+      setReceiptAdvance(created);
+    } catch (e: any) {
+      setAdvanceError(e?.message || 'Failed to record advance');
+    } finally {
+      setSavingAdvance(false);
     }
   }
 
@@ -350,6 +390,8 @@ export default function CustomerDetailPage() {
           const cid = typeof e.customer_id === 'object' ? e.customer_id._id : e.customer_id;
           return cid === id;
         }));
+        setLoadingAdvances(true);
+        getCustomerAdvances(id).catch(() => []).then(setAdvances).finally(() => setLoadingAdvances(false));
         if (c?.phone) {
           setLoadingHistory(true);
           Promise.all([
@@ -380,7 +422,9 @@ export default function CustomerDetailPage() {
     { id: 'enquiries', label: 'Enquiries', count: enquiries.length },
     { id: 'purchases', label: 'Purchase History', count: purchases.length },
     { id: 'plans', label: 'Investment Plans', count: plans.length },
+    { id: 'advances', label: 'Advances', count: advances.length },
   ];
+  const totalAdvanceBalance = advances.reduce((s, a) => s + a.availableBalance, 0);
 
   return (
     <div className="p-5 sm:p-8 max-w-4xl mx-auto min-h-full space-y-6 pb-20">
@@ -589,6 +633,154 @@ export default function CustomerDetailPage() {
             </div>
           )
         )}
+
+        {/* ── Advances ── */}
+        {tab === 'advances' && (
+          <div className="p-4 sm:p-6 space-y-4">
+            <div className="rounded-2xl p-5 border" style={{ background: '#5A0F1A0a', borderColor: '#5A0F1A25' }}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-[#5A0F1A]">Advance Balance</p>
+                  <p className="text-2xl font-black text-slate-900 mt-1">{rupee(totalAdvanceBalance)}</p>
+                  <p className="text-[10px] text-slate-400 font-medium mt-0.5">Available to redeem</p>
+                </div>
+                <button
+                  onClick={() => setShowAddAdvance(v => !v)}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[11px] font-black text-white transition-all bg-[#5A0F1A] hover:bg-[#7A1C2A]"
+                >
+                  <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+                  Add Advance
+                </button>
+              </div>
+            </div>
+
+            {showAddAdvance && (
+              <div className="border border-slate-200 rounded-2xl p-5 space-y-3">
+                <div>
+                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Amount (₹) *</label>
+                  <input type="number" min="1" value={advAmount} onChange={e => setAdvAmount(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none" />
+                </div>
+                <div>
+                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Making Charges Waiver (%)</label>
+                  <input type="number" min="0" max="100" step="0.1" value={advWaiverPct} onChange={e => setAdvWaiverPct(e.target.value)}
+                    placeholder="0"
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none" />
+                </div>
+                <div>
+                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Mode</label>
+                  <select value={advMode} onChange={e => setAdvMode(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none bg-white">
+                    {['cash', 'bank_transfer', 'upi', 'cheque'].map(m => (
+                      <option key={m} value={m}>{m.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Lock-in Period</label>
+                  <div className="grid grid-cols-4 gap-2 mb-2">
+                    {[{ label: 'No Lock', days: 0 }, { label: '30 Days', days: 30 }, { label: '60 Days', days: 60 }, { label: '90 Days', days: 90 }].map(p => (
+                      <button
+                        key={p.days}
+                        type="button"
+                        onClick={() => { setAdvLockInDays(p.days); setAdvCustomLock(false); }}
+                        className="px-2 py-2 rounded-xl text-[10px] font-black uppercase tracking-wide border transition-all"
+                        style={!advCustomLock && advLockInDays === p.days ? { background: '#5A0F1A', color: 'white', borderColor: '#5A0F1A' } : { background: 'white', color: '#475569', borderColor: '#e2e8f0' }}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                  <button type="button" onClick={() => setAdvCustomLock(v => !v)} className="text-[10px] font-black text-[#5A0F1A] transition-colors">
+                    {advCustomLock ? '− Hide custom days' : '+ Custom days'}
+                  </button>
+                  {advCustomLock && (
+                    <input type="number" min="0" value={advLockInDays || ''} onChange={e => setAdvLockInDays(parseInt(e.target.value) || 0)}
+                      placeholder="Number of days"
+                      className="w-full mt-2 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none" />
+                  )}
+                  <p className="text-[10px] text-slate-400 font-medium mt-1.5">
+                    {advLockInDays > 0 ? `Cannot be redeemed for ${advLockInDays} day${advLockInDays > 1 ? 's' : ''} from today.` : 'Redeemable anytime once recorded.'}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Note (optional)</label>
+                  <input value={advNote} onChange={e => setAdvNote(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none" />
+                </div>
+                {advanceError && <p className="text-xs text-red-600 font-bold">{advanceError}</p>}
+                <div className="flex gap-3 pt-1">
+                  <button onClick={() => setShowAddAdvance(false)} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors">
+                    Cancel
+                  </button>
+                  <button onClick={handleAddAdvance} disabled={savingAdvance || !advAmount || parseFloat(advAmount) <= 0}
+                    className="flex-1 py-2.5 rounded-xl text-white text-sm font-black transition-colors disabled:opacity-40 bg-[#5A0F1A] hover:bg-[#7A1C2A]">
+                    {savingAdvance ? 'Saving…' : 'Record Advance'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {loadingAdvances ? (
+              <div className="flex justify-center py-16">
+                <div className="w-6 h-6 border-2 border-[#5A0F1A]/20 border-t-[#5A0F1A] rounded-full animate-spin" />
+              </div>
+            ) : advances.length === 0 ? (
+              <div className="text-center py-16">
+                <p className="text-slate-400 font-bold text-sm">No advances recorded</p>
+                <p className="text-slate-300 text-xs mt-1">Record an advance payment to track it here.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {advances.map(a => {
+                  const creator = a.createdBy && typeof a.createdBy === 'object' ? a.createdBy.name : null;
+                  return (
+                    <div key={a._id} className="border border-slate-100 rounded-2xl p-4">
+                      <div className="flex items-start justify-between mb-2">
+                        <div>
+                          <p className="text-sm font-black text-slate-900">{rupee(a.amount)}</p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">
+                            {fmt(a.createdAt)} · {a.mode.replace('_', ' ')}{creator && ` · by ${creator}`}
+                          </p>
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          <div className="flex items-center gap-1.5">
+                            <button onClick={() => setReceiptAdvance(a)} className="px-2 py-1 rounded-full text-[8px] font-black uppercase border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-all">
+                              Receipt
+                            </button>
+                            <span className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase border ${a.status === 'active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+                              {a.status}
+                            </span>
+                          </div>
+                          {a.locked && (
+                            <span className="px-2 py-0.5 rounded-full text-[8px] font-black uppercase border bg-amber-50 text-amber-700 border-amber-200">
+                              Locked till {fmt(a.lock_in_expires_at!)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 mb-2">
+                        <div className="rounded-xl p-2.5 bg-slate-50 border border-slate-100">
+                          <p className="text-[8px] font-black uppercase text-slate-300 mb-0.5">Redeemed</p>
+                          <p className="text-xs font-bold text-slate-800">{rupee(a.amountRedeemed || 0)}</p>
+                        </div>
+                        <div className="rounded-xl p-2.5 bg-emerald-50 border border-emerald-100">
+                          <p className="text-[8px] font-black uppercase text-emerald-400 mb-0.5">Available</p>
+                          <p className="text-xs font-bold text-emerald-700">{rupee(a.availableBalance)}</p>
+                        </div>
+                        <div className="rounded-xl p-2.5 bg-slate-50 border border-slate-100">
+                          <p className="text-[8px] font-black uppercase text-slate-300 mb-0.5">Waiver</p>
+                          <p className="text-xs font-bold text-slate-800">{a.making_charges_waiver_pct || 0}%</p>
+                        </div>
+                      </div>
+                      {a.note && <p className="text-[10px] text-slate-400 italic">{a.note}</p>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <EditCustomerModal
@@ -598,6 +790,10 @@ export default function CustomerDetailPage() {
         onClose={() => setShowEdit(false)}
         onSaved={(updated) => { setCustomer(updated); setShowEdit(false); }}
       />
+
+      {receiptAdvance && (
+        <AdvanceReceiptModal advance={receiptAdvance} onClose={() => setReceiptAdvance(null)} />
+      )}
     </div>
   );
 }

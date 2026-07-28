@@ -238,6 +238,51 @@ export const createCustomer = (data: CustomerProfileFields & { name: string; pho
 export const updateCustomer = (id: string, data: CustomerProfileFields & { name?: string }) =>
   request<FullCustomer>(`/customers/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
 
+// ── Customer Advances (money taken against a future purchase) ────────────────
+
+export interface CustomerAdvance {
+  _id: string;
+  customer: string;
+  customerName: string;
+  customerPhone: string;
+  branch_id?: string | { _id: string; name: string; code?: string; address?: string; city?: string; state?: string; pincode?: string; phone?: string; gstin?: string } | null;
+  amount: number;
+  amountRedeemed: number;
+  availableBalance: number;
+  making_charges_waiver_pct: number;
+  mode: string;
+  payment_splits?: { mode: string; amount: number; reference?: string }[];
+  note: string;
+  status: 'active' | 'closed';
+  lock_in_days: number;
+  lock_in_expires_at: string | null;
+  locked: boolean;
+  createdBy?: string | { _id: string; name: string; role?: string } | null;
+  createdAt: string;
+  redemptionHistory: {
+    amount: number;
+    making_charges_discount: number;
+    date: string;
+    saleReference?: string;
+    note?: string;
+  }[];
+}
+
+/** Lists all advances recorded for a customer */
+export const getCustomerAdvances = (customerId: string) =>
+  request<CustomerAdvance[]>(`/customers/${customerId}/advances`);
+
+/** Records a new advance payment taken from a customer */
+export const createCustomerAdvance = (customerId: string, data: {
+  amount: number;
+  making_charges_waiver_pct?: number;
+  mode?: string;
+  payment_splits?: { mode: string; amount: number; reference?: string }[];
+  branch_id?: string;
+  note?: string;
+  lock_in_days?: number;
+}) => request<CustomerAdvance>(`/customers/${customerId}/advances`, { method: 'POST', body: JSON.stringify(data) });
+
 // ── Inventory (read-only catalog browse) ─────────────────────────────────────
 
 export interface InventoryProduct {
