@@ -132,7 +132,7 @@ export default function AccountStatementModal({ customer, rows, totalCredit, tot
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: '8px', fontWeight: 700, color: '#555', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '4px' }}>Customer ID</div>
-            <div style={{ fontFamily: 'monospace', fontWeight: 700 }}>{customer._id.slice(-8).toUpperCase()}</div>
+            <div style={{ fontFamily: 'monospace', fontWeight: 700 }}>RKM{customer._id.slice(-8).toUpperCase()}</div>
             {customer.createdAt && <div style={{ marginTop: '2px' }}>Member Since: {fmtDate(customer.createdAt)}</div>}
           </div>
         </div>

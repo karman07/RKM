@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { staticUrl, getSettings, updateInventoryStatus, type InventoryItem, type AppSettings } from '@/lib/api';
+import { staticUrl, getSettings, updateInventoryStatus, searchCustomersByPhone, type InventoryItem, type AppSettings } from '@/lib/api';
 import { downloadElementAsPdf, shareElementAsPdf } from '@/lib/pdf-utils';
 
 interface TaxEntry { name: string; percentage: number }
@@ -234,6 +234,19 @@ function RefundModal({ items, onClose, onSuccess }: { items: InventoryItem[]; on
 export default function BillModal({ items, date, onClose, onRefunded }: BillModalProps) {
   const [showRefundModal, setShowRefundModal] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState<'download' | 'share' | null>(null);
+  const [customerRecordId, setCustomerRecordId] = useState<string | null>(null);
+
+  // Sold items only keep a denormalized name/phone/email snapshot, not a Customer ref — look
+  // the customer record up by phone so the invoice can show their account ID (RKM-prefixed).
+  const soldPhone = items[0]?.sold_customer_phone;
+  useEffect(() => {
+    if (!soldPhone) { setCustomerRecordId(null); return; }
+    let cancelled = false;
+    searchCustomersByPhone(soldPhone)
+      .then(res => { if (!cancelled) setCustomerRecordId(res.data?.[0]?._id ?? null); })
+      .catch(() => { if (!cancelled) setCustomerRecordId(null); });
+    return () => { cancelled = true; };
+  }, [soldPhone]);
 
   const handleDownload = async () => {
     setGeneratingPdf('download');
@@ -555,6 +568,7 @@ ${billEl.outerHTML}
             <div style={{ fontSize: '8px', fontWeight: 700, color: '#555', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '3px' }}>Customer Details</div>
             <div style={{ fontWeight: 700, fontSize: '11px', marginBottom: '2px' }}>{customer?.sold_customer_name ?? 'Walk-in Customer'}</div>
             <div style={{ fontSize: '9px', lineHeight: 1.65, color: '#333' }}>
+              {customerRecordId && <div>Customer ID: <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>RKM{customerRecordId.slice(-8).toUpperCase()}</span></div>}
               {customer?.sold_customer_phone && <div>Phone: {customer.sold_customer_phone}</div>}
               {customer?.sold_customer_email && <div>Email: {customer.sold_customer_email}</div>}
               {customer?.shipping_address

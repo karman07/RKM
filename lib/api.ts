@@ -2562,7 +2562,7 @@ export const uploadGoldLoanSignedClosureCertificate = async (id: string, file: F
 
 export interface CustomerAdvance {
   _id: string;
-  customer: string;
+  customer: string | { _id: string; name?: string; phone?: string; address?: string; city?: string; state?: string; pincode?: string; country?: string };
   customerName: string;
   customerPhone: string;
   branch_id?: string | { _id: string; name: string; code?: string; address?: string; city?: string; state?: string; pincode?: string; phone?: string; gstin?: string } | null;

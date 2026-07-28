@@ -38,7 +38,18 @@ export default function AdvanceReceiptModal({ advance, onClose }: AdvanceReceipt
   ].filter(Boolean);
   const branchAddress = branchAddressParts.join(', ') || '';
 
-  const customerId = advance.customer ? advance.customer.slice(-8).toUpperCase() : '—';
+  // Customer details (actual data from the customer ref, when populated)
+  const customerObj = advance.customer && typeof advance.customer === 'object' ? advance.customer as any : null;
+  const customerId = customerObj
+    ? `RKM${customerObj._id.slice(-8).toUpperCase()}`
+    : typeof advance.customer === 'string' ? `RKM${advance.customer.slice(-8).toUpperCase()}` : '—';
+  const customerAddressParts = [
+    customerObj?.address,
+    customerObj?.city,
+    customerObj?.state,
+    customerObj?.pincode ? `- ${customerObj.pincode}` : null,
+  ].filter(Boolean);
+  const customerAddress = customerAddressParts.join(', ') || '';
 
   const handleDownload = async () => {
     setGeneratingPdf('download');
@@ -131,6 +142,7 @@ export default function AdvanceReceiptModal({ advance, onClose }: AdvanceReceipt
             <div style={{ fontSize: '8px', fontWeight: 700, color: '#555', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '4px' }}>Customer</div>
             <div style={{ fontWeight: 700, fontSize: '12px', marginBottom: '2px' }}>{advance.customerName}</div>
             {advance.customerPhone && <div>Phone: {advance.customerPhone}</div>}
+            {customerAddress && <div>{customerAddress}</div>}
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: '8px', fontWeight: 700, color: '#555', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '4px' }}>Customer ID</div>

@@ -2133,7 +2133,7 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
                 </span>
                 <span className="w-1.5 h-1.5 rounded-full bg-slate-200 hidden sm:block" />
                 <span className="flex items-center gap-1.5">
-                  <Target size={13} /> ID: {customer._id.slice(-8).toUpperCase()}
+                  <Target size={13} /> ID: RKM{customer._id.slice(-8).toUpperCase()}
                 </span>
               </p>
             </div>
