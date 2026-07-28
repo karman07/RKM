@@ -77,6 +77,7 @@ export class CustomerAdvanceService {
     const populated = await advance.populate([
       { path: 'createdBy', select: 'name role' },
       { path: 'branch_id', select: 'name code address city state pincode phone gstin' },
+      { path: 'customer', select: 'name phone address city state pincode country' },
     ]);
     return this.withBalance(populated);
   }
@@ -87,6 +88,7 @@ export class CustomerAdvanceService {
       .sort({ createdAt: -1 })
       .populate('createdBy', 'name role')
       .populate('branch_id', 'name code address city state pincode phone gstin')
+      .populate('customer', 'name phone address city state pincode country')
       .exec();
     return advances.map(a => this.withBalance(a));
   }
@@ -97,6 +99,7 @@ export class CustomerAdvanceService {
       .sort({ createdAt: -1 })
       .populate('createdBy', 'name role')
       .populate('branch_id', 'name code address city state pincode phone gstin')
+      .populate('customer', 'name phone address city state pincode country')
       .exec();
     return advances.map(a => this.withBalance(a));
   }
@@ -140,6 +143,7 @@ export class CustomerAdvanceService {
     const populated = await advance.populate([
       { path: 'createdBy', select: 'name role' },
       { path: 'branch_id', select: 'name code address city state pincode phone gstin' },
+      { path: 'customer', select: 'name phone address city state pincode country' },
     ]);
     return this.withBalance(populated);
   }
@@ -175,6 +179,7 @@ export class CustomerAdvanceService {
     const populated = await advance.populate([
       { path: 'createdBy', select: 'name role' },
       { path: 'branch_id', select: 'name code address city state pincode phone gstin' },
+      { path: 'customer', select: 'name phone address city state pincode country' },
     ]);
     return this.withBalance(populated);
   }
@@ -215,6 +220,7 @@ export class CustomerAdvanceService {
         .limit(20)
         .populate('createdBy', 'name')
         .populate('branch_id', 'name code address city state pincode phone gstin')
+        .populate('customer', 'name phone address city state pincode country')
         .exec(),
     ]);
 

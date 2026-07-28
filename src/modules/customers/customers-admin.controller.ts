@@ -98,7 +98,7 @@ export class CustomersAdminController {
   /** List all advances recorded for a customer (360 page / ledger) */
   @Get(':id/advances')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER, UserRole.SALES)
   async getAdvancesByCustomer(@Param('id') id: string) {
     return this.customerAdvanceService.getAdvancesByCustomer(id);
   }
@@ -106,7 +106,7 @@ export class CustomersAdminController {
   /** Record a new advance payment taken from a customer */
   @Post(':id/advances')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SALES)
   async createAdvance(
     @Param('id') id: string,
     @Body() body: {
