@@ -1209,7 +1209,7 @@ function CustomerDrawer({ customer, onClose, onUpdated }: { customer: FullCustom
               <h2 className="text-base font-black text-slate-900">{customer.name}</h2>
               <p className="text-[11px] text-slate-400 font-medium">{customer.phone}{customer.email ? ` · ${customer.email}` : ''}</p>
               <p className="text-[10px] text-slate-400 mt-0.5">
-                ID: {customer._id.slice(-8).toUpperCase()}
+                ID: RKM{customer._id.slice(-8).toUpperCase()}
                 {(customer.city || customer.state) && ` · ${[customer.city, customer.state].filter(Boolean).join(', ')}`}
                 {` · Joined ${fmt(customer.createdAt)}`}
               </p>
