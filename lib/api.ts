@@ -1501,6 +1501,9 @@ export const createCustomer = (data: CustomerProfileFields & { name: string; pho
   request<Customer>('/customers', { method: 'POST', body: JSON.stringify(data) });
 export const updateCustomer = (id: string, data: CustomerProfileFields & { name?: string; relationship_manager?: string | null }) =>
   request<Customer>(`/customers/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+/** Admin-only — soft-deletes a customer record (hidden from listings, existing financial records unaffected) */
+export const deleteCustomer = (id: string, reason?: string) =>
+  request<{ deleted: boolean; customer_id: string }>(`/customers/${id}`, { method: 'DELETE', body: JSON.stringify({ reason }) });
 
 // ─── WhatsApp API Helpers ─────────────────────────────────────────────────────
 

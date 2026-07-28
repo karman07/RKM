@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect, use } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   getCustomerById, getInventory, getSubscriptions, redeemSubscription,
   markGoldCashPayment, addInterestToSubscription, getMe, getGoldLoansByCustomer,
   getCustomerAdvances, createCustomerAdvance, redeemCustomerAdvance,
-  updateCustomer, getCustomFields, uploadUserAvatar, getUsers, getSettings, GST_TREATMENTS,
+  updateCustomer, deleteCustomer, getCustomFields, uploadUserAvatar, getUsers, getSettings, GST_TREATMENTS,
   type Customer, type InventoryItem, type GoldSubscription, type User as AdminUser, type GoldLoan,
   type CustomerAdvance, type CustomField, type AppSettings, type ContactPerson, staticUrl,
 } from '@/lib/api';
@@ -23,7 +24,7 @@ import { toast } from 'sonner';
 import {
   Users, Mail, Phone, MapPin, ChevronLeft, Calendar, ShoppingBag,
   CreditCard, Target, ShieldCheck, TrendingUp, Package, Gem, Download, Plus, Wallet, X,
-  Receipt, Lock, Pencil, UserCog, Search, Bookmark, CheckCircle2, AlertTriangle,
+  Receipt, Lock, Pencil, UserCog, Search, Bookmark, CheckCircle2, AlertTriangle, Trash2,
 } from 'lucide-react';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -1958,6 +1959,8 @@ function EditClientModal({
 
 export default function CustomerDetailPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   const params = use(paramsPromise);
+  const router = useRouter();
+  const [deleting, setDeleting] = useState(false);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [orders, setOrders] = useState<InventoryItem[]>([]);
   const [prebookedItems, setPrebookedItems] = useState<InventoryItem[]>([]);
@@ -2063,6 +2066,20 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
     setShowStatement(true);
   }
 
+  async function handleDeleteCustomer() {
+    if (!customer) return;
+    if (!confirm(`Delete ${customer.name}? This removes them from Client Relations. Their existing sales, advances, and loan records are kept for audit purposes.`)) return;
+    setDeleting(true);
+    try {
+      await deleteCustomer(customer._id);
+      toast.success('Customer deleted');
+      router.push('/dashboard/customers');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to delete customer');
+      setDeleting(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="p-12 text-center py-40">
@@ -2140,6 +2157,15 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
           </div>
         </div>
         <div className="flex items-center gap-3 self-start">
+          {me?.role === 'admin' && (
+            <button
+              onClick={handleDeleteCustomer}
+              disabled={deleting}
+              className="inline-flex items-center gap-2 px-5 py-3 bg-white border border-slate-200 text-slate-500 text-[11px] font-black uppercase tracking-widest rounded-2xl hover:border-red-300 hover:text-red-600 transition-all disabled:opacity-50"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> {deleting ? 'Deleting…' : 'Delete'}
+            </button>
+          )}
           <button
             onClick={() => setShowEdit(true)}
             className="inline-flex items-center gap-2 px-5 py-3 bg-white border border-slate-200 text-slate-500 text-[11px] font-black uppercase tracking-widest rounded-2xl hover:border-blue-300 hover:text-blue-600 transition-all"
