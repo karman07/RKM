@@ -42,6 +42,7 @@ import { SmsService } from '../sms/sms.service.js';
 import { EmailService } from '../email/email.service.js';
 import { WhatsAppService } from '../whatsapp/services/whatsapp.service.js';
 import { MiscPaymentsService } from '../misc-payments/misc-payments.service.js';
+import { buildBillPrintHtml, renderBillPdf } from './bill-pdf.builder.js';
 
 // Allowed status transitions
 const STATUS_TRANSITIONS: Record<InventoryStatus, InventoryStatus[]> = {
@@ -170,6 +171,82 @@ export class InventoryService {
         pricing_breakdown: breakdown,
         is_new_stock: isNewStock,
       };
+    });
+  }
+
+  /**
+   * Emails the customer (if they have an address on file) and every admin the exact same Tax
+   * Invoice PDF the admin/manager BillModal renders — same layout, same fields — built
+   * server-side via bill-pdf.builder.ts and Puppeteer so it can be sent automatically the
+   * moment a sale completes, without a staff member opening it.
+   */
+  private async sendBillEmail(savedItem: InventoryItemDocument): Promise<void> {
+    const fullItem = await this.inventoryModel
+      .findById(savedItem._id)
+      .populate({
+        path: 'product_id',
+        select: 'name sku metal_type purity stones wastage_percentage net_weight stone_weight stone_type making_charge_type making_charge_rate fixed_making_charge tax_percentage discount_percentage price_override purchase_price max_manager_discount barcode images dimensions extra_charges gross_weight',
+        populate: { path: 'category_id', select: 'name slug' },
+      })
+      .populate({ path: 'sold_at_branch_id', select: 'name code city address phone email state pincode gstin' })
+      .populate({ path: 'sold_by_user_id', select: 'name email role' })
+      .lean();
+    if (!fullItem) return;
+
+    const [enriched] = await this.enrichItemsWithPricing([fullItem]);
+
+    let customerRecordId: string | null = null;
+    if (savedItem.sold_customer_phone) {
+      const matches = await this.customersService.searchByPhone(savedItem.sold_customer_phone);
+      customerRecordId = (matches?.[0] as any)?._id?.toString() ?? null;
+    }
+
+    const date = new Date(savedItem.sold_at || Date.now()).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    const printHtml = buildBillPrintHtml([enriched], date, customerRecordId);
+    const pdf = await renderBillPdf(printHtml);
+
+    const invoiceNumber = savedItem.sale_reference || savedItem.unique_item_code;
+    const branchName = (enriched as any)?.sold_at_branch_id?.name;
+    const soldBy = (enriched as any)?.sold_by_user_id?.name;
+    const attachments = [{ filename: `Invoice-${invoiceNumber}.pdf`, content: pdf }];
+
+    if (savedItem.sold_customer_email) {
+      const emailHtml = this.emailService.buildBillHtml({
+        customerName: savedItem.sold_customer_name,
+        invoiceNumber,
+        date,
+        amount: savedItem.selling_price,
+        branchName,
+        paymentMode: savedItem.payment_mode,
+      });
+      await this.emailService.sendMail({
+        to: savedItem.sold_customer_email,
+        toName: savedItem.sold_customer_name,
+        subject: `Tax Invoice ${invoiceNumber} | RKM Jewellers`,
+        html: emailHtml,
+        trigger: 'sale_bill',
+        saleReference: savedItem.sale_reference,
+        itemId: savedItem._id?.toString(),
+        attachments,
+      });
+    }
+
+    const adminHtml = this.emailService.buildSaleAdminHtml({
+      customerName: savedItem.sold_customer_name,
+      customerPhone: savedItem.sold_customer_phone,
+      itemName: (enriched as any)?.product_id?.name,
+      itemCode: savedItem.unique_item_code,
+      saleReference: savedItem.sale_reference,
+      amount: savedItem.selling_price,
+      branchName,
+      paymentMode: savedItem.payment_mode,
+      soldBy,
+    });
+    await this.emailService.notifyAdminsByEmail(`New Sale Completed — ${invoiceNumber} | RKM Jewellers`, adminHtml, {
+      trigger: 'sale_bill',
+      saleReference: savedItem.sale_reference,
+      itemId: savedItem._id?.toString(),
+      attachments,
     });
   }
 
@@ -1431,7 +1508,12 @@ export class InventoryService {
           saleReference: savedItem.sale_reference,
           amount: savedItem.selling_price,
           branchName: (savedItem as any).sold_at_branch_id?.name || (savedItem as any).branch_id?.name,
+          paymentMode: savedItem.payment_mode,
         });
+        // Bill email — same Tax Invoice template as the admin/manager BillModal, sent as a PDF attachment.
+        this.sendBillEmail(savedItem).catch(err =>
+          this.logger.error(`[InventoryService] Failed to send bill email: ${err?.message}`),
+        );
       } else if (dto.status === InventoryStatus.RETURNED) {
         this.eventEmitter.emit(SALE_RETURNED_EVENT, {
           customerPhone: savedItem.sold_customer_phone,

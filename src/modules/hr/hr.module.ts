@@ -5,6 +5,7 @@ import { HrService } from './hr.service';
 import { LeaveRequest, LeaveRequestSchema } from './schemas/leave-request.schema';
 import { Reimbursement, ReimbursementSchema } from './schemas/reimbursement.schema';
 import { AttendanceModule } from '../attendance/attendance.module';
+import { EmailModule } from '../email/email.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { AttendanceModule } from '../attendance/attendance.module';
       { name: Reimbursement.name, schema: ReimbursementSchema },
     ]),
     AttendanceModule,
+    EmailModule,
   ],
   controllers: [HrController],
   providers: [HrService],

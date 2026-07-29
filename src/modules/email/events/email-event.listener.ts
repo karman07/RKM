@@ -46,13 +46,19 @@ export class EmailEventListener {
       this.logger.log('[EmailListener] Email notifications disabled, skipping sale_completed');
       return;
     }
-    if (!(await this.isTriggerEnabled('sale_completed'))) return;
 
     const toEmail = (payload as any).customerEmail;
     if (!toEmail) {
       this.logger.log(`[EmailListener] No email for sale ${payload.saleReference}, skipping`);
       return;
     }
+
+    // Note: the Tax Invoice / bill email is sent directly from InventoryService
+    // (see sendBillEmail in inventory.service.ts) — it needs the fully populated,
+    // pricing-enriched item to render the exact same template as the admin/manager
+    // BillModal, which this event's payload doesn't carry.
+
+    if (!(await this.isTriggerEnabled('sale_completed'))) return;
 
     this.logger.log(`[EmailListener] Sending purchase confirmation to ${toEmail}`);
     const html = this.emailService.buildSaleConfirmationHtml({
@@ -68,7 +74,7 @@ export class EmailEventListener {
     await this.emailService.sendMail({
       to: toEmail,
       toName: payload.customerName,
-      subject: `Purchase Confirmed${payload.saleReference ? ` — ${payload.saleReference}` : ''} | RKM Jewels`,
+      subject: `Thank You For Your Purchase${payload.saleReference ? ` — ${payload.saleReference}` : ''} | RKM Jewellers`,
       html,
       trigger: 'sale_completed',
       saleReference: payload.saleReference,

@@ -1,16 +1,20 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { LeaveRequest, LeaveRequestDocument, LeaveStatus } from './schemas/leave-request.schema';
 import { Reimbursement, ReimbursementDocument, ReimbursementStatus } from './schemas/reimbursement.schema';
 import { AttendanceService } from '../attendance/attendance.service';
+import { EmailService } from '../email/email.service';
 
 @Injectable()
 export class HrService {
+  private readonly logger = new Logger(HrService.name);
+
   constructor(
     @InjectModel(LeaveRequest.name) private leaveModel: Model<LeaveRequestDocument>,
     @InjectModel(Reimbursement.name) private reimbursementModel: Model<ReimbursementDocument>,
     private attendanceService: AttendanceService,
+    private emailService: EmailService,
   ) {}
 
   // ─── Leave Requests ──────────────────────────────────────────────────────────
@@ -24,7 +28,30 @@ export class HrService {
       to_date: new Date(data.to_date),
       reason: data.reason,
     });
-    return leave.save();
+    const saved = await leave.save();
+    const populated = await saved.populate([
+      { path: 'manager_id', select: 'name' },
+      { path: 'branch_id', select: 'name' },
+    ]);
+    this.notifyAdminsOfLeaveSubmitted(populated).catch(err =>
+      this.logger.error(`Failed to notify admins of leave submission: ${err?.message}`),
+    );
+    return saved;
+  }
+
+  private async notifyAdminsOfLeaveSubmitted(leave: any) {
+    const employeeName = leave.manager_id && typeof leave.manager_id === 'object' ? leave.manager_id.name : 'A staff member';
+    const branchName = leave.branch_id && typeof leave.branch_id === 'object' ? leave.branch_id.name : undefined;
+    const fmtDate = (d: Date) => new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    const html = this.emailService.buildLeaveAdminHtml({
+      employeeName,
+      leaveType: leave.leave_type,
+      fromDate: fmtDate(leave.from_date),
+      toDate: fmtDate(leave.to_date),
+      reason: leave.reason,
+      branchName,
+    });
+    await this.emailService.notifyAdminsByEmail('Leave Application Submitted | RKM Jewellers', html, { trigger: 'leave_submitted' });
   }
 
   async getMyLeaves(managerId: string) {
@@ -95,7 +122,28 @@ export class HrService {
       description: data.description,
       receipt_url: data.receipt_url,
     });
-    return reimbursement.save();
+    const saved = await reimbursement.save();
+    const populated = await saved.populate([
+      { path: 'manager_id', select: 'name' },
+      { path: 'branch_id', select: 'name' },
+    ]);
+    this.notifyAdminsOfReimbursementSubmitted(populated).catch(err =>
+      this.logger.error(`Failed to notify admins of reimbursement submission: ${err?.message}`),
+    );
+    return saved;
+  }
+
+  private async notifyAdminsOfReimbursementSubmitted(reimbursement: any) {
+    const employeeName = reimbursement.manager_id && typeof reimbursement.manager_id === 'object' ? reimbursement.manager_id.name : 'A staff member';
+    const branchName = reimbursement.branch_id && typeof reimbursement.branch_id === 'object' ? reimbursement.branch_id.name : undefined;
+    const html = this.emailService.buildReimbursementAdminHtml({
+      employeeName,
+      category: reimbursement.category,
+      amount: reimbursement.amount,
+      description: reimbursement.description,
+      branchName,
+    });
+    await this.emailService.notifyAdminsByEmail('Reimbursement Claim Submitted | RKM Jewellers', html, { trigger: 'reimbursement_submitted' });
   }
 
   async createReimbursementForEmployee(

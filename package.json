@@ -52,8 +52,10 @@
     "passport-jwt": "^4.0.1",
     "pdf-lib": "^1.17.1",
     "pdfkit": "^0.18.0",
+    "puppeteer": "^25.4.0",
     "razorpay": "^2.9.6",
     "reflect-metadata": "^0.2.2",
+    "resend": "^6.18.1",
     "rxjs": "^7.8.1",
     "uuid": "^14.0.0"
   },

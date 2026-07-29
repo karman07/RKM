@@ -13,6 +13,7 @@ import { CustomerJwtStrategy } from './customer-jwt.strategy';
 import { InventoryItem, InventoryItemSchema } from '../inventory/schemas/inventory-item.schema';
 import { OnlineOrder, OnlineOrderSchema } from '../online-orders/schemas/online-order.schema';
 import { CustomFieldsModule } from '../custom-fields/custom-fields.module';
+import { EmailModule } from '../email/email.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { CustomFieldsModule } from '../custom-fields/custom-fields.module';
     }),
     PassportModule.register({ defaultStrategy: 'customer-jwt' }),
     CustomFieldsModule,
+    EmailModule,
   ],
   controllers: [CustomersController, CustomersAdminController],
   providers: [CustomersService, CustomerAdvanceService, CustomerJwtStrategy],

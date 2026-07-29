@@ -4,7 +4,21 @@ import { Document } from 'mongoose';
 export type EmailLogDocument = EmailLog & Document;
 
 export type EmailStatus = 'sent' | 'failed' | 'pending';
-export type EmailTrigger = 'sale_completed' | 'sale_returned' | 'sale_reserved' | 'manual';
+export type EmailTrigger =
+  | 'sale_completed'
+  | 'sale_bill'
+  | 'sale_returned'
+  | 'sale_reserved'
+  | 'advance_created'
+  | 'investment_started'
+  | 'reimbursement_submitted'
+  | 'leave_submitted'
+  | 'manual';
+
+const EMAIL_TRIGGERS: EmailTrigger[] = [
+  'sale_completed', 'sale_bill', 'sale_returned', 'sale_reserved',
+  'advance_created', 'investment_started', 'reimbursement_submitted', 'leave_submitted', 'manual',
+];
 
 @Schema({ timestamps: true, collection: 'email_logs' })
 export class EmailLog {
@@ -26,10 +40,11 @@ export class EmailLog {
   @Prop({ type: String })
   error?: string;
 
+  /** Provider message id (Resend) — kept the historical field name to avoid a migration */
   @Prop({ type: String })
   mailgun_id?: string;
 
-  @Prop({ type: String, enum: ['sale_completed', 'sale_returned', 'sale_reserved', 'manual'], default: 'manual' })
+  @Prop({ type: String, enum: EMAIL_TRIGGERS, default: 'manual' })
   trigger: EmailTrigger;
 
   @Prop({ type: String })

@@ -7,11 +7,13 @@ import { EmailService } from './email.service';
 import { EmailController } from './email.controller';
 import { EmailEventListener } from './events/email-event.listener';
 import { SettingsModule } from '../settings/settings.module';
+import { UsersModule } from '../../users/users.module';
 
 @Module({
   imports: [
     ConfigModule,
     SettingsModule,
+    UsersModule,
     MongooseModule.forFeature([
       { name: EmailLog.name, schema: EmailLogSchema },
       { name: EmailTemplate.name, schema: EmailTemplateSchema },

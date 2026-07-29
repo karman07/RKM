@@ -9,6 +9,7 @@ import * as https from 'https';
 import { InvestmentPlan, InvestmentPlanDocument } from './schemas/investment-plan.schema';
 import { Subscription, SubscriptionDocument, SubscriptionStatus, PaymentMode } from './schemas/subscription.schema';
 import { NotificationsService } from '../notifications/notifications.service';
+import { EmailService } from '../email/email.service';
 import {
   CreateInvestmentPlanDto,
   UpdateInvestmentPlanDto,
@@ -31,6 +32,7 @@ export class GoldInvestmentService {
     @InjectModel(Subscription.name) private subModel: Model<SubscriptionDocument>,
     private configService: ConfigService,
     private notificationsService: NotificationsService,
+    private emailService: EmailService,
   ) {
     this.razorpay = new Razorpay({
       key_id: this.configService.get<string>('RAZORPAY_ID'),
@@ -812,6 +814,7 @@ export class GoldInvestmentService {
         break;
 
       case 'subscription.charged': {
+        const isFirstPayment = sub.installmentsPaid === 0;
         sub.status = SubscriptionStatus.ACTIVE;
         sub.installmentsPaid += 1;
         sub.amountAccumulated += monthlyAmount;
@@ -828,6 +831,7 @@ export class GoldInvestmentService {
             razorpayPaymentId: paymentId,
           },
         ];
+        if (isFirstPayment) this.notifyInvestmentPlanStarted(sub, plan);
         break;
       }
 
@@ -872,6 +876,38 @@ export class GoldInvestmentService {
       `${sub.customerName}'s autopay for "${plan?.name || 'a gold plan'}" was ${reason}. Payment is now paused until resolved — mark cash payments or restart the mandate from the Autopay Registry.`,
       { subscriptionId: String(sub._id), event: reason, type: 'gold_autopay_stopped' },
     ).catch(err => this.logger.error('Admin notify on cancel/halt failed', err));
+  }
+
+  /** Emails the customer and every admin once a plan's first installment lands — the moment it becomes a real, active investment. */
+  private notifyInvestmentPlanStarted(sub: SubscriptionDocument, plan: any) {
+    const planName = plan?.name || 'Gold Savings Plan';
+    const monthlyAmount = plan?.monthlyAmount || 0;
+    const durationMonths = plan?.durationMonths || 0;
+
+    if (sub.customerEmail) {
+      const html = this.emailService.buildInvestmentCustomerHtml({
+        customerName: sub.customerName,
+        planName,
+        monthlyAmount,
+        durationMonths,
+      });
+      this.emailService.sendMail({
+        to: sub.customerEmail,
+        toName: sub.customerName,
+        subject: 'Investment Plan Started | RKM Jewellers',
+        html,
+        trigger: 'investment_started',
+      }).catch(err => this.logger.error(`Failed to send investment start email to customer: ${err?.message}`));
+    }
+
+    const adminHtml = this.emailService.buildInvestmentAdminHtml({
+      customerName: sub.customerName,
+      customerPhone: sub.customerPhone,
+      planName,
+      monthlyAmount,
+    });
+    this.emailService.notifyAdminsByEmail('New Investment Plan Started | RKM Jewellers', adminHtml, { trigger: 'investment_started' })
+      .catch(err => this.logger.error(`Failed to notify admins of investment start: ${err?.message}`));
   }
 
   // ─────────────────────────────────────────────────────────────────

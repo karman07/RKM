@@ -18,6 +18,7 @@ export interface SaleCompletedEvent {
   saleReference?: string;
   amount?: number;
   branchName?: string;
+  paymentMode?: string;
 }
 
 export interface SaleReturnedEvent {

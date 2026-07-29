@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { CustomerAdvance, CustomerAdvanceDocument, CustomerAdvanceStatus } from './schemas/customer-advance.schema';
 import { Customer, CustomerDocument } from './schemas/customer.schema';
+import { EmailService } from '../email/email.service';
 
 interface CreateAdvanceDto {
   amount: number;
@@ -34,9 +35,12 @@ const NO_SALE_PENALTY_TAG = 'no_sale_redemption_penalty';
 
 @Injectable()
 export class CustomerAdvanceService {
+  private readonly logger = new Logger(CustomerAdvanceService.name);
+
   constructor(
     @InjectModel(CustomerAdvance.name) private advanceModel: Model<CustomerAdvanceDocument>,
     @InjectModel(Customer.name) private customerModel: Model<CustomerDocument>,
+    private readonly emailService: EmailService,
   ) {}
 
   private withBalance(doc: CustomerAdvanceDocument) {
@@ -88,7 +92,44 @@ export class CustomerAdvanceService {
       { path: 'branch_id', select: 'name code address city state pincode phone gstin' },
       { path: 'customer', select: 'name phone address city state pincode country' },
     ]);
-    return this.withBalance(populated);
+    const result = this.withBalance(populated);
+    this.notifyAdvanceCreated(result, customer.email).catch(err =>
+      this.logger.error(`Failed to send advance emails: ${err?.message}`),
+    );
+    return result;
+  }
+
+  /** Fire-and-forget — emails the customer (if they have an address on file) and every admin. */
+  private async notifyAdvanceCreated(advance: any, customerEmail?: string) {
+    const branchName = advance.branch_id && typeof advance.branch_id === 'object' ? advance.branch_id.name : undefined;
+    const recordedBy = advance.createdBy && typeof advance.createdBy === 'object' ? advance.createdBy.name : undefined;
+
+    if (customerEmail) {
+      const html = this.emailService.buildAdvanceCustomerHtml({
+        customerName: advance.customerName,
+        amount: advance.amount,
+        mode: advance.mode,
+        branchName,
+        availableBalance: advance.availableBalance,
+      });
+      await this.emailService.sendMail({
+        to: customerEmail,
+        toName: advance.customerName,
+        subject: 'Advance Payment Received | RKM Jewellers',
+        html,
+        trigger: 'advance_created',
+      });
+    }
+
+    const adminHtml = this.emailService.buildAdvanceAdminHtml({
+      customerName: advance.customerName,
+      customerPhone: advance.customerPhone,
+      amount: advance.amount,
+      mode: advance.mode,
+      branchName,
+      recordedBy,
+    });
+    await this.emailService.notifyAdminsByEmail('New Advance Recorded | RKM Jewellers', adminHtml, { trigger: 'advance_created' });
   }
 
   async getAdvancesByCustomer(customerId: string) {

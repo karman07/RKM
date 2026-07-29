@@ -7,6 +7,7 @@ import { GoldInvestmentController } from './gold-investment.controller';
 import { InvestmentPlan, InvestmentPlanSchema } from './schemas/investment-plan.schema';
 import { Subscription, SubscriptionSchema } from './schemas/subscription.schema';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { EmailModule } from '../email/email.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
       { name: Subscription.name, schema: SubscriptionSchema },
     ]),
     NotificationsModule,
+    EmailModule,
   ],
   controllers: [GoldInvestmentController],
   providers: [GoldInvestmentService, GoldInvestmentSchedulerService],
