@@ -388,8 +388,13 @@ export function buildBillPrintHtml(items: any[], date: string, customerRecordId:
 
 /** Renders the invoice HTML to a PDF buffer, matching BillModal's print settings (A4 landscape, 6mm margin). */
 export async function renderBillPdf(html: string): Promise<Buffer> {
+  // On servers where Puppeteer's own Chromium download isn't available (missing unzip,
+  // restricted network, etc.), point PUPPETEER_EXECUTABLE_PATH at a system-installed
+  // Chromium/Chrome binary instead — see backend/.env for setup notes.
+  const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
   const browser = await puppeteer.launch({
     headless: true,
+    executablePath,
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
   try {

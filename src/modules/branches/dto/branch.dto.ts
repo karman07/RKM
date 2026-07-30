@@ -24,7 +24,7 @@ export class CreateBranchDto {
 
   @IsOptional()
   @IsString()
-  manager?: string;
+  manager?: string | null;
 
   @IsOptional()
   @IsString()
