@@ -169,6 +169,11 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
               <NavIcon active={pathname.startsWith('/dashboard/suppliers')} color={pathname.startsWith('/dashboard/suppliers') ? colors.activeText : colors.textMuted}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] whitespace-nowrap font-bold">Supplier Network</span>}
             </Link>}
+            {can('vendor-returns') && <Link href="/dashboard/vendor-returns" onClick={onNavigate} title={isCollapsed ? "Vendor Returns" : ""} className={navClass(pathname.startsWith('/dashboard/vendor-returns'))} style={getNavStyle(pathname.startsWith('/dashboard/vendor-returns'))}>
+              {isCollapsed && pathname.startsWith('/dashboard/vendor-returns') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname.startsWith('/dashboard/vendor-returns')} color={pathname.startsWith('/dashboard/vendor-returns') ? colors.activeText : colors.textMuted}><path d="M3 7v6h6" /><path d="M3 13a9 9 0 1 0 2.6-6.4L3 9" /></NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] whitespace-nowrap font-bold">Vendor Returns</span>}
+            </Link>}
             {can('branches') && <Link href="/dashboard/branches" onClick={onNavigate} title={isCollapsed ? "Branches" : ""} className={navClass(pathname === '/dashboard/branches')} style={getNavStyle(pathname === '/dashboard/branches')}>
               {isCollapsed && pathname === '/dashboard/branches' && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
               <NavIcon active={pathname === '/dashboard/branches'} color={pathname === '/dashboard/branches' ? colors.activeText : colors.textMuted}><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M9 3v18M15 3v18M3 9h18M3 15h18" /></NavIcon>

@@ -112,6 +112,8 @@ export interface User {
   _id: string;
   name: string;
   email: string;
+  personal_email?: string;
+  professional_email?: string;
   role: 'admin' | 'manager' | 'cashier' | 'custom' | 'worker';
   branch?: Branch | string;
   custom_role?: CustomRole | string | null;
@@ -307,7 +309,7 @@ export interface InventoryItem {
   source?: string;
   reason?: string;
   location: string;
-  status: 'available' | 'sold' | 'reserved' | 'damaged' | 'returned';
+  status: 'available' | 'sold' | 'reserved' | 'damaged' | 'returned' | 'returned_to_vendor';
   /** Auto-locked from Product.purchase_price at ingress — cannot be changed */
   purchase_price: number;
   selling_price: number;
@@ -347,6 +349,10 @@ export interface InventoryItem {
   emi_down_payment?: number;
   gold_rate_at_purchase?: number;
   supplier_id?: string;
+  // ─── Vendor Return Tracking ────────────────────────────────────
+  vendor_return_order_id?: string | null;
+  vendor_return_reason?: string;
+  returned_to_vendor_at?: string | null;
   purchase_date?: string;
   invoice_number?: string;
   sold_at?: string;
@@ -1135,6 +1141,60 @@ export const publishPurchaseOrder = (id: string) =>
 
 export const generatePoInvoiceNumber = () =>
   request<{ invoice_number: string }>('/purchase-orders/generate-invoice-number');
+
+// ─── Vendor Return Orders ───────────────────────────────────────────────────────
+
+export interface VendorReturnItem {
+  inventory_item_id: string | InventoryItem;
+  name?: string;
+  sku?: string;
+  barcode?: string;
+  unique_item_code?: string;
+  images?: string[];
+  purchase_price?: number;
+  previous_status?: string;
+  reason?: string;
+}
+
+export interface VendorReturnOrder {
+  _id?: string;
+  return_number: string;
+  supplier_id: string | Supplier;
+  vendor_name?: string;
+  items: VendorReturnItem[];
+  total_amount: number;
+  status: 'draft' | 'raised' | 'cancelled';
+  reason?: string;
+  notes?: string;
+  created_by?: string | User;
+  raised_at?: string | null;
+  cancelled_at?: string | null;
+  createdAt?: string;
+}
+
+export const getVendorReturnOrders = (page = 1, limit = 20, params?: { status?: string; supplier_id?: string }) => {
+  const qs = new URLSearchParams({ page: String(page), limit: String(limit), ...(params || {}) }).toString();
+  return request<{ data: VendorReturnOrder[]; meta: any }>(`/vendor-returns?${qs}`);
+};
+
+export const getVendorReturnOrder = (id: string) =>
+  request<VendorReturnOrder>(`/vendor-returns/${id}`);
+
+export const createVendorReturnOrder = (payload: {
+  supplier_id: string;
+  items: { inventory_item_id: string; reason?: string }[];
+  reason?: string;
+  notes?: string;
+}) => request<VendorReturnOrder>('/vendor-returns', { method: 'POST', body: JSON.stringify(payload) });
+
+export const updateVendorReturnOrder = (id: string, payload: any) =>
+  request<VendorReturnOrder>(`/vendor-returns/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+
+export const raiseVendorReturnOrder = (id: string) =>
+  request<VendorReturnOrder>(`/vendor-returns/${id}/raise`, { method: 'POST' });
+
+export const cancelVendorReturnOrder = (id: string) =>
+  request<VendorReturnOrder>(`/vendor-returns/${id}/cancel`, { method: 'POST' });
 
 // ─── Branches ─────────────────────────────────────────────────────────────────
 

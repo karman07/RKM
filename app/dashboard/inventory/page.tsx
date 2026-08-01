@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   addInventoryItem,
   deleteInventoryItem,
@@ -65,6 +66,7 @@ const STATUS_BADGE: Record<string, { wrap: string; dot: string }> = {
   damaged:   { wrap: 'inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-red-600 border border-red-100', dot: 'bg-red-500' },
   returned:  { wrap: 'inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-600 border border-slate-100', dot: 'bg-slate-500' },
   stolen:    { wrap: 'inline-flex items-center gap-1.5 rounded-full bg-stone-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-stone-600 border border-stone-200', dot: 'bg-stone-500' },
+  returned_to_vendor: { wrap: 'inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-violet-600 border border-violet-100', dot: 'bg-violet-500' },
 };
 
 const STATUS_TRANSITIONS: Record<string, string[]> = {
@@ -74,6 +76,7 @@ const STATUS_TRANSITIONS: Record<string, string[]> = {
   damaged:   ['available'],
   returned:  ['available'],
   stolen:    ['available'],
+  returned_to_vendor: ['available'],
 };
 
 // ─── Form Types ───────────────────────────────────────────────────────────────
@@ -101,6 +104,7 @@ const emptyAddForm: AddForm = {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function InventoryPage() {
+  const router = useRouter();
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -733,6 +737,7 @@ export default function InventoryPage() {
           <option value="damaged">Damaged</option>
           <option value="returned">Returned</option>
           <option value="stolen">Stolen</option>
+          <option value="returned_to_vendor">Returned to Vendor</option>
         </select>
         <select className="px-5 py-3 rounded-xl border border-slate-100 bg-slate-50/50 text-xs font-bold uppercase tracking-widest text-slate-600 outline-none focus:ring-2 focus:ring-blue-600 appearance-none" value={locationFilter} onChange={e => { setLocationFilter(e.target.value); setPage(1); }}>
           <option value="">All Locations</option>
@@ -751,6 +756,25 @@ export default function InventoryPage() {
             >
               <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z" /></svg>
               Print Labels ({selectedIds.length})
+            </button>
+            <button
+              onClick={() => {
+                const eligible = items.filter(i => selectedIds.includes(i._id) && (i.status === 'available' || i.status === 'damaged'));
+                const skipped = selectedIds.length - eligible.length;
+                if (eligible.length === 0) {
+                  showToast('Selected items must be Available or Damaged to return to a vendor', 'danger');
+                  return;
+                }
+                sessionStorage.setItem('vendor-return-preselect', JSON.stringify(eligible));
+                if (skipped > 0) {
+                  showToast(`${skipped} selected item(s) skipped — only Available/Damaged stock can be returned to a vendor`, 'info');
+                }
+                router.push('/dashboard/vendor-returns/new');
+              }}
+              className="px-6 py-3 rounded-xl bg-violet-50 text-violet-600 text-xs font-black uppercase tracking-[0.1em] border border-violet-100 hover:bg-violet-600 hover:text-white transition-all shadow-sm flex items-center gap-2"
+            >
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M3 7v6h6" /><path d="M3 13a9 9 0 1 0 2.6-6.4L3 9" /></svg>
+              Return to Vendor ({selectedIds.length})
             </button>
             <button
               onClick={() => { setBulkDeleteForm({ reason: '', notes: '' }); setBulkDeleteModal(true); }}

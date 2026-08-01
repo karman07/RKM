@@ -105,11 +105,14 @@ export default function BranchesPage() {
     setSaving(true);
     setError('');
     try {
+      // '' means "no manager selected" — send null (not '', which the backend can't cast to
+      // an ObjectId) so the API can tell "clear the manager" apart from "field not provided".
+      const payload = { ...form, manager: form.manager || null };
       if (editTarget) {
-        await updateBranch(editTarget._id, form);
+        await updateBranch(editTarget._id, payload);
         showToast('Branch updated successfully', 'success');
       } else {
-        await createBranch(form);
+        await createBranch(payload);
         showToast('Branch created successfully', 'success');
       }
       setModalOpen(false);

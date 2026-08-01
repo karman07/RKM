@@ -31,6 +31,8 @@ const roleBadge: Record<string, { wrap: string; dot: string; icon: any }> = {
 interface UserForm {
   name: string;
   email: string;
+  personal_email?: string;
+  professional_email?: string;
   password: string;
   role: string;
   branch?: string;
@@ -280,6 +282,8 @@ export default function UsersPage() {
     setForm({
       name: u.name,
       email: u.role === 'worker' ? '' : u.email,
+      personal_email:           (u as any).personal_email               || '',
+      professional_email:       (u as any).professional_email           || '',
       password: '',
       role: roleValue,
       branch: (u.branch as any)?._id || (u.branch as string),
@@ -331,6 +335,10 @@ export default function UsersPage() {
       setError('Please verify the family contact number before saving.');
       return;
     }
+    if (form.professional_email && !/@rkmjewellers\.com$/i.test(form.professional_email.trim())) {
+      setError('Professional email must end with @rkmjewellers.com');
+      return;
+    }
     setSaving(true);
     setError('');
     try {
@@ -346,6 +354,8 @@ export default function UsersPage() {
         isActive: form.is_active, branch: form.branch || null,
         ...(form.avatar            ? { avatar:                  form.avatar                    } : {}),
         ...(isWorker               ? {}                                                         : { email: form.email }),
+        ...(form.personal_email     ? { personal_email:       form.personal_email             } : {}),
+        ...(form.professional_email ? { professional_email:   form.professional_email         } : {}),
         ...(customRoleId           ? { custom_role:            customRoleId                   } : {}),
         ...(isWorker && form.job_title ? { job_title:          form.job_title                 } : {}),
         ...(form.base_salary       ? { base_salary:            Number(form.base_salary)       } : {}),
@@ -562,7 +572,9 @@ export default function UsersPage() {
                           <div>
                             <div className="flex items-center gap-2 mb-1">
                               <Mail className="w-3 h-3 text-slate-300" />
-                              <span className="text-sm font-semibold text-slate-600 tracking-tight">{u.email}</span>
+                              <span className="text-sm font-semibold text-slate-600 tracking-tight">
+                                {(u as any).professional_email || <span className="text-slate-300 italic font-medium">Not set</span>}
+                              </span>
                             </div>
                             <div className="flex items-center gap-2">
                               <div className={`w-1.5 h-1.5 rounded-full ${u.is_active ? 'bg-emerald-500' : 'bg-red-400'}`} />
@@ -1051,6 +1063,37 @@ export default function UsersPage() {
                 fieldKey="employee-mobile"
                 initialValue={editTarget ? (editTarget as any).mobile_number : undefined}
               />
+
+              <div className="pt-1 border-t border-slate-100 space-y-3">
+                <div className="flex items-center gap-2 pt-1">
+                  <Mail className="w-3.5 h-3.5 text-blue-600" />
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Email Addresses</p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Personal Email</label>
+                  <input type="email" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:border-blue-400 focus:bg-white transition-all"
+                    value={form.personal_email || ''} onChange={e => setForm({ ...form, personal_email: e.target.value })}
+                    placeholder="jane.personal@gmail.com" />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Professional Email</label>
+                  <input type="email" className={`w-full px-4 py-3 bg-slate-50 border rounded-xl text-sm font-semibold focus:outline-none focus:bg-white transition-all ${
+                      form.professional_email && !/@rkmjewellers\.com$/i.test(form.professional_email.trim())
+                        ? 'border-red-300 focus:border-red-400'
+                        : 'border-slate-200 focus:border-blue-400'
+                    }`}
+                    value={form.professional_email || ''} onChange={e => setForm({ ...form, professional_email: e.target.value })}
+                    placeholder="jane@rkmjewellers.com" />
+                  <p className={`text-[10px] font-bold ml-1 ${
+                      form.professional_email && !/@rkmjewellers\.com$/i.test(form.professional_email.trim())
+                        ? 'text-red-500' : 'text-slate-400'
+                    }`}>
+                    Must end with @rkmjewellers.com — shown in the staff table.
+                  </p>
+                </div>
+              </div>
 
               <div className="pt-1 border-t border-slate-100 space-y-3">
                 <div className="flex items-center gap-2 pt-1">
