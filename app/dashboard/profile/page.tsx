@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 
 import {
   getProfile, updateUserProfile, uploadUserAvatar, checkSessionExpiry, staticUrl,
-  getEmployeeCustomFields, updateOwnCustomFields,
+  getEmployeeCustomFields, updateOwnCustomFields, changeOwnPassword,
   type UserProfile, type EmployeeCustomField,
 } from '../../../lib/api';
 
@@ -16,6 +16,8 @@ export default function ProfilePage() {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const [form, setForm] = useState({ name: '', email: '' });
+  const [passwordForm, setPasswordForm] = useState({ current: '', next: '', confirm: '' });
+  const [savingPass, setSavingPass] = useState(false);
   const [customFields, setCustomFields] = useState<EmployeeCustomField[]>([]);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>({});
   const [savingCustomFields, setSavingCustomFields] = useState(false);
@@ -76,6 +78,32 @@ export default function ProfilePage() {
     } catch (err: any) {
       showToast(err.message || 'Failed to update profile', 'error');
     } finally { setSaving(false); }
+  }
+
+  async function handleChangePassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (!passwordForm.current) {
+      showToast('Enter your current password', 'error');
+      return;
+    }
+    if (passwordForm.next.length < 6) {
+      showToast('New password must be at least 6 characters', 'error');
+      return;
+    }
+    if (passwordForm.next !== passwordForm.confirm) {
+      showToast('New passwords do not match', 'error');
+      return;
+    }
+    setSavingPass(true);
+    try {
+      await changeOwnPassword(passwordForm.current, passwordForm.next);
+      setPasswordForm({ current: '', next: '', confirm: '' });
+      showToast('Password changed successfully!', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to change password', 'error');
+    } finally {
+      setSavingPass(false);
+    }
   }
 
   async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -188,6 +216,48 @@ export default function ProfilePage() {
             className="w-full h-[52px] bg-[#5A0F1A] hover:bg-[#7A1C2A] text-white rounded-2xl text-sm font-bold shadow-lg shadow-[#5A0F1A]/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {saving ? <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Saving…</> : 'Save Changes'}
+          </button>
+        </form>
+      </div>
+
+      <div id="password" className="bg-white border border-slate-100 rounded-[2rem] p-6 sm:p-8 shadow-sm scroll-mt-24">
+        <h2 className="text-base font-black text-slate-900 mb-6">Change Password</h2>
+        <form onSubmit={handleChangePassword} className="space-y-5">
+          <div>
+            <label className="block text-[11px] font-black uppercase tracking-widest text-slate-400 mb-2">Current Password</label>
+            <input
+              type="password" required autoComplete="current-password" value={passwordForm.current}
+              onChange={e => setPasswordForm(f => ({ ...f, current: e.target.value }))}
+              placeholder="••••••"
+              className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#7A1C2A] focus:ring-2 focus:ring-[#7A1C2A]/10 focus:bg-white transition-all"
+            />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <div>
+              <label className="block text-[11px] font-black uppercase tracking-widest text-slate-400 mb-2">New Password</label>
+              <input
+                type="password" required autoComplete="new-password" value={passwordForm.next}
+                onChange={e => setPasswordForm(f => ({ ...f, next: e.target.value }))}
+                placeholder="••••••"
+                className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#7A1C2A] focus:ring-2 focus:ring-[#7A1C2A]/10 focus:bg-white transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-black uppercase tracking-widest text-slate-400 mb-2">Confirm New Password</label>
+              <input
+                type="password" required autoComplete="new-password" value={passwordForm.confirm}
+                onChange={e => setPasswordForm(f => ({ ...f, confirm: e.target.value }))}
+                placeholder="••••••"
+                className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#7A1C2A] focus:ring-2 focus:ring-[#7A1C2A]/10 focus:bg-white transition-all"
+              />
+            </div>
+          </div>
+          <p className="text-[10px] text-slate-400 ml-1">Password must be at least 6 characters. Changes take effect immediately.</p>
+          <button
+            type="submit" disabled={savingPass}
+            className="w-full h-[52px] bg-[#5A0F1A] hover:bg-[#7A1C2A] text-white rounded-2xl text-sm font-bold shadow-lg shadow-[#5A0F1A]/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {savingPass ? <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Updating…</> : 'Update Password'}
           </button>
         </form>
       </div>

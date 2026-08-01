@@ -115,6 +115,12 @@ export const getCustomerCustomFields = () =>
 export const updateOwnCustomFields = (values: Record<string, any>) =>
   request<UserProfile>('/users/me/custom-fields', { method: 'PATCH', body: JSON.stringify({ values }) });
 
+export const changeOwnPassword = (currentPassword: string, newPassword: string) =>
+  request<{ success: boolean }>('/users/me/password', {
+    method: 'PATCH',
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+
 // ── Settings (read-only — commission window & rate) ─────────────────────────
 
 export interface CommissionSettings {
