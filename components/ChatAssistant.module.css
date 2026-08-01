@@ -562,10 +562,21 @@
 }
 
 
+/* Leave room for the fixed mobile bottom nav (hidden at lg / 1024px+) */
+@media (max-width: 1023px) {
+  .chatButton {
+    bottom: calc(4.5rem + env(safe-area-inset-bottom));
+  }
+
+  .chatWindow {
+    bottom: calc(4.5rem + env(safe-area-inset-bottom));
+    height: calc(100% - 5.5rem - env(safe-area-inset-bottom));
+  }
+}
+
 /* === MOBILE OPTIMIZATION === */
 @media (max-width: 640px) {
   .chatButton {
-    bottom: 1rem;
     right: 1rem;
     padding: 0.7rem 1.2rem;
     font-size: 0.8rem;
@@ -573,8 +584,6 @@
 
   .chatWindow {
     width: 100%;
-    height: calc(100% - 1rem);
-    bottom: 0.5rem;
     right: 0;
     left: 0;
     border-radius: 20px 20px 0 0;

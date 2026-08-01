@@ -27,6 +27,16 @@ h1, h2, h3, h4, h5, h6, .font-serif {
   }
 }
 
+/* Reserve space above the mobile bottom nav so page content isn't hidden behind it */
+.pb-bottom-nav {
+  padding-bottom: calc(4rem + env(safe-area-inset-bottom));
+}
+@media (min-width: 1024px) {
+  .pb-bottom-nav {
+    padding-bottom: 0;
+  }
+}
+
 @keyframes shine {
   0% { transform: translateX(-100%) skewX(-15deg); }
   50% { transform: translateX(100%) skewX(-15deg); }

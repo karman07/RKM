@@ -3,12 +3,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppSelector, useAppDispatch } from '../../store/store';
 import { setAuth, logout } from '../../store/authSlice';
-import { Camera, MapPin, User, Mail, Phone, Home, Globe, CheckCircle2, AlertCircle, Loader2, ChevronLeft, LogOut, ShieldCheck, CreditCard, ShoppingBag, Heart, X, Gem, Package, Store, ChevronDown, ChevronUp, UserCog, Bookmark } from 'lucide-react';
+import { Camera, MapPin, User, Mail, Phone, Home, Globe, CheckCircle2, AlertCircle, Loader2, ChevronLeft, LogOut, ShieldCheck, CreditCard, ShoppingBag, Heart, X, Gem, Package, Store, ChevronDown, ChevronUp, UserCog, Bookmark, FileDown } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import LogoutDialog from '../../components/LogoutDialog';
 import GoldInvestmentTracker from '../../components/GoldInvestmentTracker';
 import { API_BASE_URL, STATIC_BASE_URL } from '../constants';
+import { downloadInvestmentStatementPdf } from '../../lib/investmentStatement';
 
 function staticImg(path: string | undefined | null) {
   if (!path) return "";
@@ -321,7 +322,8 @@ export default function ProfilePage() {
             return Math.max(0, principal + interest - redeemed);
           }
 
-          const totalBalance = goldSubs.reduce((acc, sub) => acc + computeTimeBasedBalance(sub), 0);
+          const subsWithBalance = goldSubs.map((sub) => ({ ...sub, computedBalance: computeTimeBasedBalance(sub) }));
+          const totalBalance = subsWithBalance.reduce((acc, sub) => acc + sub.computedBalance, 0);
           const redeemedTotal = goldSubs.reduce((acc, sub) => acc + (sub.amountRedeemed || 0), 0);
           const hasRedeemable = totalBalance > 0;
           return (
@@ -349,6 +351,19 @@ export default function ProfilePage() {
                         <span className="text-[11px] font-black uppercase tracking-widest text-white/40">Fully Redeemed</span>
                       </div>
                     )}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        downloadInvestmentStatementPdf({
+                          customerName: authState.customer?.name || form.name || 'Valued Customer',
+                          customerPhone: authState.customer?.phone,
+                          subs: subsWithBalance,
+                        })
+                      }
+                      className="flex items-center gap-2 rounded-2xl text-[10px] font-black uppercase tracking-widest px-5 py-3 border border-[#B8975A]/40 bg-white/5 text-[#D9B98A] transition-all hover:-translate-y-[1px] hover:bg-white/10"
+                    >
+                      <FileDown size={13} /> Full Statement (PDF)
+                    </button>
                     <p className="text-[10px] text-white/40 font-bold text-right">Visit store with your phone number</p>
                   </div>
                 </div>

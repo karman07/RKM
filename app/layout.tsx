@@ -3,6 +3,7 @@ import { Cormorant_Garamond, Jost } from "next/font/google";
 import "./globals.css";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
+import BottomNav from "../components/BottomNav";
 import StoreProvider from "../components/StoreProvider";
 
 const cormorant = Cormorant_Garamond({
@@ -103,10 +104,11 @@ export default function RootLayout({
         />
         <StoreProvider>
           <Navbar />
-          <div className="flex-1 flex flex-col pt-0">
+          <div className="flex-1 flex flex-col pt-0 pb-bottom-nav">
             {children}
           </div>
           <Footer />
+          <BottomNav />
           <AuthDialog />
           <ChatAssistant />
           <Toaster position="top-center" richColors />
