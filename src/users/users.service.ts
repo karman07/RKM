@@ -2,6 +2,7 @@ import {
   Injectable,
   ConflictException,
   NotFoundException,
+  BadRequestException,
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -160,6 +161,19 @@ export class UsersService implements OnModuleInit {
       .exec();
     if (!user) throw new NotFoundException(`User ${id} not found`);
     return user;
+  }
+
+  /** Self-service password change (any authenticated role) — requires the current password. */
+  async changeOwnPassword(id: string, currentPassword: string, newPassword: string): Promise<{ success: boolean }> {
+    const user = await this.userModel.findById(id).exec();
+    if (!user) throw new NotFoundException('User not found');
+
+    const matches = await bcrypt.compare(currentPassword, user.password);
+    if (!matches) throw new BadRequestException('Current password is incorrect');
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    await user.save();
+    return { success: true };
   }
 
   /** Self-service update of admin-defined custom field values (any authenticated role) */

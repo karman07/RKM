@@ -52,6 +52,8 @@ const STATUS_TRANSITIONS: Record<InventoryStatus, InventoryStatus[]> = {
   [InventoryStatus.DAMAGED]: [InventoryStatus.AVAILABLE, InventoryStatus.STOLEN],
   [InventoryStatus.RETURNED]: [InventoryStatus.AVAILABLE, InventoryStatus.STOLEN],
   [InventoryStatus.STOLEN]: [InventoryStatus.AVAILABLE],
+  // Normally only reached via a Vendor Return Order (raise/cancel), but allow manual recovery just in case.
+  [InventoryStatus.RETURNED_TO_VENDOR]: [InventoryStatus.AVAILABLE],
 };
 
 @Injectable()
@@ -470,6 +472,82 @@ export class InventoryService {
     };
   }
 
+  // ─── Vendor Returns ──────────────────────────────────────────────────────────
+  /** Items eligible to be picked for a vendor return: in stock (or damaged) and not already deleted. */
+  private static readonly VENDOR_RETURN_ELIGIBLE_STATUSES = [InventoryStatus.AVAILABLE, InventoryStatus.DAMAGED];
+
+  /**
+   * Fetches items by id (product populated) for building a vendor-return-order
+   * snapshot, and validates every one of them is currently eligible (in stock or
+   * damaged, not deleted). Throws if any item can't be returned right now.
+   */
+  async getItemsForVendorReturn(ids: string[]) {
+    ids.forEach(id => this.validateObjectId(id));
+
+    const items = await this.inventoryModel
+      .find({ _id: { $in: ids } })
+      .populate({ path: 'product_id', select: 'name sku images' })
+      .exec();
+
+    const found = new Map(items.map(i => [(i._id as Types.ObjectId).toString(), i]));
+    const missingOrIneligible: string[] = [];
+
+    for (const id of ids) {
+      const item = found.get(id);
+      if (!item || item.is_deleted || !InventoryService.VENDOR_RETURN_ELIGIBLE_STATUSES.includes(item.status)) {
+        missingOrIneligible.push(item?.barcode || id);
+      }
+    }
+
+    if (missingOrIneligible.length) {
+      throw new BadRequestException(
+        `These items are not eligible for a vendor return (must be in stock or damaged): ${missingOrIneligible.join(', ')}`,
+      );
+    }
+
+    return items;
+  }
+
+  /**
+   * Flips a set of items to RETURNED_TO_VENDOR, re-validating eligibility right
+   * before the switch (stock can change between drafting and raising a return
+   * order). Returns each item's prior status so the caller can snapshot it for
+   * an eventual revert-on-cancel.
+   */
+  async markReturnedToVendor(
+    ids: string[],
+    vendorReturnOrderId: string,
+    reasonByItemId: Record<string, string | undefined>,
+  ): Promise<Record<string, InventoryStatus>> {
+    const items = await this.getItemsForVendorReturn(ids); // throws if any is no longer eligible
+    const previousStatusById: Record<string, InventoryStatus> = {};
+
+    for (const item of items) {
+      const idStr = (item._id as Types.ObjectId).toString();
+      previousStatusById[idStr] = item.status;
+      item.status = InventoryStatus.RETURNED_TO_VENDOR;
+      item.vendor_return_order_id = new Types.ObjectId(vendorReturnOrderId);
+      item.vendor_return_reason = reasonByItemId[idStr] || '';
+      item.returned_to_vendor_at = new Date();
+      await item.save();
+    }
+
+    return previousStatusById;
+  }
+
+  /** Reverts items from RETURNED_TO_VENDOR back to whatever status they held before (used when a raised return order is cancelled). */
+  async revertVendorReturn(entries: { id: string; previous_status: string }[]): Promise<void> {
+    for (const entry of entries) {
+      await this.inventoryModel.updateOne(
+        { _id: entry.id, status: InventoryStatus.RETURNED_TO_VENDOR },
+        {
+          $set: { status: entry.previous_status || InventoryStatus.AVAILABLE },
+          $unset: { vendor_return_order_id: '', vendor_return_reason: '', returned_to_vendor_at: '' },
+        },
+      );
+    }
+  }
+
   // ─── Get Item Count for Product ────────────────────────────────────────────
 
   async getItemCountForProduct(productId: string): Promise<number> {
@@ -489,12 +567,13 @@ export class InventoryService {
   // ─── Get All ───────────────────────────────────────────────────────────────
 
   async findAll(query: QueryInventoryDto) {
-    const { 
-      product_id, status, location, branch_id, unallocated, 
-      sold_at_branch_id, sold_after, sold_by_user_id, 
+    const {
+      product_id, status, location, branch_id, unallocated,
+      sold_at_branch_id, sold_after, sold_by_user_id,
       page = 1, limit = 20, search,
       sold_customer_phone, sold_customer_email,
       category_id, metal_type, purity, prebooking_customer_id,
+      supplier_id,
     } = query;
     const skip = (page - 1) * limit;
 
@@ -534,6 +613,10 @@ export class InventoryService {
 
     if (prebooking_customer_id && Types.ObjectId.isValid(prebooking_customer_id)) {
       filter.prebooking_customer_id = new Types.ObjectId(prebooking_customer_id);
+    }
+
+    if (supplier_id && Types.ObjectId.isValid(supplier_id)) {
+      filter.supplier_id = new Types.ObjectId(supplier_id);
     }
 
     if (search || category_id || metal_type || purity) {

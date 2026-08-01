@@ -16,6 +16,7 @@ import { DocumentsService } from './documents.service';
 import type { DocumentType } from './documents.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -99,6 +100,12 @@ export class UsersController {
   @Patch('me/custom-fields')
   updateOwnCustomFields(@Body() body: { values: Record<string, any> }, @Request() req) {
     return this.usersService.updateCustomFieldValues(req.user.userId, body.values);
+  }
+
+  // ─── Any authenticated staff member: change their own password (current password required) ───
+  @Patch('me/password')
+  changeOwnPassword(@Body() dto: ChangePasswordDto, @Request() req) {
+    return this.usersService.changeOwnPassword(req.user.userId, dto.currentPassword, dto.newPassword);
   }
 
   // ─── Admin: Update any user; Manager: Update cashiers + workers ────────────

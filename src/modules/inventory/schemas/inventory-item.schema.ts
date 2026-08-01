@@ -10,6 +10,9 @@ export enum InventoryStatus {
   DAMAGED = 'damaged',
   RETURNED = 'returned',
   STOLEN = 'stolen',
+  /** Sent back to the supplier via a Vendor Return Order — distinct from RETURNED,
+   *  which is a customer-to-store return/refund. */
+  RETURNED_TO_VENDOR = 'returned_to_vendor',
 }
 
 export enum ItemLocation {
@@ -216,6 +219,16 @@ export class InventoryItem {
   /** When the admin set the final refund value */
   @Prop({ type: Date, default: null })
   return_approved_at: Date | null;
+
+  // ─── Vendor Return Tracking ──────────────────────────────────────────────────
+  @Prop({ type: Types.ObjectId, ref: 'VendorReturnOrder', default: null })
+  vendor_return_order_id: Types.ObjectId | null;
+
+  @Prop({ trim: true, default: '' })
+  vendor_return_reason: string;
+
+  @Prop({ type: Date, default: null })
+  returned_to_vendor_at: Date | null;
 
   // ─── Damage Tracking ─────────────────────────────────────────────────────────
   @Prop({ trim: true, default: '' })

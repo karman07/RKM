@@ -21,6 +21,11 @@ export class QueryInventoryDto {
   @IsMongoId()
   branch_id?: string;
 
+  /** Filter by the supplier who sourced the item */
+  @IsOptional()
+  @IsMongoId()
+  supplier_id?: string;
+
   /** When true, return only items with no branch assigned (branch_id = null) */
   @IsOptional()
   @Transform(({ value }) => value === 'true' || value === true)

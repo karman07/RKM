@@ -20,6 +20,14 @@ export class User {
   @Prop({ required: true, unique: true, lowercase: true, trim: true })
   email: string;
 
+  /** Personal (non-company) email — contact/KYC detail, never used for login */
+  @Prop({ type: String, required: false, lowercase: true, trim: true })
+  personal_email?: string;
+
+  /** Company-issued email, must end with @rkmjewellers.com — shown in the staff table */
+  @Prop({ type: String, required: false, lowercase: true, trim: true })
+  professional_email?: string;
+
   @Prop({ required: true })
   password: string;
 

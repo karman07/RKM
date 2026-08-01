@@ -17,6 +17,7 @@ import { BlogsModule } from './modules/blogs/blogs.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { PurchaseOrdersModule } from './modules/purchase-orders/purchase-orders.module';
+import { VendorReturnsModule } from './modules/vendor-returns/vendor-returns.module';
 import { BranchesModule } from './modules/branches/branches.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { CustomersModule } from './modules/customers/customers.module';
@@ -65,6 +66,7 @@ import { MiscPaymentsModule } from './modules/misc-payments/misc-payments.module
     BlogsModule,
     AnalyticsModule,
     PurchaseOrdersModule,
+    VendorReturnsModule,
     SuppliersModule,
     BranchesModule,
     AttendanceModule,

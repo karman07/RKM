@@ -7,6 +7,7 @@ import {
   IsOptional,
   IsNumber,
   IsBoolean,
+  Matches,
 } from 'class-validator';
 import { UserRole } from '../schemas/user.schema';
 
@@ -19,6 +20,17 @@ export class CreateUserDto {
   @IsEmail()
   @IsOptional()
   email?: string;
+
+  /** Personal (non-company) email — contact detail only, never used for login */
+  @IsEmail()
+  @IsOptional()
+  personal_email?: string;
+
+  /** Company-issued email — must end with @rkmjewellers.com */
+  @IsEmail()
+  @IsOptional()
+  @Matches(/@rkmjewellers\.com$/i, { message: 'Professional email must end with @rkmjewellers.com' })
+  professional_email?: string;
 
   /** Optional for WORKER role — auto-generated if absent */
   @IsString()
