@@ -124,7 +124,7 @@ export default function Navbar() {
 
   // Close mega-menu / profile menu on outside click
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
+    const handler = (e: MouseEvent | TouchEvent) => {
       if (shopRef.current && !shopRef.current.contains(e.target as Node))
         setShopOpen(false);
       if (profileRef.current && !profileRef.current.contains(e.target as Node))
