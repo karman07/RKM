@@ -1,4 +1,9 @@
-import { IsString, IsNumber, IsOptional, IsBoolean, Min, Max } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsBoolean, IsEnum, IsArray, Min, Max } from 'class-validator';
+
+export enum RedemptionType {
+  CASH_BENEFIT = 'cash_benefit',
+  MAKING_CHARGE_WAIVER = 'making_charge_waiver',
+}
 
 export class CreateInvestmentPlanDto {
   @IsString()
@@ -24,7 +29,7 @@ export class CreateInvestmentPlanDto {
   @IsNumber()
   @Min(0)
   @Max(100)
-  redemptionDiscount: number;
+  cashBenefitPercent: number;
 
   @IsBoolean()
   @IsOptional()
@@ -54,7 +59,7 @@ export class UpdateInvestmentPlanDto {
 
   @IsNumber()
   @IsOptional()
-  redemptionDiscount?: number;
+  cashBenefitPercent?: number;
 
   @IsBoolean()
   @IsOptional()
@@ -115,9 +120,37 @@ export class UpdateSubscriptionDto {
 }
 
 export class RedeemBalanceDto {
+  /** Investment amount applied toward the jewelry price — used in both redemption types */
   @IsNumber()
   @Min(1)
   amount: number;
+
+  @IsEnum(RedemptionType)
+  redemptionType: RedemptionType;
+
+  /** Pre-tax subtotal of the jewelry/cart being purchased (metal + making + stone + extra charges) */
+  @IsNumber()
+  @Min(0)
+  jewelrySubtotal: number;
+
+  /** GST rate (%) to apply to the taxable amount remaining after redemption */
+  @IsNumber()
+  @Min(0)
+  taxPercentage: number;
+
+  /** Total gold weight (grams) of the jewelry being purchased — required for making_charge_waiver */
+  @IsNumber()
+  @IsOptional()
+  jewelryGoldWeightGrams?: number;
+
+  /** Total making charges (INR, pre-tax) on the jewelry being purchased — required for making_charge_waiver */
+  @IsNumber()
+  @IsOptional()
+  makingChargesOnJewelry?: number;
+
+  @IsArray()
+  @IsOptional()
+  saleItemIds?: string[];
 
   @IsString()
   @IsOptional()
@@ -130,6 +163,30 @@ export class RedeemBalanceDto {
   @IsString()
   @IsOptional()
   staffId?: string;
+}
+
+/** Same shape as RedeemBalanceDto (minus the type discriminator and side-effect fields),
+ *  used purely for the unsaved comparison-screen quote — computes BOTH options at once. */
+export class PreviewRedemptionDto {
+  @IsNumber()
+  @Min(1)
+  amount: number;
+
+  @IsNumber()
+  @Min(0)
+  jewelrySubtotal: number;
+
+  @IsNumber()
+  @Min(0)
+  taxPercentage: number;
+
+  @IsNumber()
+  @IsOptional()
+  jewelryGoldWeightGrams?: number;
+
+  @IsNumber()
+  @IsOptional()
+  makingChargesOnJewelry?: number;
 }
 
 /** Marks a specific month as paid in cash (by manager/admin) */

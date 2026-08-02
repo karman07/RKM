@@ -87,6 +87,12 @@ export class Subscription {
   @Prop({ default: 0 })
   amountRedeemed: number;
 
+  /** Gold accumulated so far, in grams — derived from paymentLedger entries' gramsCredited,
+   *  decremented only by making-charge-waiver redemptions (Option 2). Cash-benefit redemptions
+   *  (Option 1) never touch this. */
+  @Prop({ default: 0 })
+  goldGramsAccumulated: number;
+
   /** Audit trail of individual redemption events */
   @Prop({
     type: [
@@ -96,6 +102,16 @@ export class Subscription {
         saleReference: { type: String },
         note: { type: String },
         staffId: { type: String },
+        redemptionType: { type: String, enum: ['cash_benefit', 'making_charge_waiver'] },
+        saleItemIds: { type: [String] },
+        goldRateAtRedemption: { type: Number },
+        cashBenefitAmount: { type: Number },
+        eligibleGoldGramsUsed: { type: Number },
+        jewelryGoldWeightGrams: { type: Number },
+        waivedMakingCharges: { type: Number },
+        remainingMakingCharges: { type: Number },
+        gstAmount: { type: Number },
+        finalPayableAmount: { type: Number },
       },
     ],
     default: [],
@@ -106,6 +122,16 @@ export class Subscription {
     saleReference?: string;
     note?: string;
     staffId?: string;
+    redemptionType?: 'cash_benefit' | 'making_charge_waiver';
+    saleItemIds?: string[];
+    goldRateAtRedemption?: number;
+    cashBenefitAmount?: number;
+    eligibleGoldGramsUsed?: number;
+    jewelryGoldWeightGrams?: number;
+    waivedMakingCharges?: number;
+    remainingMakingCharges?: number;
+    gstAmount?: number;
+    finalPayableAmount?: number;
   }[];
 
   /** Total installments paid (autopay charges + cash payments) */
@@ -126,6 +152,8 @@ export class Subscription {
         razorpayPaymentId: { type: String },
         staffId: { type: String },
         note: { type: String },
+        goldRateAtPayment: { type: Number },
+        gramsCredited: { type: Number },
       },
     ],
     default: [],
@@ -138,6 +166,8 @@ export class Subscription {
     razorpayPaymentId?: string;
     staffId?: string;
     note?: string;
+    goldRateAtPayment?: number;
+    gramsCredited?: number;
   }[];
 
   /**

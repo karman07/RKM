@@ -139,6 +139,30 @@ export class UpdateInventoryStatusDto {
   @IsOptional()
   investment_sub_id?: string;
 
+  /** Which redemption option the customer chose — required to redeem an investment plan atomically with the sale */
+  @IsOptional()
+  investment_redemption_type?: 'cash_benefit' | 'making_charge_waiver';
+
+  /** Pre-tax subtotal of the bill (all items) — needed to compute the redemption breakdown server-side */
+  @IsOptional()
+  @IsNumber()
+  investment_jewelry_subtotal?: number;
+
+  /** GST rate (%) applied to the bill */
+  @IsOptional()
+  @IsNumber()
+  investment_tax_percentage?: number;
+
+  /** Total gold weight (grams) across the bill's items — required for making_charge_waiver */
+  @IsOptional()
+  @IsNumber()
+  investment_jewelry_gold_weight_grams?: number;
+
+  /** Total making charges (pre-tax) across the bill's items — required for making_charge_waiver */
+  @IsOptional()
+  @IsNumber()
+  investment_making_charges_on_jewelry?: number;
+
   @IsOptional()
   making_charges_discount?: number;
 

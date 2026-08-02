@@ -8,6 +8,7 @@ import { InvestmentPlan, InvestmentPlanSchema } from './schemas/investment-plan.
 import { Subscription, SubscriptionSchema } from './schemas/subscription.schema';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { EmailModule } from '../email/email.module';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { EmailModule } from '../email/email.module';
     ]),
     NotificationsModule,
     EmailModule,
+    SettingsModule,
   ],
   controllers: [GoldInvestmentController],
   providers: [GoldInvestmentService, GoldInvestmentSchedulerService],

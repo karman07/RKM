@@ -387,7 +387,15 @@ export class InventoryController {
       manager_discount?: number;
       investment_redeemed?: number;
       investment_sub_id?: string;
+      investment_redemption_type?: 'cash_benefit' | 'making_charge_waiver';
+      investment_jewelry_subtotal?: number;
+      investment_tax_percentage?: number;
+      investment_jewelry_gold_weight_grams?: number;
+      investment_making_charges_on_jewelry?: number;
       making_charges_discount?: number;
+      advance_redeemed?: number;
+      advance_id?: string;
+      advance_making_charges_discount?: number;
       payment_splits?: Array<{ mode: string; amount: number; reference?: string }>;
     },
     @Request() req: any,
@@ -440,6 +448,11 @@ export class InventoryController {
       manager_discount?: number;
       investment_redeemed?: number;
       investment_sub_id?: string;
+      investment_redemption_type?: 'cash_benefit' | 'making_charge_waiver';
+      investment_jewelry_subtotal?: number;
+      investment_tax_percentage?: number;
+      investment_jewelry_gold_weight_grams?: number;
+      investment_making_charges_on_jewelry?: number;
       making_charges_discount?: number;
       advance_redeemed?: number;
       advance_id?: string;

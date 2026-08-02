@@ -16,6 +16,7 @@ import {
   CreateSubscriptionDto,
   UpdateSubscriptionDto,
   RedeemBalanceDto,
+  PreviewRedemptionDto,
   MarkCashPaymentDto,
   AddInterestDto,
   VerifyEmiPaymentDto,
@@ -172,6 +173,14 @@ export class GoldInvestmentController {
   @Roles(UserRole.ADMIN)
   sendMonthlyReminders() {
     return this.svc.sendMonthlyRemindersToAll();
+  }
+
+  /** Quote both redemption options (Cash Benefit vs Making Charge Waiver) without committing anything */
+  @Post('subscriptions/:id/redeem/preview')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER)
+  previewRedemption(@Param('id') id: string, @Body() dto: PreviewRedemptionDto) {
+    return this.svc.previewRedemption(id, dto);
   }
 
   /** Redeem balance from a subscription (cashier/admin) */

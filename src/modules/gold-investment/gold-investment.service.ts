@@ -10,12 +10,15 @@ import { InvestmentPlan, InvestmentPlanDocument } from './schemas/investment-pla
 import { Subscription, SubscriptionDocument, SubscriptionStatus, PaymentMode } from './schemas/subscription.schema';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '../email/email.service';
+import { SettingsService } from '../settings/settings.service';
 import {
   CreateInvestmentPlanDto,
   UpdateInvestmentPlanDto,
   CreateSubscriptionDto,
   UpdateSubscriptionDto,
   RedeemBalanceDto,
+  PreviewRedemptionDto,
+  RedemptionType,
   MarkCashPaymentDto,
   AddInterestDto,
   CreateEmiOrderDto,
@@ -33,11 +36,18 @@ export class GoldInvestmentService {
     private configService: ConfigService,
     private notificationsService: NotificationsService,
     private emailService: EmailService,
+    private settingsService: SettingsService,
   ) {
     this.razorpay = new Razorpay({
       key_id: this.configService.get<string>('RAZORPAY_ID'),
       key_secret: this.configService.get<string>('RAZORPAY_SECRET'),
     });
+  }
+
+  /** Live gold rate (₹/gram) from Settings — used to snapshot goldRateAtPayment on each ledger entry. */
+  private async currentGoldRate(): Promise<number> {
+    const settings = await this.settingsService.get();
+    return (settings as any)?.metal_rates?.gold || 0;
   }
 
   // ─────────────────────────────────────────────────────────────────
@@ -337,13 +347,18 @@ export class GoldInvestmentService {
 
           // Add first payment to ledger
           if (!sub.paymentLedger?.length) {
+            const goldRate = await this.currentGoldRate();
+            const gramsCredited = goldRate > 0 ? monthlyAmount / goldRate : 0;
             sub.paymentLedger = [{
               month: 1,
               amount: monthlyAmount,
               date: new Date(),
               type: 'autopay',
               razorpayPaymentId: dto.razorpay_payment_id,
+              goldRateAtPayment: goldRate,
+              gramsCredited,
             }];
+            sub.goldGramsAccumulated = (sub.goldGramsAccumulated || 0) + gramsCredited;
           }
           changed = true;
         }
@@ -457,6 +472,9 @@ export class GoldInvestmentService {
       const maturesAt = new Date(startedAt);
       maturesAt.setMonth(maturesAt.getMonth() + totalMonths);
 
+      const goldRate = await this.currentGoldRate();
+      const gramsPerMonth = goldRate > 0 ? monthlyAmount / goldRate : 0;
+
       sub.status = SubscriptionStatus.ACTIVE;
       sub.startedAt = startedAt;
       sub.maturesAt = maturesAt;
@@ -468,7 +486,10 @@ export class GoldInvestmentService {
         date: startedAt,
         type: 'emi' as const,
         razorpayPaymentId: dto.razorpay_payment_id,
+        goldRateAtPayment: goldRate,
+        gramsCredited: gramsPerMonth,
       }));
+      sub.goldGramsAccumulated = (sub.goldGramsAccumulated || 0) + gramsPerMonth * totalMonths;
 
       await sub.save();
     }
@@ -575,6 +596,9 @@ export class GoldInvestmentService {
     const annualRate = plan.interestRate || 0;
     const monthlyRate = annualRate / 12 / 100;
 
+    const goldRate = await this.currentGoldRate();
+    const gramsCredited = goldRate > 0 ? monthlyAmount / goldRate : 0;
+
     sub.paymentLedger = [
       ...(sub.paymentLedger || []),
       {
@@ -584,8 +608,11 @@ export class GoldInvestmentService {
         type: 'cash',
         staffId: dto.staffId,
         note: dto.note,
+        goldRateAtPayment: goldRate,
+        gramsCredited,
       },
     ];
+    sub.goldGramsAccumulated = (sub.goldGramsAccumulated || 0) + gramsCredited;
 
     sub.installmentsPaid += 1;
     sub.amountAccumulated += monthlyAmount;
@@ -815,10 +842,14 @@ export class GoldInvestmentService {
 
       case 'subscription.charged': {
         const isFirstPayment = sub.installmentsPaid === 0;
+        const goldRate = await this.currentGoldRate();
+        const gramsCredited = goldRate > 0 ? monthlyAmount / goldRate : 0;
+
         sub.status = SubscriptionStatus.ACTIVE;
         sub.installmentsPaid += 1;
         sub.amountAccumulated += monthlyAmount;
         sub.interestAccumulated = sub.amountAccumulated * monthlyRate * sub.installmentsPaid;
+        sub.goldGramsAccumulated = (sub.goldGramsAccumulated || 0) + gramsCredited;
 
         // Add entry to payment ledger
         sub.paymentLedger = [
@@ -829,6 +860,8 @@ export class GoldInvestmentService {
             date: new Date(),
             type: 'autopay',
             razorpayPaymentId: paymentId,
+            goldRateAtPayment: goldRate,
+            gramsCredited,
           },
         ];
         if (isFirstPayment) this.notifyInvestmentPlanStarted(sub, plan);
@@ -950,6 +983,76 @@ export class GoldInvestmentService {
     return Math.max(0, principal + interest - redeemed);
   }
 
+  /**
+   * Pure computation of both redemption options against a subscription's current balance —
+   * no persistence. Shared by previewRedemption() (comparison screen) and redeemFromSubscription()
+   * (commit) so the numbers shown to the customer always match what gets saved.
+   */
+  private computeRedemptionOptions(sub: any, dto: { amount: number; jewelrySubtotal: number; taxPercentage: number; jewelryGoldWeightGrams?: number; makingChargesOnJewelry?: number }) {
+    const plan = sub.plan as any;
+    const cashBenefitPercent = plan?.cashBenefitPercent || 0;
+    const goldGramsAccumulated = sub.goldGramsAccumulated || 0;
+
+    // Option 1 — Cash Benefit: investment amount + cash benefit both reduce the taxable subtotal.
+    const cashBenefitAmount = Math.round(dto.amount * cashBenefitPercent / 100);
+    const cashRemainingAmount = Math.max(0, dto.jewelrySubtotal - dto.amount - cashBenefitAmount);
+    const cashGst = Math.round(cashRemainingAmount * dto.taxPercentage / 100);
+    const cashBenefitOption = {
+      redemptionType: RedemptionType.CASH_BENEFIT as const,
+      investmentAmountUsed: dto.amount,
+      cashBenefitAmount,
+      remainingAmount: cashRemainingAmount,
+      gstAmount: cashGst,
+      finalPayableAmount: cashRemainingAmount + cashGst,
+    };
+
+    // Option 2 — Making Charge Waiver: waived only on the gold-weight portion the customer's
+    // accumulated grams actually cover; investment amount still applies as payment.
+    const jewelryGoldWeightGrams = dto.jewelryGoldWeightGrams || 0;
+    const makingChargesOnJewelry = dto.makingChargesOnJewelry || 0;
+    const eligibleGoldGramsUsed = Math.min(goldGramsAccumulated, jewelryGoldWeightGrams);
+    const waiverRatio = jewelryGoldWeightGrams > 0 ? eligibleGoldGramsUsed / jewelryGoldWeightGrams : 0;
+    const waivedMakingCharges = Math.round(makingChargesOnJewelry * waiverRatio);
+    const remainingMakingCharges = makingChargesOnJewelry - waivedMakingCharges;
+    const waiverRemainingAmount = Math.max(0, dto.jewelrySubtotal - waivedMakingCharges - dto.amount);
+    const waiverGst = Math.round(waiverRemainingAmount * dto.taxPercentage / 100);
+    const makingChargeWaiverOption = {
+      redemptionType: RedemptionType.MAKING_CHARGE_WAIVER as const,
+      investmentAmountUsed: dto.amount,
+      goldAccumulated: goldGramsAccumulated,
+      eligibleGoldGramsUsed,
+      jewelryGoldWeightGrams,
+      waivedMakingCharges,
+      remainingMakingCharges,
+      remainingAmount: waiverRemainingAmount,
+      gstAmount: waiverGst,
+      finalPayableAmount: waiverRemainingAmount + waiverGst,
+    };
+
+    return { cashBenefitOption, makingChargeWaiverOption };
+  }
+
+  /** Comparison-screen quote — computes both redemption options without saving anything. */
+  async previewRedemption(id: string, dto: PreviewRedemptionDto) {
+    const sub = await this.subModel.findById(id).populate('plan').exec();
+    if (!sub) throw new NotFoundException('Subscription not found');
+
+    const monthsElapsed = this.monthsSinceStart(sub.startedAt);
+    if (monthsElapsed < GoldInvestmentService.MIN_REDEMPTION_LOCK_MONTHS) {
+      const remaining = GoldInvestmentService.MIN_REDEMPTION_LOCK_MONTHS - monthsElapsed;
+      throw new BadRequestException(
+        `This plan has a minimum lock-in of ${GoldInvestmentService.MIN_REDEMPTION_LOCK_MONTHS} months and cannot be redeemed yet. ${remaining} month${remaining !== 1 ? 's' : ''} remaining.`,
+      );
+    }
+
+    const available = this.computeAvailableBalance(sub.toObject());
+    if (dto.amount > available + 0.5) {
+      throw new BadRequestException(`Redemption amount (₹${dto.amount}) exceeds available balance (₹${available.toFixed(0)})`);
+    }
+
+    return this.computeRedemptionOptions(sub, dto);
+  }
+
   async getCustomerBalance(phone: string) {
     const subs = await this.subModel
       .find({
@@ -984,7 +1087,19 @@ export class GoldInvestmentService {
       throw new BadRequestException(`Redemption amount (₹${dto.amount}) exceeds available balance (₹${available.toFixed(0)})`);
     }
 
+    if (dto.redemptionType === RedemptionType.MAKING_CHARGE_WAIVER && !dto.jewelryGoldWeightGrams) {
+      throw new BadRequestException('jewelryGoldWeightGrams is required for the making-charge-waiver redemption option');
+    }
+
+    const { cashBenefitOption, makingChargeWaiverOption } = this.computeRedemptionOptions(sub, dto);
+    const chosen = dto.redemptionType === RedemptionType.CASH_BENEFIT ? cashBenefitOption : makingChargeWaiverOption;
+    const goldRateAtRedemption = await this.currentGoldRate();
+
     sub.amountRedeemed = (sub.amountRedeemed || 0) + dto.amount;
+    if (dto.redemptionType === RedemptionType.MAKING_CHARGE_WAIVER) {
+      sub.goldGramsAccumulated = Math.max(0, (sub.goldGramsAccumulated || 0) - makingChargeWaiverOption.eligibleGoldGramsUsed);
+    }
+
     sub.redemptionHistory = [
       ...(sub.redemptionHistory || []),
       {
@@ -993,6 +1108,16 @@ export class GoldInvestmentService {
         saleReference: dto.saleReference,
         note: dto.note,
         staffId: dto.staffId,
+        redemptionType: dto.redemptionType,
+        saleItemIds: dto.saleItemIds,
+        goldRateAtRedemption,
+        cashBenefitAmount: dto.redemptionType === RedemptionType.CASH_BENEFIT ? cashBenefitOption.cashBenefitAmount : undefined,
+        eligibleGoldGramsUsed: dto.redemptionType === RedemptionType.MAKING_CHARGE_WAIVER ? makingChargeWaiverOption.eligibleGoldGramsUsed : undefined,
+        jewelryGoldWeightGrams: dto.jewelryGoldWeightGrams,
+        waivedMakingCharges: dto.redemptionType === RedemptionType.MAKING_CHARGE_WAIVER ? makingChargeWaiverOption.waivedMakingCharges : undefined,
+        remainingMakingCharges: dto.redemptionType === RedemptionType.MAKING_CHARGE_WAIVER ? makingChargeWaiverOption.remainingMakingCharges : undefined,
+        gstAmount: chosen.gstAmount,
+        finalPayableAmount: chosen.finalPayableAmount,
       },
     ];
 

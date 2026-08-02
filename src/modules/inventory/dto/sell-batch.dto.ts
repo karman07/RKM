@@ -120,6 +120,25 @@ export class SellBatchDto {
   investment_sub_id?: string;
 
   @IsOptional()
+  investment_redemption_type?: 'cash_benefit' | 'making_charge_waiver';
+
+  @IsOptional()
+  @IsNumber()
+  investment_jewelry_subtotal?: number;
+
+  @IsOptional()
+  @IsNumber()
+  investment_tax_percentage?: number;
+
+  @IsOptional()
+  @IsNumber()
+  investment_jewelry_gold_weight_grams?: number;
+
+  @IsOptional()
+  @IsNumber()
+  investment_making_charges_on_jewelry?: number;
+
+  @IsOptional()
   making_charges_discount?: number;
 
   @IsOptional()

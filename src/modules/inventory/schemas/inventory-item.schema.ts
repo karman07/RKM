@@ -293,6 +293,10 @@ export class InventoryItem {
   @Prop({ type: String, default: null })
   investment_sub_id: string;
 
+  /** Which redemption option the customer chose for this sale — cash benefit or making-charge waiver */
+  @Prop({ type: String, enum: ['cash_benefit', 'making_charge_waiver'], default: null })
+  investment_redemption_type: 'cash_benefit' | 'making_charge_waiver' | null;
+
   /** Amount of customer advance balance applied to this sale */
   @Prop({ type: Number, default: 0 })
   advance_redeemed: number;

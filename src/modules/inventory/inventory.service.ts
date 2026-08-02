@@ -32,6 +32,8 @@ import { CancelPreBookingDto } from './dto/cancel-prebooking.dto.js';
 import { BranchesService } from '../branches/branches.service.js';
 import { CustomersService } from '../customers/customers.service.js';
 import { CustomerAdvanceService } from '../customers/customer-advance.service.js';
+import { GoldInvestmentService } from '../gold-investment/gold-investment.service.js';
+import { RedemptionType } from '../gold-investment/dto/gold-investment.dto.js';
 import {
   SALE_COMPLETED_EVENT,
   SALE_RETURNED_EVENT,
@@ -71,6 +73,7 @@ export class InventoryService {
     private readonly branchesService: BranchesService,
     private readonly customersService: CustomersService,
     private readonly customerAdvanceService: CustomerAdvanceService,
+    private readonly goldInvestmentService: GoldInvestmentService,
     private readonly eventEmitter: EventEmitter2,
     private readonly configService: ConfigService,
     private readonly notificationsService: NotificationsService,
@@ -1467,6 +1470,7 @@ export class InventoryService {
       // Investment balance redemption tracking
       if (dto.investment_redeemed != null) (item as any).investment_redeemed = Number(dto.investment_redeemed) || 0;
       if (dto.investment_sub_id) (item as any).investment_sub_id = dto.investment_sub_id;
+      if (dto.investment_redemption_type) (item as any).investment_redemption_type = dto.investment_redemption_type;
       if (dto.making_charges_discount != null) (item as any).making_charges_discount = Number(dto.making_charges_discount) || 0;
 
       // Customer advance redemption tracking
@@ -1509,6 +1513,33 @@ export class InventoryService {
       // Auto-generate a unique sale reference, unless a shared one was supplied (multi-item bill)
       if (!item.sale_reference) {
         item.sale_reference = dto.sale_reference?.trim() || this.generateSaleReference();
+      }
+
+      // ─── Redeem investment plan balance — atomically with the sale ────────────
+      // Same rationale as the advance-redemption block below: previously investment
+      // redemption was a separate, best-effort call fired from the frontend after the
+      // sale/approval, so a sale could complete while the subscription's balance/gold
+      // underneath was never actually decremented. Doing it here — and recomputing the
+      // authoritative breakdown server-side via redeemFromSubscription rather than
+      // trusting client-supplied discount figures — fails the sale itself on any
+      // redemption error and keeps the persisted numbers reproducible for audit.
+      // Gated on investment_sub_id/investment_redeemed, which callers only set once per
+      // bill (first item of a batch), same convention as the advance fields above.
+      if (dto.investment_sub_id && dto.investment_redeemed != null && dto.investment_redemption_type) {
+        const redemption = await this.goldInvestmentService.redeemFromSubscription(dto.investment_sub_id, {
+          amount: Number(dto.investment_redeemed),
+          redemptionType: dto.investment_redemption_type as RedemptionType,
+          jewelrySubtotal: Number(dto.investment_jewelry_subtotal) || 0,
+          taxPercentage: Number(dto.investment_tax_percentage) || 0,
+          jewelryGoldWeightGrams: dto.investment_jewelry_gold_weight_grams != null ? Number(dto.investment_jewelry_gold_weight_grams) : undefined,
+          makingChargesOnJewelry: dto.investment_making_charges_on_jewelry != null ? Number(dto.investment_making_charges_on_jewelry) : undefined,
+          saleItemIds: [item._id!.toString()],
+          saleReference: item.sale_reference || dto.sale_reference,
+          note: `Sale ${item.unique_item_code}`,
+          staffId: requestingUserId,
+        });
+        const lastEntry = (redemption as any).redemptionHistory?.[(redemption as any).redemptionHistory.length - 1];
+        (item as any).making_charges_discount = lastEntry?.waivedMakingCharges ?? 0;
       }
 
       // ─── Redeem customer advance(s) — atomically with the sale ────────────────
@@ -1697,6 +1728,11 @@ export class InventoryService {
       if (i === 0) {
         itemDto.investment_redeemed = dto.investment_redeemed;
         itemDto.investment_sub_id = dto.investment_sub_id;
+        itemDto.investment_redemption_type = dto.investment_redemption_type;
+        itemDto.investment_jewelry_subtotal = dto.investment_jewelry_subtotal;
+        itemDto.investment_tax_percentage = dto.investment_tax_percentage;
+        itemDto.investment_jewelry_gold_weight_grams = dto.investment_jewelry_gold_weight_grams;
+        itemDto.investment_making_charges_on_jewelry = dto.investment_making_charges_on_jewelry;
         itemDto.making_charges_discount = dto.making_charges_discount;
         itemDto.advance_redeemed = dto.advance_redeemed;
         itemDto.advance_id = dto.advance_id;
@@ -1807,6 +1843,11 @@ export class InventoryService {
       manager_discount?: number;
       investment_redeemed?: number;
       investment_sub_id?: string;
+      investment_redemption_type?: 'cash_benefit' | 'making_charge_waiver';
+      investment_jewelry_subtotal?: number;
+      investment_tax_percentage?: number;
+      investment_jewelry_gold_weight_grams?: number;
+      investment_making_charges_on_jewelry?: number;
       making_charges_discount?: number;
       advance_redeemed?: number;
       advance_id?: string;
@@ -1850,6 +1891,11 @@ export class InventoryService {
     if (overrides?.selling_price != null) dto.selling_price = Number(overrides.selling_price);
     if (overrides?.investment_redeemed != null) dto.investment_redeemed = Number(overrides.investment_redeemed);
     if (overrides?.investment_sub_id) dto.investment_sub_id = overrides.investment_sub_id;
+    if (overrides?.investment_redemption_type) dto.investment_redemption_type = overrides.investment_redemption_type;
+    if (overrides?.investment_jewelry_subtotal != null) dto.investment_jewelry_subtotal = Number(overrides.investment_jewelry_subtotal);
+    if (overrides?.investment_tax_percentage != null) dto.investment_tax_percentage = Number(overrides.investment_tax_percentage);
+    if (overrides?.investment_jewelry_gold_weight_grams != null) dto.investment_jewelry_gold_weight_grams = Number(overrides.investment_jewelry_gold_weight_grams);
+    if (overrides?.investment_making_charges_on_jewelry != null) dto.investment_making_charges_on_jewelry = Number(overrides.investment_making_charges_on_jewelry);
     if (overrides?.making_charges_discount != null) dto.making_charges_discount = Number(overrides.making_charges_discount);
     if (overrides?.advance_redeemed != null) dto.advance_redeemed = Number(overrides.advance_redeemed);
     if (overrides?.advance_id) dto.advance_id = overrides.advance_id;
@@ -1990,6 +2036,11 @@ export class InventoryService {
       manager_discount?: number;
       investment_redeemed?: number;
       investment_sub_id?: string;
+      investment_redemption_type?: 'cash_benefit' | 'making_charge_waiver';
+      investment_jewelry_subtotal?: number;
+      investment_tax_percentage?: number;
+      investment_jewelry_gold_weight_grams?: number;
+      investment_making_charges_on_jewelry?: number;
       making_charges_discount?: number;
       advance_redeemed?: number;
       advance_id?: string;
@@ -2015,6 +2066,11 @@ export class InventoryService {
       if (i === 0) {
         if (overrides?.investment_redeemed != null) perItemOverrides.investment_redeemed = overrides.investment_redeemed;
         if (overrides?.investment_sub_id) perItemOverrides.investment_sub_id = overrides.investment_sub_id;
+        if (overrides?.investment_redemption_type) perItemOverrides.investment_redemption_type = overrides.investment_redemption_type;
+        if (overrides?.investment_jewelry_subtotal != null) perItemOverrides.investment_jewelry_subtotal = overrides.investment_jewelry_subtotal;
+        if (overrides?.investment_tax_percentage != null) perItemOverrides.investment_tax_percentage = overrides.investment_tax_percentage;
+        if (overrides?.investment_jewelry_gold_weight_grams != null) perItemOverrides.investment_jewelry_gold_weight_grams = overrides.investment_jewelry_gold_weight_grams;
+        if (overrides?.investment_making_charges_on_jewelry != null) perItemOverrides.investment_making_charges_on_jewelry = overrides.investment_making_charges_on_jewelry;
         if (overrides?.making_charges_discount != null) perItemOverrides.making_charges_discount = overrides.making_charges_discount;
         if (overrides?.advance_redeemed != null) perItemOverrides.advance_redeemed = overrides.advance_redeemed;
         if (overrides?.advance_id) perItemOverrides.advance_id = overrides.advance_id;

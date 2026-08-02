@@ -23,9 +23,9 @@ export class InvestmentPlan {
   @Prop({ required: true, default: 0 })
   interestRate: number;
 
-  /** Discount % the customer gets when redeeming at the store */
+  /** Cash benefit %, paid on top of the investment amount redeemed at purchase — Option 1 only */
   @Prop({ required: true, default: 0 })
-  redemptionDiscount: number;
+  cashBenefitPercent: number;
 
   /** Whether admin has made this plan active for new subscriptions */
   @Prop({ default: true })

@@ -15,6 +15,7 @@ import { SmsModule } from '../sms/sms.module.js';
 import { EmailModule } from '../email/email.module.js';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module.js';
 import { MiscPaymentsModule } from '../misc-payments/misc-payments.module.js';
+import { GoldInvestmentModule } from '../gold-investment/gold-investment.module.js';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { MiscPaymentsModule } from '../misc-payments/misc-payments.module.js';
     EmailModule,
     WhatsAppModule,
     MiscPaymentsModule,
+    GoldInvestmentModule,
   ],
   controllers: [InventoryController, CustomerCertificateController],
   providers: [InventoryService, CertificateService],
