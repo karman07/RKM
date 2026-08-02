@@ -283,7 +283,7 @@ export default function UsersPage() {
       name: u.name,
       email: u.role === 'worker' ? '' : u.email,
       personal_email:           (u as any).personal_email               || '',
-      professional_email:       (u as any).professional_email           || '',
+      professional_email:       u.role === 'worker' ? '' : u.email,
       password: '',
       role: roleValue,
       branch: (u.branch as any)?._id || (u.branch as string),
@@ -335,10 +335,6 @@ export default function UsersPage() {
       setError('Please verify the family contact number before saving.');
       return;
     }
-    if (form.professional_email && !/@rkmjewellers\.com$/i.test(form.professional_email.trim())) {
-      setError('Professional email must end with @rkmjewellers.com');
-      return;
-    }
     setSaving(true);
     setError('');
     try {
@@ -355,7 +351,8 @@ export default function UsersPage() {
         ...(form.avatar            ? { avatar:                  form.avatar                    } : {}),
         ...(isWorker               ? {}                                                         : { email: form.email }),
         ...(form.personal_email     ? { personal_email:       form.personal_email             } : {}),
-        ...(form.professional_email ? { professional_email:   form.professional_email         } : {}),
+        ...((!isWorker && form.email && /@rkmjewellers\.com$/i.test(form.email.trim()))
+              ? { professional_email: form.email.trim().toLowerCase() } : {}),
         ...(customRoleId           ? { custom_role:            customRoleId                   } : {}),
         ...(isWorker && form.job_title ? { job_title:          form.job_title                 } : {}),
         ...(form.base_salary       ? { base_salary:            Number(form.base_salary)       } : {}),
@@ -742,7 +739,7 @@ export default function UsersPage() {
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Email</label>
                   <input type="email" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:border-blue-400 focus:bg-white transition-all"
-                    value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="jane@company.com" />
+                    value={form.email} onChange={e => setForm({ ...form, email: e.target.value, professional_email: e.target.value })} placeholder="jane@company.com" />
                 </div>
               )}
 
@@ -1079,18 +1076,15 @@ export default function UsersPage() {
 
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Professional Email</label>
-                  <input type="email" className={`w-full px-4 py-3 bg-slate-50 border rounded-xl text-sm font-semibold focus:outline-none focus:bg-white transition-all ${
-                      form.professional_email && !/@rkmjewellers\.com$/i.test(form.professional_email.trim())
-                        ? 'border-red-300 focus:border-red-400'
-                        : 'border-slate-200 focus:border-blue-400'
-                    }`}
-                    value={form.professional_email || ''} onChange={e => setForm({ ...form, professional_email: e.target.value })}
-                    placeholder="jane@rkmjewellers.com" />
+                  <input type="email" disabled readOnly className="w-full px-4 py-3 bg-slate-100 border border-slate-200 rounded-xl text-sm font-semibold text-slate-500 cursor-not-allowed"
+                    value={form.email || ''} placeholder="jane@rkmjewellers.com" />
                   <p className={`text-[10px] font-bold ml-1 ${
-                      form.professional_email && !/@rkmjewellers\.com$/i.test(form.professional_email.trim())
+                      form.email && !/@rkmjewellers\.com$/i.test(form.email.trim())
                         ? 'text-red-500' : 'text-slate-400'
                     }`}>
-                    Must end with @rkmjewellers.com — shown in the staff table.
+                    {form.email && !/@rkmjewellers\.com$/i.test(form.email.trim())
+                      ? 'Won\'t appear in the staff table — Email above must end with @rkmjewellers.com.'
+                      : 'Always the same as the Email above — shown in the staff table.'}
                   </p>
                 </div>
               </div>
