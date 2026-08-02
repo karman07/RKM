@@ -879,18 +879,18 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
         </div>
       </div>
 
-      {/* Making charges discount */}
-      {(plan?.redemptionDiscount ?? 0) > 0 && (
+      {/* Redemption options at jewelry purchase */}
+      {(plan?.cashBenefitPercent ?? 0) > 0 && (
         <div className="mx-8 mb-5 px-5 py-4 rounded-2xl bg-blue-50 border border-blue-100">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-[8px] font-black uppercase tracking-widest mb-0.5 text-blue-700">Making Charges Discount</p>
-              <p className="text-[10px] font-bold text-slate-500">Applied at store when redeeming investment balance</p>
+              <p className="text-[8px] font-black uppercase tracking-widest mb-0.5 text-blue-700">Cash Benefit</p>
+              <p className="text-[10px] font-bold text-slate-500">One of two redemption options chosen at jewelry purchase</p>
             </div>
-            <p className="text-2xl font-black text-blue-600">{plan.redemptionDiscount}%</p>
+            <p className="text-2xl font-black text-blue-600">{plan.cashBenefitPercent}%</p>
           </div>
           <p className="mt-2 text-[9px] text-slate-400 font-bold">
-            On a {fmt(balance)} jewellery purchase, making charges are reduced by {plan.redemptionDiscount}%, saving an additional amount on top of the investment balance.
+            On a {fmt(balance)} jewellery purchase, the customer can choose a {plan.cashBenefitPercent}% cash benefit on top of the investment balance, or instead waive making charges on the gold their accumulated balance covers.
           </p>
         </div>
       )}

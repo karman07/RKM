@@ -10,7 +10,7 @@ import {
   getBranches,
   getInventory,
   getGoldBalance,
-  redeemGoldSubscription,
+  previewGoldRedemption,
   getAdvanceBalance,
   getCashiersByBranch,
   generateCertificate,
@@ -20,8 +20,11 @@ import {
   type GoldBalance,
   type CustomerAdvance,
   type User,
+  type RedemptionPreview,
+  type RedemptionType,
 } from '@/lib/api';
 import BillModal from '@/components/BillModal';
+import RedemptionComparisonPanel from '@/components/RedemptionComparisonPanel';
 
 const fmt = (n: number) => Math.round(n).toLocaleString('en-IN');
 
@@ -102,11 +105,15 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
   const isBatch = items.length > 1 && !!batchId;
 
   const basePrice: number = items.reduce((sum, it) => sum + itemQuotedPrice(it), 0);
-  const makingCharges: number = items.reduce((sum, it) => {
+  function itemPricingBreakdown(it: InventoryItem) {
     const p = typeof it.product_id === 'object' ? it.product_id as any : null;
-    const pb: any = (it as any).pricing_breakdown ?? p?.pricing_breakdown;
-    return sum + (pb?.making_charges ?? 0);
-  }, 0);
+    return (it as any).pricing_breakdown ?? p?.pricing_breakdown;
+  }
+  const makingCharges: number = items.reduce((sum, it) => sum + (itemPricingBreakdown(it)?.making_charges ?? 0), 0);
+  const taxableAmount: number = items.reduce((sum, it) => sum + (itemPricingBreakdown(it)?.taxable_amount ?? 0), 0);
+  const taxAmount: number = items.reduce((sum, it) => sum + (itemPricingBreakdown(it)?.tax_amount ?? 0), 0);
+  const goldWeightGrams: number = items.reduce((sum, it) => sum + (itemPricingBreakdown(it)?.billable_metal_weight ?? 0), 0);
+  const effectiveTaxPercentage = taxableAmount > 0 ? (taxAmount / taxableAmount) * 100 : 0;
   const maxDiscount: number = (first as any).max_manager_discount ?? 0;
 
   // Editable fields (pre-filled from cashier's request)
@@ -125,7 +132,12 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
   // Admin additions
   const [managerDiscount, setManagerDiscount] = useState(0);
   const [investmentPlans, setInvestmentPlans] = useState<GoldBalance[]>([]);
-  const [investmentApplied, setInvestmentApplied] = useState<Record<string, number>>({});
+  const [investmentSubId, setInvestmentSubId] = useState('');
+  const [investmentAmountInput, setInvestmentAmountInput] = useState('');
+  const [redemptionPreview, setRedemptionPreview] = useState<RedemptionPreview | null>(null);
+  const [redemptionChoice, setRedemptionChoice] = useState<RedemptionType | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState('');
   const [loadingBalance, setLoadingBalance] = useState(false);
   const [balanceChecked, setBalanceChecked] = useState(false);
   const [balanceError, setBalanceError] = useState('');
@@ -137,37 +149,21 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
   const [advanceBalanceChecked, setAdvanceBalanceChecked] = useState(false);
   const [advanceBalanceError, setAdvanceBalanceError] = useState('');
 
-  const totalInvestmentApplied = Object.values(investmentApplied).reduce((s, n) => s + (n || 0), 0);
+  const investmentSelectedPlan = investmentPlans.find(p => p._id === investmentSubId) || null;
   const totalAdvanceApplied = Object.values(advanceApplied).reduce((s, n) => s + (n || 0), 0);
-  const selectedInvestmentPlans = investmentPlans.filter(p => (investmentApplied[p._id] ?? 0) > 0);
   const selectedAdvances = advances.filter(a => (advanceApplied[a._id] ?? 0) > 0);
 
-  function toggleInvestmentPlan(id: string) {
-    setInvestmentApplied(prev => {
-      if (id in prev) { const next = { ...prev }; delete next[id]; return next; }
-      return { ...prev, [id]: 0 };
-    });
+  function selectInvestmentSub(id: string) {
+    setInvestmentSubId(id === investmentSubId ? '' : id);
+    setInvestmentAmountInput('');
+    setRedemptionPreview(null);
+    setRedemptionChoice(null);
   }
-  function setInvestmentPlanAmount(id: string, amount: number) {
-    setInvestmentApplied(prev => ({ ...prev, [id]: amount }));
-  }
-  function applyMaxInvestment(cap: number, ids?: string[]) {
-    const targets = ids ?? Object.keys(investmentApplied);
-    let remaining = Math.max(0, cap);
-    const next: Record<string, number> = {};
-    for (const plan of investmentPlans) {
-      if (!targets.includes(plan._id)) continue;
-      const amt = Math.max(0, Math.min(plan.availableBalance, remaining));
-      next[plan._id] = amt;
-      remaining -= amt;
-    }
-    setInvestmentApplied(next);
-  }
-  function selectAllInvestments(cap: number) {
-    applyMaxInvestment(cap, investmentPlans.map(p => p._id));
-  }
-  function clearInvestments() {
-    setInvestmentApplied({});
+  function clearInvestment() {
+    setInvestmentSubId('');
+    setInvestmentAmountInput('');
+    setRedemptionPreview(null);
+    setRedemptionChoice(null);
   }
 
   function toggleAdvance(id: string) {
@@ -214,12 +210,51 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
   useEffect(() => { getCashiersByBranch().then(r => setCashiers(r.data)).catch(() => {}); }, []);
 
   const afterDiscount = Math.round(basePrice * (1 - managerDiscount / 100));
-  const rdPct: number = selectedInvestmentPlans.reduce((max, p) => Math.max(max, p.plan?.redemptionDiscount ?? 0), 0);
-  const mcDiscount = totalInvestmentApplied > 0 && rdPct > 0 ? Math.round(makingCharges * rdPct / 100) : 0;
+  const discountRatio = 1 - managerDiscount / 100;
   const advWaiverPct: number = selectedAdvances.reduce((max, a) => Math.max(max, (a as any).making_charges_waiver_pct ?? 0), 0);
   const advMcDiscount = totalAdvanceApplied > 0 && advWaiverPct > 0 ? Math.round(makingCharges * advWaiverPct / 100) : 0;
-  const finalPrice = Math.max(0, afterDiscount - totalInvestmentApplied - mcDiscount - totalAdvanceApplied - advMcDiscount);
+  const investmentCapForAmount = Math.max(0, afterDiscount - totalAdvanceApplied);
+  const investmentAmount = Math.min(parseFloat(investmentAmountInput) || 0, investmentSelectedPlan?.availableBalance ?? 0, investmentCapForAmount);
+  const chosenRedemptionOption = redemptionChoice === 'cash_benefit' ? redemptionPreview?.cashBenefitOption
+    : redemptionChoice === 'making_charge_waiver' ? redemptionPreview?.makingChargeWaiverOption
+    : null;
+  const mcDiscount = chosenRedemptionOption?.waivedMakingCharges ?? 0;
+  // When a redemption option is locked in, its GST-recomputed payable amount replaces
+  // afterDiscount as the base — advances (unchanged scheme) subtract from that as before.
+  const baseAmountAfterInvestment = chosenRedemptionOption ? chosenRedemptionOption.finalPayableAmount : afterDiscount;
+  const finalPrice = Math.max(0, baseAmountAfterInvestment - totalAdvanceApplied - advMcDiscount);
   const priceRatio = basePrice > 0 ? finalPrice / basePrice : 0;
+
+  // Debounced comparison-screen quote, same pattern as CreateInvoiceModal.
+  useEffect(() => {
+    if (!investmentSubId || investmentAmount <= 0) {
+      setRedemptionPreview(null);
+      setRedemptionChoice(null);
+      setPreviewError('');
+      return;
+    }
+    setPreviewError('');
+    setPreviewLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const preview = await previewGoldRedemption(investmentSubId, {
+          amount: investmentAmount,
+          jewelrySubtotal: taxableAmount * discountRatio,
+          taxPercentage: effectiveTaxPercentage,
+          jewelryGoldWeightGrams: goldWeightGrams,
+          makingChargesOnJewelry: makingCharges * discountRatio,
+        });
+        setRedemptionPreview(preview);
+      } catch (e: any) {
+        setRedemptionPreview(null);
+        setPreviewError(e?.message || 'Could not compute redemption options.');
+      } finally {
+        setPreviewLoading(false);
+      }
+    }, 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [investmentSubId, investmentAmount, taxableAmount, discountRatio, effectiveTaxPercentage, goldWeightGrams, makingCharges]);
 
   async function checkInvestmentBalance() {
     const phone = reqData.sold_customer_phone;
@@ -231,7 +266,19 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
       const withBal = data.filter(b => b.availableBalance > 0);
       setInvestmentPlans(withBal);
       setBalanceChecked(true);
-      if (withBal.length === 1) { setInvestmentApplied({ [withBal[0]._id]: 0 }); }
+      // Pre-fill from the cashier's captured (non-binding) preference, if it matches a
+      // still-eligible subscription — the actual comparison/lock still happens here.
+      const preferredId = reqData.investment_sub_id;
+      const preferred = preferredId ? withBal.find(b => b._id === preferredId) : undefined;
+      if (preferred) {
+        setInvestmentSubId(preferred._id);
+        setInvestmentAmountInput(String(Math.min(Number(reqData.investment_redeemed) || preferred.availableBalance, preferred.availableBalance)));
+        if (reqData.investment_redemption_type === 'cash_benefit' || reqData.investment_redemption_type === 'making_charge_waiver') {
+          setRedemptionChoice(reqData.investment_redemption_type);
+        }
+      } else if (withBal.length === 1) {
+        setInvestmentSubId(withBal[0]._id);
+      }
     } catch (e: any) {
       setInvestmentPlans([]);
       setBalanceChecked(true);
@@ -263,12 +310,12 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
 
   function buildPaymentSplits() {
     const originalSplits: any[] = reqData.payment_splits ?? [];
-    const investmentEntries = Object.entries(investmentApplied).filter(([, amt]) => amt > 0);
     const advanceEntries = Object.entries(advanceApplied).filter(([, amt]) => amt > 0);
-    if (investmentEntries.length > 0 || advanceEntries.length > 0) {
+    const hasInvestment = investmentSubId && investmentAmount > 0;
+    if (hasInvestment || advanceEntries.length > 0) {
       const cashSplits = originalSplits.filter(s => s.mode !== 'investment_balance' && s.mode !== 'advance_balance');
       const splits: any[] = [];
-      investmentEntries.forEach(([id, amt]) => splits.push({ mode: 'investment_balance', amount: amt, reference: id }));
+      if (hasInvestment) splits.push({ mode: 'investment_balance', amount: investmentAmount, reference: investmentSubId });
       advanceEntries.forEach(([id, amt]) => splits.push({ mode: 'advance_balance', amount: amt, reference: id }));
       splits.push(...(cashSplits.length > 0
         ? cashSplits.map((s, i) => i === 0 ? { ...s, amount: finalPrice } : s)
@@ -292,23 +339,36 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
 
   async function handleApprove() {
     if (!customerName.trim()) { setError('Customer name is required'); return; }
+    if (investmentSubId && investmentAmount > 0 && !redemptionChoice) {
+      setError('Choose a redemption option (Cash Benefit or Making Charge Waiver) before approving.');
+      return;
+    }
     setApproving(true);
     setError('');
     try {
-      const investmentEntries = Object.entries(investmentApplied).filter(([, amt]) => amt > 0);
       const advanceEntries = Object.entries(advanceApplied).filter(([, amt]) => amt > 0);
       const splits = buildPaymentSplits();
+      const hasInvestment = investmentSubId && investmentAmount > 0;
       let approvedRef = '';
 
+      // Investment plan redemption (if any) is committed atomically server-side using the
+      // exact same breakdown shown on the comparison screen — the approval fails outright if
+      // the redemption fails, instead of the old separate best-effort client-side call.
       if (isBatch) {
         const overrides: Parameters<typeof approveSaleRequestBatch>[1] = {
           item_prices: items.map(it => ({ id: it._id, selling_price: Math.round(itemQuotedPrice(it) * priceRatio) })),
           payment_splits: splits,
         };
         if (managerDiscount > 0) overrides.manager_discount = managerDiscount;
-        if (totalInvestmentApplied > 0) overrides.investment_redeemed = totalInvestmentApplied;
-        if (investmentEntries[0]) overrides.investment_sub_id = investmentEntries[0][0];
-        if (mcDiscount > 0) overrides.making_charges_discount = mcDiscount;
+        if (hasInvestment) {
+          overrides.investment_redeemed = investmentAmount;
+          overrides.investment_sub_id = investmentSubId;
+          overrides.investment_redemption_type = redemptionChoice ?? undefined;
+          overrides.investment_jewelry_subtotal = taxableAmount * discountRatio;
+          overrides.investment_tax_percentage = effectiveTaxPercentage;
+          overrides.investment_jewelry_gold_weight_grams = goldWeightGrams;
+          overrides.investment_making_charges_on_jewelry = makingCharges * discountRatio;
+        }
         if (totalAdvanceApplied > 0) overrides.advance_redeemed = totalAdvanceApplied;
         if (advanceEntries[0]) overrides.advance_id = advanceEntries[0][0];
         if (advMcDiscount > 0) overrides.advance_making_charges_discount = advMcDiscount;
@@ -320,9 +380,15 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
           payment_splits: splits,
         };
         if (managerDiscount > 0) overrides.manager_discount = managerDiscount;
-        if (totalInvestmentApplied > 0) overrides.investment_redeemed = totalInvestmentApplied;
-        if (investmentEntries[0]) overrides.investment_sub_id = investmentEntries[0][0];
-        if (mcDiscount > 0) overrides.making_charges_discount = mcDiscount;
+        if (hasInvestment) {
+          overrides.investment_redeemed = investmentAmount;
+          overrides.investment_sub_id = investmentSubId;
+          overrides.investment_redemption_type = redemptionChoice ?? undefined;
+          overrides.investment_jewelry_subtotal = taxableAmount * discountRatio;
+          overrides.investment_tax_percentage = effectiveTaxPercentage;
+          overrides.investment_jewelry_gold_weight_grams = goldWeightGrams;
+          overrides.investment_making_charges_on_jewelry = makingCharges * discountRatio;
+        }
         if (totalAdvanceApplied > 0) overrides.advance_redeemed = totalAdvanceApplied;
         if (advanceEntries[0]) overrides.advance_id = advanceEntries[0][0];
         if (advMcDiscount > 0) overrides.advance_making_charges_discount = advMcDiscount;
@@ -330,20 +396,7 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
         approvedRef = result.sale_reference || first.unique_item_code;
       }
 
-      // Advance balance redemption is now performed atomically by the backend as part of
-      // approving the sale (see payment_splits/advance_redeemed sent above) — the sale
-      // itself fails if the redemption fails, so there's no separate call to make here.
       const saleReference = approvedRef;
-      await Promise.all(
-        investmentEntries.map(([id, amt]) =>
-          redeemGoldSubscription(id, {
-            amount: amt,
-            saleReference,
-            note: `Approved sale for ${customerName}${mcDiscount > 0 ? ` · making charges discount ₹${fmt(mcDiscount)}` : ''}`,
-          }).catch(() => { /* non-blocking */ })
-        ),
-      );
-
       const soldItems = await fetchSoldItems(saleReference);
       setCompletedItems(soldItems.length ? soldItems : items);
       onApproved(soldItems.length ? soldItems : items);
@@ -396,7 +449,8 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
     sale_channel: saleChannel,
     payment_mode: paymentMode,
     payment_splits: paymentSplitsPreview,
-    investment_redeemed: i === 0 ? totalInvestmentApplied : 0,
+    investment_redeemed: i === 0 && investmentSubId ? investmentAmount : 0,
+    investment_redemption_type: i === 0 ? redemptionChoice : null,
     making_charges_discount: i === 0 ? mcDiscount : 0,
     advance_redeemed: i === 0 ? totalAdvanceApplied : 0,
     advance_making_charges_discount: i === 0 ? advMcDiscount : 0,
@@ -607,13 +661,13 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
                     <span className="text-sm font-black text-[#2563EB]">₹{fmt(finalPrice)}</span>
                     <div className="flex items-center gap-1.5 flex-wrap justify-end">
                       {managerDiscount > 0 && <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-md font-black">-{managerDiscount}% off</span>}
-                      {totalInvestmentApplied > 0 && <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-md font-black">-₹{fmt(totalInvestmentApplied)} balance</span>}
+                      {investmentAmount > 0 && <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-md font-black">-₹{fmt(investmentAmount)} balance</span>}
                       {mcDiscount > 0 && <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-md font-black">-₹{fmt(mcDiscount)} making</span>}
                       {totalAdvanceApplied > 0 && <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md font-black">-₹{fmt(totalAdvanceApplied)} advance</span>}
                       {advMcDiscount > 0 && <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-md font-black">-₹{fmt(advMcDiscount)} making</span>}
                     </div>
                   </div>
-                  {(managerDiscount > 0 || totalInvestmentApplied > 0 || mcDiscount > 0 || totalAdvanceApplied > 0 || advMcDiscount > 0) && (
+                  {(managerDiscount > 0 || investmentAmount > 0 || mcDiscount > 0 || totalAdvanceApplied > 0 || advMcDiscount > 0) && (
                     <div className="border-t border-slate-200 pt-1.5 space-y-0.5">
                       <div className="text-[10px] text-slate-400 font-medium flex items-center gap-1.5">
                         <span>Quoted:</span><span className="font-bold text-slate-600">₹{fmt(basePrice)}</span>
@@ -623,14 +677,14 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
                           <span>- Discount ({managerDiscount}%):</span><span className="font-bold">₹{fmt(basePrice - afterDiscount)}</span>
                         </div>
                       )}
-                      {totalInvestmentApplied > 0 && (
+                      {investmentAmount > 0 && (
                         <div className="text-[10px] text-amber-600 font-medium flex items-center gap-1.5">
-                          <span>- Investment balance{selectedInvestmentPlans.length > 1 ? ` (${selectedInvestmentPlans.length} plans)` : ''}:</span><span className="font-bold">₹{fmt(totalInvestmentApplied)}</span>
+                          <span>- Investment balance ({redemptionChoice === 'cash_benefit' ? 'Cash Benefit' : redemptionChoice === 'making_charge_waiver' ? 'Making Charge Waiver' : 'pending choice'}):</span><span className="font-bold">₹{fmt(investmentAmount)}</span>
                         </div>
                       )}
                       {mcDiscount > 0 && (
                         <div className="text-[10px] text-purple-600 font-medium flex items-center gap-1.5">
-                          <span>- Making charges ({rdPct}% of ₹{fmt(makingCharges)}):</span><span className="font-bold">₹{fmt(mcDiscount)}</span>
+                          <span>- Making charges waived:</span><span className="font-bold">₹{fmt(mcDiscount)}</span>
                         </div>
                       )}
                       {totalAdvanceApplied > 0 && (
@@ -740,8 +794,7 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
             </div>
 
             {(() => {
-              const investmentCap = Math.max(0, afterDiscount - totalAdvanceApplied);
-              const advanceCap = Math.max(0, afterDiscount - totalInvestmentApplied);
+              const advanceCap = Math.max(0, afterDiscount - investmentAmount);
               return (
                 <>
                   {/* ── Investment Balance Redemption ── */}
@@ -752,12 +805,6 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
                         <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Investment Balance Redemption</p>
                       </div>
                       <div className="flex items-center gap-3">
-                        {investmentPlans.length > 1 && (
-                          <button type="button" onClick={() => selectAllInvestments(investmentCap)}
-                            className="text-[9px] font-black uppercase tracking-widest text-amber-700 hover:text-amber-800 underline underline-offset-2">
-                            Select All
-                          </button>
-                        )}
                         {reqData.sold_customer_phone && !balanceChecked && (
                           <button
                             onClick={checkInvestmentBalance}
@@ -772,7 +819,7 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
                           </button>
                         )}
                         {balanceChecked && (
-                          <button onClick={() => { setBalanceChecked(false); setInvestmentPlans([]); setInvestmentApplied({}); }}
+                          <button onClick={() => { setBalanceChecked(false); setInvestmentPlans([]); clearInvestment(); }}
                             className="text-[10px] font-black text-amber-600 hover:underline">Recheck</button>
                         )}
                       </div>
@@ -808,18 +855,18 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
 
                     {investmentPlans.length > 0 && (
                       <>
+                        <p className="text-[10px] text-slate-400 font-medium -mt-1">Pick one plan to redeem against this sale.</p>
                         <div className="space-y-2">
                           {investmentPlans.map(plan => {
-                            const checked = plan._id in investmentApplied;
-                            const amt = investmentApplied[plan._id] ?? 0;
+                            const checked = plan._id === investmentSubId;
                             return (
                               <div key={plan._id} className={`rounded-xl border-2 transition-all ${checked ? 'border-amber-500 bg-amber-50' : 'border-slate-200 bg-white hover:border-amber-300'}`}>
                                 <label className="w-full flex items-center gap-3 px-4 py-3 cursor-pointer">
-                                  <input type="checkbox" checked={checked} onChange={() => toggleInvestmentPlan(plan._id)}
-                                    className="w-4 h-4 rounded accent-amber-600 flex-shrink-0" />
+                                  <input type="radio" name="investmentSubApproval" checked={checked} onChange={() => selectInvestmentSub(plan._id)}
+                                    className="w-4 h-4 accent-amber-600 flex-shrink-0" />
                                   <div className="flex-1 min-w-0">
                                     <p className="text-sm font-black text-slate-900">{plan.plan?.name}</p>
-                                    <p className="text-[10px] text-slate-400">{plan.installmentsPaid} months paid{plan.plan?.redemptionDiscount > 0 ? ` · ${plan.plan.redemptionDiscount}% off making charges` : ''}</p>
+                                    <p className="text-[10px] text-slate-400">{plan.installmentsPaid} months paid · {(plan.goldGramsAccumulated || 0).toFixed(2)}g accumulated</p>
                                   </div>
                                   <div className="text-right flex-shrink-0">
                                     <p className="text-sm font-black text-amber-700">₹{fmt(plan.availableBalance)}</p>
@@ -827,12 +874,20 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
                                   </div>
                                 </label>
                                 {checked && (
-                                  <div className="px-4 pb-3">
-                                    <input type="number" min={0} max={plan.availableBalance} value={amt || ''}
-                                      onChange={e => setInvestmentPlanAmount(plan._id, Math.min(parseFloat(e.target.value) || 0, plan.availableBalance))}
-                                      placeholder={`Amount to apply (max ₹${fmt(plan.availableBalance)})`}
-                                      className="w-full bg-white border-2 border-amber-300 rounded-xl px-4 py-2.5 text-sm font-black text-amber-800 focus:outline-none focus:border-amber-500 shadow-sm"
+                                  <div className="px-4 pb-3 flex items-center gap-2">
+                                    <input type="number" min={0} max={plan.availableBalance} value={investmentAmountInput}
+                                      onChange={e => setInvestmentAmountInput(e.target.value)}
+                                      placeholder={`Amount to apply (max ₹${fmt(Math.min(plan.availableBalance, investmentCapForAmount))})`}
+                                      className="flex-1 bg-white border-2 border-amber-300 rounded-xl px-4 py-2.5 text-sm font-black text-amber-800 focus:outline-none focus:border-amber-500 shadow-sm"
                                     />
+                                    <button type="button" onClick={() => setInvestmentAmountInput(String(Math.min(plan.availableBalance, investmentCapForAmount)))}
+                                      className="px-3 py-2.5 rounded-xl bg-amber-600 text-white text-[10px] font-black uppercase whitespace-nowrap hover:bg-amber-700 transition-colors">
+                                      Max
+                                    </button>
+                                    <button type="button" onClick={clearInvestment}
+                                      className="px-3 py-2.5 rounded-xl border border-slate-200 text-slate-500 text-[10px] font-black uppercase hover:bg-slate-50 transition-colors">
+                                      Clear
+                                    </button>
                                   </div>
                                 )}
                               </div>
@@ -840,25 +895,14 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
                           })}
                         </div>
 
-                        {Object.keys(investmentApplied).length > 0 && (
-                          <div className="flex items-center gap-3">
-                            <button type="button" onClick={() => applyMaxInvestment(investmentCap)}
-                              className="px-4 py-2.5 rounded-xl bg-amber-600 text-white text-xs font-black hover:bg-amber-700 transition-colors whitespace-nowrap">
-                              Apply Max Across Selected
-                            </button>
-                            <button type="button" onClick={clearInvestments}
-                              className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-500 text-xs font-black hover:bg-slate-50">
-                              Clear
-                            </button>
-                          </div>
-                        )}
-
-                        {totalInvestmentApplied > 0 && (
-                          <p className="text-[10px] text-amber-700 font-bold flex items-center gap-1.5">
-                            <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                            ₹{fmt(totalInvestmentApplied)} will be deducted from {selectedInvestmentPlans.length > 1 ? `${selectedInvestmentPlans.length} investment plans` : 'investment plan'} on approval
-                            {mcDiscount > 0 && ` · ₹${fmt(mcDiscount)} making charges discount also applied`}
-                          </p>
+                        {investmentSubId && investmentAmount > 0 && (
+                          <RedemptionComparisonPanel
+                            preview={redemptionPreview}
+                            loading={previewLoading}
+                            error={previewError}
+                            choice={redemptionChoice}
+                            onChoose={setRedemptionChoice}
+                          />
                         )}
                       </>
                     )}
@@ -1026,7 +1070,7 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
               </div>
               <button
                 onClick={handleApprove}
-                disabled={approving || rejecting}
+                disabled={approving || rejecting || Boolean(investmentSubId && investmentAmount > 0 && !redemptionChoice)}
                 className="px-10 py-3.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-md transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
               >
                 {approving

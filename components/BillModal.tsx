@@ -425,6 +425,9 @@ ${billEl.outerHTML}
   // Investment redemption totals across all items
   const totalInvestmentRedeemed = items.reduce((s, it) => s + ((it as any).investment_redeemed ?? 0), 0);
   const totalMakingDiscount = items.reduce((s, it) => s + ((it as any).making_charges_discount ?? 0), 0);
+  const investmentRedemptionType = (items.find(it => (it as any).investment_redemption_type) as any)?.investment_redemption_type ?? null;
+  const investmentRedemptionLabel = investmentRedemptionType === 'cash_benefit' ? 'Cash Benefit'
+    : investmentRedemptionType === 'making_charge_waiver' ? 'Making Charge Waiver' : null;
   // Advance redemption totals across all items
   const totalAdvanceRedeemed = items.reduce((s, it) => s + ((it as any).advance_redeemed ?? 0), 0);
   const totalAdvanceMakingDiscount = items.reduce((s, it) => s + ((it as any).advance_making_charges_discount ?? 0), 0);
@@ -760,8 +763,8 @@ ${billEl.outerHTML}
                 totalMgrDis > 0 && { label: 'Additional Discount (Manager)', value: `- ₹${fmt(totalMgrDis)}`, bold: false },
                 { label: 'Taxable Value', value: `₹${fmt(totalTaxable)}`, bold: false },
                 { label: 'Total Tax (GST)', value: `₹${fmt(grandTotalTax)}`, bold: false },
-                totalInvestmentRedeemed > 0 && { label: 'Investment Balance Applied', value: `- ₹${fmt(totalInvestmentRedeemed)}`, bold: false, color: '#7A1C2A' },
-                totalMakingDiscount > 0 && { label: 'Making Charges Discount (Scheme)', value: `- ₹${fmt(totalMakingDiscount)}`, bold: false, color: '#7A1C2A' },
+                totalInvestmentRedeemed > 0 && { label: `Investment Balance Applied${investmentRedemptionLabel ? ` (${investmentRedemptionLabel})` : ''}`, value: `- ₹${fmt(totalInvestmentRedeemed)}`, bold: false, color: '#7A1C2A' },
+                totalMakingDiscount > 0 && { label: 'Making Charges Waived (Investment)', value: `- ₹${fmt(totalMakingDiscount)}`, bold: false, color: '#7A1C2A' },
                 totalAdvanceRedeemed > 0 && { label: 'Advance Payment Applied', value: `- ₹${fmt(totalAdvanceRedeemed)}`, bold: false, color: '#7A1C2A' },
                 totalAdvanceMakingDiscount > 0 && { label: 'Making Charges Discount (Advance)', value: `- ₹${fmt(totalAdvanceMakingDiscount)}`, bold: false, color: '#7A1C2A' },
               ].filter(Boolean).map((row: any, i) => (

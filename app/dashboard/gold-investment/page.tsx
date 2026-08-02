@@ -41,7 +41,7 @@ type Tab = 'overview' | 'plans' | 'subscriptions';
 type DrawerTab = 'details' | 'ledger';
 
 const emptyPlan: Partial<InvestmentPlan> = {
-  name: '', description: '', monthlyAmount: 1000, durationMonths: 12, interestRate: 3, redemptionDiscount: 2, isActive: true,
+  name: '', description: '', monthlyAmount: 1000, durationMonths: 12, interestRate: 3, cashBenefitPercent: 2, isActive: true,
 };
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -334,7 +334,7 @@ export default function GoldInvestmentDashboard() {
                     { l: 'Monthly', v: fmt(p.monthlyAmount) },
                     { l: 'Duration', v: `${p.durationMonths} months` },
                     { l: 'Interest', v: `${p.interestRate}% p.a.` },
-                    { l: 'Discount', v: `${p.redemptionDiscount}% on redemption` },
+                    { l: 'Cash Benefit', v: `${p.cashBenefitPercent}% of investment redeemed` },
                     { l: 'Total', v: fmt(p.monthlyAmount * p.durationMonths) },
                     { l: 'Razorpay ID', v: p.razorpayPlanId?.slice(0, 14) + '...' },
                   ].map((item, i) => (
@@ -435,8 +435,9 @@ export default function GoldInvestmentDashboard() {
                   <input type="number" step="0.1" value={editingPlan.interestRate || ''} onChange={e => setEditingPlan(p => ({ ...p, interestRate: Number(e.target.value) }))} className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all" />
                 </div>
                 <div>
-                  <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Redemption Discount (%)</label>
-                  <input type="number" step="0.1" value={editingPlan.redemptionDiscount || ''} onChange={e => setEditingPlan(p => ({ ...p, redemptionDiscount: Number(e.target.value) }))} className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all" />
+                  <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Cash Benefit (%)</label>
+                  <input type="number" step="0.1" value={editingPlan.cashBenefitPercent || ''} onChange={e => setEditingPlan(p => ({ ...p, cashBenefitPercent: Number(e.target.value) }))} className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all" />
+                  <p className="text-[9px] text-slate-400 mt-1">Paid on top of the investment amount if the customer picks the Cash Benefit redemption option at jewelry purchase. The Making Charge Waiver option (the alternative) is computed from accumulated gold grams, not this %.</p>
                 </div>
               </div>
               <div className="flex items-center gap-4 pt-4">
@@ -450,7 +451,7 @@ export default function GoldInvestmentDashboard() {
                   <p className="text-[9px] font-black uppercase tracking-widest text-blue-600 mb-2">Plan Preview</p>
                   <p className="text-xs font-bold text-slate-700">Total investment: {fmt((editingPlan.monthlyAmount || 0) * (editingPlan.durationMonths || 0))}</p>
                   <p className="text-xs font-bold text-blue-700">Est. interest: {fmt(((editingPlan.monthlyAmount || 0) * (editingPlan.durationMonths || 0) * (editingPlan.interestRate || 0)) / 100)}</p>
-                  <p className="text-xs font-bold text-slate-700">Discount at store: {editingPlan.redemptionDiscount}% off purchase</p>
+                  <p className="text-xs font-bold text-slate-700">Cash Benefit option: +{editingPlan.cashBenefitPercent}% of investment redeemed at jewelry purchase</p>
                 </div>
               )}
             </div>
@@ -511,7 +512,8 @@ export default function GoldInvestmentDashboard() {
                         <div className="flex gap-4 mt-3">
                           <div><p className="text-[8px] text-blue-200 font-bold">Accumulated</p><p className="text-sm font-bold">{fmt(selectedSub.amountAccumulated)}</p></div>
                           <div><p className="text-[8px] text-blue-200 font-bold">Redeemed</p><p className="text-sm font-bold">{fmt(selectedSub.amountRedeemed || 0)}</p></div>
-                          <div><p className="text-[8px] text-blue-200 font-bold">Discount</p><p className="text-sm font-bold">{selectedSub.plan?.redemptionDiscount}% off</p></div>
+                          <div><p className="text-[8px] text-blue-200 font-bold">Gold Accumulated</p><p className="text-sm font-bold">{(selectedSub.goldGramsAccumulated || 0).toFixed(2)}g</p></div>
+                          <div><p className="text-[8px] text-blue-200 font-bold">Cash Benefit</p><p className="text-sm font-bold">{selectedSub.plan?.cashBenefitPercent}%</p></div>
                         </div>
                       </div>
                     );
