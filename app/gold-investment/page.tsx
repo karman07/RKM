@@ -16,7 +16,7 @@ interface Plan {
   monthlyAmount: number;
   durationMonths: number;
   interestRate: number;
-  redemptionDiscount: number;
+  cashBenefitPercent: number;
 }
 
 const Typewriter = ({ text, delay = 80 }: { text: string; delay?: number }) => {

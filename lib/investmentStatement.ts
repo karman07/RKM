@@ -35,7 +35,7 @@ export interface StatementSubscription {
     monthlyAmount: number;
     durationMonths: number;
     interestRate: number;
-    redemptionDiscount?: number;
+    cashBenefitPercent?: number;
   };
   /** Current available (non-redeemed) balance — principal + accrued interest - redeemed, computed by the caller */
   computedBalance: number;

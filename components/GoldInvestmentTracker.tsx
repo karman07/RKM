@@ -53,7 +53,7 @@ export interface GoldSub {
     monthlyAmount: number;
     durationMonths: number;
     interestRate: number;
-    redemptionDiscount?: number;
+    cashBenefitPercent?: number;
   };
 }
 
@@ -578,14 +578,12 @@ export default function GoldInvestmentTracker({ sub }: { sub: GoldSub }) {
               <p className="text-[8px] font-bold" style={{ color: '#B8975A' }}>+{fmtDecimal(months[total - 1].cumulativeInterest)} interest</p>
             </div>
           </div>
-          {(plan.redemptionDiscount ?? 0) > 0 && (
-            <div className="flex items-center gap-2 mt-3 pt-3 border-t" style={{ borderColor: '#EEE0C8' }}>
-              <Sparkles size={13} style={{ color: '#B8975A' }} className="shrink-0" />
-              <p className="text-[9px] font-bold text-slate-600">
-                Redeem for <span className="font-black" style={{ color: '#5C0828' }}>{plan.redemptionDiscount}% off</span> making charges at RKM Jewellers
-              </p>
-            </div>
-          )}
+          <div className="flex items-center gap-2 mt-3 pt-3 border-t" style={{ borderColor: '#EEE0C8' }}>
+            <Sparkles size={13} style={{ color: '#B8975A' }} className="shrink-0" />
+            <p className="text-[9px] font-bold text-slate-600">
+              At jewelry purchase, choose{(plan.cashBenefitPercent ?? 0) > 0 ? <> a <span className="font-black" style={{ color: '#5C0828' }}>{plan.cashBenefitPercent}% cash benefit</span> or</> : ''} a making-charge waiver on your accumulated gold at RKM Jewellers
+            </p>
+          </div>
         </div>
 
       </div>
