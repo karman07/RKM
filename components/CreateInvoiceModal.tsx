@@ -412,6 +412,7 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
       // come back as bare ids, not populated. BillModal needs them populated (pricing
       // breakdown, branch address, product image/SKU all read off the populated objects),
       // so re-fetch the same items through the listing endpoint, which does populate.
+      const saleReference = sold[0]?.sale_reference;
       let billItems = sold;
       if (saleReference) {
         try {
