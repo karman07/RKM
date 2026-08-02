@@ -70,8 +70,8 @@ export default function PlansPage() {
                       <p className="text-sm font-black text-emerald-700">{plan.interestRate}% p.a.</p>
                     </div>
                     <div className="rounded-xl p-3 bg-amber-50 border border-amber-100">
-                      <p className="text-[8px] font-black uppercase text-amber-500 mb-1">Redemption</p>
-                      <p className="text-sm font-black text-amber-700">{plan.redemptionDiscount}% off</p>
+                      <p className="text-[8px] font-black uppercase text-amber-500 mb-1">Cash Benefit</p>
+                      <p className="text-sm font-black text-amber-700">{plan.cashBenefitPercent}%</p>
                     </div>
                   </div>
                   <Link href={`/dashboard/enquiries?new=1&plan_id=${plan._id}`}

@@ -391,7 +391,7 @@ export interface InvestmentPlan {
   monthlyAmount: number;
   durationMonths: number;
   interestRate: number;
-  redemptionDiscount: number;
+  cashBenefitPercent: number;
   isActive: boolean;
 }
 
