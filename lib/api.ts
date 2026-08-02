@@ -193,6 +193,11 @@ export interface SaleRequestData {
   sold_by_user_id?: string;
   notes?: string;
   payment_splits?: PaymentSplit[];
+  investment_sub_id?: string;
+  investment_redeemed?: number;
+  /** The customer's preferred redemption option — non-binding; admin/manager confirms the real
+   *  comparison and locks the choice at approval time, when the full bill context is known. */
+  investment_redemption_type?: RedemptionType;
 }
 
 export interface PaginatedResponse<T> {
@@ -522,21 +527,21 @@ export interface GoldBalance {
   amountAccumulated: number;
   interestAccumulated: number;
   amountRedeemed: number;
+  goldGramsAccumulated: number;
   interestStopped: boolean;
   availableBalance: number;
   plan: {
     name: string;
-    redemptionDiscount: number;
+    cashBenefitPercent: number;
     durationMonths: number;
   };
   installmentsPaid: number;
 }
 
+export type RedemptionType = 'cash_benefit' | 'making_charge_waiver';
+
 export const getGoldBalance = (phone: string) =>
   request<GoldBalance[]>(`/gold-investment/balance?phone=${encodeURIComponent(phone)}`);
-
-export const redeemGoldBalance = (subscriptionId: string, data: { amount: number; saleReference?: string; note?: string; staffId?: string }) =>
-  request<any>(`/gold-investment/subscriptions/${subscriptionId}/redeem`, { method: 'POST', body: JSON.stringify(data) });
 
 // ── Gold Loans (read-only — cashier can view but not manage) ─────────────────
 

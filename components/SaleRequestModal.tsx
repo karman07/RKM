@@ -2,8 +2,8 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   InventoryItem, SaleRequestData, PaymentSplit,
-  submitSaleRequest, searchCustomerByPhone, getGoldBalance, redeemGoldBalance,
-  type FullCustomer, type GoldBalance,
+  submitSaleRequest, searchCustomerByPhone, getGoldBalance,
+  type FullCustomer, type GoldBalance, type RedemptionType,
 } from '../lib/api';
 
 interface Props {
@@ -267,9 +267,11 @@ interface InvestmentBalanceSectionProps {
   onSelect: (sub: GoldBalance | null, amount: number) => void;
   selectedSub: GoldBalance | null;
   appliedAmount: number;
+  redemptionType: RedemptionType | null;
+  onRedemptionTypeChange: (type: RedemptionType) => void;
 }
 
-function InvestmentBalanceSection({ phone, onSelect, selectedSub, appliedAmount }: InvestmentBalanceSectionProps) {
+function InvestmentBalanceSection({ phone, onSelect, selectedSub, appliedAmount, redemptionType, onRedemptionTypeChange }: InvestmentBalanceSectionProps) {
   const [balances, setBalances] = useState<GoldBalance[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
@@ -346,9 +348,22 @@ function InvestmentBalanceSection({ phone, onSelect, selectedSub, appliedAmount 
             onChange={e => onSelect(selectedSub, Math.min(parseFloat(e.target.value) || 0, selectedSub.availableBalance))}
             placeholder={`Up to ${fmt(selectedSub.availableBalance)}`}
           />
-          <p className="text-[10px] text-[#5A0F1A] font-bold">
-            {selectedSub.plan?.redemptionDiscount}% additional discount on making charges applies at store.
-          </p>
+          <div className="space-y-1.5">
+            <label className={LABEL}>Preferred Redemption Option</label>
+            <p className="text-[10px] text-slate-500 font-medium -mt-1">Non-binding — the exact numbers are confirmed and locked by admin/manager at approval time.</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => onRedemptionTypeChange('cash_benefit')}
+                className={`rounded-xl border-2 px-3 py-2.5 text-left transition-all ${redemptionType === 'cash_benefit' ? 'border-[#5A0F1A] bg-[#5A0F1A]/10' : 'border-slate-200 bg-white hover:border-[#5A0F1A]/40'}`}>
+                <p className="text-[10px] font-black text-slate-900">Cash Benefit</p>
+                <p className="text-[9px] text-slate-400">+{selectedSub.plan?.cashBenefitPercent ?? 0}% of redeemed amount</p>
+              </button>
+              <button type="button" onClick={() => onRedemptionTypeChange('making_charge_waiver')}
+                className={`rounded-xl border-2 px-3 py-2.5 text-left transition-all ${redemptionType === 'making_charge_waiver' ? 'border-[#5A0F1A] bg-[#5A0F1A]/10' : 'border-slate-200 bg-white hover:border-[#5A0F1A]/40'}`}>
+                <p className="text-[10px] font-black text-slate-900">Making Charge Waiver</p>
+                <p className="text-[9px] text-slate-400">On eligible accumulated gold</p>
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -372,9 +387,11 @@ export default function SaleRequestModal({ item, userId, branchId, onClose, onSu
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  // Investment balance redemption state
+  // Investment balance redemption state — captured here as the customer's preference only;
+  // the real comparison + locked choice happens server-side when admin/manager approves.
   const [selectedInvestmentSub, setSelectedInvestmentSub] = useState<GoldBalance | null>(null);
   const [investmentAppliedAmount, setInvestmentAppliedAmount] = useState(0);
+  const [investmentRedemptionType, setInvestmentRedemptionType] = useState<RedemptionType | null>(null);
 
   const hasEmi = splits.some(s => s.mode === 'emi');
   const hasInvestmentBalance = splits.some(s => s.mode === 'investment_balance');
@@ -397,6 +414,7 @@ export default function SaleRequestModal({ item, userId, branchId, onClose, onSu
     if (validSplits.length === 0) { setError('At least one payment method with amount is required'); return; }
     if (hasEmi && !emiProvider.trim()) { setError('EMI provider is required'); return; }
     if (hasInvestmentBalance && !selectedInvestmentSub) { setError('Please select an investment subscription to redeem from'); return; }
+    if (hasInvestmentBalance && selectedInvestmentSub && !investmentRedemptionType) { setError('Please pick a preferred redemption option (Cash Benefit or Making Charge Waiver)'); return; }
     setError('');
     setSubmitting(true);
     try {
@@ -424,19 +442,14 @@ export default function SaleRequestModal({ item, userId, branchId, onClose, onSu
         sold_by_user_id: userId,
         notes: notes.trim(),
         payment_splits: splitPayload,
+        investment_sub_id: hasInvestmentBalance && selectedInvestmentSub ? selectedInvestmentSub._id : undefined,
+        investment_redeemed: hasInvestmentBalance && investmentAppliedAmount > 0 ? investmentAppliedAmount : undefined,
+        investment_redemption_type: hasInvestmentBalance && investmentRedemptionType ? investmentRedemptionType : undefined,
       };
-      const saleResult = await submitSaleRequest(item._id, payload) as any;
-
-      // Deduct investment balance after sale is recorded
-      if (hasInvestmentBalance && selectedInvestmentSub && investmentAppliedAmount > 0) {
-        const saleRef = saleResult?.unique_item_code || saleResult?._id || item.unique_item_code;
-        await redeemGoldBalance(selectedInvestmentSub._id, {
-          amount: investmentAppliedAmount,
-          saleReference: saleRef,
-          note: `Redeemed against sale of ${typeof item.product_id === 'object' ? (item.product_id as any).name : item.unique_item_code}`,
-          staffId: userId,
-        });
-      }
+      // Investment balance redemption is NOT applied here — it's committed atomically,
+      // server-side, only once admin/manager approves the request and the full bill context
+      // (jewelry gold weight, making charges, GST) is known to compute the real comparison.
+      await submitSaleRequest(item._id, payload);
 
       onSuccess();
     } catch (err: any) {
@@ -498,6 +511,8 @@ export default function SaleRequestModal({ item, userId, branchId, onClose, onSu
                 onSelect={handleInvestmentSelect}
                 selectedSub={selectedInvestmentSub}
                 appliedAmount={investmentAppliedAmount}
+                redemptionType={investmentRedemptionType}
+                onRedemptionTypeChange={setInvestmentRedemptionType}
               />
             )}
           </div>
