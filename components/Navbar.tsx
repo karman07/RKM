@@ -81,6 +81,8 @@ export default function Navbar() {
   const [liveLoading, setLiveLoading] = useState(false);
   const [isBagBumping, setIsBagBumping] = useState(false);
   const [isLogoutOpen, setIsLogoutOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profileRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (cartCount === 0) return;
@@ -120,14 +122,20 @@ export default function Navbar() {
     return () => window.removeEventListener("scroll", onScroll);
   }, [isHomePage]);
 
-  // Close mega-menu on outside click
+  // Close mega-menu / profile menu on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (shopRef.current && !shopRef.current.contains(e.target as Node))
         setShopOpen(false);
+      if (profileRef.current && !profileRef.current.contains(e.target as Node))
+        setProfileOpen(false);
     };
     document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener("touchstart", handler);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("touchstart", handler);
+    };
   }, []);
 
   useEffect(() => {
@@ -198,6 +206,7 @@ export default function Navbar() {
   useEffect(() => {
     setShopOpen(false);
     setMobileOpen(false);
+    setProfileOpen(false);
   }, [pathname]);
 
   const solid = isScrolled || !isHomePage;
@@ -550,13 +559,15 @@ export default function Navbar() {
 
             {mounted && (
               authState.token ? (
-                <div className="relative group">
+                <div ref={profileRef} className="relative">
                   <button
                     aria-label="Profile"
+                    aria-expanded={profileOpen}
                     style={{ color: textCol }}
+                    onClick={() => setProfileOpen((v) => !v)}
                     className="p-2.5 rounded-full hover:bg-black/[0.05] transition-colors duration-300 relative"
                   >
-                    <div className="w-6 h-6 rounded-full bg-[#7A1238] text-white flex items-center justify-center text-[9px] font-black overflow-hidden ring-2 ring-white shadow-sm transition-transform group-hover:scale-110">
+                    <div className={`w-6 h-6 rounded-full bg-[#7A1238] text-white flex items-center justify-center text-[9px] font-black overflow-hidden ring-2 ring-white shadow-sm transition-transform ${profileOpen ? "scale-110" : ""}`}>
                       {authState.customer?.profileImage ? (
                         <img
                           src={`${process.env.NEXT_PUBLIC_API_URL}${authState.customer.profileImage}`}
@@ -570,42 +581,47 @@ export default function Navbar() {
                   </button>
 
                   {/* Profile Dropdown */}
-                  <div className="absolute top-full right-0 mt-2 w-56 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.12)] rounded-3xl border border-slate-50 py-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible translate-y-2 group-hover:translate-y-0 transition-all duration-300 z-[100] overflow-hidden">
-                    <div className="px-5 py-4 border-b border-slate-50 mb-1 bg-slate-50/50">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Member</p>
-                      <p className="text-xs font-black text-slate-800 truncate mt-0.5">{authState.customer?.name}</p>
+                  {profileOpen && (
+                    <div className="absolute top-full right-0 mt-2 w-64 max-w-[calc(100vw-2rem)] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.12)] rounded-3xl border border-slate-50 py-3 z-[100] overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
+                      <div className="px-5 py-4 border-b border-slate-50 mb-1 bg-slate-50/50">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Member</p>
+                        <p className="text-xs font-black text-slate-800 truncate mt-0.5">{authState.customer?.name}</p>
+                      </div>
+
+                      <Link
+                        href="/profile"
+                        onClick={() => setProfileOpen(false)}
+                        className="flex items-center gap-3 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 hover:text-[#7A1238] hover:bg-emerald-50 active:bg-emerald-50 transition-all"
+                      >
+                        <UserIcon size={14} className="opacity-50" /> My Profile
+                      </Link>
+
+                      <Link
+                        href="/wishlist"
+                        onClick={() => setProfileOpen(false)}
+                        className="flex items-center gap-3 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 hover:text-[#7A1238] hover:bg-emerald-50 active:bg-emerald-50 transition-all"
+                      >
+                        <Heart size={14} className="opacity-50" /> Saved Items
+                      </Link>
+
+                      <Link
+                        href="/orders"
+                        onClick={() => setProfileOpen(false)}
+                        className="flex items-center gap-3 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 hover:text-[#7A1238] hover:bg-emerald-50 active:bg-emerald-50 transition-all"
+                      >
+                        <ShoppingBag size={14} className="opacity-50" /> My Orders
+                      </Link>
+
+                      <div className="mx-5 my-1 border-t border-slate-50"></div>
+
+                      <button
+                        onClick={() => { setProfileOpen(false); setIsLogoutOpen(true); }}
+                        className="w-full flex items-center gap-3 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 active:bg-red-50 transition-all"
+                      >
+                        <LogOut size={14} className="opacity-70" /> Sign Out
+                      </button>
                     </div>
-
-                    <Link
-                      href="/profile"
-                      className="flex items-center gap-3 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 hover:text-[#7A1238] hover:bg-emerald-50 transition-all"
-                    >
-                      <UserIcon size={14} className="opacity-50" /> My Profile
-                    </Link>
-
-                    <Link
-                      href="/wishlist"
-                      className="flex items-center gap-3 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 hover:text-[#7A1238] hover:bg-emerald-50 transition-all"
-                    >
-                      <Heart size={14} className="opacity-50" /> Saved Items
-                    </Link>
-
-                    <Link
-                      href="/orders"
-                      className="flex items-center gap-3 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 hover:text-[#7A1238] hover:bg-emerald-50 transition-all"
-                    >
-                      <ShoppingBag size={14} className="opacity-50" /> My Orders
-                    </Link>
-
-                    <div className="mx-5 my-1 border-t border-slate-50"></div>
-
-                    <button
-                      onClick={() => setIsLogoutOpen(true)}
-                      className="w-full flex items-center gap-3 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 transition-all"
-                    >
-                      <LogOut size={14} className="opacity-70" /> Sign Out
-                    </button>
-                  </div>
+                  )}
                 </div>
               ) : (
                 <button

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Home, LayoutGrid, ShoppingBag, Heart, User } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../store/store";
 import { openAuthDialog } from "../store/authSlice";
@@ -19,6 +19,11 @@ export default function BottomNav() {
   );
   const wishlistCount = useAppSelector((state) => state.wishlist.items.length);
   const [cartOpen, setCartOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -73,7 +78,7 @@ export default function BottomNav() {
             </div>
           </NavItem>
 
-          {authState.token ? (
+          {mounted && authState.token ? (
             <NavItem href="/profile" label="Account" active={isActive("/profile")}>
               <User size={21} strokeWidth={isActive("/profile") ? 2.3 : 1.7} />
             </NavItem>

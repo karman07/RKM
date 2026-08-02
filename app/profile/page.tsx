@@ -296,11 +296,11 @@ export default function ProfilePage() {
   if (!mounted || !authState.customer) return null;
 
   return (
-    <div className="min-h-screen bg-[#FDFCFB] pt-32 pb-20">
-      <div className="max-w-6xl mx-auto px-6">
-        
+    <div className="min-h-screen bg-[#FDFCFB] pt-24 sm:pt-32 pb-20">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6">
+
         {/* Back Button */}
-        <button onClick={() => router.back()} className="flex items-center gap-2 text-slate-400 hover:text-slate-900 transition-colors mb-10 group">
+        <button onClick={() => router.back()} className="flex items-center gap-2 text-slate-400 hover:text-slate-900 transition-colors mb-6 sm:mb-10 group">
           <ChevronLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
           <span className="text-[10px] font-black uppercase tracking-[0.3em]">Back to Boutique</span>
         </button>
@@ -328,12 +328,12 @@ export default function ProfilePage() {
           const hasRedeemable = totalBalance > 0;
           return (
             <div className="mb-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-              <div className="relative rounded-[2.5rem] overflow-hidden p-8 md:p-10" style={{ background: 'linear-gradient(135deg, #3A0418 0%, #5C0828 55%, #7A1238 100%)' }}>
+              <div className="relative rounded-[1.75rem] sm:rounded-[2.5rem] overflow-hidden p-6 sm:p-8 md:p-10" style={{ background: 'linear-gradient(135deg, #3A0418 0%, #5C0828 55%, #7A1238 100%)' }}>
                 <div className="absolute top-0 right-0 -mr-20 -mt-20 w-72 h-72 rounded-full bg-white/5 blur-3xl" />
                 <div className="relative flex flex-col md:flex-row md:items-center gap-6 md:gap-0">
                   <div className="flex-1">
                     <p className="text-[9px] font-black uppercase tracking-[0.35em] text-white/50 mb-1">Investment Balance</p>
-                    <h2 className="text-4xl md:text-5xl font-serif font-black text-white mb-2">{formatINR(totalBalance)}</h2>
+                    <h2 className="text-3xl sm:text-4xl md:text-5xl font-serif font-black text-white mb-2">{formatINR(totalBalance)}</h2>
                     <p className="text-sm text-white/60 font-medium">Available to redeem at any RKM Jewellers store</p>
                     {redeemedTotal > 0 && (
                       <p className="text-xs text-[#B8975A] font-bold mt-1">{formatINR(redeemedTotal)} already redeemed</p>
@@ -394,10 +394,10 @@ export default function ProfilePage() {
           
           {/* Left Column: Profile Card */}
           <div className="lg:col-span-4 space-y-6">
-            <div className="bg-white rounded-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.04)] border border-slate-50 p-10 flex flex-col items-center text-center">
-              
+            <div className="bg-white rounded-[28px] sm:rounded-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.04)] border border-slate-50 p-6 sm:p-10 flex flex-col items-center text-center">
+
               <div className="relative mb-8 group">
-                <div className="w-32 h-32 rounded-full bg-slate-100 flex items-center justify-center text-3xl font-serif text-slate-400 overflow-hidden border-4 border-white shadow-xl">
+                <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-full bg-slate-100 flex items-center justify-center text-3xl font-serif text-slate-400 overflow-hidden border-4 border-white shadow-xl">
                   {authState.customer.profileImage ? (
                     <img src={staticImg(authState.customer.profileImage)} className="w-full h-full object-cover" />
                   ) : (
@@ -463,7 +463,7 @@ export default function ProfilePage() {
             </div>
 
             {typeof authState.customer.relationship_manager === 'object' && authState.customer.relationship_manager && (
-              <div className="bg-white rounded-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.04)] border border-slate-50 p-8 mt-6">
+              <div className="bg-white rounded-[28px] sm:rounded-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.04)] border border-slate-50 p-6 sm:p-8 mt-6">
                 <div className="flex items-center gap-2 mb-5">
                   <UserCog size={16} className="text-[#7A1238]" />
                   <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-[0.2em]">Your Relationship Manager</h3>
@@ -495,29 +495,29 @@ export default function ProfilePage() {
 
           {/* Right Column: Information & Settings */}
           <div className="lg:col-span-8">
-            <div className="bg-white rounded-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.04)] border border-slate-50 overflow-hidden">
-              
-              <div className="border-b border-slate-50 px-10 py-8 flex items-center justify-between">
+            <div className="bg-white rounded-[28px] sm:rounded-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.04)] border border-slate-50 overflow-hidden">
+
+              <div className="border-b border-slate-50 px-6 sm:px-10 py-6 sm:py-8 flex items-center justify-between">
                 <div>
-                  <h3 className="text-xl font-serif font-bold text-slate-900">Personal Account</h3>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">Manage your identity & delivery preferences</p>
+                  <h3 className="text-lg sm:text-xl font-serif font-bold text-slate-900">Personal Account</h3>
+                  <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">Manage your identity & delivery preferences</p>
                 </div>
               </div>
 
               {/* Toast Notification */}
               {(success || error) && (
-                <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[1000] animate-in fade-in slide-in-from-bottom-5 duration-500">
-                  <div className={`px-8 py-4 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] flex items-center gap-4 border ${success ? 'bg-[#7A1238] border-emerald-400/20 text-white' : 'bg-red-600 border-red-400/20 text-white'}`}>
-                    {success ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
-                    <span className="text-[11px] font-black uppercase tracking-[0.2em]">{success || error}</span>
-                    <button onClick={() => {setSuccess(''); setError('');}} className="ml-4 opacity-50 hover:opacity-100 transition-opacity">
+                <div className="fixed bottom-6 sm:bottom-10 left-1/2 -translate-x-1/2 z-[1000] w-[calc(100%-2rem)] sm:w-auto max-w-md animate-in fade-in slide-in-from-bottom-5 duration-500">
+                  <div className={`px-5 sm:px-8 py-3.5 sm:py-4 rounded-2xl sm:rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] flex items-center gap-3 sm:gap-4 border ${success ? 'bg-[#7A1238] border-emerald-400/20 text-white' : 'bg-red-600 border-red-400/20 text-white'}`}>
+                    {success ? <CheckCircle2 size={20} className="flex-shrink-0" /> : <AlertCircle size={20} className="flex-shrink-0" />}
+                    <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-[0.15em] sm:tracking-[0.2em]">{success || error}</span>
+                    <button onClick={() => {setSuccess(''); setError('');}} className="ml-auto sm:ml-4 opacity-50 hover:opacity-100 transition-opacity flex-shrink-0">
                       <X size={16} />
                     </button>
                   </div>
                 </div>
               )}
 
-              <form onSubmit={handleUpdateProfile} className="p-10 space-y-10">
+              <form onSubmit={handleUpdateProfile} className="p-6 sm:p-10 space-y-8 sm:space-y-10">
                 
                 {/* Basic Details Section */}
                 <div className="space-y-6">
@@ -867,7 +867,7 @@ export default function ProfilePage() {
                   </div>
                 )}
 
-                <div className="pt-10 border-t border-slate-50 flex items-center justify-between">
+                <div className="pt-10 border-t border-slate-50 flex flex-col-reverse sm:flex-row items-center gap-5 sm:gap-0 sm:justify-between">
                   <button
                     type="button"
                     onClick={() => setIsLogoutOpen(true)}
@@ -875,9 +875,9 @@ export default function ProfilePage() {
                   >
                     <LogOut size={16} /> Sign Out of Account
                   </button>
-                  <button 
+                  <button
                     disabled={saveLoading}
-                    className="px-8 py-4 bg-[#7A1238] text-white text-[10px] font-black uppercase tracking-[0.3em] rounded-2xl shadow-xl shadow-emerald-900/20 hover:bg-[#14532d] hover:-translate-y-1 active:scale-95 transition-all disabled:opacity-50"
+                    className="w-full sm:w-auto px-8 py-4 bg-[#7A1238] text-white text-[10px] font-black uppercase tracking-[0.3em] rounded-2xl shadow-xl shadow-emerald-900/20 hover:bg-[#14532d] hover:-translate-y-1 active:scale-95 transition-all disabled:opacity-50"
                   >
                     {saveLoading ? 'Perfecting...' : 'Save Refined Settings'}
                   </button>
@@ -889,36 +889,36 @@ export default function ProfilePage() {
 
         {/* Purchase History Section */}
         <div className="mt-12">
-          <div className="bg-white rounded-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.04)] border border-slate-50 overflow-hidden">
-            <div className="border-b border-slate-50 px-10 py-8 flex items-center justify-between">
+          <div className="bg-white rounded-[28px] sm:rounded-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.04)] border border-slate-50 overflow-hidden">
+            <div className="border-b border-slate-50 px-6 sm:px-10 py-6 sm:py-8 flex flex-col md:flex-row md:items-center md:justify-between gap-5">
               <div>
-                <h3 className="text-xl font-serif font-bold text-slate-900 flex items-center gap-3">
+                <h3 className="text-lg sm:text-xl font-serif font-bold text-slate-900 flex items-center gap-3">
                   <ShoppingBag size={22} className="text-[#7A1238]" />
                   Purchase History
                 </h3>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">All your store & online purchases linked to {authState.customer?.phone}</p>
+                <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">All your store & online purchases linked to {authState.customer?.phone}</p>
               </div>
-              <div className="flex items-center gap-3">
-                {/* View All link */}
-                <Link href="/orders" className="text-[9px] font-black uppercase tracking-[0.2em] text-[#7A1238] hover:underline flex items-center gap-1">
-                  View All <span>→</span>
-                </Link>
+              <div className="flex items-center justify-between md:justify-end gap-3 flex-wrap">
                 {/* Tab Filter */}
                 <div className="flex items-center gap-2">
                   {(['all', 'store', 'online'] as const).map(tab => (
                     <button
                       key={tab}
                       onClick={() => setHistoryTab(tab)}
-                      className={`px-4 py-2 rounded-2xl text-[9px] font-black uppercase tracking-[0.2em] transition-all ${historyTab === tab ? 'bg-[#7A1238] text-white shadow-lg shadow-emerald-900/20' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}
+                      className={`px-3 sm:px-4 py-2 rounded-2xl text-[9px] font-black uppercase tracking-[0.2em] transition-all ${historyTab === tab ? 'bg-[#7A1238] text-white shadow-lg shadow-emerald-900/20' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}
                     >
                       {tab === 'all' ? 'All' : tab === 'store' ? 'In-Store' : 'Online'}
                     </button>
                   ))}
                 </div>
+                {/* View All link */}
+                <Link href="/orders" className="text-[9px] font-black uppercase tracking-[0.2em] text-[#7A1238] hover:underline flex items-center gap-1 flex-shrink-0">
+                  View All <span>→</span>
+                </Link>
               </div>
             </div>
 
-            <div className="p-10">
+            <div className="p-4 sm:p-10">
               {historyLoading ? (
                 <div className="flex items-center justify-center py-16">
                   <Loader2 size={32} className="animate-spin text-[#7A1238]" />
@@ -933,36 +933,36 @@ export default function ProfilePage() {
                 <div className="space-y-4">
                   {/* In-Store Purchases */}
                   {(historyTab === 'all' || historyTab === 'store') && purchaseHistory.store_purchases.map(item => (
-                    <div key={item._id} className="p-6 rounded-3xl bg-slate-50 border border-slate-100">
-                      <div className="flex items-start gap-5">
-                        <div className="w-16 h-16 rounded-2xl bg-white border border-slate-100 flex items-center justify-center overflow-hidden flex-shrink-0 shadow-sm">
+                    <div key={item._id} className="p-4 sm:p-6 rounded-2xl sm:rounded-3xl bg-slate-50 border border-slate-100">
+                      <div className="flex items-start gap-3 sm:gap-5">
+                        <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl bg-white border border-slate-100 flex items-center justify-center overflow-hidden flex-shrink-0 shadow-sm">
                           {item.product_image ? (
                             <img src={staticImg(item.product_image)} alt={item.product_name} className="w-full h-full object-cover" />
                           ) : (
-                            <Store size={24} className="text-slate-300" />
+                            <Store size={20} className="text-slate-300" />
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
+                          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                             <span className="text-[8px] font-black uppercase tracking-[0.2em] bg-[#FDF3E7] text-[#5C0828] px-2 py-0.5 rounded-full">In-Store</span>
                             {item.metal && <span className="text-[8px] font-black uppercase tracking-[0.1em] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">{item.metal} {item.purity}</span>}
                           </div>
-                          <h4 className="font-serif font-bold text-slate-900 mt-1 truncate">{item.product_name}</h4>
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Code: {item.unique_item_code}</p>
+                          <h4 className="font-serif font-bold text-sm sm:text-base text-slate-900 mt-1 truncate">{item.product_name}</h4>
+                          <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Code: {item.unique_item_code}</p>
                           {Boolean(item.gross_weight || item.net_weight) && (
-                            <p className="text-[10px] font-bold text-slate-400 mt-0.5">
+                            <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 mt-0.5">
                               Gross: {item.gross_weight}g{item.net_weight ? ` · Net: ${item.net_weight}g` : ''}
                             </p>
                           )}
                         </div>
                         <div className="text-right flex-shrink-0">
-                          <p className="font-serif font-bold text-lg text-slate-900">₹{item.selling_price?.toLocaleString('en-IN')}</p>
+                          <p className="font-serif font-bold text-sm sm:text-lg text-slate-900">₹{item.selling_price?.toLocaleString('en-IN')}</p>
                           {item.discount_amount > 0 && (
-                            <p className="text-[9px] font-black text-[#5C0828] uppercase">Disc: ₹{item.discount_amount?.toLocaleString('en-IN')}</p>
+                            <p className="text-[8px] sm:text-[9px] font-black text-[#5C0828] uppercase">Disc: ₹{item.discount_amount?.toLocaleString('en-IN')}</p>
                           )}
-                          {item.payment_mode && <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mt-1">{item.payment_mode}</p>}
+                          {item.payment_mode && <p className="text-[8px] sm:text-[9px] font-black text-slate-400 uppercase tracking-wider mt-1">{item.payment_mode}</p>}
                           {item.sold_at && (
-                            <p className="text-[9px] font-bold text-slate-300 mt-1">
+                            <p className="text-[8px] sm:text-[9px] font-bold text-slate-300 mt-1">
                               {new Date(item.sold_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                             </p>
                           )}
@@ -973,16 +973,16 @@ export default function ProfilePage() {
 
                   {/* Online Orders */}
                   {(historyTab === 'all' || historyTab === 'online') && purchaseHistory.online_orders.filter(o => o.payment_status === 'paid').map(order => (
-                    <div key={order._id} className="rounded-3xl bg-slate-50 border border-slate-100 overflow-hidden">
+                    <div key={order._id} className="rounded-2xl sm:rounded-3xl bg-slate-50 border border-slate-100 overflow-hidden">
                       <button
                         onClick={() => setExpandedOrder(expandedOrder === order._id ? null : order._id)}
-                        className="w-full p-6 flex items-center gap-5 text-left"
+                        className="w-full p-4 sm:p-6 flex items-center gap-3 sm:gap-5 text-left"
                       >
-                        <div className="w-16 h-16 rounded-2xl bg-white border border-slate-100 flex items-center justify-center flex-shrink-0 shadow-sm">
-                          <Package size={24} className="text-slate-300" />
+                        <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl bg-white border border-slate-100 flex items-center justify-center flex-shrink-0 shadow-sm">
+                          <Package size={20} className="text-slate-300" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
+                          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                             <span className="text-[8px] font-black uppercase tracking-[0.2em] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Online Order</span>
                             <span className={`text-[8px] font-black uppercase tracking-[0.1em] px-2 py-0.5 rounded-full ${
                               order.status === 'delivered' ? 'bg-[#FDF3E7] text-[#5C0828]' :
@@ -992,14 +992,14 @@ export default function ProfilePage() {
                             }`}>{order.status}</span>
                             <span className={`text-[8px] font-black uppercase tracking-[0.1em] px-2 py-0.5 rounded-full ${order.payment_status === 'paid' ? 'bg-[#FDF3E7] text-[#5C0828]' : 'bg-slate-100 text-slate-500'}`}>{order.payment_status}</span>
                           </div>
-                          <h4 className="font-serif font-bold text-slate-900 mt-1">Order #{order.order_number}</h4>
-                          <p className="text-[10px] font-bold text-slate-400 mt-0.5">{order.items?.length} item{order.items?.length !== 1 ? 's' : ''}</p>
+                          <h4 className="font-serif font-bold text-sm sm:text-base text-slate-900 mt-1 truncate">Order #{order.order_number}</h4>
+                          <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 mt-0.5">{order.items?.length} item{order.items?.length !== 1 ? 's' : ''}</p>
                         </div>
                         <div className="text-right flex-shrink-0">
-                          <p className="font-serif font-bold text-lg text-slate-900">₹{order.total?.toLocaleString('en-IN')}</p>
-                          {order.delivery_charge > 0 && <p className="text-[9px] font-bold text-slate-400">+₹{order.delivery_charge} delivery</p>}
+                          <p className="font-serif font-bold text-sm sm:text-lg text-slate-900">₹{order.total?.toLocaleString('en-IN')}</p>
+                          {order.delivery_charge > 0 && <p className="text-[8px] sm:text-[9px] font-bold text-slate-400">+₹{order.delivery_charge} delivery</p>}
                           {order.createdAt && (
-                            <p className="text-[9px] font-bold text-slate-300 mt-1">
+                            <p className="text-[8px] sm:text-[9px] font-bold text-slate-300 mt-1">
                               {new Date(order.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                             </p>
                           )}
@@ -1010,7 +1010,7 @@ export default function ProfilePage() {
                       </button>
 
                       {expandedOrder === order._id && (
-                        <div className="px-6 pb-6 border-t border-slate-100 pt-4 space-y-3">
+                        <div className="px-4 sm:px-6 pb-4 sm:pb-6 border-t border-slate-100 pt-4 space-y-3">
                           {order.items?.map((it: any, idx: number) => (
                             <div key={idx} className="flex items-center gap-4 py-2">
                               <div className="w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center overflow-hidden flex-shrink-0">
