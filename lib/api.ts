@@ -379,6 +379,11 @@ export const updateInventoryStatus = (id: string, payload: {
   making_charges_discount?: number;
   investment_redeemed?: number;
   investment_sub_id?: string;
+  investment_redemption_type?: 'cash_benefit' | 'making_charge_waiver';
+  investment_jewelry_subtotal?: number;
+  investment_tax_percentage?: number;
+  investment_jewelry_gold_weight_grams?: number;
+  investment_making_charges_on_jewelry?: number;
   advance_redeemed?: number;
   advance_id?: string;
   advance_making_charges_discount?: number;
@@ -407,6 +412,11 @@ export const sellItemsBatch = (payload: {
   payment_splits: { mode: string; amount: number; reference?: string }[];
   investment_redeemed?: number;
   investment_sub_id?: string;
+  investment_redemption_type?: 'cash_benefit' | 'making_charge_waiver';
+  investment_jewelry_subtotal?: number;
+  investment_tax_percentage?: number;
+  investment_jewelry_gold_weight_grams?: number;
+  investment_making_charges_on_jewelry?: number;
   making_charges_discount?: number;
   advance_redeemed?: number;
   advance_id?: string;
@@ -1123,7 +1133,8 @@ export interface GoldInvestmentPlan {
   monthlyAmount: number;
   durationMonths: number;
   interestRate: number;
-  redemptionDiscount: number;
+  /** Cash benefit %, paid on top of the investment amount redeemed at purchase — Option 1 only */
+  cashBenefitPercent: number;
   isActive: boolean;
   razorpayPlanId: string;
 }
@@ -1148,7 +1159,22 @@ export interface GoldSubscription {
   amountAccumulated: number;
   interestAccumulated: number;
   amountRedeemed: number;
-  redemptionHistory: { amount: number; date: string; saleReference?: string; note?: string }[];
+  goldGramsAccumulated: number;
+  redemptionHistory: {
+    amount: number;
+    date: string;
+    saleReference?: string;
+    note?: string;
+    redemptionType?: RedemptionType;
+    goldRateAtRedemption?: number;
+    cashBenefitAmount?: number;
+    eligibleGoldGramsUsed?: number;
+    jewelryGoldWeightGrams?: number;
+    waivedMakingCharges?: number;
+    remainingMakingCharges?: number;
+    gstAmount?: number;
+    finalPayableAmount?: number;
+  }[];
   paymentLedger: PaymentLedgerEntry[];
   installmentsPaid: number;
   maturesAt?: string;
@@ -1200,7 +1226,39 @@ export const getSubscriptions = (params?: { status?: string; planId?: string; ph
 export const updateGoldSubscription = (id: string, data: { adminNotes?: string }) =>
   request<GoldSubscription>(`/gold-investment/subscriptions/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
 
-export const redeemGoldSubscription = (id: string, data: { amount: number; saleReference?: string; note?: string }) =>
+export type RedemptionType = 'cash_benefit' | 'making_charge_waiver';
+
+export interface RedemptionOptionQuote {
+  redemptionType: RedemptionType;
+  investmentAmountUsed: number;
+  remainingAmount: number;
+  gstAmount: number;
+  finalPayableAmount: number;
+  cashBenefitAmount?: number;
+  goldAccumulated?: number;
+  eligibleGoldGramsUsed?: number;
+  jewelryGoldWeightGrams?: number;
+  waivedMakingCharges?: number;
+  remainingMakingCharges?: number;
+}
+
+export interface RedemptionPreview {
+  cashBenefitOption: RedemptionOptionQuote;
+  makingChargeWaiverOption: RedemptionOptionQuote;
+}
+
+export interface RedemptionPreviewInput {
+  amount: number;
+  jewelrySubtotal: number;
+  taxPercentage: number;
+  jewelryGoldWeightGrams?: number;
+  makingChargesOnJewelry?: number;
+}
+
+export const previewGoldRedemption = (id: string, data: RedemptionPreviewInput) =>
+  request<RedemptionPreview>(`/gold-investment/subscriptions/${id}/redeem/preview`, { method: 'POST', body: JSON.stringify(data) });
+
+export const redeemGoldSubscription = (id: string, data: RedemptionPreviewInput & { redemptionType: RedemptionType; saleReference?: string; note?: string; saleItemIds?: string[] }) =>
   request<GoldSubscription>(`/gold-investment/subscriptions/${id}/redeem`, { method: 'POST', body: JSON.stringify(data) });
 
 export const markGoldCashPayment = (id: string, data: { month: number; staffId?: string; note?: string }) =>
@@ -1221,9 +1279,10 @@ export interface GoldBalance {
   amountAccumulated: number;
   interestAccumulated: number;
   amountRedeemed: number;
+  goldGramsAccumulated: number;
   interestStopped: boolean;
   availableBalance: number;
-  plan: { name: string; monthlyAmount: number; redemptionDiscount: number; durationMonths: number; interestRate: number };
+  plan: { name: string; monthlyAmount: number; cashBenefitPercent: number; durationMonths: number; interestRate: number };
   installmentsPaid: number;
 }
 
@@ -1318,12 +1377,20 @@ export const getPendingSaleRequests = (params?: { page?: number; limit?: number;
   );
 };
 
-export const approveSaleRequest = (id: string, overrides?: {
-  selling_price?: number;
-  manager_discount?: number;
+export interface InvestmentRedemptionOverrides {
   investment_redeemed?: number;
   investment_sub_id?: string;
+  investment_redemption_type?: 'cash_benefit' | 'making_charge_waiver';
+  investment_jewelry_subtotal?: number;
+  investment_tax_percentage?: number;
+  investment_jewelry_gold_weight_grams?: number;
+  investment_making_charges_on_jewelry?: number;
   making_charges_discount?: number;
+}
+
+export const approveSaleRequest = (id: string, overrides?: InvestmentRedemptionOverrides & {
+  selling_price?: number;
+  manager_discount?: number;
   advance_redeemed?: number;
   advance_id?: string;
   advance_making_charges_discount?: number;
@@ -1340,12 +1407,9 @@ export const rejectSaleRequest = (id: string, reason: string) =>
     body: JSON.stringify({ reason }),
   });
 
-export const approveSaleRequestBatch = (batchId: string, overrides?: {
+export const approveSaleRequestBatch = (batchId: string, overrides?: InvestmentRedemptionOverrides & {
   item_prices?: Array<{ id: string; selling_price: number }>;
   manager_discount?: number;
-  investment_redeemed?: number;
-  investment_sub_id?: string;
-  making_charges_discount?: number;
   advance_redeemed?: number;
   advance_id?: string;
   advance_making_charges_discount?: number;

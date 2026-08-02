@@ -8,12 +8,14 @@ import CompletePreBookingModal from '../../../components/CompletePreBookingModal
 import CancelPreBookingModal from '../../../components/CancelPreBookingModal';
 import BarcodeScannerModal from '../../../components/BarcodeScannerModal';
 import BillModal from '../../../components/BillModal';
+import RedemptionComparisonPanel from '../../../components/RedemptionComparisonPanel';
 import {
   getProfile, getInventory, updateInventoryStatus, updateManagerDiscount, getCashiers,
-  generateSaleInvoiceNumber, staticUrl, searchCustomers, getGoldBalance, redeemGoldSubscription,
+  generateSaleInvoiceNumber, staticUrl, searchCustomers, getGoldBalance, previewGoldRedemption,
   getAdvanceBalance, generateCertificate, updateInventoryHallmark, sellItemsBatch,
   getInventoryByBarcode, getSettings,
   InventoryItem, UserProfile, Cashier, createPaymentOrder, FullCustomer, GoldBalance, CustomerAdvance, AppSettings,
+  RedemptionPreview, RedemptionType,
 } from '../../../lib/api';
 import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth';
 import { auth } from '../../../lib/firebase';
@@ -233,9 +235,15 @@ export function InventoryPageContent() {
   const [sellForm, setSellForm] = useState<SellFormData>({ customer_name: '', customer_phone: '', customer_country_code: '+91', customer_email: '', shipping_address: '', shipping_city: '', shipping_state: '', shipping_pincode: '', payment_mode: 'cash', discount: 0, sold_by_user_id: '' });
   const [showCustomerPicker, setShowCustomerPicker] = useState(false);
 
-  // Investment balance — multiple plans can be checked and redeemed together in one sale (planId -> amount applied)
+  // Investment balance — the customer picks ONE eligible subscription to redeem against, an
+  // amount, then ONE redemption option (Cash Benefit vs Making Charge Waiver) for the whole sale.
   const [investmentPlans, setInvestmentPlans] = useState<GoldBalance[]>([]);
-  const [investmentApplied, setInvestmentApplied] = useState<Record<string, number>>({});
+  const [investmentSubId, setInvestmentSubId] = useState('');
+  const [investmentAmountInput, setInvestmentAmountInput] = useState('');
+  const [redemptionPreview, setRedemptionPreview] = useState<RedemptionPreview | null>(null);
+  const [redemptionChoice, setRedemptionChoice] = useState<RedemptionType | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState('');
   const [loadingInvestment, setLoadingInvestment] = useState(false);
   const [investmentError, setInvestmentError] = useState('');
 
@@ -245,42 +253,24 @@ export function InventoryPageContent() {
   const [loadingAdvance, setLoadingAdvance] = useState(false);
   const [advanceError, setAdvanceError] = useState('');
 
-  const totalInvestmentApplied = Object.values(investmentApplied).reduce((s, n) => s + (n || 0), 0);
+  const investmentSelectedPlan = investmentPlans.find(p => p._id === investmentSubId) || null;
   const totalAdvanceApplied = Object.values(advanceApplied).reduce((s, n) => s + (n || 0), 0);
-  const selectedInvestmentPlans = investmentPlans.filter(p => (investmentApplied[p._id] ?? 0) > 0);
   const selectedAdvances = advances.filter(a => (advanceApplied[a._id] ?? 0) > 0);
-  // When multiple plans/advances are combined, use the best single waiver % rather than stacking them —
-  // avoids waiving more than 100% of making charges when several redemption sources are checked at once.
-  const investmentRedemptionDiscountPct = selectedInvestmentPlans.reduce((max, p) => Math.max(max, p.plan?.redemptionDiscount ?? 0), 0);
+  // When several advances are combined, use the best single waiver % rather than stacking them —
+  // avoids waiving more than 100% of making charges when several are checked at once.
   const advanceWaiverPct = selectedAdvances.reduce((max, a) => Math.max(max, a.making_charges_waiver_pct ?? 0), 0);
 
-  function toggleInvestmentPlan(id: string) {
-    setInvestmentApplied(prev => {
-      if (id in prev) { const next = { ...prev }; delete next[id]; return next; }
-      return { ...prev, [id]: 0 };
-    });
+  function selectInvestmentSub(id: string) {
+    setInvestmentSubId(id === investmentSubId ? '' : id);
+    setInvestmentAmountInput('');
+    setRedemptionPreview(null);
+    setRedemptionChoice(null);
   }
-  function setInvestmentPlanAmount(id: string, amount: number) {
-    setInvestmentApplied(prev => ({ ...prev, [id]: amount }));
-  }
-  /** Greedily fills `ids` (defaults to whatever is currently checked) up to `cap`, in list order. */
-  function applyMaxInvestment(cap: number, ids?: string[]) {
-    const targets = ids ?? Object.keys(investmentApplied);
-    let remaining = Math.max(0, cap);
-    const next: Record<string, number> = {};
-    for (const plan of investmentPlans) {
-      if (!targets.includes(plan._id)) continue;
-      const amt = Math.max(0, Math.min(plan.availableBalance, remaining));
-      next[plan._id] = amt;
-      remaining -= amt;
-    }
-    setInvestmentApplied(next);
-  }
-  function selectAllInvestments(cap: number) {
-    applyMaxInvestment(cap, investmentPlans.map(p => p._id));
-  }
-  function clearInvestments() {
-    setInvestmentApplied({});
+  function clearInvestment() {
+    setInvestmentSubId('');
+    setInvestmentAmountInput('');
+    setRedemptionPreview(null);
+    setRedemptionChoice(null);
   }
 
   function toggleAdvance(id: string) {
@@ -444,16 +434,80 @@ export function InventoryPageContent() {
     }
   }
   const cartTotal = cart.reduce((sum, i) => sum + cartItemPrice(i), 0);
-  // Making charges across the whole cart — used to compute the redemption discount
-  // the same way the single-item Sell flow does (plan/advance % off making charges).
+  // Making charges / taxable amount / tax / gold weight across the whole cart — used to feed
+  // the redemption preview, the same way CreateInvoiceModal's cart does.
   const cartMakingCharges = cart.reduce((sum, i) => sum + ((i as any).pricing_breakdown?.making_charges ?? 0), 0);
-  const cartRedemptionDiscountPct = investmentRedemptionDiscountPct;
-  const cartMakingChargesDiscount = totalInvestmentApplied > 0 ? Math.round(cartMakingCharges * cartRedemptionDiscountPct / 100) : 0;
-  const cartAdvanceWaiverPct = advanceWaiverPct;
-  const cartAdvanceMakingChargesDiscount = totalAdvanceApplied > 0 ? Math.round(cartMakingCharges * cartAdvanceWaiverPct / 100) : 0;
-  // What's left to cover via manual payment methods (cash/card/upi/…) after
-  // investment/advance balance redemption and their making-charges discounts.
-  const cartAmountDue = Math.max(0, cartTotal - totalInvestmentApplied - cartMakingChargesDiscount - totalAdvanceApplied - cartAdvanceMakingChargesDiscount);
+  const cartTaxableAmount = cart.reduce((sum, i) => sum + ((i as any).pricing_breakdown?.taxable_amount ?? 0), 0);
+  const cartTaxAmount = cart.reduce((sum, i) => sum + ((i as any).pricing_breakdown?.tax_amount ?? 0), 0);
+  const cartGoldWeightGrams = cart.reduce((sum, i) => sum + ((i as any).pricing_breakdown?.billable_metal_weight ?? 0), 0);
+  const cartEffectiveTaxPercentage = cartTaxableAmount > 0 ? (cartTaxAmount / cartTaxableAmount) * 100 : 0;
+
+  // Single-item ("Sell" button) pricing aggregates — used when sellItem is set.
+  const sellItemPricingBreakdown = sellItem ? ((sellItem as any).pricing_breakdown ?? (typeof sellItem.product_id === 'object' ? (sellItem.product_id as any)?.pricing_breakdown : null)) : null;
+  const sellItemDiscountRatio = 1 - sellForm.discount / 100;
+  const sellItemBasePrice = sellItem ? Math.round((sellItem.selling_price || sellItem.live_selling_price || 0) * sellItemDiscountRatio) : 0;
+  const sellItemTaxableAmount = sellItemPricingBreakdown?.taxable_amount ?? 0;
+  const sellItemTaxAmount = sellItemPricingBreakdown?.tax_amount ?? 0;
+  const sellItemGoldWeightGrams = sellItemPricingBreakdown?.billable_metal_weight ?? 0;
+  const sellItemMakingCharges = sellItemPricingBreakdown?.making_charges ?? 0;
+  const sellItemEffectiveTaxPercentage = sellItemTaxableAmount > 0 ? (sellItemTaxAmount / sellItemTaxableAmount) * 100 : 0;
+
+  // Investment redemption is a single shared selection used by both sell flows in this file —
+  // whichever is actually open ("Sell" on one item, or the cart's Checkout modal) drives the
+  // context fed to the redemption preview; the single-item flow takes priority if both are set.
+  const redemptionContextActive = Boolean(sellItem) || cart.length > 0;
+  const redemptionContextBasePrice = sellItem ? sellItemBasePrice : cartTotal;
+  const redemptionContextTaxableAmount = sellItem ? sellItemTaxableAmount * sellItemDiscountRatio : cartTaxableAmount;
+  const redemptionContextTaxPercentage = sellItem ? sellItemEffectiveTaxPercentage : cartEffectiveTaxPercentage;
+  const redemptionContextGoldWeightGrams = sellItem ? sellItemGoldWeightGrams : cartGoldWeightGrams;
+  const redemptionContextMakingCharges = sellItem ? sellItemMakingCharges * sellItemDiscountRatio : cartMakingCharges;
+
+  const investmentCapForAmount = Math.max(0, redemptionContextBasePrice - totalAdvanceApplied);
+  const investmentAmount = Math.min(parseFloat(investmentAmountInput) || 0, investmentSelectedPlan?.availableBalance ?? 0, investmentCapForAmount);
+  const chosenRedemptionOption = redemptionChoice === 'cash_benefit' ? redemptionPreview?.cashBenefitOption
+    : redemptionChoice === 'making_charge_waiver' ? redemptionPreview?.makingChargeWaiverOption
+    : null;
+  const mcDiscount = chosenRedemptionOption?.waivedMakingCharges ?? 0;
+
+  // Debounced comparison-screen quote — recomputed whenever the selected subscription, the
+  // amount to redeem, or the active bill (single item or cart) changes. Numbers always come from
+  // the backend so the confirmed sale can never drift from what was shown to the staff member.
+  useEffect(() => {
+    if (!investmentSubId || investmentAmount <= 0 || !redemptionContextActive) {
+      setRedemptionPreview(null);
+      setRedemptionChoice(null);
+      setPreviewError('');
+      return;
+    }
+    setPreviewError('');
+    setPreviewLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const preview = await previewGoldRedemption(investmentSubId, {
+          amount: investmentAmount,
+          jewelrySubtotal: redemptionContextTaxableAmount,
+          taxPercentage: redemptionContextTaxPercentage,
+          jewelryGoldWeightGrams: redemptionContextGoldWeightGrams,
+          makingChargesOnJewelry: redemptionContextMakingCharges,
+        });
+        setRedemptionPreview(preview);
+      } catch (e: any) {
+        setRedemptionPreview(null);
+        setPreviewError(e?.message || 'Could not compute redemption options.');
+      } finally {
+        setPreviewLoading(false);
+      }
+    }, 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [investmentSubId, investmentAmount, redemptionContextActive, redemptionContextTaxableAmount, redemptionContextTaxPercentage, redemptionContextGoldWeightGrams, redemptionContextMakingCharges]);
+
+  const cartAdvanceMakingChargesDiscount = totalAdvanceApplied > 0 && advanceWaiverPct > 0 ? Math.round(cartMakingCharges * advanceWaiverPct / 100) : 0;
+  // What's left to cover via manual payment methods (cash/card/upi/…) after investment/advance
+  // balance redemption and their making-charges discounts — the investment side uses the chosen
+  // redemption option's GST-recomputed payable amount as its base, same as CreateInvoiceModal.
+  const cartBaseAmountAfterInvestment = chosenRedemptionOption ? chosenRedemptionOption.finalPayableAmount : cartTotal;
+  const cartAmountDue = Math.max(0, cartBaseAmountAfterInvestment - totalAdvanceApplied - cartAdvanceMakingChargesDiscount);
   const splitsAllocated = checkoutSplits.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
   const cartRemaining = Math.round((cartAmountDue - splitsAllocated) * 100) / 100;
   const CART_TOLERANCE = 1; // rupee rounding tolerance
@@ -492,7 +546,7 @@ export function InventoryPageContent() {
     setCheckoutSplits([{ mode: 'cash', amount: 0, reference: '' }]);
     setCartPhoneVerified(false);
     setInvestmentPlans([]);
-    setInvestmentApplied({});
+    clearInvestment();
     setInvestmentError('');
     setAdvances([]);
     setAdvanceApplied({});
@@ -509,6 +563,10 @@ export function InventoryPageContent() {
       toast.error('Payment splits must add up to the cart total before checkout');
       return;
     }
+    if (investmentSubId && investmentAmount > 0 && !redemptionChoice) {
+      toast.error('Choose a redemption option (Cash Benefit or Making Charge Waiver) before confirming.');
+      return;
+    }
     setCheckingOut(true);
     try {
       const saleInvoiceNumber = generateSaleInvoiceNumber();
@@ -516,17 +574,20 @@ export function InventoryPageContent() {
         .filter((s) => Number(s.amount) > 0)
         .map((s) => ({ mode: s.mode, amount: Number(s.amount), reference: s.reference?.trim() || undefined }));
 
-      const investmentEntries = Object.entries(investmentApplied).filter(([, amt]) => amt > 0);
+      const hasInvestment = Boolean(investmentSubId && investmentAmount > 0);
       const advanceEntries = Object.entries(advanceApplied).filter(([, amt]) => amt > 0);
 
       // Investment/advance balance redemption splits are prepended so the bill's
       // payment_splits reflect the full breakdown, same as the single-item Sell flow —
-      // one split entry per selected plan/advance, so multiple can be combined in one sale.
+      // one split entry per selected advance, so multiple can be combined in one sale.
       const paymentSplits: { mode: string; amount: number; reference?: string }[] = [];
-      investmentEntries.forEach(([id, amt]) => paymentSplits.push({ mode: 'investment_balance', amount: amt, reference: id }));
+      if (hasInvestment) paymentSplits.push({ mode: 'investment_balance', amount: investmentAmount, reference: investmentSubId });
       advanceEntries.forEach(([id, amt]) => paymentSplits.push({ mode: 'advance_balance', amount: amt, reference: id }));
       paymentSplits.push(...manualSplits);
 
+      // Investment plan redemption (if any) is committed atomically server-side, inside
+      // sellItemsBatch, using the exact same breakdown shown on the comparison screen — the
+      // sale fails outright if the redemption fails, instead of silently under-deducting.
       const updated = await sellItemsBatch({
         items: cart.map((i) => ({ id: i._id, selling_price: cartItemPrice(i) })),
         sale_reference: saleInvoiceNumber,
@@ -542,37 +603,18 @@ export function InventoryPageContent() {
         sale_channel: 'store',
         payment_mode: manualSplits[0]?.mode || checkoutSplits[0]?.mode || 'cash',
         payment_splits: paymentSplits,
-        investment_redeemed: totalInvestmentApplied > 0 ? totalInvestmentApplied : undefined,
-        investment_sub_id: investmentEntries[0]?.[0],
-        making_charges_discount: cartMakingChargesDiscount > 0 ? cartMakingChargesDiscount : undefined,
+        investment_redeemed: hasInvestment ? investmentAmount : undefined,
+        investment_sub_id: hasInvestment ? investmentSubId : undefined,
+        investment_redemption_type: hasInvestment ? redemptionChoice ?? undefined : undefined,
+        investment_jewelry_subtotal: hasInvestment ? cartTaxableAmount : undefined,
+        investment_tax_percentage: hasInvestment ? cartEffectiveTaxPercentage : undefined,
+        investment_jewelry_gold_weight_grams: hasInvestment ? cartGoldWeightGrams : undefined,
+        investment_making_charges_on_jewelry: hasInvestment ? cartMakingCharges : undefined,
+        making_charges_discount: mcDiscount > 0 ? mcDiscount : undefined,
         advance_redeemed: totalAdvanceApplied > 0 ? totalAdvanceApplied : undefined,
         advance_id: advanceEntries[0]?.[0],
         advance_making_charges_discount: cartAdvanceMakingChargesDiscount > 0 ? cartAdvanceMakingChargesDiscount : undefined,
       });
-
-      // Advance balance redemption is now performed atomically by the backend as part of
-      // sellItemsBatch itself (see payment_splits/advance_redeemed sent above) — the sale
-      // fails outright if the redemption fails, so there's nothing left to redeem here.
-      // Investment plan redemption still happens as a separate best-effort call, bill-level —
-      // mirrors the single-item Sell flow's post-sale redemption calls.
-      const redemptionFailures: string[] = [];
-      await Promise.all(
-        investmentEntries.map(async ([id, amt]) => {
-          const plan = investmentPlans.find(p => p._id === id);
-          try {
-            await redeemGoldSubscription(id, {
-              amount: amt,
-              saleReference: saleInvoiceNumber,
-              note: `Redeemed against multi-item sale (${saleInvoiceNumber})`,
-            });
-          } catch {
-            redemptionFailures.push(plan?.plan?.name || 'an investment plan');
-          }
-        }),
-      );
-      if (redemptionFailures.length > 0) {
-        toast.error(`Sale recorded but balance deduction failed for ${redemptionFailures.join(', ')} — please do it manually.`);
-      }
 
       setItems((prev) => prev.map((i) => {
         const found = updated.find((u) => u._id === i._id);
@@ -740,14 +782,14 @@ export function InventoryPageContent() {
   async function fetchInvestmentBalance(phone: string, countryCode: string) {
     setLoadingInvestment(true);
     setInvestmentPlans([]);
-    setInvestmentApplied({});
+    clearInvestment();
     setInvestmentError('');
     try {
       const full = `${countryCode}${phone}`;
       const data = await getGoldBalance(full);
       const withBalance = (Array.isArray(data) ? data : []).filter(b => b.availableBalance > 0);
       setInvestmentPlans(withBalance);
-      if (withBalance.length === 1) setInvestmentApplied({ [withBalance[0]._id]: 0 });
+      if (withBalance.length === 1) setInvestmentSubId(withBalance[0]._id);
     } catch (e: any) {
       setInvestmentPlans([]);
       setInvestmentError(e?.message || 'Could not check investment balance — please retry.');
@@ -794,6 +836,10 @@ export function InventoryPageContent() {
       setOtpError('Please verify the phone number using OTP before confirming.');
       return;
     }
+    if (investmentSubId && investmentAmount > 0 && !redemptionChoice) {
+      toast.error('Choose a redemption option (Cash Benefit or Making Charge Waiver) before confirming.');
+      return;
+    }
     setSelling(true);
 
     const completeSale = async (razorpayOrderId?: string, razorpayPaymentId?: string) => {
@@ -803,29 +849,33 @@ export function InventoryPageContent() {
         }
         const saleInvoiceNumber = generateSaleInvoiceNumber();
 
-        // Compute making charges discount from plan's redemptionDiscount / advance's waiver %
-        // (best single % among whatever's selected, so combining several sources never exceeds 100% waived).
-        const pb = (sellItem as any).pricing_breakdown ?? (typeof sellItem.product_id === 'object' ? (sellItem.product_id as any).pricing_breakdown : null);
-        const makingCharges = pb?.making_charges ?? 0;
-        const redemptionDiscountPct = investmentRedemptionDiscountPct;
-        const makingChargesDiscount = totalInvestmentApplied > 0 ? Math.round(makingCharges * redemptionDiscountPct / 100) : 0;
+        // Making charges discount comes from the chosen redemption option (investment side) plus
+        // the advance's best single waiver % (unchanged scheme) — never stacked beyond 100%.
+        const makingCharges = sellItemMakingCharges;
+        const makingChargesDiscount = mcDiscount;
         const advWaiverPct = advanceWaiverPct;
         const advanceMakingChargesDiscount = totalAdvanceApplied > 0 ? Math.round(makingCharges * advWaiverPct / 100) : 0;
-        const basePrice = Math.round((sellItem.selling_price || sellItem.live_selling_price || 0) * (1 - sellForm.discount / 100));
-        const finalPrice = Math.max(0, basePrice - totalInvestmentApplied - makingChargesDiscount - totalAdvanceApplied - advanceMakingChargesDiscount);
+        const hasInvestment = Boolean(investmentSubId && investmentAmount > 0);
+        // When a redemption option is locked in, its GST-recomputed payable amount replaces the
+        // discounted item price as the base — advances (unchanged scheme) subtract from that.
+        const baseAmountAfterInvestment = chosenRedemptionOption ? chosenRedemptionOption.finalPayableAmount : sellItemBasePrice;
+        const finalPrice = Math.max(0, baseAmountAfterInvestment - totalAdvanceApplied - advanceMakingChargesDiscount);
 
-        const investmentEntries = Object.entries(investmentApplied).filter(([, amt]) => amt > 0);
         const advanceEntries = Object.entries(advanceApplied).filter(([, amt]) => amt > 0);
 
-        // Build payment splits — one entry per selected investment plan / advance so several can be combined.
+        // Build payment splits — one entry for the selected investment plan (if any) and one
+        // per selected advance so several advances can still be combined.
         const paymentSplits: { mode: string; amount: number; reference?: string }[] = [];
-        investmentEntries.forEach(([id, amt]) => paymentSplits.push({ mode: 'investment_balance', amount: amt, reference: id }));
+        if (hasInvestment) paymentSplits.push({ mode: 'investment_balance', amount: investmentAmount, reference: investmentSubId });
         advanceEntries.forEach(([id, amt]) => paymentSplits.push({ mode: 'advance_balance', amount: amt, reference: id }));
         if (finalPrice > 0) {
           paymentSplits.push({ mode: sellForm.payment_mode, amount: finalPrice });
         }
 
-        const updated = await updateInventoryStatus(sellItem._id, {
+        // Investment plan redemption (if any) is committed atomically server-side, inside
+        // updateInventoryStatus, using the exact same breakdown shown on the comparison screen —
+        // the sale fails outright if the redemption fails, instead of silently under-deducting.
+        const payload = {
           status: 'sold',
           sold_customer_name: sellForm.customer_name || undefined,
           sold_customer_phone: `${sellForm.customer_country_code}${sellForm.customer_phone}` || undefined,
@@ -842,36 +892,19 @@ export function InventoryPageContent() {
           razorpay_order_id: razorpayOrderId,
           razorpay_payment_id: razorpayPaymentId,
           payment_splits: paymentSplits.length > 0 ? paymentSplits : undefined,
-          investment_redeemed: totalInvestmentApplied > 0 ? totalInvestmentApplied : undefined,
-          investment_sub_id: investmentEntries[0]?.[0],
+          investment_redeemed: hasInvestment ? investmentAmount : undefined,
+          investment_sub_id: hasInvestment ? investmentSubId : undefined,
+          investment_redemption_type: hasInvestment ? redemptionChoice ?? undefined : undefined,
+          investment_jewelry_subtotal: hasInvestment ? sellItemTaxableAmount * sellItemDiscountRatio : undefined,
+          investment_tax_percentage: hasInvestment ? sellItemEffectiveTaxPercentage : undefined,
+          investment_jewelry_gold_weight_grams: hasInvestment ? sellItemGoldWeightGrams : undefined,
+          investment_making_charges_on_jewelry: hasInvestment ? sellItemMakingCharges * sellItemDiscountRatio : undefined,
           making_charges_discount: makingChargesDiscount > 0 ? makingChargesDiscount : undefined,
           advance_redeemed: totalAdvanceApplied > 0 ? totalAdvanceApplied : undefined,
           advance_id: advanceEntries[0]?.[0],
           advance_making_charges_discount: advanceMakingChargesDiscount > 0 ? advanceMakingChargesDiscount : undefined,
-        });
-        // Advance balance redemption is now performed atomically by the backend as part of
-        // updateInventoryStatus itself (see payment_splits/advance_redeemed sent above) — the
-        // sale fails outright if the redemption fails, so there's nothing left to redeem here.
-        // Investment plan redemption still happens as a separate best-effort call.
-        const productName = typeof sellItem.product_id === 'object' ? (sellItem.product_id as any).name : sellItem.unique_item_code;
-        const redemptionFailures: string[] = [];
-        await Promise.all(
-          investmentEntries.map(async ([id, amt]) => {
-            const plan = investmentPlans.find(p => p._id === id);
-            try {
-              await redeemGoldSubscription(id, {
-                amount: amt,
-                saleReference: saleInvoiceNumber,
-                note: `Redeemed against sale of ${productName} (${saleInvoiceNumber})`,
-              });
-            } catch {
-              redemptionFailures.push(plan?.plan?.name || 'an investment plan');
-            }
-          }),
-        );
-        if (redemptionFailures.length > 0) {
-          toast.error(`Sale recorded but balance deduction failed for ${redemptionFailures.join(', ')} — please do it manually.`);
-        }
+        };
+        const updated = await updateInventoryStatus(sellItem._id, payload);
         const populatedUpdated = {
           ...sellItem,
           ...updated,
@@ -887,7 +920,7 @@ export function InventoryPageContent() {
         setOtp('');
         setOtpError('');
         setInvestmentPlans([]);
-        setInvestmentApplied({});
+        clearInvestment();
         setAdvances([]);
         setAdvanceApplied({});
         setSelling(false);
@@ -1660,7 +1693,7 @@ export function InventoryPageContent() {
                   setOtp('');
                   setOtpError('');
                   setInvestmentPlans([]);
-                  setInvestmentApplied({});
+                  clearInvestment();
                   setAdvances([]);
                   setAdvanceApplied({});
                 }}
@@ -1700,39 +1733,37 @@ export function InventoryPageContent() {
                 <div>
                   <label className="block text-[10px] font-black uppercase tracking-widest text-[#7A1C2A] mb-2">Final Sale Price (₹) <span className="text-red-500">*</span></label>
                   {(() => {
-                    const base = Math.round((sellItem.selling_price || sellItem.live_selling_price || 0) * (1 - sellForm.discount / 100));
-                    const pb = (sellItem as any).pricing_breakdown ?? (typeof sellItem.product_id === 'object' ? (sellItem.product_id as any).pricing_breakdown : null);
-                    const mc = pb?.making_charges ?? 0;
-                    const rdPct = investmentRedemptionDiscountPct;
-                    const mcDiscount = totalInvestmentApplied > 0 && rdPct > 0 ? Math.round(mc * rdPct / 100) : 0;
+                    const base = sellItemBasePrice;
+                    const mc = sellItemMakingCharges;
                     const advWaiverPct = advanceWaiverPct;
                     const advMcDiscount = totalAdvanceApplied > 0 && advWaiverPct > 0 ? Math.round(mc * advWaiverPct / 100) : 0;
-                    const final = Math.max(0, base - totalInvestmentApplied - mcDiscount - totalAdvanceApplied - advMcDiscount);
+                    const baseAmountAfterInvestment = chosenRedemptionOption ? chosenRedemptionOption.finalPayableAmount : base;
+                    const final = Math.max(0, baseAmountAfterInvestment - totalAdvanceApplied - advMcDiscount);
                     return (
                       <div className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-4 shadow-sm space-y-1.5">
                         <div className="flex justify-between items-center">
                           <span className="text-sm font-black text-[#5A0F1A]">₹{final.toLocaleString('en-IN')}</span>
                           <div className="flex items-center gap-1.5 flex-wrap justify-end">
                             {sellForm.discount > 0 && <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-md font-black">-{sellForm.discount}% off</span>}
-                            {totalInvestmentApplied > 0 && <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-md font-black">-₹{totalInvestmentApplied.toLocaleString('en-IN')} balance</span>}
+                            {investmentAmount > 0 && <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-md font-black">-₹{investmentAmount.toLocaleString('en-IN')} balance</span>}
                             {mcDiscount > 0 && <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-md font-black">-₹{mcDiscount.toLocaleString('en-IN')} making</span>}
                             {totalAdvanceApplied > 0 && <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md font-black">-₹{totalAdvanceApplied.toLocaleString('en-IN')} advance</span>}
                             {advMcDiscount > 0 && <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-md font-black">-₹{advMcDiscount.toLocaleString('en-IN')} making</span>}
                           </div>
                         </div>
-                        {(totalInvestmentApplied > 0 || mcDiscount > 0 || totalAdvanceApplied > 0 || advMcDiscount > 0) && (
+                        {(investmentAmount > 0 || mcDiscount > 0 || totalAdvanceApplied > 0 || advMcDiscount > 0) && (
                           <div className="border-t border-slate-200 pt-1.5 space-y-0.5">
                             <div className="text-[10px] text-slate-400 font-medium flex items-center gap-1.5">
                               <span>Item price:</span><span className="font-bold text-slate-600">₹{base.toLocaleString('en-IN')}</span>
                             </div>
-                            {totalInvestmentApplied > 0 && (
+                            {investmentAmount > 0 && (
                               <div className="text-[10px] text-amber-600 font-medium flex items-center gap-1.5">
-                                <span>- Investment balance{selectedInvestmentPlans.length > 1 ? ` (${selectedInvestmentPlans.length} plans)` : ''}:</span><span className="font-bold">₹{totalInvestmentApplied.toLocaleString('en-IN')}</span>
+                                <span>- Investment balance ({redemptionChoice === 'cash_benefit' ? 'Cash Benefit' : redemptionChoice === 'making_charge_waiver' ? 'Making Charge Waiver' : 'pending choice'}):</span><span className="font-bold">₹{investmentAmount.toLocaleString('en-IN')}</span>
                               </div>
                             )}
                             {mcDiscount > 0 && (
                               <div className="text-[10px] text-purple-600 font-medium flex items-center gap-1.5">
-                                <span>- Making charges discount ({rdPct}% of ₹{mc.toLocaleString('en-IN')}):</span><span className="font-bold">₹{mcDiscount.toLocaleString('en-IN')}</span>
+                                <span>- Making charges waived:</span><span className="font-bold">₹{mcDiscount.toLocaleString('en-IN')}</span>
                               </div>
                             )}
                             {totalAdvanceApplied > 0 && (
@@ -1775,7 +1806,7 @@ export function InventoryPageContent() {
                         <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
                       </div>
                     </div>
-                    <input type="tel" value={sellForm.customer_phone || ''} onChange={(e) => { setSellForm({ ...sellForm, customer_phone: e.target.value.replace(/\D/g, '').slice(0, 10) }); setPhoneVerified(false); setOtpSent(false); setOtpError(''); setInvestmentPlans([]); setInvestmentApplied({}); setAdvances([]); setAdvanceApplied({}); }}
+                    <input type="tel" value={sellForm.customer_phone || ''} onChange={(e) => { setSellForm({ ...sellForm, customer_phone: e.target.value.replace(/\D/g, '').slice(0, 10) }); setPhoneVerified(false); setOtpSent(false); setOtpError(''); setInvestmentPlans([]); clearInvestment(); setAdvances([]); setAdvanceApplied({}); }}
                       disabled={phoneVerified || otpSent}
                       className="flex-1 bg-transparent px-3 sm:px-5 py-4 text-base sm:text-lg font-black tracking-wider text-slate-900 disabled:text-slate-400 focus:outline-none min-w-0" placeholder="Mobile Number" />
                   </div>
@@ -1892,9 +1923,7 @@ export function InventoryPageContent() {
               </div>
 
               {(() => {
-                const redemptionBasePrice = Math.round((sellItem.selling_price || sellItem.live_selling_price || 0) * (1 - sellForm.discount / 100));
-                const investmentCap = Math.max(0, redemptionBasePrice - totalAdvanceApplied);
-                const advanceCap = Math.max(0, redemptionBasePrice - totalInvestmentApplied);
+                const advanceCap = Math.max(0, sellItemBasePrice - investmentAmount);
                 return (
                   <>
                     {/* ── Investment Balance Redemption ── */}
@@ -1907,12 +1936,6 @@ export function InventoryPageContent() {
                             </svg>
                             <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Investment Balance Redemption</p>
                           </div>
-                          {investmentPlans.length > 1 && (
-                            <button type="button" onClick={() => selectAllInvestments(investmentCap)}
-                              className="text-[9px] font-black uppercase tracking-widest text-amber-700 hover:text-amber-800 underline underline-offset-2">
-                              Select All
-                            </button>
-                          )}
                         </div>
 
                         {loadingInvestment && (
@@ -1941,18 +1964,18 @@ export function InventoryPageContent() {
 
                         {!loadingInvestment && investmentPlans.length > 0 && (
                           <>
+                            <p className="text-[10px] text-slate-400 font-medium -mt-1">Pick one plan to redeem against this sale.</p>
                             <div className="space-y-2">
                               {investmentPlans.map(plan => {
-                                const checked = plan._id in investmentApplied;
-                                const amt = investmentApplied[plan._id] ?? 0;
+                                const checked = plan._id === investmentSubId;
                                 return (
                                   <div key={plan._id} className={`rounded-xl border-2 transition-all ${checked ? 'border-amber-500 bg-amber-50' : 'border-slate-200 bg-white hover:border-amber-300'}`}>
                                     <label className="w-full flex items-center gap-3 px-4 py-3 cursor-pointer">
-                                      <input type="checkbox" checked={checked} onChange={() => toggleInvestmentPlan(plan._id)}
-                                        className="w-4 h-4 rounded accent-amber-600 flex-shrink-0" />
+                                      <input type="radio" name="investmentSubSell" checked={checked} onChange={() => selectInvestmentSub(plan._id)}
+                                        className="w-4 h-4 accent-amber-600 flex-shrink-0" />
                                       <div className="flex-1 min-w-0">
                                         <p className="text-sm font-black text-slate-900">{plan.plan?.name}</p>
-                                        <p className="text-[10px] text-slate-400">{plan.installmentsPaid} months paid</p>
+                                        <p className="text-[10px] text-slate-400">{plan.installmentsPaid} months paid · {(plan.goldGramsAccumulated || 0).toFixed(2)}g accumulated</p>
                                       </div>
                                       <div className="text-right flex-shrink-0">
                                         <p className="text-sm font-black text-amber-700">₹{plan.availableBalance.toLocaleString('en-IN')}</p>
@@ -1960,12 +1983,20 @@ export function InventoryPageContent() {
                                       </div>
                                     </label>
                                     {checked && (
-                                      <div className="px-4 pb-3">
-                                        <input type="number" min={0} max={plan.availableBalance} value={amt || ''}
-                                          onChange={e => setInvestmentPlanAmount(plan._id, Math.min(parseFloat(e.target.value) || 0, plan.availableBalance))}
-                                          placeholder={`Amount to apply (max ₹${plan.availableBalance.toLocaleString('en-IN')})`}
-                                          className="w-full bg-white border-2 border-amber-300 rounded-xl px-4 py-2.5 text-sm font-black text-amber-800 focus:outline-none focus:border-amber-500 shadow-sm"
+                                      <div className="px-4 pb-3 flex items-center gap-2">
+                                        <input type="number" min={0} max={plan.availableBalance} value={investmentAmountInput}
+                                          onChange={e => setInvestmentAmountInput(e.target.value)}
+                                          placeholder={`Amount to apply (max ₹${Math.min(plan.availableBalance, investmentCapForAmount).toLocaleString('en-IN')})`}
+                                          className="flex-1 bg-white border-2 border-amber-300 rounded-xl px-4 py-2.5 text-sm font-black text-amber-800 focus:outline-none focus:border-amber-500 shadow-sm"
                                         />
+                                        <button type="button" onClick={() => setInvestmentAmountInput(String(Math.min(plan.availableBalance, investmentCapForAmount)))}
+                                          className="px-3 py-2.5 rounded-xl bg-amber-600 text-white text-[10px] font-black uppercase whitespace-nowrap hover:bg-amber-700 transition-colors">
+                                          Max
+                                        </button>
+                                        <button type="button" onClick={clearInvestment}
+                                          className="px-3 py-2.5 rounded-xl border border-slate-200 text-slate-500 text-[10px] font-black uppercase hover:bg-slate-50 transition-colors">
+                                          Clear
+                                        </button>
                                       </div>
                                     )}
                                   </div>
@@ -1973,24 +2004,14 @@ export function InventoryPageContent() {
                               })}
                             </div>
 
-                            {Object.keys(investmentApplied).length > 0 && (
-                              <div className="flex items-center gap-3">
-                                <button type="button" onClick={() => applyMaxInvestment(investmentCap)}
-                                  className="px-4 py-2.5 rounded-xl bg-amber-600 text-white text-xs font-black hover:bg-amber-700 transition-colors whitespace-nowrap">
-                                  Apply Max Across Selected
-                                </button>
-                                <button type="button" onClick={clearInvestments}
-                                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-500 text-xs font-black hover:bg-slate-50 transition-colors">
-                                  Clear
-                                </button>
-                              </div>
-                            )}
-
-                            {totalInvestmentApplied > 0 && (
-                              <p className="text-[10px] text-amber-700 font-bold flex items-center gap-1.5">
-                                <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                                ₹{totalInvestmentApplied.toLocaleString('en-IN')} will be deducted from {selectedInvestmentPlans.length > 1 ? `${selectedInvestmentPlans.length} investment plans` : 'investment balance'} on sale confirmation
-                              </p>
+                            {investmentSubId && investmentAmount > 0 && (
+                              <RedemptionComparisonPanel
+                                preview={redemptionPreview}
+                                loading={previewLoading}
+                                error={previewError}
+                                choice={redemptionChoice}
+                                onChoose={setRedemptionChoice}
+                              />
                             )}
                           </>
                         )}
@@ -2121,7 +2142,7 @@ export function InventoryPageContent() {
                     setOtp('');
                     setOtpError('');
                     setInvestmentPlans([]);
-                    setInvestmentApplied({});
+                    clearInvestment();
                     setAdvances([]);
                     setAdvanceApplied({});
                   }}
@@ -2131,7 +2152,7 @@ export function InventoryPageContent() {
                 </button>
                 <button
                   onClick={handleSell}
-                  disabled={selling || (sellForm.customer_phone.length === 10 && !phoneVerified)}
+                  disabled={selling || (sellForm.customer_phone.length === 10 && !phoneVerified) || Boolean(investmentSubId && investmentAmount > 0 && !redemptionChoice)}
                   className="w-full sm:w-auto px-10 py-3.5 bg-[#5A0F1A] hover:bg-[#7A1C2A] text-white rounded-2xl text-[11px] font-black uppercase tracking-widest transition-colors shadow-md disabled:opacity-60 flex items-center justify-center"
                 >
                   {selling ? 'Processing...' : (sellForm.customer_phone.length === 10 && !phoneVerified) ? 'Verify Phone First' : 'Confirm Sale'}
@@ -2468,7 +2489,7 @@ export function InventoryPageContent() {
                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Bill Total</span>
                   <span className="text-base font-black text-[#5A0F1A]">₹{cartTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
                 </div>
-                {(totalInvestmentApplied > 0 || totalAdvanceApplied > 0) && (
+                {(investmentAmount > 0 || totalAdvanceApplied > 0) && (
                   <div className="flex items-center justify-between px-5 py-3 bg-emerald-50 border-t border-emerald-100">
                     <span className="text-[10px] font-black uppercase tracking-widest text-emerald-700">Due After Redemption</span>
                     <span className="text-base font-black text-emerald-700">₹{cartAmountDue.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
@@ -2563,8 +2584,7 @@ export function InventoryPageContent() {
               </div>
 
               {(() => {
-                const investmentCap = Math.max(0, cartTotal - totalAdvanceApplied);
-                const advanceCap = Math.max(0, cartTotal - totalInvestmentApplied);
+                const advanceCap = Math.max(0, cartTotal - investmentAmount);
                 return (
                   <>
                     {/* ── Investment Balance Redemption ── */}
@@ -2577,12 +2597,6 @@ export function InventoryPageContent() {
                             </svg>
                             <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Investment Balance Redemption</p>
                           </div>
-                          {investmentPlans.length > 1 && (
-                            <button type="button" onClick={() => selectAllInvestments(investmentCap)}
-                              className="text-[9px] font-black uppercase tracking-widest text-amber-700 hover:text-amber-800 underline underline-offset-2">
-                              Select All
-                            </button>
-                          )}
                         </div>
 
                         {loadingInvestment && (
@@ -2611,18 +2625,18 @@ export function InventoryPageContent() {
 
                         {!loadingInvestment && investmentPlans.length > 0 && (
                           <>
+                            <p className="text-[10px] text-slate-400 font-medium -mt-1">Pick one plan to redeem against this sale.</p>
                             <div className="space-y-2">
                               {investmentPlans.map(plan => {
-                                const checked = plan._id in investmentApplied;
-                                const amt = investmentApplied[plan._id] ?? 0;
+                                const checked = plan._id === investmentSubId;
                                 return (
                                   <div key={plan._id} className={`rounded-xl border-2 transition-all ${checked ? 'border-amber-500 bg-amber-50' : 'border-slate-200 bg-white hover:border-amber-300'}`}>
                                     <label className="w-full flex items-center gap-3 px-4 py-3 cursor-pointer">
-                                      <input type="checkbox" checked={checked} onChange={() => toggleInvestmentPlan(plan._id)}
-                                        className="w-4 h-4 rounded accent-amber-600 flex-shrink-0" />
+                                      <input type="radio" name="investmentSubCheckout" checked={checked} onChange={() => selectInvestmentSub(plan._id)}
+                                        className="w-4 h-4 accent-amber-600 flex-shrink-0" />
                                       <div className="flex-1 min-w-0">
                                         <p className="text-sm font-black text-slate-900">{plan.plan?.name}</p>
-                                        <p className="text-[10px] text-slate-400">{plan.installmentsPaid} months paid</p>
+                                        <p className="text-[10px] text-slate-400">{plan.installmentsPaid} months paid · {(plan.goldGramsAccumulated || 0).toFixed(2)}g accumulated</p>
                                       </div>
                                       <div className="text-right flex-shrink-0">
                                         <p className="text-sm font-black text-amber-700">₹{plan.availableBalance.toLocaleString('en-IN')}</p>
@@ -2630,12 +2644,20 @@ export function InventoryPageContent() {
                                       </div>
                                     </label>
                                     {checked && (
-                                      <div className="px-4 pb-3">
-                                        <input type="number" min={0} max={plan.availableBalance} value={amt || ''}
-                                          onChange={e => setInvestmentPlanAmount(plan._id, Math.min(parseFloat(e.target.value) || 0, plan.availableBalance))}
-                                          placeholder={`Amount to apply (max ₹${plan.availableBalance.toLocaleString('en-IN')})`}
-                                          className="w-full bg-white border-2 border-amber-300 rounded-xl px-4 py-2.5 text-sm font-black text-amber-800 focus:outline-none focus:border-amber-500 shadow-sm"
+                                      <div className="px-4 pb-3 flex items-center gap-2">
+                                        <input type="number" min={0} max={plan.availableBalance} value={investmentAmountInput}
+                                          onChange={e => setInvestmentAmountInput(e.target.value)}
+                                          placeholder={`Amount to apply (max ₹${Math.min(plan.availableBalance, investmentCapForAmount).toLocaleString('en-IN')})`}
+                                          className="flex-1 bg-white border-2 border-amber-300 rounded-xl px-4 py-2.5 text-sm font-black text-amber-800 focus:outline-none focus:border-amber-500 shadow-sm"
                                         />
+                                        <button type="button" onClick={() => setInvestmentAmountInput(String(Math.min(plan.availableBalance, investmentCapForAmount)))}
+                                          className="px-3 py-2.5 rounded-xl bg-amber-600 text-white text-[10px] font-black uppercase whitespace-nowrap hover:bg-amber-700 transition-colors">
+                                          Max
+                                        </button>
+                                        <button type="button" onClick={clearInvestment}
+                                          className="px-3 py-2.5 rounded-xl border border-slate-200 text-slate-500 text-[10px] font-black uppercase hover:bg-slate-50 transition-colors">
+                                          Clear
+                                        </button>
                                       </div>
                                     )}
                                   </div>
@@ -2643,24 +2665,14 @@ export function InventoryPageContent() {
                               })}
                             </div>
 
-                            {Object.keys(investmentApplied).length > 0 && (
-                              <div className="flex items-center gap-3">
-                                <button type="button" onClick={() => applyMaxInvestment(investmentCap)}
-                                  className="px-4 py-2.5 rounded-xl bg-amber-600 text-white text-xs font-black hover:bg-amber-700 transition-colors whitespace-nowrap">
-                                  Apply Max Across Selected
-                                </button>
-                                <button type="button" onClick={clearInvestments}
-                                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-500 text-xs font-black hover:bg-slate-50 transition-colors">
-                                  Clear
-                                </button>
-                              </div>
-                            )}
-
-                            {totalInvestmentApplied > 0 && (
-                              <p className="text-[10px] text-amber-700 font-bold flex items-center gap-1.5">
-                                <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                                ₹{totalInvestmentApplied.toLocaleString('en-IN')} will be deducted from {selectedInvestmentPlans.length > 1 ? `${selectedInvestmentPlans.length} investment plans` : 'investment balance'} on sale confirmation
-                              </p>
+                            {investmentSubId && investmentAmount > 0 && (
+                              <RedemptionComparisonPanel
+                                preview={redemptionPreview}
+                                loading={previewLoading}
+                                error={previewError}
+                                choice={redemptionChoice}
+                                onChoose={setRedemptionChoice}
+                              />
                             )}
                           </>
                         )}
@@ -2868,7 +2880,7 @@ export function InventoryPageContent() {
                 </button>
                 <button
                   onClick={handleCheckout}
-                  disabled={checkingOut || Math.abs(cartRemaining) > CART_TOLERANCE || !checkoutForm.customer_name.trim() || checkoutForm.customer_phone.length < 10 || !checkoutForm.shipping_address.trim()}
+                  disabled={checkingOut || Math.abs(cartRemaining) > CART_TOLERANCE || !checkoutForm.customer_name.trim() || checkoutForm.customer_phone.length < 10 || !checkoutForm.shipping_address.trim() || Boolean(investmentSubId && investmentAmount > 0 && !redemptionChoice)}
                   className="w-full sm:w-auto px-10 py-3.5 bg-[#5A0F1A] hover:bg-[#7A1C2A] text-white rounded-2xl text-[11px] font-black uppercase tracking-widest transition-colors shadow-md disabled:opacity-60 flex items-center justify-center"
                 >
                   {checkingOut ? 'Processing...' : 'Confirm Sale'}

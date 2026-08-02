@@ -236,9 +236,19 @@ export default function SalesEnquiriesPage() {
       if (isApprovingItemSale) {
         const item = await openBillForReference(ref);
         const saleReference = item?.sale_reference || ref;
+        // This flow has no jewelry/pricing_breakdown context (it's a lead conversion, not a
+        // POS checkout), so it only supports the Cash Benefit option — Making Charge Waiver
+        // needs gold-weight/making-charges data that doesn't exist here.
         await Promise.all(
           investmentEntries.map(([id, amt]) =>
-            redeemGoldSubscription(id, { amount: amt, saleReference, note: `Approved sales enquiry for ${custName}` }).catch(() => {})
+            redeemGoldSubscription(id, {
+              amount: amt,
+              redemptionType: 'cash_benefit',
+              jewelrySubtotal: amt,
+              taxPercentage: 0,
+              saleReference,
+              note: `Approved sales enquiry for ${custName}`,
+            }).catch(() => {})
           ),
         );
       }

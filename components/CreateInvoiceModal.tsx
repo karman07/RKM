@@ -3,12 +3,14 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   getInventory, getInventoryByBarcode, getProfile, getCashiers, sellItemsBatch, staticUrl,
-  getGoldBalance, redeemGoldSubscription, getAdvanceBalance,
+  getGoldBalance, previewGoldRedemption, getAdvanceBalance,
   type InventoryItem, type Cashier, type GoldBalance, type CustomerAdvance,
+  type RedemptionPreview, type RedemptionType,
 } from '@/lib/api';
 import Modal from './Modal';
 import VerifiedCustomerPanel, { type CustomerDraft } from './VerifiedCustomerPanel';
 import PaymentSplitsInput, { type PaymentSplit } from './PaymentSplitsInput';
+import RedemptionComparisonPanel from './RedemptionComparisonPanel';
 import { toast } from 'sonner';
 
 const SearchIcon = ({ size = 14 }: { size?: number }) => (
@@ -76,9 +78,15 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
   const [soldByUserId, setSoldByUserId] = useState('');
   const [paymentSplits, setPaymentSplits] = useState<PaymentSplit[]>([{ mode: 'cash', amount: '', reference: '' }]);
 
-  // Investment balance — multiple plans can be checked and redeemed together (planId -> amount applied)
+  // Investment balance — the customer picks ONE eligible subscription to redeem against, an
+  // amount, then ONE redemption option (Cash Benefit vs Making Charge Waiver) for the whole sale.
   const [investmentPlans, setInvestmentPlans] = useState<GoldBalance[]>([]);
-  const [investmentApplied, setInvestmentApplied] = useState<Record<string, number>>({});
+  const [investmentSubId, setInvestmentSubId] = useState('');
+  const [investmentAmountInput, setInvestmentAmountInput] = useState('');
+  const [redemptionPreview, setRedemptionPreview] = useState<RedemptionPreview | null>(null);
+  const [redemptionChoice, setRedemptionChoice] = useState<RedemptionType | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState('');
   const [loadingInvestment, setLoadingInvestment] = useState(false);
   const [investmentError, setInvestmentError] = useState('');
 
@@ -103,13 +111,16 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
   async function fetchInvestmentBalance(phone: string) {
     setLoadingInvestment(true);
     setInvestmentPlans([]);
-    setInvestmentApplied({});
+    setInvestmentSubId('');
+    setInvestmentAmountInput('');
+    setRedemptionPreview(null);
+    setRedemptionChoice(null);
     setInvestmentError('');
     try {
       const data = await getGoldBalance(phone);
       const withBalance = (Array.isArray(data) ? data : []).filter(b => b.availableBalance > 0);
       setInvestmentPlans(withBalance);
-      if (withBalance.length === 1) setInvestmentApplied({ [withBalance[0]._id]: 0 });
+      if (withBalance.length === 1) setInvestmentSubId(withBalance[0]._id);
     } catch (e: any) {
       setInvestmentPlans([]);
       setInvestmentError(e?.message || 'Could not check investment balance — please retry.');
@@ -143,47 +154,28 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
       fetchInvestmentBalance(customerDraft.phone);
       fetchAdvanceBalance(customerDraft.phone);
     } else {
-      setInvestmentPlans([]); setInvestmentApplied({});
+      setInvestmentPlans([]); setInvestmentSubId(''); setInvestmentAmountInput(''); setRedemptionPreview(null); setRedemptionChoice(null);
       setAdvances([]); setAdvanceApplied({});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customerVerified, customerDraft.phone]);
 
-  const totalInvestmentApplied = Object.values(investmentApplied).reduce((s, n) => s + (n || 0), 0);
+  const investmentSelectedPlan = investmentPlans.find(p => p._id === investmentSubId) || null;
   const totalAdvanceApplied = Object.values(advanceApplied).reduce((s, n) => s + (n || 0), 0);
-  const selectedInvestmentPlans = investmentPlans.filter(p => (investmentApplied[p._id] ?? 0) > 0);
   const selectedAdvances = advances.filter(a => (advanceApplied[a._id] ?? 0) > 0);
-  // When multiple plans/advances are combined, use the best single waiver % rather than
-  // stacking them — avoids waiving more than 100% of making charges at once.
-  const investmentRedemptionDiscountPct = selectedInvestmentPlans.reduce((max, p) => Math.max(max, p.plan?.redemptionDiscount ?? 0), 0);
   const advanceWaiverPct = selectedAdvances.reduce((max, a) => Math.max(max, a.making_charges_waiver_pct ?? 0), 0);
 
-  function toggleInvestmentPlan(id: string) {
-    setInvestmentApplied(prev => {
-      if (id in prev) { const next = { ...prev }; delete next[id]; return next; }
-      return { ...prev, [id]: 0 };
-    });
+  function selectInvestmentSub(id: string) {
+    setInvestmentSubId(id === investmentSubId ? '' : id);
+    setInvestmentAmountInput('');
+    setRedemptionPreview(null);
+    setRedemptionChoice(null);
   }
-  function setInvestmentPlanAmount(id: string, amount: number) {
-    setInvestmentApplied(prev => ({ ...prev, [id]: amount }));
-  }
-  function applyMaxInvestment(cap: number, ids?: string[]) {
-    const targets = ids ?? Object.keys(investmentApplied);
-    let remaining = Math.max(0, cap);
-    const next: Record<string, number> = {};
-    for (const plan of investmentPlans) {
-      if (!targets.includes(plan._id)) continue;
-      const amt = Math.max(0, Math.min(plan.availableBalance, remaining));
-      next[plan._id] = amt;
-      remaining -= amt;
-    }
-    setInvestmentApplied(next);
-  }
-  function selectAllInvestments(cap: number) {
-    applyMaxInvestment(cap, investmentPlans.map(p => p._id));
-  }
-  function clearInvestments() {
-    setInvestmentApplied({});
+  function clearInvestment() {
+    setInvestmentSubId('');
+    setInvestmentAmountInput('');
+    setRedemptionPreview(null);
+    setRedemptionChoice(null);
   }
 
   function toggleAdvance(id: string) {
@@ -283,15 +275,28 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
   const cartTotal = cart.reduce((s, c) => s + (parseFloat(c.price) || 0), 0);
   const hasBelowFloorLine = cart.some(c => (parseFloat(c.price) || 0) < floorInfo(c.item).floor);
 
-  // Redemption caps: an investment plan can only cover what advances haven't already
-  // covered, and vice versa, so the two never combine to exceed the bill total.
-  const investmentCap = Math.max(0, cartTotal - totalAdvanceApplied);
-  const advanceCap = Math.max(0, cartTotal - totalInvestmentApplied);
   const cartMakingCharges = cart.reduce((sum, c) => sum + ((c.item as any).pricing_breakdown?.making_charges ?? 0), 0);
-  const investmentMakingChargesDiscount = totalInvestmentApplied > 0 ? Math.round(cartMakingCharges * investmentRedemptionDiscountPct / 100) : 0;
+  const cartTaxableAmount = cart.reduce((sum, c) => sum + ((c.item as any).pricing_breakdown?.taxable_amount ?? 0), 0);
+  const cartTaxAmount = cart.reduce((sum, c) => sum + ((c.item as any).pricing_breakdown?.tax_amount ?? 0), 0);
+  const cartGoldWeightGrams = cart.reduce((sum, c) => sum + ((c.item as any).pricing_breakdown?.billable_metal_weight ?? 0), 0);
+  const cartEffectiveTaxPercentage = cartTaxableAmount > 0 ? (cartTaxAmount / cartTaxableAmount) * 100 : 0;
+
+  // Redemption cap: an investment plan can only cover what advances haven't already covered,
+  // and vice versa, so the two never combine to exceed the bill total.
+  const investmentCap = Math.max(0, cartTotal - totalAdvanceApplied);
+  const investmentAmount = Math.min(parseFloat(investmentAmountInput) || 0, investmentSelectedPlan?.availableBalance ?? 0, investmentCap);
+  const advanceCap = Math.max(0, cartTotal - investmentAmount);
   const advanceMakingChargesDiscount = totalAdvanceApplied > 0 ? Math.round(cartMakingCharges * advanceWaiverPct / 100) : 0;
+
+  const chosenRedemptionOption = redemptionChoice === 'cash_benefit' ? redemptionPreview?.cashBenefitOption
+    : redemptionChoice === 'making_charge_waiver' ? redemptionPreview?.makingChargeWaiverOption
+    : null;
+  // When an investment redemption option is locked in, its GST-recomputed payable amount
+  // (subtotal minus redemption benefit, tax reapplied) replaces cartTotal as the bill's base —
+  // advances (a separate, unchanged scheme) are then subtracted from that as before.
+  const baseAmountAfterInvestment = chosenRedemptionOption ? chosenRedemptionOption.finalPayableAmount : cartTotal;
   // What's left to collect via real payment methods (cash/card/etc.) after redemptions
-  const amountDue = Math.max(0, cartTotal - totalInvestmentApplied - investmentMakingChargesDiscount - totalAdvanceApplied - advanceMakingChargesDiscount);
+  const amountDue = Math.max(0, baseAmountAfterInvestment - totalAdvanceApplied - advanceMakingChargesDiscount);
 
   // Fill the default single payment split with the amount due, but only while
   // the user hasn't typed an amount themselves.
@@ -302,6 +307,39 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
         : prev
     );
   }, [amountDue]);
+
+  // Debounced comparison-screen quote — recomputed whenever the selected subscription, the
+  // amount to redeem, or the cart itself changes. Numbers always come from the backend so the
+  // confirmed sale can never drift from what was shown to the customer.
+  useEffect(() => {
+    if (!investmentSubId || investmentAmount <= 0 || cart.length === 0) {
+      setRedemptionPreview(null);
+      setRedemptionChoice(null);
+      setPreviewError('');
+      return;
+    }
+    setPreviewError('');
+    setPreviewLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const preview = await previewGoldRedemption(investmentSubId, {
+          amount: investmentAmount,
+          jewelrySubtotal: cartTaxableAmount,
+          taxPercentage: cartEffectiveTaxPercentage,
+          jewelryGoldWeightGrams: cartGoldWeightGrams,
+          makingChargesOnJewelry: cartMakingCharges,
+        });
+        setRedemptionPreview(preview);
+      } catch (e: any) {
+        setRedemptionPreview(null);
+        setPreviewError(e?.message || 'Could not compute redemption options.');
+      } finally {
+        setPreviewLoading(false);
+      }
+    }, 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [investmentSubId, investmentAmount, cartTaxableAmount, cartEffectiveTaxPercentage, cartGoldWeightGrams, cartMakingCharges]);
 
   function addItem(item: InventoryItem) {
     setCart(prev => (prev.some(c => c.item._id === item._id)
@@ -336,23 +374,30 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
       }
     }
 
+    if (investmentSubId && investmentAmount > 0 && !redemptionChoice) {
+      setError('Choose a redemption option (Cash Benefit or Making Charge Waiver) before confirming the sale.');
+      return;
+    }
+
     const manualSplits = paymentSplits
       .filter(s => parseFloat(s.amount) > 0)
       .map(s => ({ mode: s.mode, amount: parseFloat(s.amount), reference: s.reference || undefined }));
     if (manualSplits.length === 0 && amountDue > 0) { setError('Add at least one payment method with an amount.'); return; }
 
-    const investmentEntries = Object.entries(investmentApplied).filter(([, amt]) => amt > 0);
     const advanceEntries = Object.entries(advanceApplied).filter(([, amt]) => amt > 0);
 
     // Redemption splits are prepended so the bill's payment_splits reflect the full
     // breakdown (real money + balances applied), same convention as the Inventory page.
     const splits: { mode: string; amount: number; reference?: string }[] = [];
-    investmentEntries.forEach(([id, amt]) => splits.push({ mode: 'investment_balance', amount: amt, reference: id }));
+    if (investmentSubId && investmentAmount > 0) splits.push({ mode: 'investment_balance', amount: investmentAmount, reference: investmentSubId });
     advanceEntries.forEach(([id, amt]) => splits.push({ mode: 'advance_balance', amount: amt, reference: id }));
     splits.push(...manualSplits);
 
     setSubmitting(true);
     try {
+      // Investment plan redemption (if any) is committed atomically server-side, inside
+      // sellItemsBatch, using the exact same breakdown shown on the comparison screen — the
+      // sale fails outright if the redemption fails, instead of silently under-deducting.
       const sold = await sellItemsBatch({
         items: cart.map(c => ({ id: c.item._id, selling_price: parseFloat(c.price) || undefined })),
         sold_at_branch_id: branchId,
@@ -368,35 +413,23 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
         sale_channel: 'store',
         payment_mode: manualSplits[0]?.mode ?? 'cash',
         payment_splits: splits,
-        investment_redeemed: totalInvestmentApplied > 0 ? totalInvestmentApplied : undefined,
-        investment_sub_id: investmentEntries[0]?.[0],
-        making_charges_discount: investmentMakingChargesDiscount > 0 ? investmentMakingChargesDiscount : undefined,
+        investment_redeemed: investmentSubId && investmentAmount > 0 ? investmentAmount : undefined,
+        investment_sub_id: investmentSubId && investmentAmount > 0 ? investmentSubId : undefined,
+        investment_redemption_type: investmentSubId && investmentAmount > 0 ? redemptionChoice ?? undefined : undefined,
+        investment_jewelry_subtotal: investmentSubId && investmentAmount > 0 ? cartTaxableAmount : undefined,
+        investment_tax_percentage: investmentSubId && investmentAmount > 0 ? cartEffectiveTaxPercentage : undefined,
+        investment_jewelry_gold_weight_grams: investmentSubId && investmentAmount > 0 ? cartGoldWeightGrams : undefined,
+        investment_making_charges_on_jewelry: investmentSubId && investmentAmount > 0 ? cartMakingCharges : undefined,
         advance_redeemed: totalAdvanceApplied > 0 ? totalAdvanceApplied : undefined,
         advance_id: advanceEntries[0]?.[0],
         advance_making_charges_discount: advanceMakingChargesDiscount > 0 ? advanceMakingChargesDiscount : undefined,
       });
 
-      // Advance redemption happens atomically server-side as part of sellItemsBatch (above) —
-      // the sale fails outright if it fails, so there's nothing left to do here. Investment
-      // plan redemption is a separate best-effort call, mirroring the Inventory page's flow.
-      const saleReference = sold[0]?.sale_reference;
-      const redemptionFailures: string[] = [];
-      await Promise.all(investmentEntries.map(async ([id, amt]) => {
-        const plan = investmentPlans.find(p => p._id === id);
-        try {
-          await redeemGoldSubscription(id, { amount: amt, saleReference, note: `Redeemed against sale (${saleReference})` });
-        } catch {
-          redemptionFailures.push(plan?.plan?.name || 'an investment plan');
-        }
-      }));
-      if (redemptionFailures.length > 0) {
-        toast.error(`Sale recorded but balance deduction failed for ${redemptionFailures.join(', ')} — please do it manually.`);
-      }
-
       // sellItemsBatch returns the raw saved documents — product_id, sold_at_branch_id etc.
       // come back as bare ids, not populated. BillModal needs them populated (pricing
       // breakdown, branch address, product image/SKU all read off the populated objects),
       // so re-fetch the same items through the listing endpoint, which does populate.
+      const saleReference = sold[0]?.sale_reference;
       let billItems = sold;
       if (saleReference) {
         try {
@@ -542,15 +575,7 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
         {/* ── Investment Balance Redemption ──────────────────────────────── */}
         {customerVerified && (
           <div className="rounded-2xl border-2 border-amber-200 bg-amber-50/40 p-5 space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Investment Balance Redemption</p>
-              {investmentPlans.length > 1 && (
-                <button type="button" onClick={() => selectAllInvestments(investmentCap)}
-                  className="text-[9px] font-black uppercase tracking-widest text-amber-700 hover:text-amber-800 underline underline-offset-2">
-                  Select All
-                </button>
-              )}
-            </div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Investment Balance Redemption</p>
 
             {loadingInvestment && (
               <div className="flex items-center gap-2 text-xs text-amber-600 font-bold">
@@ -575,18 +600,18 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
 
             {!loadingInvestment && investmentPlans.length > 0 && (
               <>
+                <p className="text-[10px] text-slate-400 font-medium -mt-1">Pick one plan to redeem against this purchase.</p>
                 <div className="space-y-2">
                   {investmentPlans.map(plan => {
-                    const checked = plan._id in investmentApplied;
-                    const amt = investmentApplied[plan._id] ?? 0;
+                    const checked = plan._id === investmentSubId;
                     return (
                       <div key={plan._id} className={`rounded-xl border-2 transition-all ${checked ? 'border-amber-500 bg-amber-50' : 'border-slate-200 bg-white hover:border-amber-300'}`}>
                         <label className="w-full flex items-center gap-3 px-4 py-3 cursor-pointer">
-                          <input type="checkbox" checked={checked} onChange={() => toggleInvestmentPlan(plan._id)}
-                            className="w-4 h-4 rounded accent-amber-600 flex-shrink-0" />
+                          <input type="radio" name="investmentSub" checked={checked} onChange={() => selectInvestmentSub(plan._id)}
+                            className="w-4 h-4 accent-amber-600 flex-shrink-0" />
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-black text-slate-900">{plan.plan?.name}</p>
-                            <p className="text-[10px] text-slate-400">{plan.installmentsPaid} months paid</p>
+                            <p className="text-[10px] text-slate-400">{plan.installmentsPaid} months paid · {(plan.goldGramsAccumulated || 0).toFixed(2)}g accumulated</p>
                           </div>
                           <div className="text-right flex-shrink-0">
                             <p className="text-sm font-black text-amber-700">₹{plan.availableBalance.toLocaleString('en-IN')}</p>
@@ -594,12 +619,20 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
                           </div>
                         </label>
                         {checked && (
-                          <div className="px-4 pb-3">
-                            <input type="number" min={0} max={plan.availableBalance} value={amt || ''}
-                              onChange={e => setInvestmentPlanAmount(plan._id, Math.min(parseFloat(e.target.value) || 0, plan.availableBalance))}
-                              placeholder={`Amount to apply (max ₹${plan.availableBalance.toLocaleString('en-IN')})`}
-                              className="w-full bg-white border-2 border-amber-300 rounded-xl px-4 py-2.5 text-sm font-black text-amber-800 focus:outline-none focus:border-amber-500 shadow-sm"
+                          <div className="px-4 pb-3 flex items-center gap-2">
+                            <input type="number" min={0} max={plan.availableBalance} value={investmentAmountInput}
+                              onChange={e => setInvestmentAmountInput(e.target.value)}
+                              placeholder={`Amount to apply (max ₹${Math.min(plan.availableBalance, investmentCap).toLocaleString('en-IN')})`}
+                              className="flex-1 bg-white border-2 border-amber-300 rounded-xl px-4 py-2.5 text-sm font-black text-amber-800 focus:outline-none focus:border-amber-500 shadow-sm"
                             />
+                            <button type="button" onClick={() => setInvestmentAmountInput(String(Math.min(plan.availableBalance, investmentCap)))}
+                              className="px-3 py-2.5 rounded-xl bg-amber-600 text-white text-[10px] font-black uppercase whitespace-nowrap hover:bg-amber-700 transition-colors">
+                              Max
+                            </button>
+                            <button type="button" onClick={clearInvestment}
+                              className="px-3 py-2.5 rounded-xl border border-slate-200 text-slate-500 text-[10px] font-black uppercase hover:bg-slate-50 transition-colors">
+                              Clear
+                            </button>
                           </div>
                         )}
                       </div>
@@ -607,24 +640,14 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
                   })}
                 </div>
 
-                {Object.keys(investmentApplied).length > 0 && (
-                  <div className="flex items-center gap-3">
-                    <button type="button" onClick={() => applyMaxInvestment(investmentCap)}
-                      className="px-4 py-2.5 rounded-xl bg-amber-600 text-white text-xs font-black hover:bg-amber-700 transition-colors whitespace-nowrap">
-                      Apply Max Across Selected
-                    </button>
-                    <button type="button" onClick={clearInvestments}
-                      className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-500 text-xs font-black hover:bg-slate-50 transition-colors">
-                      Clear
-                    </button>
-                  </div>
-                )}
-
-                {totalInvestmentApplied > 0 && (
-                  <p className="text-[10px] text-amber-700 font-bold flex items-center gap-1.5">
-                    <CheckIcon />
-                    ₹{totalInvestmentApplied.toLocaleString('en-IN')} will be deducted from {selectedInvestmentPlans.length > 1 ? `${selectedInvestmentPlans.length} investment plans` : 'investment balance'} on sale confirmation
-                  </p>
+                {investmentSubId && investmentAmount > 0 && (
+                  <RedemptionComparisonPanel
+                    preview={redemptionPreview}
+                    loading={previewLoading}
+                    error={previewError}
+                    choice={redemptionChoice}
+                    onChoose={setRedemptionChoice}
+                  />
                 )}
               </>
             )}
@@ -750,14 +773,20 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
         </div>
 
         {/* ── Payment ──────────────────────────────────────────────────── */}
-        {(totalInvestmentApplied > 0 || totalAdvanceApplied > 0) && (
+        {((investmentSubId && investmentAmount > 0) || totalAdvanceApplied > 0) && (
           <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 space-y-1.5 text-xs">
             <div className="flex justify-between font-bold text-slate-500"><span>Bill Total</span><span>₹{fmt(cartTotal)}</span></div>
-            {totalInvestmentApplied > 0 && (
-              <div className="flex justify-between font-bold text-amber-700"><span>Investment Balance Applied</span><span>− ₹{fmt(totalInvestmentApplied)}</span></div>
-            )}
-            {investmentMakingChargesDiscount > 0 && (
-              <div className="flex justify-between font-bold text-amber-700"><span>Making Charges Waived (Investment)</span><span>− ₹{fmt(investmentMakingChargesDiscount)}</span></div>
+            {chosenRedemptionOption && (
+              <>
+                <div className="flex justify-between font-bold text-amber-700"><span>Investment Balance Applied ({redemptionChoice === 'cash_benefit' ? 'Cash Benefit' : 'Making Charge Waiver'})</span><span>− ₹{fmt(chosenRedemptionOption.investmentAmountUsed)}</span></div>
+                {redemptionChoice === 'cash_benefit' && (chosenRedemptionOption.cashBenefitAmount || 0) > 0 && (
+                  <div className="flex justify-between font-bold text-amber-700"><span>Cash Benefit</span><span>− ₹{fmt(chosenRedemptionOption.cashBenefitAmount || 0)}</span></div>
+                )}
+                {redemptionChoice === 'making_charge_waiver' && (chosenRedemptionOption.waivedMakingCharges || 0) > 0 && (
+                  <div className="flex justify-between font-bold text-amber-700"><span>Making Charges Waived</span><span>− ₹{fmt(chosenRedemptionOption.waivedMakingCharges || 0)}</span></div>
+                )}
+                <div className="flex justify-between font-bold text-slate-500"><span>GST (recomputed)</span><span>+ ₹{fmt(chosenRedemptionOption.gstAmount)}</span></div>
+              </>
             )}
             {totalAdvanceApplied > 0 && (
               <div className="flex justify-between font-bold text-blue-700"><span>Advance Balance Applied</span><span>− ₹{fmt(totalAdvanceApplied)}</span></div>
@@ -776,7 +805,7 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
           <button onClick={onClose} className="flex-1 py-3.5 border border-slate-200 rounded-2xl text-sm font-bold text-slate-500 hover:bg-slate-50 transition-all">
             Cancel
           </button>
-          <button onClick={handleSubmit} disabled={submitting || cart.length === 0 || hasBelowFloorLine || !customerVerified}
+          <button onClick={handleSubmit} disabled={submitting || cart.length === 0 || hasBelowFloorLine || !customerVerified || Boolean(investmentSubId && investmentAmount > 0 && !redemptionChoice)}
             className="flex-[2] py-3.5 rounded-2xl text-white text-sm font-black bg-blue-600 hover:bg-blue-700 transition-all disabled:opacity-40 flex items-center justify-center gap-2">
             {submitting && <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
             {submitting ? 'Creating…' : `Create Invoice (${cart.length})`}

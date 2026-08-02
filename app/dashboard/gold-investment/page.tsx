@@ -222,7 +222,7 @@ export default function ManagerGoldInvestment() {
                       { l: 'Monthly', v: fmt(p.monthlyAmount) },
                       { l: 'Duration', v: `${p.durationMonths} months` },
                       { l: 'Interest', v: `${p.interestRate}% p.a.` },
-                      { l: 'Discount', v: `${p.redemptionDiscount}% off` },
+                      { l: 'Cash Benefit', v: `${p.cashBenefitPercent}%` },
                     ].map((item, i) => (
                       <div key={i} className="bg-slate-50 rounded-xl p-2.5 border border-slate-100">
                         <p className="text-[8px] font-black text-slate-300 uppercase mb-0.5">{item.l}</p>
@@ -341,7 +341,8 @@ export default function ManagerGoldInvestment() {
                         <div className="flex gap-4 mt-3">
                           <div><p className="text-[8px] text-white/50 font-bold">Accumulated</p><p className="text-sm font-bold">{fmt(selectedSub.amountAccumulated)}</p></div>
                           <div><p className="text-[8px] text-white/50 font-bold">Redeemed</p><p className="text-sm font-bold">{fmt(selectedSub.amountRedeemed || 0)}</p></div>
-                          <div><p className="text-[8px] text-white/50 font-bold">Discount</p><p className="text-sm font-bold">{selectedSub.plan?.redemptionDiscount}% off</p></div>
+                          <div><p className="text-[8px] text-white/50 font-bold">Gold Accumulated</p><p className="text-sm font-bold">{(selectedSub.goldGramsAccumulated || 0).toFixed(2)}g</p></div>
+                          <div><p className="text-[8px] text-white/50 font-bold">Cash Benefit</p><p className="text-sm font-bold">{selectedSub.plan?.cashBenefitPercent}%</p></div>
                         </div>
                       </div>
                     );
