@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "RKM Admin",
-    "slug": "rkm-admin",
+    "name": "RKM Manager",
+    "slug": "rkm-manager",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -9,10 +9,10 @@
     "backgroundColor": "#FFFAF0",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.rkmjewellers.admin"
+      "bundleIdentifier": "com.rkmjewellers.manager"
     },
     "android": {
-      "package": "com.rkmjewellers.admin",
+      "package": "com.rkmjewellers.manager",
       "adaptiveIcon": {
         "backgroundColor": "#FFFAF0",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -38,7 +38,7 @@
     "owner": "karman_singh_01",
     "extra": {
       "eas": {
-        "projectId": "0ae6f8e6-3b6d-477e-a2a8-9d40742406c8"
+        "projectId": "751b0c46-632c-4f5f-936b-909d05da1617"
       }
     }
   }

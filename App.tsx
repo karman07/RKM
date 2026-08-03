@@ -13,7 +13,7 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
  * cashier/sales). Update this URL, then app.json's name/slug/android.package,
  * before building the next one.
  */
-const TARGET_URL = 'https://admin.rkmjewellers.com/';
+const TARGET_URL = 'https://manager.rkmjewellers.com/';
 
 export default function App() {
   const webviewRef = useRef<WebView>(null);
