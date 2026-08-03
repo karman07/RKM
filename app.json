@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "RKM Cashier",
-    "slug": "rkm-cashier",
+    "name": "RKM Sales",
+    "slug": "rkm-sales",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -9,10 +9,10 @@
     "backgroundColor": "#FFFAF0",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.rkmjewellers.cashier"
+      "bundleIdentifier": "com.rkmjewellers.sales"
     },
     "android": {
-      "package": "com.rkmjewellers.cashier",
+      "package": "com.rkmjewellers.sales",
       "adaptiveIcon": {
         "backgroundColor": "#FFFAF0",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -38,7 +38,7 @@
     "owner": "karman_singh_01",
     "extra": {
       "eas": {
-        "projectId": "f58c4cf8-42a8-48f0-ac5a-76c8df096df7"
+        "projectId": "12cf719a-a3f7-4da9-b9c6-fec1f422b1fb"
       }
     }
   }
