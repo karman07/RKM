@@ -20,6 +20,11 @@ const NAV_ITEMS = [
     ],
   },
   {
+    id: 'payments', label: 'Payments', href: '/dashboard/payments',
+    icon: 'M3 10h18M7 15h1m4 0h1m-7 4h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
+    sub: [],
+  },
+  {
     id: 'items', label: 'Item Catalog', href: '/dashboard/items',
     icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
     sub: [],

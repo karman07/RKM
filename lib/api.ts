@@ -296,6 +296,29 @@ export const createCustomerAdvance = (customerId: string, data: {
   lock_in_days?: number;
 }) => request<CustomerAdvance>(`/customers/${customerId}/advances`, { method: 'POST', body: JSON.stringify(data) });
 
+/** Searches customers by partial name, phone, or email */
+export const searchCustomers = (q: string) =>
+  request<{ data: FullCustomer[] }>(`/customers/search?q=${encodeURIComponent(q)}`);
+
+export interface Branch {
+  _id: string;
+  name: string;
+  code?: string;
+}
+
+export const getBranches = () => request<Branch[]>('/branches');
+
+export interface AdvanceAnalytics {
+  totalReceived: number;
+  count: number;
+  byMode: { _id: string; total: number; count: number }[];
+  recent: CustomerAdvance[];
+}
+
+/** Aggregate stats on advances *this* sales rep has personally recorded (self-scoped — sales can't see the store-wide analytics admin/manager get) */
+export const getMyAdvanceAnalytics = (days = 30) =>
+  request<AdvanceAnalytics>(`/customers/advances/mine?days=${days}`);
+
 // ── Inventory (read-only catalog browse) ─────────────────────────────────────
 
 export interface InventoryProduct {
