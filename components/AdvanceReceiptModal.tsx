@@ -165,7 +165,14 @@ export default function AdvanceReceiptModal({ advance, onClose }: AdvanceReceipt
                 ))}
               </div>
             ) : (
-              <div style={{ fontSize: '14px', fontWeight: 900, marginTop: '2px' }}>{advance.mode.replace('_', ' ').toUpperCase()}</div>
+              <>
+                <div style={{ fontSize: '14px', fontWeight: 900, marginTop: '2px' }}>{advance.mode.replace('_', ' ').toUpperCase()}</div>
+                {advance.payment_splits?.[0]?.reference && (
+                  <div style={{ fontSize: '8.5px', color: '#555', fontFamily: 'monospace', marginTop: '2px' }}>
+                    Ref: {advance.payment_splits[0].reference}
+                  </div>
+                )}
+              </>
             )}
           </div>
           <div style={{ padding: '10px 8px' }}>
