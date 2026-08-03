@@ -260,19 +260,28 @@ export class CustomerAdvanceService {
     return this.withBalance(populated);
   }
 
-  /** Aggregate stats on advances taken/redeemed in the last `days` — for the Payments analytics page */
-  async getAdvanceAnalytics(days = 30) {
+  /** Same aggregation as getAdvanceAnalytics, scoped to advances a single staff member personally recorded — for a self-service Payments page (e.g. the sales team, who can't see the store-wide view). */
+  async getMyAdvanceAnalytics(staffId: string, days = 30) {
+    if (!Types.ObjectId.isValid(staffId)) return { totalReceived: 0, count: 0, byMode: [], recent: [] };
+    return this.getAdvanceAnalytics(days, new Types.ObjectId(staffId));
+  }
+
+  /** Aggregate stats on advances taken/redeemed in the last `days` — for the Payments analytics page. When `staffId` is passed, scoped to advances that staff member personally recorded. */
+  async getAdvanceAnalytics(days = 30, staffId?: Types.ObjectId) {
     const since = new Date();
     since.setDate(since.getDate() - days);
     since.setHours(0, 0, 0, 0);
 
+    const match: any = { createdAt: { $gte: since } };
+    if (staffId) match.createdBy = staffId;
+
     const [totalStats, byMode, recent] = await Promise.all([
       this.advanceModel.aggregate([
-        { $match: { createdAt: { $gte: since } } },
+        { $match: match },
         { $group: { _id: null, totalReceived: { $sum: '$amount' }, count: { $sum: 1 } } },
       ]),
       this.advanceModel.aggregate([
-        { $match: { createdAt: { $gte: since } } },
+        { $match: match },
         {
           // Split advances contribute one row per payment method so the breakdown
           // reflects what was actually paid in each mode, not just the primary one.
@@ -291,7 +300,7 @@ export class CustomerAdvanceService {
         { $sort: { total: -1 } },
       ]),
       this.advanceModel
-        .find({ createdAt: { $gte: since } })
+        .find(match)
         .sort({ createdAt: -1 })
         .limit(20)
         .populate('createdBy', 'name')

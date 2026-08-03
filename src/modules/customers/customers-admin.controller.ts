@@ -91,6 +91,14 @@ export class CustomersAdminController {
     return this.customerAdvanceService.getAdvanceAnalytics(Number(days) || 30);
   }
 
+  /** Self-scoped advance-deposit stats — the requesting staff member's own recorded advances only. Used by roles (e.g. sales) that can record advances but can't see the store-wide analytics endpoint above. */
+  @Get('advances/mine')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SALES)
+  async getMyAdvanceAnalytics(@Query('days') days?: string, @Req() req?: any) {
+    return this.customerAdvanceService.getMyAdvanceAnalytics(req.user?.userId, Number(days) || 30);
+  }
+
   /** Redeem (apply) an amount from an advance against a sale */
   @Post('advances/:advanceId/redeem')
   @UseGuards(RolesGuard)
