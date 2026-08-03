@@ -331,6 +331,7 @@ export default function CustomerDetailPage() {
   const [advAmount, setAdvAmount] = useState('');
   const [advWaiverPct, setAdvWaiverPct] = useState('');
   const [advMode, setAdvMode] = useState('cash');
+  const [advReference, setAdvReference] = useState('');
   const [advLockInDays, setAdvLockInDays] = useState(0);
   const [advCustomLock, setAdvCustomLock] = useState(false);
   const [advNote, setAdvNote] = useState('');
@@ -361,12 +362,13 @@ export default function CustomerDetailPage() {
         amount: amt,
         making_charges_waiver_pct: parseFloat(advWaiverPct) || 0,
         mode: advMode,
+        payment_splits: [{ mode: advMode, amount: amt, reference: advReference.trim() || undefined }],
         note: advNote || undefined,
         lock_in_days: advLockInDays || 0,
       });
       setAdvances(prev => [created, ...prev]);
       setShowAddAdvance(false);
-      setAdvAmount(''); setAdvWaiverPct(''); setAdvNote(''); setAdvLockInDays(0); setAdvCustomLock(false);
+      setAdvAmount(''); setAdvWaiverPct(''); setAdvNote(''); setAdvLockInDays(0); setAdvCustomLock(false); setAdvReference('');
       setReceiptAdvance(created);
     } catch (e: any) {
       setAdvanceError(e?.message || 'Failed to record advance');
@@ -675,6 +677,12 @@ export default function CustomerDetailPage() {
                       <option key={m} value={m}>{m.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>
                     ))}
                   </select>
+                </div>
+                <div>
+                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Reference / TXN ID (optional)</label>
+                  <input value={advReference} onChange={e => setAdvReference(e.target.value)}
+                    placeholder="e.g. UPI ref, cheque no."
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none" />
                 </div>
                 <div>
                   <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Lock-in Period</label>
