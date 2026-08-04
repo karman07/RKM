@@ -113,6 +113,7 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
   const taxableAmount: number = items.reduce((sum, it) => sum + (itemPricingBreakdown(it)?.taxable_amount ?? 0), 0);
   const taxAmount: number = items.reduce((sum, it) => sum + (itemPricingBreakdown(it)?.tax_amount ?? 0), 0);
   const goldWeightGrams: number = items.reduce((sum, it) => sum + (itemPricingBreakdown(it)?.billable_metal_weight ?? 0), 0);
+  const metalPrice: number = items.reduce((sum, it) => sum + (itemPricingBreakdown(it)?.metal_price ?? 0), 0);
   const effectiveTaxPercentage = taxableAmount > 0 ? (taxAmount / taxableAmount) * 100 : 0;
   const maxDiscount: number = (first as any).max_manager_discount ?? 0;
 
@@ -216,9 +217,15 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
   const investmentCapForAmount = Math.max(0, afterDiscount - totalAdvanceApplied);
   const investmentAmount = Math.min(parseFloat(investmentAmountInput) || 0, investmentSelectedPlan?.availableBalance ?? 0, investmentCapForAmount);
   const chosenRedemptionOption = redemptionChoice === 'cash_benefit' ? redemptionPreview?.cashBenefitOption
-    : redemptionChoice === 'making_charge_waiver' ? redemptionPreview?.makingChargeWaiverOption
+    : redemptionChoice === 'gold_conversion' ? redemptionPreview?.goldConversionOption
     : null;
   const mcDiscount = chosenRedemptionOption?.waivedMakingCharges ?? 0;
+  // Display-only figure for the "investment balance applied" badge/summary line — for Cash
+  // Benefit this is the manually-chosen amount; for Gold Conversion it's the waived gold cost
+  // only (waivedMakingCharges is shown separately via mcDiscount, so it isn't double-counted).
+  const investmentBalanceDisplay = redemptionChoice === 'cash_benefit' ? investmentAmount
+    : redemptionChoice === 'gold_conversion' ? ((chosenRedemptionOption as any)?.waivedGoldCost ?? 0)
+    : 0;
   // When a redemption option is locked in, its GST-recomputed payable amount replaces
   // afterDiscount as the base — advances (unchanged scheme) subtract from that as before.
   const baseAmountAfterInvestment = chosenRedemptionOption ? chosenRedemptionOption.finalPayableAmount : afterDiscount;
@@ -227,7 +234,9 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
 
   // Debounced comparison-screen quote, same pattern as CreateInvoiceModal.
   useEffect(() => {
-    if (!investmentSubId || investmentAmount <= 0) {
+    // Gold Conversion needs no manually-entered amount — only Cash Benefit's own numbers depend
+    // on investmentAmount being > 0, so the preview fires as soon as a subscription is selected.
+    if (!investmentSubId) {
       setRedemptionPreview(null);
       setRedemptionChoice(null);
       setPreviewError('');
@@ -238,11 +247,12 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
     const t = setTimeout(async () => {
       try {
         const preview = await previewGoldRedemption(investmentSubId, {
-          amount: investmentAmount,
+          amount: investmentAmount > 0 ? investmentAmount : undefined,
           jewelrySubtotal: taxableAmount * discountRatio,
           taxPercentage: effectiveTaxPercentage,
           jewelryGoldWeightGrams: goldWeightGrams,
           makingChargesOnJewelry: makingCharges * discountRatio,
+          metalPriceOnJewelry: metalPrice * discountRatio,
         });
         setRedemptionPreview(preview);
       } catch (e: any) {
@@ -254,7 +264,7 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
     }, 400);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [investmentSubId, investmentAmount, taxableAmount, discountRatio, effectiveTaxPercentage, goldWeightGrams, makingCharges]);
+  }, [investmentSubId, investmentAmount, taxableAmount, discountRatio, effectiveTaxPercentage, goldWeightGrams, makingCharges, metalPrice]);
 
   async function checkInvestmentBalance() {
     const phone = reqData.sold_customer_phone;
@@ -273,7 +283,7 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
       if (preferred) {
         setInvestmentSubId(preferred._id);
         setInvestmentAmountInput(String(Math.min(Number(reqData.investment_redeemed) || preferred.availableBalance, preferred.availableBalance)));
-        if (reqData.investment_redemption_type === 'cash_benefit' || reqData.investment_redemption_type === 'making_charge_waiver') {
+        if (reqData.investment_redemption_type === 'cash_benefit' || reqData.investment_redemption_type === 'gold_conversion') {
           setRedemptionChoice(reqData.investment_redemption_type);
         }
       } else if (withBal.length === 1) {
@@ -311,11 +321,17 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
   function buildPaymentSplits() {
     const originalSplits: any[] = reqData.payment_splits ?? [];
     const advanceEntries = Object.entries(advanceApplied).filter(([, amt]) => amt > 0);
-    const hasInvestment = investmentSubId && investmentAmount > 0;
+    const hasInvestment = Boolean(investmentSubId && redemptionChoice);
     if (hasInvestment || advanceEntries.length > 0) {
       const cashSplits = originalSplits.filter(s => s.mode !== 'investment_balance' && s.mode !== 'advance_balance');
       const splits: any[] = [];
-      if (hasInvestment) splits.push({ mode: 'investment_balance', amount: investmentAmount, reference: investmentSubId });
+      if (hasInvestment && redemptionChoice === 'cash_benefit' && investmentAmount > 0) {
+        splits.push({ mode: 'investment_balance', amount: investmentAmount, reference: investmentSubId });
+      } else if (hasInvestment && redemptionChoice === 'gold_conversion') {
+        const goldOpt = chosenRedemptionOption as any;
+        const discountAmount = (goldOpt?.waivedGoldCost || 0) + (goldOpt?.waivedMakingCharges || 0);
+        if (discountAmount > 0) splits.push({ mode: 'investment_balance', amount: discountAmount, reference: investmentSubId });
+      }
       advanceEntries.forEach(([id, amt]) => splits.push({ mode: 'advance_balance', amount: amt, reference: id }));
       splits.push(...(cashSplits.length > 0
         ? cashSplits.map((s, i) => i === 0 ? { ...s, amount: finalPrice } : s)
@@ -339,8 +355,12 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
 
   async function handleApprove() {
     if (!customerName.trim()) { setError('Customer name is required'); return; }
-    if (investmentSubId && investmentAmount > 0 && !redemptionChoice) {
-      setError('Choose a redemption option (Cash Benefit or Making Charge Waiver) before approving.');
+    if (investmentSubId && !redemptionChoice) {
+      setError('Choose a redemption option (Cash Benefit or Gold Conversion) before approving.');
+      return;
+    }
+    if (investmentSubId && redemptionChoice === 'cash_benefit' && investmentAmount <= 0) {
+      setError('Enter an amount to apply for Cash Benefit, or switch to Gold Conversion.');
       return;
     }
     setApproving(true);
@@ -348,7 +368,7 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
     try {
       const advanceEntries = Object.entries(advanceApplied).filter(([, amt]) => amt > 0);
       const splits = buildPaymentSplits();
-      const hasInvestment = investmentSubId && investmentAmount > 0;
+      const hasInvestment = Boolean(investmentSubId && redemptionChoice);
       let approvedRef = '';
 
       // Investment plan redemption (if any) is committed atomically server-side using the
@@ -361,13 +381,14 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
         };
         if (managerDiscount > 0) overrides.manager_discount = managerDiscount;
         if (hasInvestment) {
-          overrides.investment_redeemed = investmentAmount;
+          if (redemptionChoice === 'cash_benefit') overrides.investment_redeemed = investmentAmount;
           overrides.investment_sub_id = investmentSubId;
           overrides.investment_redemption_type = redemptionChoice ?? undefined;
           overrides.investment_jewelry_subtotal = taxableAmount * discountRatio;
           overrides.investment_tax_percentage = effectiveTaxPercentage;
           overrides.investment_jewelry_gold_weight_grams = goldWeightGrams;
           overrides.investment_making_charges_on_jewelry = makingCharges * discountRatio;
+          if (redemptionChoice === 'gold_conversion') overrides.investment_metal_price_on_jewelry = metalPrice * discountRatio;
         }
         if (totalAdvanceApplied > 0) overrides.advance_redeemed = totalAdvanceApplied;
         if (advanceEntries[0]) overrides.advance_id = advanceEntries[0][0];
@@ -381,13 +402,14 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
         };
         if (managerDiscount > 0) overrides.manager_discount = managerDiscount;
         if (hasInvestment) {
-          overrides.investment_redeemed = investmentAmount;
+          if (redemptionChoice === 'cash_benefit') overrides.investment_redeemed = investmentAmount;
           overrides.investment_sub_id = investmentSubId;
           overrides.investment_redemption_type = redemptionChoice ?? undefined;
           overrides.investment_jewelry_subtotal = taxableAmount * discountRatio;
           overrides.investment_tax_percentage = effectiveTaxPercentage;
           overrides.investment_jewelry_gold_weight_grams = goldWeightGrams;
           overrides.investment_making_charges_on_jewelry = makingCharges * discountRatio;
+          if (redemptionChoice === 'gold_conversion') overrides.investment_metal_price_on_jewelry = metalPrice * discountRatio;
         }
         if (totalAdvanceApplied > 0) overrides.advance_redeemed = totalAdvanceApplied;
         if (advanceEntries[0]) overrides.advance_id = advanceEntries[0][0];
@@ -449,8 +471,11 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
     sale_channel: saleChannel,
     payment_mode: paymentMode,
     payment_splits: paymentSplitsPreview,
-    investment_redeemed: i === 0 && investmentSubId ? investmentAmount : 0,
+    investment_redeemed: i === 0 && investmentSubId
+      ? (redemptionChoice === 'cash_benefit' ? investmentAmount : (chosenRedemptionOption as any)?.principalConsumedRupees ?? 0)
+      : 0,
     investment_redemption_type: i === 0 ? redemptionChoice : null,
+    investment_gold_cost_discount: i === 0 && redemptionChoice === 'gold_conversion' ? (chosenRedemptionOption as any)?.waivedGoldCost ?? 0 : 0,
     making_charges_discount: i === 0 ? mcDiscount : 0,
     advance_redeemed: i === 0 ? totalAdvanceApplied : 0,
     advance_making_charges_discount: i === 0 ? advMcDiscount : 0,

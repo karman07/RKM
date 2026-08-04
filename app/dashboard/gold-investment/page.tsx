@@ -115,6 +115,10 @@ export default function GoldInvestmentDashboard() {
 
   const savePlan = async () => {
     if (!editingPlan.name || !editingPlan.monthlyAmount) return;
+    if (editingPlan.planType === 'custom' && (!editingPlan.minMonthlyAmount || !editingPlan.maxMonthlyAmount || !editingPlan.minDurationMonths || !editingPlan.maxDurationMonths)) {
+      toast.error('Set min/max monthly amount and duration for a Custom plan.');
+      return;
+    }
     setPlanSaving(true);
     try {
       if ((editingPlan as any)._id) {
@@ -159,12 +163,17 @@ export default function GoldInvestmentDashboard() {
     await loadAll();
   };
 
+  /** The monthly amount/duration actually governing a subscription — the customer's own chosen
+   *  amount for a 'custom' plan, or the template's fixed values otherwise. */
+  const effectiveMonthlyAmount = (sub: GoldSubscription) => sub.customMonthlyAmount ?? sub.plan?.monthlyAmount ?? 0;
+  const effectiveDurationMonths = (sub: GoldSubscription) => sub.customDurationMonths ?? sub.plan?.durationMonths ?? 0;
+
   const computeAvailableBalance = (sub: GoldSubscription) => {
     const plan = sub.plan;
     if (!plan) return 0;
-    const monthlyAmount = plan.monthlyAmount || 0;
+    const monthlyAmount = effectiveMonthlyAmount(sub);
     const interestPerMonth = monthlyAmount * (plan.interestRate || 0) / 100;
-    const totalMonths = plan.durationMonths || 0;
+    const totalMonths = effectiveDurationMonths(sub);
     const paid = sub.installmentsPaid || 0;
     const creditedMonths = paid >= totalMonths ? paid : Math.max(0, paid - 1);
     const principal = paid * monthlyAmount;
@@ -301,7 +310,7 @@ export default function GoldInvestmentDashboard() {
                 <div key={s._id} onClick={() => openDrawer(s)} className="bg-white border border-slate-100 rounded-2xl p-5 flex items-center justify-between cursor-pointer hover:border-blue-200 hover:shadow transition-all">
                   <div>
                     <p className="font-bold text-sm text-slate-900">{s.customerName}</p>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">{s.plan?.name} · {s.installmentsPaid} / {s.plan?.durationMonths} months</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase">{s.plan?.name} · {s.installmentsPaid} / {effectiveDurationMonths(s)} months</p>
                   </div>
                   <div className="flex items-center gap-4">
                     <p className="text-sm font-bold text-slate-900">{fmt(s.amountAccumulated)}</p>
@@ -378,7 +387,7 @@ export default function GoldInvestmentDashboard() {
                       {s.pausedForCashMonth != null && <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase bg-emerald-100 text-emerald-700 border border-emerald-200">Paused (Cash Covered)</span>}
                     </div>
                     <p className="text-xs text-slate-400 font-bold">{s.customerPhone} · {s.customerEmail}</p>
-                    <p className="text-xs font-bold text-slate-500">{s.plan?.name} · {s.installmentsPaid}/{s.plan?.durationMonths} payments</p>
+                    <p className="text-xs font-bold text-slate-500">{s.plan?.name} · {s.installmentsPaid}/{effectiveDurationMonths(s)} payments</p>
                   </div>
                   <div className="grid grid-cols-4 gap-4 text-center">
                     <div>
@@ -387,7 +396,7 @@ export default function GoldInvestmentDashboard() {
                     </div>
                     <div>
                       <p className="text-[8px] font-black text-blue-400 uppercase mb-1">Interest</p>
-                      <p className="text-sm font-bold text-blue-600">{fmt((() => { const paid = s.installmentsPaid || 0; const total = s.plan?.durationMonths || 0; const ipm = (s.plan?.monthlyAmount || 0) * (s.plan?.interestRate || 0) / 100; const cm = paid >= total ? paid : Math.max(0, paid - 1); return (s.interestStopped ? 0 : cm * ipm) + (s.bonusInterest || 0); })())}</p>
+                      <p className="text-sm font-bold text-blue-600">{fmt((() => { const paid = s.installmentsPaid || 0; const total = effectiveDurationMonths(s); const ipm = effectiveMonthlyAmount(s) * (s.plan?.interestRate || 0) / 100; const cm = paid >= total ? paid : Math.max(0, paid - 1); return (s.interestStopped ? 0 : cm * ipm) + (s.bonusInterest || 0); })())}</p>
                     </div>
                     <div>
                       <p className="text-[8px] font-black text-emerald-500 uppercase mb-1">Balance</p>
@@ -421,15 +430,53 @@ export default function GoldInvestmentDashboard() {
                 <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Description</label>
                 <input value={editingPlan.description || ''} onChange={e => setEditingPlan(p => ({ ...p, description: e.target.value }))} className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all" placeholder="Short description..." />
               </div>
+              <div>
+                <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Plan Type</label>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setEditingPlan(p => ({ ...p, planType: 'fixed' }))}
+                    className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${(editingPlan.planType ?? 'fixed') === 'fixed' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                    Fixed
+                  </button>
+                  <button type="button" onClick={() => setEditingPlan(p => ({ ...p, planType: 'custom' }))}
+                    className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${editingPlan.planType === 'custom' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                    Custom
+                  </button>
+                </div>
+                <p className="text-[9px] text-slate-400 mt-1">
+                  {editingPlan.planType === 'custom'
+                    ? 'Customer picks their own monthly amount and duration within the bounds below at subscribe time.'
+                    : 'Every subscriber pays the exact monthly amount and duration set here.'}
+                </p>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Monthly Amount (INR) *</label>
+                  <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">{editingPlan.planType === 'custom' ? 'Default Monthly Amount (INR) *' : 'Monthly Amount (INR) *'}</label>
                   <input type="number" value={editingPlan.monthlyAmount || ''} onChange={e => setEditingPlan(p => ({ ...p, monthlyAmount: Number(e.target.value) }))} className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all" />
                 </div>
                 <div>
-                  <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Duration (months) *</label>
+                  <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">{editingPlan.planType === 'custom' ? 'Default Duration (months) *' : 'Duration (months) *'}</label>
                   <input type="number" value={editingPlan.durationMonths || ''} onChange={e => setEditingPlan(p => ({ ...p, durationMonths: Number(e.target.value) }))} className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all" />
                 </div>
+                {editingPlan.planType === 'custom' && (
+                  <>
+                    <div>
+                      <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Min Monthly Amount (INR) *</label>
+                      <input type="number" value={editingPlan.minMonthlyAmount || ''} onChange={e => setEditingPlan(p => ({ ...p, minMonthlyAmount: Number(e.target.value) }))} className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all" />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Max Monthly Amount (INR) *</label>
+                      <input type="number" value={editingPlan.maxMonthlyAmount || ''} onChange={e => setEditingPlan(p => ({ ...p, maxMonthlyAmount: Number(e.target.value) }))} className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all" />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Min Duration (months) *</label>
+                      <input type="number" value={editingPlan.minDurationMonths || ''} onChange={e => setEditingPlan(p => ({ ...p, minDurationMonths: Number(e.target.value) }))} className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all" />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Max Duration (months) *</label>
+                      <input type="number" value={editingPlan.maxDurationMonths || ''} onChange={e => setEditingPlan(p => ({ ...p, maxDurationMonths: Number(e.target.value) }))} className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all" />
+                    </div>
+                  </>
+                )}
                 <div>
                   <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Annual Interest Rate (%)</label>
                   <input type="number" step="0.1" value={editingPlan.interestRate || ''} onChange={e => setEditingPlan(p => ({ ...p, interestRate: Number(e.target.value) }))} className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all" />
@@ -522,15 +569,15 @@ export default function GoldInvestmentDashboard() {
                   <div className="grid grid-cols-2 gap-3">
                     {(() => {
                       const paid = selectedSub.installmentsPaid || 0;
-                      const totalMonths = selectedSub.plan?.durationMonths || 0;
-                      const ipm = (selectedSub.plan?.monthlyAmount || 0) * (selectedSub.plan?.interestRate || 0) / 100;
+                      const totalMonths = effectiveDurationMonths(selectedSub);
+                      const ipm = effectiveMonthlyAmount(selectedSub) * (selectedSub.plan?.interestRate || 0) / 100;
                       const cm = paid >= totalMonths ? paid : Math.max(0, paid - 1);
                       const interest = fmt((selectedSub.interestStopped ? 0 : cm * ipm) + (selectedSub.bonusInterest || 0));
                       return [
                         { l: 'Phone', v: selectedSub.customerPhone || '-' },
                         { l: 'Email', v: selectedSub.customerEmail || '-' },
                         { l: 'Payments Made', v: `${paid} / ${totalMonths}` },
-                        { l: 'Accumulated', v: fmt(paid * (selectedSub.plan?.monthlyAmount || 0)) },
+                        { l: 'Accumulated', v: fmt(paid * effectiveMonthlyAmount(selectedSub)) },
                         { l: 'Interest Earned', v: interest },
                         { l: 'Next Due', v: (selectedSub as any).nextDueDate ? new Date((selectedSub as any).nextDueDate).toLocaleDateString('en-IN', { dateStyle: 'medium' }) : '-' },
                         { l: 'Matures', v: selectedSub.maturesAt ? new Date(selectedSub.maturesAt).toLocaleDateString('en-IN', { dateStyle: 'medium' }) : '-' },
@@ -632,8 +679,8 @@ export default function GoldInvestmentDashboard() {
 
               {/* ── LEDGER TAB ── */}
               {drawerTab === 'ledger' && (() => {
-                const totalMonths = selectedSub.plan?.durationMonths || 0;
-                const monthlyAmount = selectedSub.plan?.monthlyAmount || 0;
+                const totalMonths = effectiveDurationMonths(selectedSub);
+                const monthlyAmount = effectiveMonthlyAmount(selectedSub);
                 const paidByMonth: Record<number, any> = {};
                 ((selectedSub as any).paymentLedger || []).forEach((e: any) => { paidByMonth[e.month] = e; });
                 const installmentsPaid = selectedSub.installmentsPaid || 0;

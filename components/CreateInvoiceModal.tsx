@@ -262,6 +262,7 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
   const cartTaxableAmount = cart.reduce((sum, c) => sum + ((c.item as any).pricing_breakdown?.taxable_amount ?? 0), 0);
   const cartTaxAmount = cart.reduce((sum, c) => sum + ((c.item as any).pricing_breakdown?.tax_amount ?? 0), 0);
   const cartGoldWeightGrams = cart.reduce((sum, c) => sum + ((c.item as any).pricing_breakdown?.billable_metal_weight ?? 0), 0);
+  const cartMetalPrice = cart.reduce((sum, c) => sum + ((c.item as any).pricing_breakdown?.metal_price ?? 0), 0);
   const cartEffectiveTaxPercentage = cartTaxableAmount > 0 ? (cartTaxAmount / cartTaxableAmount) * 100 : 0;
 
   // Redemption cap: an investment plan can only cover what advances haven't already covered,
@@ -272,7 +273,7 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
   const advanceMakingChargesDiscount = totalAdvanceApplied > 0 ? Math.round(cartMakingCharges * advanceWaiverPct / 100) : 0;
 
   const chosenRedemptionOption = redemptionChoice === 'cash_benefit' ? redemptionPreview?.cashBenefitOption
-    : redemptionChoice === 'making_charge_waiver' ? redemptionPreview?.makingChargeWaiverOption
+    : redemptionChoice === 'gold_conversion' ? redemptionPreview?.goldConversionOption
     : null;
   // When an investment redemption option is locked in, its GST-recomputed payable amount
   // (subtotal minus redemption benefit, tax reapplied) replaces cartTotal as the bill's base —
@@ -295,7 +296,10 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
   // amount to redeem, or the cart itself changes. Numbers always come from the backend so the
   // confirmed sale can never drift from what was shown to the customer.
   useEffect(() => {
-    if (!investmentSubId || investmentAmount <= 0 || cart.length === 0) {
+    // Gold Conversion needs no manually-entered amount (it's fully derived from principal/live
+    // gold rate/product weight), so the preview fires as soon as a subscription + cart exist —
+    // only Cash Benefit's own numbers depend on investmentAmount being > 0.
+    if (!investmentSubId || cart.length === 0) {
       setRedemptionPreview(null);
       setRedemptionChoice(null);
       setPreviewError('');
@@ -306,11 +310,12 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
     const t = setTimeout(async () => {
       try {
         const preview = await previewGoldRedemption(investmentSubId, {
-          amount: investmentAmount,
+          amount: investmentAmount > 0 ? investmentAmount : undefined,
           jewelrySubtotal: cartTaxableAmount,
           taxPercentage: cartEffectiveTaxPercentage,
           jewelryGoldWeightGrams: cartGoldWeightGrams,
           makingChargesOnJewelry: cartMakingCharges,
+          metalPriceOnJewelry: cartMetalPrice,
         });
         setRedemptionPreview(preview);
       } catch (e: any) {
@@ -322,7 +327,7 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
     }, 400);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [investmentSubId, investmentAmount, cartTaxableAmount, cartEffectiveTaxPercentage, cartGoldWeightGrams, cartMakingCharges]);
+  }, [investmentSubId, investmentAmount, cartTaxableAmount, cartEffectiveTaxPercentage, cartGoldWeightGrams, cartMakingCharges, cartMetalPrice]);
 
   function addItem(item: InventoryItem) {
     setCart(prev => (prev.some(c => c.item._id === item._id)
@@ -357,8 +362,12 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
       }
     }
 
-    if (investmentSubId && investmentAmount > 0 && !redemptionChoice) {
-      setError('Choose a redemption option (Cash Benefit or Making Charge Waiver) before confirming the sale.');
+    if (investmentSubId && !redemptionChoice) {
+      setError('Choose a redemption option (Cash Benefit or Gold Conversion) before confirming the sale.');
+      return;
+    }
+    if (investmentSubId && redemptionChoice === 'cash_benefit' && investmentAmount <= 0) {
+      setError('Enter an amount to apply for Cash Benefit, or switch to Gold Conversion.');
       return;
     }
 
@@ -372,7 +381,13 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
     // Redemption splits are prepended so the bill's payment_splits reflect the full
     // breakdown (real money + balances applied), same convention as the Inventory page.
     const splits: { mode: string; amount: number; reference?: string }[] = [];
-    if (investmentSubId && investmentAmount > 0) splits.push({ mode: 'investment_balance', amount: investmentAmount, reference: investmentSubId });
+    if (investmentSubId && redemptionChoice === 'cash_benefit' && investmentAmount > 0) {
+      splits.push({ mode: 'investment_balance', amount: investmentAmount, reference: investmentSubId });
+    } else if (investmentSubId && redemptionChoice === 'gold_conversion' && chosenRedemptionOption) {
+      const goldOpt = chosenRedemptionOption as any;
+      const discountAmount = (goldOpt.waivedGoldCost || 0) + (goldOpt.waivedMakingCharges || 0);
+      if (discountAmount > 0) splits.push({ mode: 'investment_balance', amount: discountAmount, reference: investmentSubId });
+    }
     advanceEntries.forEach(([id, amt]) => splits.push({ mode: 'advance_balance', amount: amt, reference: id }));
     splits.push(...manualSplits);
 
@@ -396,13 +411,17 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
         sale_channel: 'store',
         payment_mode: manualSplits[0]?.mode ?? 'cash',
         payment_splits: splits,
-        investment_redeemed: investmentSubId && investmentAmount > 0 ? investmentAmount : undefined,
-        investment_sub_id: investmentSubId && investmentAmount > 0 ? investmentSubId : undefined,
-        investment_redemption_type: investmentSubId && investmentAmount > 0 ? redemptionChoice ?? undefined : undefined,
-        investment_jewelry_subtotal: investmentSubId && investmentAmount > 0 ? cartTaxableAmount : undefined,
-        investment_tax_percentage: investmentSubId && investmentAmount > 0 ? cartEffectiveTaxPercentage : undefined,
-        investment_jewelry_gold_weight_grams: investmentSubId && investmentAmount > 0 ? cartGoldWeightGrams : undefined,
-        investment_making_charges_on_jewelry: investmentSubId && investmentAmount > 0 ? cartMakingCharges : undefined,
+        // Gold Conversion has no manually-chosen amount — the backend derives exactly how much
+        // principal it consumes from the live gold rate/product weight, so investment_redeemed
+        // is left undefined for it (the server fills in the authoritative value post-redemption).
+        investment_redeemed: investmentSubId && redemptionChoice === 'cash_benefit' && investmentAmount > 0 ? investmentAmount : undefined,
+        investment_sub_id: investmentSubId && redemptionChoice ? investmentSubId : undefined,
+        investment_redemption_type: investmentSubId ? redemptionChoice ?? undefined : undefined,
+        investment_jewelry_subtotal: investmentSubId && redemptionChoice ? cartTaxableAmount : undefined,
+        investment_tax_percentage: investmentSubId && redemptionChoice ? cartEffectiveTaxPercentage : undefined,
+        investment_jewelry_gold_weight_grams: investmentSubId && redemptionChoice ? cartGoldWeightGrams : undefined,
+        investment_making_charges_on_jewelry: investmentSubId && redemptionChoice ? cartMakingCharges : undefined,
+        investment_metal_price_on_jewelry: investmentSubId && redemptionChoice === 'gold_conversion' ? cartMetalPrice : undefined,
         advance_redeemed: totalAdvanceApplied > 0 ? totalAdvanceApplied : undefined,
         advance_id: advanceEntries[0]?.[0],
         advance_making_charges_discount: advanceMakingChargesDiscount > 0 ? advanceMakingChargesDiscount : undefined,
@@ -624,7 +643,7 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
                   })}
                 </div>
 
-                {investmentSubId && investmentAmount > 0 && (
+                {investmentSubId && (
                   <RedemptionComparisonPanel
                     preview={redemptionPreview}
                     loading={previewLoading}
@@ -759,19 +778,26 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
         </div>
 
         {/* ── Payment ──────────────────────────────────────────────────── */}
-        {((investmentSubId && investmentAmount > 0) || totalAdvanceApplied > 0) && (
+        {((investmentSubId && redemptionChoice) || totalAdvanceApplied > 0) && (
           <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 space-y-1.5 text-xs">
             <div className="flex justify-between font-bold text-slate-500"><span>Bill Total</span><span>₹{fmt(cartTotal)}</span></div>
-            {chosenRedemptionOption && (
+            {chosenRedemptionOption && redemptionChoice === 'cash_benefit' && (
               <>
-                <div className="flex justify-between font-bold text-amber-700"><span>Investment Balance Applied ({redemptionChoice === 'cash_benefit' ? 'Cash Benefit' : 'Making Charge Waiver'})</span><span>− ₹{fmt(chosenRedemptionOption.investmentAmountUsed)}</span></div>
-                {redemptionChoice === 'cash_benefit' && (chosenRedemptionOption.cashBenefitAmount || 0) > 0 && (
-                  <div className="flex justify-between font-bold text-amber-700"><span>Cash Benefit</span><span>− ₹{fmt(chosenRedemptionOption.cashBenefitAmount || 0)}</span></div>
-                )}
-                {redemptionChoice === 'making_charge_waiver' && (chosenRedemptionOption.waivedMakingCharges || 0) > 0 && (
-                  <div className="flex justify-between font-bold text-amber-700"><span>Making Charges Waived</span><span>− ₹{fmt(chosenRedemptionOption.waivedMakingCharges || 0)}</span></div>
+                <div className="flex justify-between font-bold text-amber-700"><span>Investment Balance Applied (Cash Benefit)</span><span>− ₹{fmt((chosenRedemptionOption as any).investmentAmountUsed || 0)}</span></div>
+                {((chosenRedemptionOption as any).cashBenefitAmount || 0) > 0 && (
+                  <div className="flex justify-between font-bold text-amber-700"><span>Cash Benefit</span><span>− ₹{fmt((chosenRedemptionOption as any).cashBenefitAmount || 0)}</span></div>
                 )}
                 <div className="flex justify-between font-bold text-slate-500"><span>GST (recomputed)</span><span>+ ₹{fmt(chosenRedemptionOption.gstAmount)}</span></div>
+              </>
+            )}
+            {chosenRedemptionOption && redemptionChoice === 'gold_conversion' && (
+              <>
+                <div className="flex justify-between font-bold text-amber-700"><span>Gold Value Waived ({(chosenRedemptionOption as any).matchedGrams?.toFixed(2) ?? 0}g)</span><span>− ₹{fmt((chosenRedemptionOption as any).waivedGoldCost || 0)}</span></div>
+                {((chosenRedemptionOption as any).waivedMakingCharges || 0) > 0 && (
+                  <div className="flex justify-between font-bold text-amber-700"><span>Making Charges Waived</span><span>− ₹{fmt((chosenRedemptionOption as any).waivedMakingCharges || 0)}</span></div>
+                )}
+                <div className="flex justify-between font-bold text-slate-400"><span>Shortfall Gold ({(chosenRedemptionOption as any).shortfallGrams?.toFixed(2) ?? 0}g) — paid in full</span><span>₹{fmt(chosenRedemptionOption.remainingAmount)}</span></div>
+                <div className="flex justify-between font-bold text-slate-500"><span>GST (on full pre-waiver value)</span><span>+ ₹{fmt(chosenRedemptionOption.gstAmount)}</span></div>
               </>
             )}
             {totalAdvanceApplied > 0 && (
@@ -791,7 +817,7 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
           <button onClick={onClose} className="flex-1 py-3.5 border border-slate-200 rounded-2xl text-sm font-bold text-slate-500 hover:bg-slate-50 transition-all">
             Cancel
           </button>
-          <button onClick={handleSubmit} disabled={submitting || cart.length === 0 || hasBelowFloorLine || !customerVerified || Boolean(investmentSubId && investmentAmount > 0 && !redemptionChoice)}
+          <button onClick={handleSubmit} disabled={submitting || cart.length === 0 || hasBelowFloorLine || !customerVerified || Boolean(investmentSubId && (!redemptionChoice || (redemptionChoice === 'cash_benefit' && investmentAmount <= 0)))}
             className="flex-[2] py-3.5 rounded-2xl text-white text-sm font-black bg-blue-600 hover:bg-blue-700 transition-all disabled:opacity-40 flex items-center justify-center gap-2">
             {submitting && <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
             {submitting ? 'Creating…' : `Create Invoice (${cart.length})`}

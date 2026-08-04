@@ -371,10 +371,17 @@ ${billEl.outerHTML}
     // deductions, some don't) — `payment_splits` is the one authoritative
     // record of what was actually charged, so prefer it when present.
     const itemSplits = (item as any).payment_splits;
+    // Gold Conversion's investment_redeemed mirrors the subscription ledger's own consumption
+    // (valued at the flat admin gold rate) purely for reporting — the actual bill deduction for
+    // that option is making_charges_discount + investment_gold_cost_discount (both priced off
+    // this item's own rate), so investment_redeemed must NOT also be subtracted here.
+    const investmentDeduction = (item as any).investment_redemption_type === 'gold_conversion'
+      ? ((item as any).making_charges_discount ?? 0) + ((item as any).investment_gold_cost_discount ?? 0)
+      : ((item as any).investment_redeemed ?? 0) + ((item as any).making_charges_discount ?? 0);
     const payable = Array.isArray(itemSplits) && itemSplits.length > 0
       ? itemSplits.reduce((s: number, sp: any) => s + (sp.amount || 0), 0)
       : Math.max(0, finalSelling
-          - ((item as any).investment_redeemed ?? 0) - ((item as any).making_charges_discount ?? 0)
+          - investmentDeduction
           - ((item as any).advance_redeemed ?? 0) - ((item as any).advance_making_charges_discount ?? 0));
 
     return {
@@ -422,11 +429,16 @@ ${billEl.outerHTML}
 
   const customer = items[0];
 
-  // Investment redemption totals across all items
-  const totalInvestmentRedeemed = items.reduce((s, it) => s + ((it as any).investment_redeemed ?? 0), 0);
+  // Investment redemption totals across all items. Gold Conversion's investment_redeemed is
+  // ledger-only (see payable computation above) — excluded here so it isn't double-shown
+  // alongside making_charges_discount/investment_gold_cost_discount, which are the amounts
+  // actually subtracted from the bill for that option.
+  const totalInvestmentRedeemed = items.reduce((s, it) => s + ((it as any).investment_redemption_type === 'gold_conversion' ? 0 : ((it as any).investment_redeemed ?? 0)), 0);
   const totalMakingDiscount = items.reduce((s, it) => s + ((it as any).making_charges_discount ?? 0), 0);
+  const totalGoldCostDiscount = items.reduce((s, it) => s + ((it as any).investment_gold_cost_discount ?? 0), 0);
   const investmentRedemptionType = (items.find(it => (it as any).investment_redemption_type) as any)?.investment_redemption_type ?? null;
   const investmentRedemptionLabel = investmentRedemptionType === 'cash_benefit' ? 'Cash Benefit'
+    : investmentRedemptionType === 'gold_conversion' ? 'Gold Conversion'
     : investmentRedemptionType === 'making_charge_waiver' ? 'Making Charge Waiver' : null;
   // Advance redemption totals across all items
   const totalAdvanceRedeemed = items.reduce((s, it) => s + ((it as any).advance_redeemed ?? 0), 0);
@@ -764,6 +776,7 @@ ${billEl.outerHTML}
                 { label: 'Taxable Value', value: `₹${fmt(totalTaxable)}`, bold: false },
                 { label: 'Total Tax (GST)', value: `₹${fmt(grandTotalTax)}`, bold: false },
                 totalInvestmentRedeemed > 0 && { label: `Investment Balance Applied${investmentRedemptionLabel ? ` (${investmentRedemptionLabel})` : ''}`, value: `- ₹${fmt(totalInvestmentRedeemed)}`, bold: false, color: '#7A1C2A' },
+                totalGoldCostDiscount > 0 && { label: 'Gold Value Discount (Investment)', value: `- ₹${fmt(totalGoldCostDiscount)}`, bold: false, color: '#7A1C2A' },
                 totalMakingDiscount > 0 && { label: 'Making Charges Waived (Investment)', value: `- ₹${fmt(totalMakingDiscount)}`, bold: false, color: '#7A1C2A' },
                 totalAdvanceRedeemed > 0 && { label: 'Advance Payment Applied', value: `- ₹${fmt(totalAdvanceRedeemed)}`, bold: false, color: '#7A1C2A' },
                 totalAdvanceMakingDiscount > 0 && { label: 'Making Charges Discount (Advance)', value: `- ₹${fmt(totalAdvanceMakingDiscount)}`, bold: false, color: '#7A1C2A' },

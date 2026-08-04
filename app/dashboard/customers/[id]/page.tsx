@@ -3,16 +3,18 @@
 import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  getCustomerById, getInventory, getSubscriptions, redeemSubscription,
+  getCustomerById, getInventory, getSubscriptions, redeemGoldSubscription, previewGoldRedemption,
   markGoldCashPayment, addInterestToSubscription, getMe, getGoldLoansByCustomer,
   getCustomerAdvances, createCustomerAdvance, redeemCustomerAdvance,
   updateCustomer, deleteCustomer, getCustomFields, uploadUserAvatar, getUsers, getSettings, GST_TREATMENTS,
   type Customer, type InventoryItem, type GoldSubscription, type User as AdminUser, type GoldLoan,
-  type CustomerAdvance, type CustomField, type AppSettings, type ContactPerson, staticUrl,
+  type CustomerAdvance, type CustomField, type AppSettings, type ContactPerson,
+  type RedemptionPreview, type RedemptionType, staticUrl,
 } from '@/lib/api';
 import { useAppTheme } from '@/components/AppThemeContext';
 import { APP_THEME } from '@/lib/theme-constants';
 import BillModal from '@/components/BillModal';
+import RedemptionComparisonPanel from '@/components/RedemptionComparisonPanel';
 import InvestmentReceiptModal from '@/components/InvestmentReceiptModal';
 import AdvanceReceiptModal from '@/components/AdvanceReceiptModal';
 import Modal from '@/components/Modal';
@@ -37,12 +39,21 @@ function fmtDate(d?: string | null) {
   return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+/** The monthly amount/duration actually governing a subscription — the customer's own chosen
+ *  amount for a 'custom' plan, or the template's fixed values otherwise. */
+function effectiveMonthlyAmount(sub: GoldSubscription): number {
+  return sub.customMonthlyAmount ?? sub.plan?.monthlyAmount ?? 0;
+}
+function effectiveDurationMonths(sub: GoldSubscription): number {
+  return sub.customDurationMonths ?? sub.plan?.durationMonths ?? 0;
+}
+
 function computeTimeBasedBalance(sub: GoldSubscription) {
   const plan = sub.plan;
   if (!plan) return { principal: 0, interest: 0, bonusInterest: 0, balance: 0, displayedPaid: 0 };
-  const monthlyAmount = plan.monthlyAmount || 0;
+  const monthlyAmount = effectiveMonthlyAmount(sub);
   const interestPerMonth = monthlyAmount * (plan.interestRate || 0) / 100;
-  const totalMonths = plan.durationMonths || 0;
+  const totalMonths = effectiveDurationMonths(sub);
 
   const displayedPaid = sub.installmentsPaid || 0;
   const creditedMonths = displayedPaid >= totalMonths ? displayedPaid : Math.max(0, displayedPaid - 1);
@@ -78,7 +89,7 @@ interface MonthLedgerRow {
 /** Builds a full 1..durationMonths ledger — which installments actually landed (per the real
  *  paymentLedger, not just an assumed sequential count) vs. which are still due. */
 function buildMonthLedgerRows(sub: GoldSubscription): MonthLedgerRow[] {
-  const totalMonths = sub.plan?.durationMonths || 0;
+  const totalMonths = effectiveDurationMonths(sub);
   const receivedByMonth = new Map((sub.paymentLedger || []).map(e => [e.month, e]));
   const isTerminal = sub.status === 'cancelled' || sub.status === 'halted';
 
@@ -151,8 +162,8 @@ function computeLoanOverdueAmount(loan: GoldLoan): number {
 /** Pending installment amount on a gold investment plan once autopay has lapsed and manual payment is required. Mirrors `sendWhatsappReminder()` in gold-investment.service.ts. */
 function computeSubscriptionPendingDue(sub: GoldSubscription): number {
   if (!sub.requiresManualPayment) return 0;
-  const pendingMonths = Math.max(0, (sub.plan?.durationMonths || 0) - (sub.installmentsPaid || 0));
-  return pendingMonths * (sub.plan?.monthlyAmount || 0);
+  const pendingMonths = Math.max(0, effectiveDurationMonths(sub) - (sub.installmentsPaid || 0));
+  return pendingMonths * effectiveMonthlyAmount(sub);
 }
 
 type PendingDue = { label: string; amount: number; reference: string };
@@ -721,8 +732,8 @@ function AddAdvanceModal({ onClose, onCreate }: { onClose: () => void; onCreate:
 function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSubscription; orders: InventoryItem[]; onRedeemed: (updated: GoldSubscription) => void; isAdmin: boolean }) {
   const { principal, interest, bonusInterest, balance, displayedPaid } = computeTimeBasedBalance(sub);
   const plan = sub.plan;
-  const totalMonths = plan?.durationMonths || 0;
-  const monthlyAmount = plan?.monthlyAmount || 0;
+  const totalMonths = effectiveDurationMonths(sub);
+  const monthlyAmount = effectiveMonthlyAmount(sub);
   const totalProjected = totalMonths * monthlyAmount + totalMonths * (monthlyAmount * (plan?.interestRate || 0) / 100);
   const progressPct = totalMonths > 0 ? (displayedPaid / totalMonths) * 100 : 0;
   const canAddPayment = displayedPaid < totalMonths && sub.status !== 'completed' && sub.status !== 'cancelled';
@@ -734,9 +745,12 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
   const [showRedeem, setShowRedeem] = useState(false);
   const [redeemAmount, setRedeemAmount] = useState('');
   const [redeemRef, setRedeemRef] = useState('');
-  const [manualRef, setManualRef] = useState(false);
   const [redeemNote, setRedeemNote] = useState('');
   const [redeemLoading, setRedeemLoading] = useState(false);
+  const [redemptionChoice, setRedemptionChoice] = useState<RedemptionType | null>(null);
+  const [redemptionPreview, setRedemptionPreview] = useState<RedemptionPreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState('');
 
   const [showPayment, setShowPayment] = useState(false);
   const [paymentNote, setPaymentNote] = useState('');
@@ -749,17 +763,76 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
 
   const [showReceipt, setShowReceipt] = useState(false);
 
+  // Redemption math (both Cash Benefit and Gold Conversion) needs this jewellery purchase's real
+  // pricing — GST%, gold weight, making charges, metal cost — so a sale must be selected from the
+  // customer's own recorded sales rather than typed in free-hand.
+  const selectedSaleItems = redeemRef ? orders.filter(o => o.sale_reference === redeemRef) : [];
+  const redeemJewelrySubtotal = selectedSaleItems.reduce((s, o) => s + ((o as any).pricing_breakdown?.taxable_amount ?? 0), 0);
+  const redeemJewelryTaxAmount = selectedSaleItems.reduce((s, o) => s + ((o as any).pricing_breakdown?.tax_amount ?? 0), 0);
+  const redeemTaxPercentage = redeemJewelrySubtotal > 0 ? (redeemJewelryTaxAmount / redeemJewelrySubtotal) * 100 : 0;
+  const redeemGoldWeightGrams = selectedSaleItems.reduce((s, o) => s + ((o as any).pricing_breakdown?.billable_metal_weight ?? 0), 0);
+  const redeemMakingCharges = selectedSaleItems.reduce((s, o) => s + ((o as any).pricing_breakdown?.making_charges ?? 0), 0);
+  const redeemMetalPrice = selectedSaleItems.reduce((s, o) => s + ((o as any).pricing_breakdown?.metal_price ?? 0), 0);
+
+  // Debounced comparison-screen quote — recomputed whenever the linked sale or manually-entered
+  // Cash Benefit amount changes. Numbers always come from the backend so what's shown here can
+  // never drift from what redeemFromSubscription will actually save.
+  useEffect(() => {
+    if (!redeemRef || selectedSaleItems.length === 0) {
+      setRedemptionPreview(null);
+      setRedemptionChoice(null);
+      setPreviewError('');
+      return;
+    }
+    setPreviewError('');
+    setPreviewLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const amt = parseFloat(redeemAmount);
+        const preview = await previewGoldRedemption(sub._id, {
+          amount: amt > 0 ? amt : undefined,
+          jewelrySubtotal: redeemJewelrySubtotal,
+          taxPercentage: redeemTaxPercentage,
+          jewelryGoldWeightGrams: redeemGoldWeightGrams,
+          makingChargesOnJewelry: redeemMakingCharges,
+          metalPriceOnJewelry: redeemMetalPrice,
+        });
+        setRedemptionPreview(preview);
+      } catch (e: any) {
+        setRedemptionPreview(null);
+        setPreviewError(e?.message || 'Could not compute redemption options.');
+      } finally {
+        setPreviewLoading(false);
+      }
+    }, 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [redeemRef, redeemAmount, redeemJewelrySubtotal, redeemTaxPercentage, redeemGoldWeightGrams, redeemMakingCharges, redeemMetalPrice]);
+
   async function handleRedeem() {
+    if (!redemptionChoice) { toast.error('Choose a redemption option (Cash Benefit or Gold Conversion).'); return; }
     const amt = parseFloat(redeemAmount);
-    if (!amt || amt <= 0) return;
-    if (amt > balance + 0.5) { alert(`Exceeds available balance of ${fmt(balance)}`); return; }
-    if (!confirm(`Redeem ${fmt(amt)} for ${sub.customerName}?`)) return;
+    if (redemptionChoice === 'cash_benefit') {
+      if (!amt || amt <= 0) { toast.error('Enter an amount to redeem for Cash Benefit.'); return; }
+      if (amt > balance + 0.5) { toast.error(`Exceeds available balance of ${fmt(balance)}`); return; }
+    }
+    if (!confirm(`Redeem for ${sub.customerName} via ${redemptionChoice === 'cash_benefit' ? 'Cash Benefit' : 'Gold Conversion'}?`)) return;
     setRedeemLoading(true);
     try {
-      const updated = await redeemSubscription(sub._id, { amount: amt, saleReference: redeemRef, note: redeemNote });
+      const updated = await redeemGoldSubscription(sub._id, {
+        amount: redemptionChoice === 'cash_benefit' ? amt : undefined,
+        redemptionType: redemptionChoice,
+        jewelrySubtotal: redeemJewelrySubtotal,
+        taxPercentage: redeemTaxPercentage,
+        jewelryGoldWeightGrams: redeemGoldWeightGrams,
+        makingChargesOnJewelry: redeemMakingCharges,
+        metalPriceOnJewelry: redeemMetalPrice,
+        saleReference: redeemRef,
+        note: redeemNote,
+      });
       onRedeemed(updated);
       setShowRedeem(false);
-      setRedeemAmount(''); setRedeemRef(''); setManualRef(false); setRedeemNote('');
+      setRedeemAmount(''); setRedeemRef(''); setRedeemNote(''); setRedemptionChoice(null); setRedemptionPreview(null);
       toast.success('Redemption recorded');
     } catch (e: any) {
       toast.error(e?.message || 'Failed to redeem balance');
@@ -1098,49 +1171,46 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
           ) : (
             <div className="border border-blue-200 rounded-2xl p-5 bg-blue-50/40 space-y-3">
               <p className="text-[9px] font-black uppercase tracking-widest text-blue-700">Process Redemption</p>
-              <input
-                type="number" min="1" max={balance} value={redeemAmount}
-                onChange={e => setRedeemAmount(e.target.value)}
-                placeholder={`Amount to redeem (max ${fmt(balance)})`}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-blue-500 bg-white"
-              />
-              {!manualRef ? (
-                <div className="space-y-1.5">
-                  <select
-                    value={redeemRef}
-                    onChange={e => {
-                      if (e.target.value === '__manual__') { setManualRef(true); setRedeemRef(''); }
-                      else setRedeemRef(e.target.value);
-                    }}
-                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-blue-500 bg-white"
-                  >
-                    <option value="">Link to a sale (optional)</option>
-                    {redeemableSales.map(o => (
-                      <option key={o._id} value={o.sale_reference}>
-                        {o.sale_reference} · {productLabel(o)} · {fmt(o.selling_price)} · {fmtDate(o.sold_at)}
-                      </option>
-                    ))}
-                    <option value="__manual__">Other / not in system — enter manually</option>
-                  </select>
-                  {redeemableSales.length === 0 && (
-                    <p className="text-[10px] text-slate-400 font-medium px-1">No recorded sales found for this customer yet.</p>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-1.5">
-                  <input
-                    type="text" value={redeemRef} onChange={e => setRedeemRef(e.target.value)}
-                    placeholder="Bill / sale reference"
-                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-blue-500 bg-white"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => { setManualRef(false); setRedeemRef(''); }}
-                    className="text-[10px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-700 px-1"
-                  >
-                    ← Pick from recorded sales instead
-                  </button>
-                </div>
+              <p className="text-[10px] text-slate-500 font-medium">
+                Both redemption options need this jewellery purchase's real GST rate, gold weight and making charges —
+                pick one of this customer's recorded sales below to compute them correctly.
+              </p>
+              <div className="space-y-1.5">
+                <select
+                  value={redeemRef}
+                  onChange={e => setRedeemRef(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-blue-500 bg-white"
+                >
+                  <option value="">Select a sale to redeem against…</option>
+                  {redeemableSales.map(o => (
+                    <option key={o._id} value={o.sale_reference}>
+                      {o.sale_reference} · {productLabel(o)} · {fmt(o.selling_price)} · {fmtDate(o.sold_at)}
+                    </option>
+                  ))}
+                </select>
+                {redeemableSales.length === 0 && (
+                  <p className="text-[10px] text-amber-700 font-bold px-1">
+                    No recorded sales found for this customer yet — process this redemption during the actual sale
+                    (POS / Create Invoice) instead, where the jewellery's pricing is already known.
+                  </p>
+                )}
+              </div>
+              {redeemRef && (
+                <input
+                  type="number" min="1" max={balance} value={redeemAmount}
+                  onChange={e => setRedeemAmount(e.target.value)}
+                  placeholder={`Amount to redeem for Cash Benefit (max ${fmt(balance)}) — not needed for Gold Conversion`}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-blue-500 bg-white"
+                />
+              )}
+              {redeemRef && (
+                <RedemptionComparisonPanel
+                  preview={redemptionPreview}
+                  loading={previewLoading}
+                  error={previewError}
+                  choice={redemptionChoice}
+                  onChoose={setRedemptionChoice}
+                />
               )}
               <input
                 type="text" value={redeemNote} onChange={e => setRedeemNote(e.target.value)}
@@ -1148,10 +1218,10 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
                 className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-blue-500 bg-white"
               />
               <div className="flex gap-3">
-                <button onClick={() => setShowRedeem(false)} className="flex-1 py-2.5 border border-slate-200 text-slate-600 text-[10px] font-black uppercase rounded-xl hover:bg-slate-50 transition-all">
+                <button onClick={() => { setShowRedeem(false); setRedeemRef(''); setRedeemAmount(''); setRedemptionChoice(null); setRedemptionPreview(null); }} className="flex-1 py-2.5 border border-slate-200 text-slate-600 text-[10px] font-black uppercase rounded-xl hover:bg-slate-50 transition-all">
                   Cancel
                 </button>
-                <button onClick={handleRedeem} disabled={redeemLoading || !redeemAmount} className="flex-1 py-2.5 bg-blue-600 text-white text-[10px] font-black uppercase rounded-xl hover:bg-blue-700 disabled:opacity-50 transition-all">
+                <button onClick={handleRedeem} disabled={redeemLoading || !redeemRef || !redemptionChoice || (redemptionChoice === 'cash_benefit' && !redeemAmount)} className="flex-1 py-2.5 bg-blue-600 text-white text-[10px] font-black uppercase rounded-xl hover:bg-blue-700 disabled:opacity-50 transition-all">
                   {redeemLoading ? 'Processing...' : 'Confirm Redemption'}
                 </button>
               </div>
@@ -1199,6 +1269,13 @@ function BatchRedeemPanel({
 
   const selectedSale = redeemableSales.find(o => o.sale_reference === saleRef);
   const cap = selectedSale ? (selectedSale.selling_price ?? Infinity) : Infinity;
+  // Gold-subscription redemption needs the linked sale's real GST%/gold-weight/making-charges —
+  // aggregate across every item sharing this sale_reference (a multi-item bill), same as
+  // GoldInvestmentCard's single-subscription redeem panel above.
+  const saleItemsForRef = saleRef ? redeemableSales.filter(o => o.sale_reference === saleRef) : [];
+  const batchJewelrySubtotal = saleItemsForRef.reduce((s, o) => s + ((o as any).pricing_breakdown?.taxable_amount ?? 0), 0);
+  const batchJewelryTaxAmount = saleItemsForRef.reduce((s, o) => s + ((o as any).pricing_breakdown?.tax_amount ?? 0), 0);
+  const batchTaxPercentage = batchJewelrySubtotal > 0 ? (batchJewelryTaxAmount / batchJewelrySubtotal) * 100 : 0;
   const totalAdvance = Object.values(advanceAmounts).reduce((s, n) => s + (n || 0), 0);
   const totalSub = Object.values(subAmounts).reduce((s, n) => s + (n || 0), 0);
   const totalSelected = totalAdvance + totalSub;
@@ -1261,7 +1338,17 @@ function BatchRedeemPanel({
           onAdvanceChanged(updated);
         }),
         ...Object.entries(subAmounts).filter(([, amt]) => amt > 0).map(async ([id, amt]) => {
-          const updated = await redeemSubscription(id, { amount: amt, saleReference: saleRef || undefined, note: note || undefined });
+          // This bulk tool applies a manually-chosen rupee amount per source (no per-source
+          // redemption-type comparison), so it maps to Cash Benefit — Gold Conversion has no
+          // manual amount and doesn't fit this "type an amount" pattern.
+          const updated = await redeemGoldSubscription(id, {
+            amount: amt,
+            redemptionType: 'cash_benefit',
+            jewelrySubtotal: batchJewelrySubtotal,
+            taxPercentage: batchTaxPercentage,
+            saleReference: saleRef || undefined,
+            note: note || undefined,
+          });
           onSubRedeemed(updated);
         }),
       ]);

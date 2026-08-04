@@ -927,12 +927,14 @@ export const getPendingSaleRequests = (params?: { page?: number; limit?: number;
 export interface InvestmentRedemptionOverrides {
   investment_redeemed?: number;
   investment_sub_id?: string;
-  investment_redemption_type?: 'cash_benefit' | 'making_charge_waiver';
+  investment_redemption_type?: 'cash_benefit' | 'making_charge_waiver' | 'gold_conversion';
   investment_jewelry_subtotal?: number;
   investment_tax_percentage?: number;
   investment_jewelry_gold_weight_grams?: number;
   investment_making_charges_on_jewelry?: number;
+  investment_metal_price_on_jewelry?: number;
   making_charges_discount?: number;
+  investment_gold_cost_discount?: number;
 }
 
 export const approveSaleRequest = (id: string, overrides?: InvestmentRedemptionOverrides & {
@@ -981,42 +983,58 @@ export interface GoldBalance {
   amountAccumulated: number;
   interestAccumulated: number;
   amountRedeemed: number;
+  principalRedeemed?: number;
   goldGramsAccumulated: number;
   interestStopped: boolean;
   availableBalance: number;
-  plan: { name: string; monthlyAmount: number; cashBenefitPercent: number; durationMonths: number; interestRate: number };
+  plan: { name: string; monthlyAmount: number; cashBenefitPercent: number; durationMonths: number; interestRate: number; planType?: 'fixed' | 'custom' };
+  /** Customer's own chosen amount/duration for a 'custom' plan — null for 'fixed' plans */
+  customMonthlyAmount?: number | null;
+  customDurationMonths?: number | null;
   installmentsPaid: number;
 }
 
-export type RedemptionType = 'cash_benefit' | 'making_charge_waiver';
+export type RedemptionType = 'cash_benefit' | 'making_charge_waiver' | 'gold_conversion';
 
 export interface RedemptionOptionQuote {
   redemptionType: RedemptionType;
-  investmentAmountUsed: number;
   remainingAmount: number;
   gstAmount: number;
   finalPayableAmount: number;
   // Cash Benefit only
+  investmentAmountUsed?: number;
   cashBenefitAmount?: number;
-  // Making Charge Waiver only
+  // Gold Conversion only — converts remaining PRINCIPAL ONLY (interest is forgone) into grams
+  // at the current live gold rate; matched grams waive gold cost + making charges in full.
+  principalRemaining?: number;
+  ownedGrams?: number;
+  productGoldWeightGrams?: number;
+  matchedGrams?: number;
+  shortfallGrams?: number;
+  waivedGoldCost?: number;
+  waivedMakingCharges?: number;
+  principalConsumedRupees?: number;
+  // Legacy — retired, kept only so old historical redemptionHistory entries still type-check
   goldAccumulated?: number;
   eligibleGoldGramsUsed?: number;
   jewelryGoldWeightGrams?: number;
-  waivedMakingCharges?: number;
   remainingMakingCharges?: number;
 }
 
 export interface RedemptionPreview {
   cashBenefitOption: RedemptionOptionQuote;
-  makingChargeWaiverOption: RedemptionOptionQuote;
+  goldConversionOption: RedemptionOptionQuote;
 }
 
 export interface RedemptionPreviewInput {
-  amount: number;
+  /** Not used for Gold Conversion — it's fully derived server-side from principal/live rate/product weight */
+  amount?: number;
   jewelrySubtotal: number;
   taxPercentage: number;
   jewelryGoldWeightGrams?: number;
   makingChargesOnJewelry?: number;
+  /** Required for Gold Conversion — this product's own priced metal/gold cost */
+  metalPriceOnJewelry?: number;
 }
 
 export const getGoldBalance = (phone: string) =>
@@ -1861,6 +1879,7 @@ export interface InvestmentPlan {
   _id: string;
   name: string;
   description?: string;
+  /** For 'custom' plans this is only a display default — customers pick their own amount within minMonthlyAmount/maxMonthlyAmount */
   monthlyAmount: number;
   durationMonths: number;
   interestRate: number;
@@ -1868,6 +1887,12 @@ export interface InvestmentPlan {
   cashBenefitPercent: number;
   isActive: boolean;
   razorpayPlanId?: string;
+  /** 'fixed' (default) = monthlyAmount/durationMonths apply as-is. 'custom' = the customer picks their own amount/duration within the bounds below. */
+  planType?: 'fixed' | 'custom';
+  minMonthlyAmount?: number | null;
+  maxMonthlyAmount?: number | null;
+  minDurationMonths?: number | null;
+  maxDurationMonths?: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1890,6 +1915,9 @@ export interface GoldSubscription {
   customerPhone?: string;
   razorpaySubscriptionId: string;
   razorpayCustomerId?: string;
+  /** Customer's own chosen amount/duration for a 'custom' plan — null for 'fixed' plans, in which case reads fall back to plan.monthlyAmount/durationMonths */
+  customMonthlyAmount?: number | null;
+  customDurationMonths?: number | null;
   status: 'active' | 'cancelled' | 'completed' | 'halted' | 'pending';
   amountAccumulated: number;
   interestAccumulated: number;
@@ -1899,6 +1927,8 @@ export interface GoldSubscription {
   redeemed: boolean;
   redemptionDate?: string;
   amountRedeemed: number;
+  /** Rupees of principal only consumed by any redemption — the pool Gold Conversion draws from */
+  principalRedeemed?: number;
   goldGramsAccumulated: number;
   redemptionHistory: {
     amount: number;
@@ -1915,6 +1945,13 @@ export interface GoldSubscription {
     remainingMakingCharges?: number;
     gstAmount?: number;
     finalPayableAmount?: number;
+    // Gold Conversion audit fields
+    principalRemainingBefore?: number;
+    ownedGrams?: number;
+    matchedGrams?: number;
+    shortfallGrams?: number;
+    waivedGoldCost?: number;
+    principalConsumedRupees?: number;
   }[];
   paymentLedger: PaymentLedgerEntry[];
   installmentsPaid: number;
@@ -1977,7 +2014,7 @@ export async function getSubscriptions(params?: { status?: string; planId?: stri
   return request<GoldSubscription[]>(`/gold-investment/subscriptions?${q.toString()}`);
 }
 
-export async function createSubscription(data: { planId: string; customerName: string; customerEmail?: string; customerPhone?: string }): Promise<{ subscription: GoldSubscription; shortUrl: string }> {
+export async function createSubscription(data: { planId: string; customerName: string; customerEmail?: string; customerPhone?: string; customMonthlyAmount?: number; customDurationMonths?: number }): Promise<{ subscription: GoldSubscription; shortUrl: string }> {
   return request<{ subscription: GoldSubscription; shortUrl: string }>('/gold-investment/subscriptions', { method: 'POST', body: JSON.stringify(data) });
 }
 
