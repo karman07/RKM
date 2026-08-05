@@ -284,6 +284,10 @@ export interface AppSettings {
   stone_refund_percentage?: number;
   /** Default deduction (% of the advance) suggested when cancelling a pre-booking (default 0) */
   prebooking_cancellation_deduction_pct?: number;
+  /** Monthly amount at/above which a gold-investment subscription becomes Hold My Gold (default 25000) */
+  hold_my_gold_threshold?: number;
+  /** Discount tiers by monthly-amount range for Hold My Gold subscriptions */
+  hold_my_gold_tiers?: { minAmount: number; maxAmount: number | null; discountPercent: number }[];
   updatedAt?: string;
 }
 export const getSettings = () => request<AppSettings>('/settings');
@@ -1137,6 +1141,8 @@ export interface GoldInvestmentPlan {
   cashBenefitPercent: number;
   isActive: boolean;
   razorpayPlanId: string;
+  /** Floor for a customer's own custom monthly amount on this plan — defaults to monthlyAmount when unset */
+  minMonthlyAmount?: number | null;
 }
 
 export interface PaymentLedgerEntry {
@@ -1156,6 +1162,10 @@ export interface GoldSubscription {
   customerEmail?: string;
   customerPhone?: string;
   status: 'active' | 'cancelled' | 'completed' | 'halted' | 'pending';
+  /** Customer's own chosen monthly amount, if they didn't use the plan's default */
+  customMonthlyAmount?: number | null;
+  /** 'hold_my_gold' when the effective monthly amount is at/above the admin-configured threshold */
+  planCategory?: 'standard' | 'hold_my_gold';
   amountAccumulated: number;
   interestAccumulated: number;
   amountRedeemed: number;
@@ -1214,6 +1224,10 @@ export const getGoldSubscriptions = (params?: { status?: string }) => {
   return request<GoldSubscription[]>(`/gold-investment/subscriptions?${q.toString()}`);
 };
 
+/** Enrolls a customer in-store — active immediately, no Razorpay mandate. Mark payments via markGoldCashPayment thereafter. */
+export const enrollSubscription = (data: { planId: string; customerName: string; customerEmail?: string; customerPhone?: string; customMonthlyAmount?: number }) =>
+  request<GoldSubscription>('/gold-investment/subscriptions/enroll', { method: 'POST', body: JSON.stringify(data) });
+
 export const getSubscriptions = (params?: { status?: string; planId?: string; phone?: string; email?: string }) => {
   const q = new URLSearchParams();
   if (params?.status) q.set('status', params.status);
@@ -1270,6 +1284,32 @@ export const restartGoldSubscription = (id: string) =>
 
 export const sendGoldReminder = (id: string) =>
   request<{ sent: boolean; message: string }>(`/gold-investment/subscriptions/${id}/send-reminder`, { method: 'POST' });
+
+// Sales-submitted payments awaiting admin/manager approval
+export interface PendingInvestmentPayment {
+  subscriptionId: string;
+  entryId: string;
+  customerName: string;
+  customerPhone?: string;
+  planName?: string;
+  month: number;
+  note?: string;
+  submittedByName: string;
+  submittedAt: string;
+}
+
+export const getPendingInvestmentPayments = () =>
+  request<PendingInvestmentPayment[]>('/gold-investment/subscriptions/pending-payments');
+
+export const reviewInvestmentPayment = (
+  subscriptionId: string,
+  entryId: string,
+  data: { action: 'approve' | 'reject'; rejectionReason?: string },
+) =>
+  request<GoldSubscription>(`/gold-investment/subscriptions/${subscriptionId}/pending-payments/${entryId}/review`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
 
 export interface GoldBalance {
   _id: string;

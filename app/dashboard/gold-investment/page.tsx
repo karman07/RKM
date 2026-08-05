@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import {
   getGoldStats, getInvestmentPlans, getGoldSubscriptions, updateGoldSubscription,
-  markGoldCashPayment, sendGoldReminder, restartGoldSubscription,
-  GoldInvestmentPlan, GoldSubscription, GoldStats,
+  markGoldCashPayment, sendGoldReminder, restartGoldSubscription, getSettings,
+  enrollSubscription, searchCustomers,
+  GoldInvestmentPlan, GoldSubscription, GoldStats, FullCustomer,
 } from '@/lib/api';
 
 const fmt = (n: number) =>
@@ -31,7 +32,8 @@ const paymentTypeLabel = (type: 'autopay' | 'cash' | 'whatsapp_link') => {
   return 'WhatsApp Link';
 };
 
-type Tab = 'overview' | 'subscriptions';
+type Tab = 'overview' | 'subscriptions' | 'hold-my-gold';
+type HoldMyGoldTier = { minAmount: number; maxAmount: number | null; discountPercent: number };
 type DrawerTab = 'details' | 'ledger';
 
 export default function ManagerGoldInvestment() {
@@ -59,6 +61,30 @@ export default function ManagerGoldInvestment() {
 
   // Restart (cancelled/halted mandate)
   const [restartLoading, setRestartLoading] = useState(false);
+
+  // Enroll customer modal (in-store enrollment — active immediately, no Razorpay)
+  const [enrollModal, setEnrollModal] = useState(false);
+  const [enrollQuery, setEnrollQuery] = useState('');
+  const [enrollMatches, setEnrollMatches] = useState<FullCustomer[]>([]);
+  const [enrollSearching, setEnrollSearching] = useState(false);
+  const [enrollCustomer, setEnrollCustomer] = useState<FullCustomer | null>(null);
+  const [enrollPlanId, setEnrollPlanId] = useState('');
+  const [enrollAmount, setEnrollAmount] = useState<number>(0);
+  const [enrollSaving, setEnrollSaving] = useState(false);
+  const [enrollError, setEnrollError] = useState('');
+
+  // Hold My Gold config (read-only here — admin manages it)
+  const [hmgThreshold, setHmgThreshold] = useState(25000);
+  const [hmgTiers, setHmgTiers] = useState<HoldMyGoldTier[]>([]);
+  const [hmgLoading, setHmgLoading] = useState(false);
+
+  useEffect(() => {
+    if (tab !== 'hold-my-gold') return;
+    setHmgLoading(true);
+    getSettings()
+      .then(s => { setHmgThreshold(s.hold_my_gold_threshold ?? 25000); setHmgTiers(s.hold_my_gold_tiers ?? []); })
+      .finally(() => setHmgLoading(false));
+  }, [tab]);
 
   const loadAll = async () => {
     setLoading(true);
@@ -161,23 +187,81 @@ export default function ManagerGoldInvestment() {
     }
   };
 
+  // ── Enroll customer (in-store, no Razorpay) ─────────────────────────────────
+
+  const openEnrollModal = () => {
+    setEnrollModal(true);
+    setEnrollQuery(''); setEnrollMatches([]); setEnrollCustomer(null);
+    const firstActive = plans.find(p => p.isActive);
+    setEnrollPlanId(firstActive?._id || '');
+    setEnrollAmount(firstActive?.monthlyAmount || 0);
+    setEnrollError('');
+  };
+
+  useEffect(() => {
+    if (!enrollModal || enrollQuery.trim().length < 2) { setEnrollMatches([]); return; }
+    setEnrollSearching(true);
+    const t = setTimeout(async () => {
+      try {
+        const res = await searchCustomers(enrollQuery.trim());
+        setEnrollMatches(res.data ?? []);
+      } catch { setEnrollMatches([]); }
+      finally { setEnrollSearching(false); }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [enrollQuery, enrollModal]);
+
+  const enrollSelectedPlan = plans.find(p => p._id === enrollPlanId);
+  const enrollFloor = enrollSelectedPlan ? (enrollSelectedPlan.minMonthlyAmount ?? enrollSelectedPlan.monthlyAmount) : 0;
+
+  const handleEnroll = async () => {
+    if (!enrollCustomer) { setEnrollError('Select a customer first.'); return; }
+    if (!enrollCustomer.phone) { setEnrollError('This customer has no phone number on file.'); return; }
+    if (!enrollPlanId) { setEnrollError('Select a plan.'); return; }
+    if (enrollAmount < enrollFloor) { setEnrollError(`Monthly amount must be at least ${fmt(enrollFloor)} for this plan.`); return; }
+    setEnrollSaving(true);
+    setEnrollError('');
+    try {
+      const sub = await enrollSubscription({
+        planId: enrollPlanId,
+        customerName: enrollCustomer.name,
+        customerEmail: enrollCustomer.email,
+        customerPhone: enrollCustomer.phone,
+        customMonthlyAmount: enrollSelectedPlan && enrollAmount !== enrollSelectedPlan.monthlyAmount ? enrollAmount : undefined,
+      });
+      toast.success(`${enrollCustomer.name} enrolled — plan is now active`);
+      setEnrollModal(false);
+      await loadAll();
+      openDrawer(sub);
+    } catch (e: any) {
+      setEnrollError(e.message || 'Failed to enroll customer');
+    } finally {
+      setEnrollSaving(false);
+    }
+  };
+
   return (
     <div className="p-6 md:p-10 max-w-[1600px] mx-auto font-sans text-slate-900 animate-in fade-in duration-500">
 
       {/* Header */}
-      <div className="mb-10">
-        <h1 className="text-3xl font-serif font-bold tracking-tight text-slate-900 mb-1">Gold Investment Plans</h1>
-        <div className="flex items-center gap-3">
-          <div className="h-0.5 w-8 bg-[#5A0F1A]" />
-          <p className="text-[10px] font-black tracking-[0.3em] uppercase text-[#5A0F1A]">RKM Jewellers · Subscriber Registry</p>
+      <div className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-serif font-bold tracking-tight text-slate-900 mb-1">Gold Investment Plans</h1>
+          <div className="flex items-center gap-3">
+            <div className="h-0.5 w-8 bg-[#5A0F1A]" />
+            <p className="text-[10px] font-black tracking-[0.3em] uppercase text-[#5A0F1A]">RKM Jewellers · Subscriber Registry</p>
+          </div>
         </div>
+        <button onClick={openEnrollModal} className="px-6 py-3 bg-emerald-600 text-white text-xs font-black uppercase tracking-widest rounded-2xl hover:bg-emerald-700 transition-all shadow-lg">
+          + Enroll Customer
+        </button>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 bg-slate-50 border border-slate-100 p-1.5 rounded-2xl mb-10 w-fit">
-        {(['overview', 'subscriptions'] as Tab[]).map(t => (
+        {(['overview', 'subscriptions', 'hold-my-gold'] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${tab === t ? 'bg-white shadow text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>
-            {t}
+            {t === 'hold-my-gold' ? 'Hold My Gold' : t}
           </button>
         ))}
       </div>
@@ -274,6 +358,7 @@ export default function ManagerGoldInvestment() {
                     <div className="flex items-center gap-3 flex-wrap">
                       <p className="font-bold text-base text-slate-900">{s.customerName}</p>
                       <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase border ${statusColor[s.status]}`}>{s.status}</span>
+                      {s.planCategory === 'hold_my_gold' && <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase bg-amber-100 text-amber-700 border border-amber-200">Hold My Gold</span>}
                       {s.redeemed && <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase bg-blue-100 text-blue-700 border border-blue-200">Redeemed</span>}
                       {(s as any).requiresManualPayment && <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase bg-amber-100 text-amber-700 border border-amber-200">Manual Payments</span>}
                       {s.pausedForCashMonth != null && <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase bg-emerald-100 text-emerald-700 border border-emerald-200">Paused (Cash Covered)</span>}
@@ -300,6 +385,128 @@ export default function ManagerGoldInvestment() {
               </div>
             ))}
             {subs.length === 0 && <div className="text-center py-24 text-slate-300 font-bold text-sm uppercase tracking-widest">No subscriptions found</div>}
+          </div>
+        </div>
+      )}
+
+      {/* HOLD MY GOLD (read-only — admin manages the threshold/tiers) */}
+      {tab === 'hold-my-gold' && (
+        <div className="space-y-6 max-w-2xl">
+          <div className="bg-amber-50 border border-amber-100 rounded-2xl p-5">
+            <p className="text-xs font-bold text-amber-800 leading-relaxed">
+              Any investment plan where the customer's monthly amount is at or above the threshold below automatically
+              becomes a <strong>Hold My Gold</strong> plan. At redemption, it uses the tiered cash-benefit % configured
+              here (instead of the plan's flat Cash Benefit %), and the Making Charge Waiver option is not available.
+              Only Admin can change these settings.
+            </p>
+          </div>
+
+          {hmgLoading ? (
+            <div className="flex items-center justify-center h-40"><div className="w-8 h-8 border-[3px] border-[#5A0F1A] border-t-transparent rounded-full animate-spin" /></div>
+          ) : (
+            <>
+              <div className="bg-white border border-slate-100 rounded-2xl p-5">
+                <p className="text-[8px] font-black text-slate-300 uppercase mb-1">Threshold</p>
+                <p className="text-lg font-bold text-slate-900">{fmt(hmgThreshold)} / month</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-[#5A0F1A] mb-3">Discount Tiers</p>
+                <div className="space-y-2">
+                  {hmgTiers.map((tier, i) => (
+                    <div key={i} className="bg-white border border-slate-100 rounded-xl p-4 flex items-center justify-between">
+                      <p className="text-sm font-bold text-slate-800">
+                        {fmt(tier.minAmount)} {tier.maxAmount != null ? `– ${fmt(tier.maxAmount)}` : 'and above'}
+                      </p>
+                      <span className="px-3 py-1 rounded-full text-[10px] font-black bg-amber-50 text-amber-700 border border-amber-200">{tier.discountPercent}% off</span>
+                    </div>
+                  ))}
+                  {hmgTiers.length === 0 && <p className="text-xs text-slate-400 italic">No tiers configured yet.</p>}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── ENROLL CUSTOMER MODAL ── */}
+      {enrollModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2rem] p-8 w-full max-w-lg shadow-2xl animate-in zoom-in duration-300 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-bold font-serif mb-1">Enroll Customer</h2>
+            <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600 mb-6">Active immediately — mark cash payments as they come in</p>
+
+            <div className="space-y-5">
+              <div>
+                <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Customer *</label>
+                {enrollCustomer ? (
+                  <div className="flex items-center gap-3 border border-emerald-200 bg-emerald-50 rounded-2xl px-4 py-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-black text-slate-900 truncate">{enrollCustomer.name}</p>
+                      <p className="text-xs text-slate-500">{enrollCustomer.phone}{enrollCustomer.email ? ` · ${enrollCustomer.email}` : ''}</p>
+                    </div>
+                    <button type="button" onClick={() => { setEnrollCustomer(null); setEnrollQuery(''); }} className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-700">Change</button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <input
+                      value={enrollQuery}
+                      onChange={e => setEnrollQuery(e.target.value)}
+                      placeholder="Search by name or phone…"
+                      className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all"
+                    />
+                    {enrollQuery.trim().length >= 2 && (
+                      <div className="absolute z-10 top-full mt-2 left-0 right-0 bg-white border border-slate-200 rounded-2xl shadow-2xl max-h-56 overflow-y-auto">
+                        {enrollSearching ? (
+                          <div className="p-4 text-center text-xs text-slate-400 font-bold">Searching…</div>
+                        ) : enrollMatches.length === 0 ? (
+                          <div className="p-4 text-center text-xs text-slate-400 font-bold">No customer found.</div>
+                        ) : (
+                          enrollMatches.map(c => (
+                            <button key={c._id} type="button" onClick={() => { setEnrollCustomer(c); setEnrollMatches([]); }}
+                              className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-slate-50 transition-colors text-left">
+                              <span className="text-sm font-bold text-slate-900">{c.name}</span>
+                              <span className="text-xs text-slate-400">{c.phone}</span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Plan *</label>
+                <select value={enrollPlanId} onChange={e => {
+                  const p = plans.find(pl => pl._id === e.target.value);
+                  setEnrollPlanId(e.target.value);
+                  setEnrollAmount(p?.monthlyAmount || 0);
+                }} className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all bg-transparent">
+                  <option value="">Select a plan…</option>
+                  {plans.filter(p => p.isActive).map(p => (
+                    <option key={p._id} value={p._id}>{p.name} — {fmt(p.monthlyAmount)}/mo · {p.durationMonths}mo</option>
+                  ))}
+                </select>
+              </div>
+
+              {enrollSelectedPlan && (
+                <div>
+                  <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Monthly Amount (INR) *</label>
+                  <input type="number" min={enrollFloor} value={enrollAmount} onChange={e => setEnrollAmount(Number(e.target.value) || 0)}
+                    className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all" />
+                  <p className="text-[9px] text-slate-400 mt-1">Minimum {fmt(enrollFloor)}/month for this plan.</p>
+                </div>
+              )}
+
+              {enrollError && <p className="text-xs text-red-600 font-bold bg-red-50 border border-red-100 rounded-xl px-4 py-2">{enrollError}</p>}
+            </div>
+
+            <div className="flex gap-3 mt-8">
+              <button onClick={() => setEnrollModal(false)} className="flex-1 py-3 border border-slate-200 text-slate-600 text-xs font-black uppercase rounded-xl hover:bg-slate-50 transition-all">Cancel</button>
+              <button onClick={handleEnroll} disabled={enrollSaving} className="flex-1 py-3 bg-emerald-600 text-white text-xs font-black uppercase rounded-xl hover:bg-emerald-700 transition-all disabled:opacity-50">
+                {enrollSaving ? 'Enrolling...' : 'Enroll & Activate'}
+              </button>
+            </div>
           </div>
         </div>
       )}

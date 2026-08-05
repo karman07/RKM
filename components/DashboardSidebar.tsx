@@ -127,6 +127,13 @@ const NAV_ITEMS = [
     ],
   },
   {
+    id: 'investment-approvals', label: 'Investment Approvals', href: '/dashboard/investment-approvals',
+    icon: 'M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11',
+    sub: [
+      { label: 'Pending Payments', href: '/dashboard/investment-approvals' },
+    ],
+  },
+  {
     id: 'sale-approvals', label: 'Sale Approvals', href: '/dashboard/sale-approvals',
     icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z',
     sub: [
