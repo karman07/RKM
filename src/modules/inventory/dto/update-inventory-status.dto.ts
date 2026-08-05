@@ -11,6 +11,12 @@ export class UpdateInventoryStatusDto {
   @Min(0)
   selling_price?: number;
 
+  /** Discount % applied at sale time — admins are uncapped, managers are capped at the item's max_manager_discount (enforced in the service). */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  manager_discount?: number;
+
   /** Shared invoice/sale reference — lets multiple items in one bill share the same reference */
   @IsOptional()
   @IsString()

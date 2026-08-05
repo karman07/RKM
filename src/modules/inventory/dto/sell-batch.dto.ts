@@ -12,6 +12,12 @@ export class SellBatchItemDto {
   @IsNumber()
   @Min(0)
   selling_price?: number;
+
+  /** Discount % applied at sale time — admins are uncapped, managers are capped at the item's max_manager_discount (enforced in the service). */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  manager_discount?: number;
 }
 
 /** One checkout for multiple inventory items — shares a sale_reference and payment split across all of them. */

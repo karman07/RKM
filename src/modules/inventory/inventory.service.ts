@@ -1571,6 +1571,18 @@ export class InventoryService {
       if (dto.selling_price != null) {
         item.selling_price = dto.selling_price;
       }
+      // Discount % applied at sale time, recorded on the item for the bill/reports — admins
+      // are uncapped, managers are capped at the item's max_manager_discount (same rule as
+      // the standalone /discount endpoint in updateDiscount()).
+      if (dto.manager_discount != null) {
+        const proposedDiscount = Number(dto.manager_discount) || 0;
+        if (requestingUserRole === 'manager' && proposedDiscount > (item.max_manager_discount || 0)) {
+          throw new ForbiddenException(
+            `Manager cannot set discount above ${item.max_manager_discount}%. Contact an admin.`,
+          );
+        }
+        item.manager_discount = proposedDiscount;
+      }
       // Split payments — normalise and store.
       if (Array.isArray(dto.payment_splits) && dto.payment_splits.length > 0) {
         (item as any).payment_splits = dto.payment_splits.map(s => ({
@@ -1836,6 +1848,7 @@ export class InventoryService {
       const itemDto: UpdateInventoryStatusDto = {
         status: InventoryStatus.SOLD,
         selling_price: it.selling_price,
+        manager_discount: it.manager_discount,
         sale_reference: sharedReference,
         sold_by_user_id: dto.sold_by_user_id,
         sold_by_manager_id: dto.sold_by_manager_id,
