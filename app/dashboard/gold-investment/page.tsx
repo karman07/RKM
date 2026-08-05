@@ -5,9 +5,10 @@ import { toast } from 'sonner';
 import InvestmentReceiptModal from '@/components/InvestmentReceiptModal';
 import {
   getInvestmentPlans, createInvestmentPlan, updateInvestmentPlan, deleteInvestmentPlan,
-  getSubscriptions, createSubscription, updateSubscription, getGoldStats,
+  getSubscriptions, enrollSubscription, updateSubscription, getGoldStats,
   markGoldCashPayment, sendGoldReminder, addInterestToSubscription, restartGoldSubscription, getMe,
-  InvestmentPlan, GoldSubscription, GoldStats, User,
+  getSettings, updateSettings, searchCustomers,
+  InvestmentPlan, GoldSubscription, GoldStats, User, Customer,
 } from '@/lib/api';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -37,11 +38,12 @@ const paymentTypeLabel = (type: 'autopay' | 'cash' | 'whatsapp_link') => {
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
-type Tab = 'overview' | 'plans' | 'subscriptions';
+type Tab = 'overview' | 'plans' | 'subscriptions' | 'hold-my-gold';
+type HoldMyGoldTier = { minAmount: number; maxAmount: number | null; discountPercent: number };
 type DrawerTab = 'details' | 'ledger';
 
 const emptyPlan: Partial<InvestmentPlan> = {
-  name: '', description: '', monthlyAmount: 1000, durationMonths: 12, interestRate: 3, cashBenefitPercent: 2, isActive: true,
+  name: '', description: '', planType: 'standard', monthlyAmount: 1000, durationMonths: 12, interestRate: 3, cashBenefitPercent: 2, isActive: true,
 };
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -53,11 +55,23 @@ export default function GoldInvestmentDashboard() {
   const [subs, setSubs] = useState<GoldSubscription[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<'' | 'standard' | 'hold_my_gold'>('');
 
   // Plan modal
   const [planModal, setPlanModal] = useState(false);
   const [editingPlan, setEditingPlan] = useState<Partial<InvestmentPlan>>(emptyPlan);
   const [planSaving, setPlanSaving] = useState(false);
+
+  // Enroll customer modal (in-store enrollment — active immediately, no Razorpay)
+  const [enrollModal, setEnrollModal] = useState(false);
+  const [enrollQuery, setEnrollQuery] = useState('');
+  const [enrollMatches, setEnrollMatches] = useState<Customer[]>([]);
+  const [enrollSearching, setEnrollSearching] = useState(false);
+  const [enrollCustomer, setEnrollCustomer] = useState<Customer | null>(null);
+  const [enrollPlanId, setEnrollPlanId] = useState('');
+  const [enrollAmount, setEnrollAmount] = useState<number>(0);
+  const [enrollSaving, setEnrollSaving] = useState(false);
+  const [enrollError, setEnrollError] = useState('');
 
   // Detail drawer
   const [selectedSub, setSelectedSub] = useState<GoldSubscription | null>(null);
@@ -89,6 +103,37 @@ export default function GoldInvestmentDashboard() {
   const [interestNote, setInterestNote] = useState('');
   const [interestLoading, setInterestLoading] = useState(false);
 
+  // Hold My Gold config
+  const [hmgThreshold, setHmgThreshold] = useState(25000);
+  const [hmgTiers, setHmgTiers] = useState<HoldMyGoldTier[]>([]);
+  const [hmgLoading, setHmgLoading] = useState(false);
+  const [hmgSaving, setHmgSaving] = useState(false);
+
+  const loadHoldMyGoldConfig = async () => {
+    setHmgLoading(true);
+    try {
+      const s = await getSettings();
+      setHmgThreshold(s.hold_my_gold_threshold ?? 25000);
+      setHmgTiers(s.hold_my_gold_tiers ?? []);
+    } finally {
+      setHmgLoading(false);
+    }
+  };
+
+  useEffect(() => { if (tab === 'hold-my-gold') loadHoldMyGoldConfig(); }, [tab]);
+
+  const saveHoldMyGoldConfig = async () => {
+    setHmgSaving(true);
+    try {
+      await updateSettings({ hold_my_gold_threshold: hmgThreshold, hold_my_gold_tiers: hmgTiers });
+      toast.success('Hold My Gold settings saved');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to save');
+    } finally {
+      setHmgSaving(false);
+    }
+  };
+
   const loadAll = async () => {
     setLoading(true);
     try {
@@ -105,6 +150,59 @@ export default function GoldInvestmentDashboard() {
     }
   };
 
+  // ── Enroll customer (in-store, no Razorpay) ─────────────────────────────────
+
+  const openEnrollModal = () => {
+    setEnrollModal(true);
+    setEnrollQuery(''); setEnrollMatches([]); setEnrollCustomer(null);
+    const firstActive = plans.find(p => p.isActive);
+    setEnrollPlanId(firstActive?._id || '');
+    setEnrollAmount(firstActive?.monthlyAmount || 0);
+    setEnrollError('');
+  };
+
+  useEffect(() => {
+    if (!enrollModal || enrollQuery.trim().length < 2) { setEnrollMatches([]); return; }
+    setEnrollSearching(true);
+    const t = setTimeout(async () => {
+      try {
+        const res = await searchCustomers(enrollQuery.trim());
+        setEnrollMatches(res.data ?? []);
+      } catch { setEnrollMatches([]); }
+      finally { setEnrollSearching(false); }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [enrollQuery, enrollModal]);
+
+  const enrollSelectedPlan = plans.find(p => p._id === enrollPlanId);
+  const enrollFloor = enrollSelectedPlan ? (enrollSelectedPlan.minMonthlyAmount ?? enrollSelectedPlan.monthlyAmount) : 0;
+
+  const handleEnroll = async () => {
+    if (!enrollCustomer) { setEnrollError('Select a customer first.'); return; }
+    if (!enrollCustomer.phone) { setEnrollError('This customer has no phone number on file.'); return; }
+    if (!enrollPlanId) { setEnrollError('Select a plan.'); return; }
+    if (enrollAmount < enrollFloor) { setEnrollError(`Monthly amount must be at least ${fmt(enrollFloor)} for this plan.`); return; }
+    setEnrollSaving(true);
+    setEnrollError('');
+    try {
+      const sub = await enrollSubscription({
+        planId: enrollPlanId,
+        customerName: enrollCustomer.name,
+        customerEmail: enrollCustomer.email,
+        customerPhone: enrollCustomer.phone,
+        customMonthlyAmount: enrollSelectedPlan && enrollAmount !== enrollSelectedPlan.monthlyAmount ? enrollAmount : undefined,
+      });
+      toast.success(`${enrollCustomer.name} enrolled — plan is now active`);
+      setEnrollModal(false);
+      await loadAll();
+      openDrawer(sub);
+    } catch (e: any) {
+      setEnrollError(e.message || 'Failed to enroll customer');
+    } finally {
+      setEnrollSaving(false);
+    }
+  };
+
   useEffect(() => { loadAll(); }, [statusFilter]);
   useEffect(() => { getMe().then(setMe).catch(() => setMe(null)); }, []);
 
@@ -114,17 +212,16 @@ export default function GoldInvestmentDashboard() {
   const openEditPlan = (p: InvestmentPlan) => { setEditingPlan({ ...p }); setPlanModal(true); };
 
   const savePlan = async () => {
+    const isHoldMyGold = editingPlan.planType === 'hold_my_gold';
     if (!editingPlan.name || !editingPlan.monthlyAmount) return;
-    if (editingPlan.planType === 'custom' && (!editingPlan.minMonthlyAmount || !editingPlan.maxMonthlyAmount || !editingPlan.minDurationMonths || !editingPlan.maxDurationMonths)) {
-      toast.error('Set min/max monthly amount and duration for a Custom plan.');
-      return;
-    }
+    if (!isHoldMyGold && !editingPlan.durationMonths) return;
     setPlanSaving(true);
     try {
+      const payload = isHoldMyGold ? { ...editingPlan, durationMonths: undefined } : editingPlan;
       if ((editingPlan as any)._id) {
-        await updateInvestmentPlan((editingPlan as any)._id, editingPlan);
+        await updateInvestmentPlan((editingPlan as any)._id, payload);
       } else {
-        await createInvestmentPlan(editingPlan);
+        await createInvestmentPlan(payload);
       }
       setPlanModal(false);
       await loadAll();
@@ -163,10 +260,26 @@ export default function GoldInvestmentDashboard() {
     await loadAll();
   };
 
+  const [waiverToggling, setWaiverToggling] = useState(false);
+  const handleToggleMakingChargeWaiver = async () => {
+    if (!selectedSub) return;
+    setWaiverToggling(true);
+    try {
+      const updated = await updateSubscription(selectedSub._id, { makingChargeWaiverEnabled: !selectedSub.makingChargeWaiverEnabled });
+      setSelectedSub(updated);
+      await loadAll();
+      toast.success(updated.makingChargeWaiverEnabled ? 'Making Charge Waiver enabled' : 'Making Charge Waiver disabled');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to update');
+    } finally {
+      setWaiverToggling(false);
+    }
+  };
+
   /** The monthly amount/duration actually governing a subscription — the customer's own chosen
    *  amount for a 'custom' plan, or the template's fixed values otherwise. */
   const effectiveMonthlyAmount = (sub: GoldSubscription) => sub.customMonthlyAmount ?? sub.plan?.monthlyAmount ?? 0;
-  const effectiveDurationMonths = (sub: GoldSubscription) => sub.customDurationMonths ?? sub.plan?.durationMonths ?? 0;
+  const effectiveDurationMonths = (sub: GoldSubscription) => sub.plan?.durationMonths ?? 0;
 
   const computeAvailableBalance = (sub: GoldSubscription) => {
     const plan = sub.plan;
@@ -260,6 +373,8 @@ export default function GoldInvestmentDashboard() {
     { label: 'Completed', value: stats.completed, color: 'text-blue-600' },
     { label: 'Manual Pending', value: (stats as any).manualPending || 0, color: 'text-amber-600' },
     { label: 'Total Accumulated', value: fmt(stats.totalAccumulated), color: 'text-slate-900' },
+    { label: 'Hold My Gold Active', value: stats.holdMyGoldActiveCount ?? 0, color: 'text-amber-600' },
+    { label: 'Hold My Gold Grams', value: `${(stats.holdMyGoldGoldGramsAccumulated ?? 0).toFixed(2)}g`, color: 'text-amber-600' },
   ] : [];
 
   return (
@@ -275,6 +390,9 @@ export default function GoldInvestmentDashboard() {
           </div>
         </div>
         <div className="flex gap-3">
+          <button onClick={openEnrollModal} className="px-6 py-3 bg-emerald-600 text-white text-xs font-black uppercase tracking-widest rounded-2xl hover:bg-emerald-700 transition-all shadow-lg">
+            + Enroll Customer
+          </button>
           <button onClick={openCreatePlan} className="px-6 py-3 bg-blue-600 text-white text-xs font-black uppercase tracking-widest rounded-2xl hover:bg-blue-700 transition-all shadow-lg">
             + New Plan
           </button>
@@ -283,9 +401,9 @@ export default function GoldInvestmentDashboard() {
 
       {/* ── Tabs ── */}
       <div className="flex gap-1 bg-slate-50 border border-slate-100 p-1.5 rounded-2xl mb-10 w-fit">
-        {(['overview', 'plans', 'subscriptions'] as Tab[]).map(t => (
+        {(['overview', 'plans', 'subscriptions', 'hold-my-gold'] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${tab === t ? 'bg-white shadow text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>
-            {t}
+            {t === 'hold-my-gold' ? 'Hold My Gold' : t}
           </button>
         ))}
       </div>
@@ -331,7 +449,10 @@ export default function GoldInvestmentDashboard() {
               <div>
                 <div className="flex items-start justify-between mb-4">
                   <div>
-                    <h3 className="text-lg font-bold font-serif text-slate-900 mb-1">{p.name}</h3>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="text-lg font-bold font-serif text-slate-900">{p.name}</h3>
+                      {p.planType === 'hold_my_gold' && <span className="px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase bg-amber-100 text-amber-700 border border-amber-200">Hold My Gold</span>}
+                    </div>
                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{p.description}</p>
                   </div>
                   <span className={`px-3 py-1 rounded-full text-[9px] font-black border ${p.isActive ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>
@@ -341,11 +462,11 @@ export default function GoldInvestmentDashboard() {
                 <div className="grid grid-cols-2 gap-3">
                   {[
                     { l: 'Monthly', v: fmt(p.monthlyAmount) },
-                    { l: 'Duration', v: `${p.durationMonths} months` },
+                    { l: 'Duration', v: p.durationMonths ? `${p.durationMonths} months` : 'Open-ended' },
                     { l: 'Interest', v: `${p.interestRate}% p.a.` },
                     { l: 'Cash Benefit', v: `${p.cashBenefitPercent}% of investment redeemed` },
-                    { l: 'Total', v: fmt(p.monthlyAmount * p.durationMonths) },
-                    { l: 'Razorpay ID', v: p.razorpayPlanId?.slice(0, 14) + '...' },
+                    ...(p.durationMonths ? [{ l: 'Total', v: fmt(p.monthlyAmount * p.durationMonths) }] : []),
+                    ...(p.planType === 'hold_my_gold' ? [] : [{ l: 'Razorpay ID', v: p.razorpayPlanId?.slice(0, 14) + '...' }]),
                   ].map((item, i) => (
                     <div key={i} className="bg-slate-50/50 rounded-xl p-3 border border-slate-100">
                       <p className="text-[8px] font-black text-slate-300 uppercase mb-1">{item.l}</p>
@@ -374,20 +495,28 @@ export default function GoldInvestmentDashboard() {
               </button>
             ))}
           </div>
+          <div className="flex gap-2 flex-wrap">
+            {(['', 'standard', 'hold_my_gold'] as const).map(c => (
+              <button key={c} onClick={() => setCategoryFilter(c)} className={`px-5 py-2 rounded-full text-[9px] font-black uppercase tracking-widest border transition-all ${categoryFilter === c ? 'bg-amber-600 text-white border-slate-900' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}>
+                {c === '' ? 'All Plan Types' : c === 'hold_my_gold' ? 'Hold My Gold' : 'Standard'}
+              </button>
+            ))}
+          </div>
           <div className="space-y-3">
-            {subs.map(s => (
+            {subs.filter(s => !categoryFilter || (s.planCategory || 'standard') === categoryFilter).map(s => (
               <div key={s._id} onClick={() => openDrawer(s)} className="bg-white border border-slate-100 rounded-2xl p-6 cursor-pointer hover:border-blue-200 hover:shadow-md transition-all">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="flex-1 space-y-1.5">
                     <div className="flex items-center gap-3 flex-wrap">
                       <p className="font-bold text-base text-slate-900">{s.customerName}</p>
                       <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase border ${statusColor[s.status]}`}>{s.status}</span>
+                      {s.planCategory === 'hold_my_gold' && <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase bg-amber-100 text-amber-700 border border-amber-200">Hold My Gold</span>}
                       {s.redeemed && <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase bg-blue-100 text-blue-700 border border-blue-200">Redeemed</span>}
                       {(s as any).requiresManualPayment && <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase bg-amber-100 text-amber-700 border border-amber-200">Manual Payments</span>}
                       {s.pausedForCashMonth != null && <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase bg-emerald-100 text-emerald-700 border border-emerald-200">Paused (Cash Covered)</span>}
                     </div>
                     <p className="text-xs text-slate-400 font-bold">{s.customerPhone} · {s.customerEmail}</p>
-                    <p className="text-xs font-bold text-slate-500">{s.plan?.name} · {s.installmentsPaid}/{effectiveDurationMonths(s)} payments</p>
+                    <p className="text-xs font-bold text-slate-500">{s.plan?.name} · {s.installmentsPaid}{s.plan?.durationMonths ? `/${effectiveDurationMonths(s)}` : ''} payments</p>
                   </div>
                   <div className="grid grid-cols-4 gap-4 text-center">
                     <div>
@@ -404,7 +533,7 @@ export default function GoldInvestmentDashboard() {
                     </div>
                     <div>
                       <p className="text-[8px] font-black text-slate-300 uppercase mb-1">Matures</p>
-                      <p className="text-sm font-bold text-slate-700">{s.maturesAt ? new Date(s.maturesAt).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) : '-'}</p>
+                      <p className="text-sm font-bold text-slate-700">{s.maturesAt ? new Date(s.maturesAt).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) : (s.planCategory === 'hold_my_gold' ? 'Open-ended' : '-')}</p>
                     </div>
                   </div>
                 </div>
@@ -413,6 +542,74 @@ export default function GoldInvestmentDashboard() {
             ))}
             {subs.length === 0 && <div className="text-center py-24 text-slate-300 font-bold text-sm uppercase tracking-widest">No subscriptions found</div>}
           </div>
+        </div>
+      )}
+
+      {/* ── HOLD MY GOLD ── */}
+      {tab === 'hold-my-gold' && (
+        <div className="space-y-8 max-w-2xl">
+          <div className="bg-amber-50 border border-amber-100 rounded-2xl p-5">
+            <p className="text-xs font-bold text-amber-800 leading-relaxed">
+              <strong>Hold My Gold</strong> is a dedicated plan type — create or edit it from the Plans tab (it&apos;s
+              open-ended and collected monthly in-store, no fixed maturity). The tiers below only control the
+              cash-benefit % used at redemption for Hold My Gold subscriptions — they no longer decide which plan a
+              customer is on. Making Charge Waiver is granted per subscription from that subscription&apos;s detail drawer
+              in the Subscriptions tab.
+            </p>
+          </div>
+
+          {hmgLoading ? (
+            <div className="flex items-center justify-center h-40"><div className="w-8 h-8 border-[3px] border-blue-600 border-t-transparent rounded-full animate-spin" /></div>
+          ) : (
+            <>
+              <div>
+                <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Hold My Gold Threshold (INR / month)</label>
+                <input type="number" value={hmgThreshold} onChange={e => setHmgThreshold(Number(e.target.value) || 0)}
+                  className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all" />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400">Discount Tiers</label>
+                  <button
+                    onClick={() => setHmgTiers(t => [...t, { minAmount: hmgThreshold, maxAmount: null, discountPercent: 0 }])}
+                    className="text-[10px] font-black uppercase text-blue-600 hover:underline"
+                  >
+                    + Add Tier
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  {hmgTiers.map((tier, i) => (
+                    <div key={i} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-center bg-slate-50 border border-slate-100 rounded-xl p-3">
+                      <div>
+                        <label className="block text-[8px] font-black uppercase text-slate-400 mb-1">Min (₹)</label>
+                        <input type="number" value={tier.minAmount} onChange={e => setHmgTiers(ts => ts.map((t, ti) => ti === i ? { ...t, minAmount: Number(e.target.value) || 0 } : t))}
+                          className="w-full border-b-2 border-slate-200 focus:border-slate-900 py-1.5 text-xs font-bold outline-none bg-transparent" />
+                      </div>
+                      <div>
+                        <label className="block text-[8px] font-black uppercase text-slate-400 mb-1">Max (₹, blank = no cap)</label>
+                        <input type="number" value={tier.maxAmount ?? ''} onChange={e => setHmgTiers(ts => ts.map((t, ti) => ti === i ? { ...t, maxAmount: e.target.value === '' ? null : Number(e.target.value) } : t))}
+                          className="w-full border-b-2 border-slate-200 focus:border-slate-900 py-1.5 text-xs font-bold outline-none bg-transparent" />
+                      </div>
+                      <div>
+                        <label className="block text-[8px] font-black uppercase text-slate-400 mb-1">Off %</label>
+                        <input type="number" step="0.1" value={tier.discountPercent} onChange={e => setHmgTiers(ts => ts.map((t, ti) => ti === i ? { ...t, discountPercent: Number(e.target.value) || 0 } : t))}
+                          className="w-full border-b-2 border-slate-200 focus:border-slate-900 py-1.5 text-xs font-bold outline-none bg-transparent" />
+                      </div>
+                      <button onClick={() => setHmgTiers(ts => ts.filter((_, ti) => ti !== i))} className="text-red-400 hover:text-red-600 text-[10px] font-black uppercase px-2">
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                  {hmgTiers.length === 0 && <p className="text-xs text-slate-400 italic">No tiers configured yet — Hold My Gold subscriptions get 0% until you add one.</p>}
+                </div>
+              </div>
+
+              <button onClick={saveHoldMyGoldConfig} disabled={hmgSaving} className="px-6 py-3 bg-blue-600 text-white text-xs font-black uppercase tracking-widest rounded-2xl hover:bg-blue-700 transition-all disabled:opacity-50">
+                {hmgSaving ? 'Saving...' : 'Save Hold My Gold Settings'}
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -432,51 +629,33 @@ export default function GoldInvestmentDashboard() {
               </div>
               <div>
                 <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Plan Type</label>
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => setEditingPlan(p => ({ ...p, planType: 'fixed' }))}
-                    className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${(editingPlan.planType ?? 'fixed') === 'fixed' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
-                    Fixed
-                  </button>
-                  <button type="button" onClick={() => setEditingPlan(p => ({ ...p, planType: 'custom' }))}
-                    className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${editingPlan.planType === 'custom' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
-                    Custom
-                  </button>
+                <div className="flex gap-1 bg-slate-50 border border-slate-100 p-1 rounded-xl w-fit">
+                  {(['standard', 'hold_my_gold'] as const).map(pt => (
+                    <button key={pt} type="button" onClick={() => setEditingPlan(p => ({ ...p, planType: pt }))} className={`px-5 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${(editingPlan.planType || 'standard') === pt ? 'bg-white shadow text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>
+                      {pt === 'hold_my_gold' ? 'Hold My Gold' : 'Standard'}
+                    </button>
+                  ))}
                 </div>
-                <p className="text-[9px] text-slate-400 mt-1">
-                  {editingPlan.planType === 'custom'
-                    ? 'Customer picks their own monthly amount and duration within the bounds below at subscribe time.'
-                    : 'Every subscriber pays the exact monthly amount and duration set here.'}
-                </p>
+                {editingPlan.planType === 'hold_my_gold' && (
+                  <p className="text-[9px] text-amber-700 mt-2">Open-ended — collected monthly in-store (cash/UPI), no fixed maturity and no Razorpay mandate.</p>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">{editingPlan.planType === 'custom' ? 'Default Monthly Amount (INR) *' : 'Monthly Amount (INR) *'}</label>
+                  <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Default Monthly Amount (INR) *</label>
                   <input type="number" value={editingPlan.monthlyAmount || ''} onChange={e => setEditingPlan(p => ({ ...p, monthlyAmount: Number(e.target.value) }))} className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all" />
                 </div>
-                <div>
-                  <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">{editingPlan.planType === 'custom' ? 'Default Duration (months) *' : 'Duration (months) *'}</label>
-                  <input type="number" value={editingPlan.durationMonths || ''} onChange={e => setEditingPlan(p => ({ ...p, durationMonths: Number(e.target.value) }))} className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all" />
-                </div>
-                {editingPlan.planType === 'custom' && (
-                  <>
-                    <div>
-                      <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Min Monthly Amount (INR) *</label>
-                      <input type="number" value={editingPlan.minMonthlyAmount || ''} onChange={e => setEditingPlan(p => ({ ...p, minMonthlyAmount: Number(e.target.value) }))} className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all" />
-                    </div>
-                    <div>
-                      <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Max Monthly Amount (INR) *</label>
-                      <input type="number" value={editingPlan.maxMonthlyAmount || ''} onChange={e => setEditingPlan(p => ({ ...p, maxMonthlyAmount: Number(e.target.value) }))} className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all" />
-                    </div>
-                    <div>
-                      <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Min Duration (months) *</label>
-                      <input type="number" value={editingPlan.minDurationMonths || ''} onChange={e => setEditingPlan(p => ({ ...p, minDurationMonths: Number(e.target.value) }))} className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all" />
-                    </div>
-                    <div>
-                      <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Max Duration (months) *</label>
-                      <input type="number" value={editingPlan.maxDurationMonths || ''} onChange={e => setEditingPlan(p => ({ ...p, maxDurationMonths: Number(e.target.value) }))} className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all" />
-                    </div>
-                  </>
+                {editingPlan.planType !== 'hold_my_gold' && (
+                  <div>
+                    <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Duration (months) *</label>
+                    <input type="number" value={editingPlan.durationMonths || ''} onChange={e => setEditingPlan(p => ({ ...p, durationMonths: Number(e.target.value) }))} className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all" />
+                  </div>
                 )}
+                <div>
+                  <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Minimum Monthly Amount (INR)</label>
+                  <input type="number" value={editingPlan.minMonthlyAmount || ''} onChange={e => setEditingPlan(p => ({ ...p, minMonthlyAmount: Number(e.target.value) || undefined }))} className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all" placeholder={`Defaults to ${editingPlan.monthlyAmount || 0}`} />
+                  <p className="text-[9px] text-slate-400 mt-1">The customer can invest more than the default monthly amount above (as much as they want, with no cap) — this sets the floor. Leave blank to use the default amount as the floor.</p>
+                </div>
                 <div>
                   <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Annual Interest Rate (%)</label>
                   <input type="number" step="0.1" value={editingPlan.interestRate || ''} onChange={e => setEditingPlan(p => ({ ...p, interestRate: Number(e.target.value) }))} className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all" />
@@ -506,6 +685,89 @@ export default function GoldInvestmentDashboard() {
               <button onClick={() => setPlanModal(false)} className="flex-1 py-3 border border-slate-200 text-slate-600 text-xs font-black uppercase rounded-xl hover:bg-slate-50 transition-all">Cancel</button>
               <button onClick={savePlan} disabled={planSaving} className="flex-1 py-3 bg-blue-600 text-white text-xs font-black uppercase rounded-xl hover:bg-blue-700 transition-all disabled:opacity-50">
                 {planSaving ? 'Saving...' : (editingPlan as any)._id ? 'Update Plan' : 'Create Plan'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── ENROLL CUSTOMER MODAL ── */}
+      {enrollModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2rem] p-8 w-full max-w-lg shadow-2xl animate-in zoom-in duration-300 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-bold font-serif mb-1">Enroll Customer</h2>
+            <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600 mb-6">Active immediately — mark cash payments as they come in</p>
+
+            <div className="space-y-5">
+              <div>
+                <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Customer *</label>
+                {enrollCustomer ? (
+                  <div className="flex items-center gap-3 border border-emerald-200 bg-emerald-50 rounded-2xl px-4 py-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-black text-slate-900 truncate">{enrollCustomer.name}</p>
+                      <p className="text-xs text-slate-500">{enrollCustomer.phone}{enrollCustomer.email ? ` · ${enrollCustomer.email}` : ''}</p>
+                    </div>
+                    <button type="button" onClick={() => { setEnrollCustomer(null); setEnrollQuery(''); }} className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-700">Change</button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <input
+                      value={enrollQuery}
+                      onChange={e => setEnrollQuery(e.target.value)}
+                      placeholder="Search by name or phone…"
+                      className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all"
+                    />
+                    {enrollQuery.trim().length >= 2 && (
+                      <div className="absolute z-10 top-full mt-2 left-0 right-0 bg-white border border-slate-200 rounded-2xl shadow-2xl max-h-56 overflow-y-auto">
+                        {enrollSearching ? (
+                          <div className="p-4 text-center text-xs text-slate-400 font-bold">Searching…</div>
+                        ) : enrollMatches.length === 0 ? (
+                          <div className="p-4 text-center text-xs text-slate-400 font-bold">No customer found.</div>
+                        ) : (
+                          enrollMatches.map(c => (
+                            <button key={c._id} type="button" onClick={() => { setEnrollCustomer(c); setEnrollMatches([]); }}
+                              className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-slate-50 transition-colors text-left">
+                              <span className="text-sm font-bold text-slate-900">{c.name}</span>
+                              <span className="text-xs text-slate-400">{c.phone}</span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Plan *</label>
+                <select value={enrollPlanId} onChange={e => {
+                  const p = plans.find(pl => pl._id === e.target.value);
+                  setEnrollPlanId(e.target.value);
+                  setEnrollAmount(p?.monthlyAmount || 0);
+                }} className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all bg-transparent">
+                  <option value="">Select a plan…</option>
+                  {plans.filter(p => p.isActive).map(p => (
+                    <option key={p._id} value={p._id}>{p.name} — {fmt(p.monthlyAmount)}/mo · {p.durationMonths ? `${p.durationMonths}mo` : 'open-ended'}{p.planType === 'hold_my_gold' ? ' · Hold My Gold' : ''}</option>
+                  ))}
+                </select>
+              </div>
+
+              {enrollSelectedPlan && (
+                <div>
+                  <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Monthly Amount (INR) *</label>
+                  <input type="number" min={enrollFloor} value={enrollAmount} onChange={e => setEnrollAmount(Number(e.target.value) || 0)}
+                    className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all" />
+                  <p className="text-[9px] text-slate-400 mt-1">Minimum {fmt(enrollFloor)}/month for this plan.</p>
+                </div>
+              )}
+
+              {enrollError && <p className="text-xs text-red-600 font-bold bg-red-50 border border-red-100 rounded-xl px-4 py-2">{enrollError}</p>}
+            </div>
+
+            <div className="flex gap-3 mt-8">
+              <button onClick={() => setEnrollModal(false)} className="flex-1 py-3 border border-slate-200 text-slate-600 text-xs font-black uppercase rounded-xl hover:bg-slate-50 transition-all">Cancel</button>
+              <button onClick={handleEnroll} disabled={enrollSaving} className="flex-1 py-3 bg-emerald-600 text-white text-xs font-black uppercase rounded-xl hover:bg-emerald-700 transition-all disabled:opacity-50">
+                {enrollSaving ? 'Enrolling...' : 'Enroll & Activate'}
               </button>
             </div>
           </div>
@@ -576,11 +838,11 @@ export default function GoldInvestmentDashboard() {
                       return [
                         { l: 'Phone', v: selectedSub.customerPhone || '-' },
                         { l: 'Email', v: selectedSub.customerEmail || '-' },
-                        { l: 'Payments Made', v: `${paid} / ${totalMonths}` },
+                        { l: 'Payments Made', v: selectedSub.plan?.durationMonths ? `${paid} / ${totalMonths}` : `${paid} (open-ended)` },
                         { l: 'Accumulated', v: fmt(paid * effectiveMonthlyAmount(selectedSub)) },
                         { l: 'Interest Earned', v: interest },
                         { l: 'Next Due', v: (selectedSub as any).nextDueDate ? new Date((selectedSub as any).nextDueDate).toLocaleDateString('en-IN', { dateStyle: 'medium' }) : '-' },
-                        { l: 'Matures', v: selectedSub.maturesAt ? new Date(selectedSub.maturesAt).toLocaleDateString('en-IN', { dateStyle: 'medium' }) : '-' },
+                        { l: 'Matures', v: selectedSub.maturesAt ? new Date(selectedSub.maturesAt).toLocaleDateString('en-IN', { dateStyle: 'medium' }) : (selectedSub.planCategory === 'hold_my_gold' ? 'Open-ended' : '-') },
                         { l: 'Manual Follow-up', v: (selectedSub as any).requiresManualPayment ? 'Yes' : 'No' },
                       ];
                     })().map((item, i) => (
@@ -590,6 +852,26 @@ export default function GoldInvestmentDashboard() {
                       </div>
                     ))}
                   </div>
+
+                  {/* Making Charge Waiver toggle — Hold My Gold subscriptions only */}
+                  {selectedSub.planCategory === 'hold_my_gold' && (
+                    <div className="border border-amber-100 rounded-2xl p-4 bg-amber-50 flex items-center justify-between gap-4">
+                      <div>
+                        <p className="text-[9px] font-black uppercase tracking-widest text-amber-800 mb-1">Making Charge Waiver</p>
+                        <p className="text-[10px] text-amber-700 leading-relaxed">
+                          When enabled, this customer&apos;s accumulated gold grams can be redeemed against making charges at purchase, same as a standard plan.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleToggleMakingChargeWaiver}
+                        disabled={waiverToggling}
+                        className={`w-12 h-6 rounded-full transition-all duration-300 relative flex items-center px-1 flex-none disabled:opacity-50 ${selectedSub.makingChargeWaiverEnabled ? 'bg-amber-600' : 'bg-slate-300'}`}
+                      >
+                        <div className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform duration-300 ${selectedSub.makingChargeWaiverEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
+                      </button>
+                    </div>
+                  )}
 
                   {/* Autopay paused because cash already covered this cycle */}
                   {selectedSub.pausedForCashMonth != null && (
@@ -680,11 +962,17 @@ export default function GoldInvestmentDashboard() {
               {/* ── LEDGER TAB ── */}
               {drawerTab === 'ledger' && (() => {
                 const totalMonths = effectiveDurationMonths(selectedSub);
+                const isOpenEnded = !selectedSub.plan?.durationMonths;
                 const monthlyAmount = effectiveMonthlyAmount(selectedSub);
                 const paidByMonth: Record<number, any> = {};
                 ((selectedSub as any).paymentLedger || []).forEach((e: any) => { paidByMonth[e.month] = e; });
                 const installmentsPaid = selectedSub.installmentsPaid || 0;
                 const canMarkPayments = selectedSub.status !== 'completed' && selectedSub.status !== 'pending';
+                // Open-ended (Hold My Gold) has no fixed month count — show every paid month plus
+                // a few upcoming ones to mark next, growing as more get paid.
+                const monthNumbers = isOpenEnded
+                  ? Array.from({ length: Math.max(installmentsPaid + 3, 3) }, (_, i) => i + 1)
+                  : Array.from({ length: totalMonths }, (_, i) => i + 1);
 
                 return (
                   <div className="space-y-4">
@@ -692,12 +980,14 @@ export default function GoldInvestmentDashboard() {
                     <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                       <div>
                         <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Payment Ledger</p>
-                        <p className="text-sm font-bold text-slate-700 mt-0.5">{installmentsPaid} of {totalMonths} months paid · {fmt(monthlyAmount)}/month</p>
+                        <p className="text-sm font-bold text-slate-700 mt-0.5">{isOpenEnded ? `${installmentsPaid} months paid (open-ended)` : `${installmentsPaid} of ${totalMonths} months paid`} · {fmt(monthlyAmount)}/month</p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className="w-24 h-2 bg-slate-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${totalMonths ? (installmentsPaid / totalMonths) * 100 : 0}%` }} />
-                        </div>
+                        {!isOpenEnded && (
+                          <div className="w-24 h-2 bg-slate-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${totalMonths ? (installmentsPaid / totalMonths) * 100 : 0}%` }} />
+                          </div>
+                        )}
                         {(selectedSub as any).requiresManualPayment && (
                           <span className="text-[8px] font-black uppercase px-2 py-0.5 bg-amber-100 text-amber-700 border border-amber-200 rounded-lg">Manual Mode</span>
                         )}
@@ -706,7 +996,7 @@ export default function GoldInvestmentDashboard() {
 
                     {/* Month-by-month grid */}
                     <div className="space-y-2">
-                      {Array.from({ length: totalMonths }, (_, i) => i + 1).map(monthNum => {
+                      {monthNumbers.map(monthNum => {
                         const entry = paidByMonth[monthNum];
                         const isLegacyPaid = !entry && monthNum <= installmentsPaid;
                         const isPaid = !!entry || isLegacyPaid;

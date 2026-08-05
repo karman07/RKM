@@ -38,6 +38,7 @@ const ROUTE_PERMISSION: Record<string, string> = {
   '/dashboard/customers':          'customers',
   '/dashboard/feedback':           'feedback',
   '/dashboard/gold-investment':    'gold-investment',
+  '/dashboard/investment-approvals': 'investment-approvals',
   '/dashboard/whatsapp':           'whatsapp',
   '/dashboard/mail':               'mail',
   '/dashboard/blogs':              'blogs',

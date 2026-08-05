@@ -67,6 +67,7 @@ const PERMISSION_GROUPS = [
       { key: 'customers',       label: 'Client Relations' },
       { key: 'feedback',        label: 'Feedback Analytics' },
       { key: 'gold-investment', label: 'Gold Investment' },
+      { key: 'investment-approvals', label: 'Investment Approvals' },
       { key: 'whatsapp',        label: 'WhatsApp Control' },
       { key: 'sms',             label: 'SMS Control' },
       { key: 'mail',            label: 'Mail Centre' },

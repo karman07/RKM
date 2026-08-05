@@ -39,13 +39,12 @@ function fmtDate(d?: string | null) {
   return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-/** The monthly amount/duration actually governing a subscription — the customer's own chosen
- *  amount for a 'custom' plan, or the template's fixed values otherwise. */
+/** The monthly amount actually governing a subscription — the customer's own chosen amount, or the plan's default. */
 function effectiveMonthlyAmount(sub: GoldSubscription): number {
   return sub.customMonthlyAmount ?? sub.plan?.monthlyAmount ?? 0;
 }
 function effectiveDurationMonths(sub: GoldSubscription): number {
-  return sub.customDurationMonths ?? sub.plan?.durationMonths ?? 0;
+  return sub.plan?.durationMonths ?? 0;
 }
 
 function computeTimeBasedBalance(sub: GoldSubscription) {
@@ -763,8 +762,8 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
 
   const [showReceipt, setShowReceipt] = useState(false);
 
-  // Redemption math (both Cash Benefit and Gold Conversion) needs this jewellery purchase's real
-  // pricing — GST%, gold weight, making charges, metal cost — so a sale must be selected from the
+  // Redemption math (both Cash Benefit and Making Charge Waiver) needs this jewellery purchase's
+  // real pricing — GST%, gold weight, making charges — so a sale must be selected from the
   // customer's own recorded sales rather than typed in free-hand.
   const selectedSaleItems = redeemRef ? orders.filter(o => o.sale_reference === redeemRef) : [];
   const redeemJewelrySubtotal = selectedSaleItems.reduce((s, o) => s + ((o as any).pricing_breakdown?.taxable_amount ?? 0), 0);
@@ -772,13 +771,12 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
   const redeemTaxPercentage = redeemJewelrySubtotal > 0 ? (redeemJewelryTaxAmount / redeemJewelrySubtotal) * 100 : 0;
   const redeemGoldWeightGrams = selectedSaleItems.reduce((s, o) => s + ((o as any).pricing_breakdown?.billable_metal_weight ?? 0), 0);
   const redeemMakingCharges = selectedSaleItems.reduce((s, o) => s + ((o as any).pricing_breakdown?.making_charges ?? 0), 0);
-  const redeemMetalPrice = selectedSaleItems.reduce((s, o) => s + ((o as any).pricing_breakdown?.metal_price ?? 0), 0);
 
   // Debounced comparison-screen quote — recomputed whenever the linked sale or manually-entered
-  // Cash Benefit amount changes. Numbers always come from the backend so what's shown here can
-  // never drift from what redeemFromSubscription will actually save.
+  // amount changes. Numbers always come from the backend so what's shown here can never drift
+  // from what redeemFromSubscription will actually save.
   useEffect(() => {
-    if (!redeemRef || selectedSaleItems.length === 0) {
+    if (!redeemRef || selectedSaleItems.length === 0 || !(parseFloat(redeemAmount) > 0)) {
       setRedemptionPreview(null);
       setRedemptionChoice(null);
       setPreviewError('');
@@ -790,12 +788,11 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
       try {
         const amt = parseFloat(redeemAmount);
         const preview = await previewGoldRedemption(sub._id, {
-          amount: amt > 0 ? amt : undefined,
+          amount: amt,
           jewelrySubtotal: redeemJewelrySubtotal,
           taxPercentage: redeemTaxPercentage,
           jewelryGoldWeightGrams: redeemGoldWeightGrams,
           makingChargesOnJewelry: redeemMakingCharges,
-          metalPriceOnJewelry: redeemMetalPrice,
         });
         setRedemptionPreview(preview);
       } catch (e: any) {
@@ -807,26 +804,23 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
     }, 400);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [redeemRef, redeemAmount, redeemJewelrySubtotal, redeemTaxPercentage, redeemGoldWeightGrams, redeemMakingCharges, redeemMetalPrice]);
+  }, [redeemRef, redeemAmount, redeemJewelrySubtotal, redeemTaxPercentage, redeemGoldWeightGrams, redeemMakingCharges]);
 
   async function handleRedeem() {
-    if (!redemptionChoice) { toast.error('Choose a redemption option (Cash Benefit or Gold Conversion).'); return; }
+    if (!redemptionChoice) { toast.error('Choose a redemption option (Cash Benefit or Making Charge Waiver).'); return; }
     const amt = parseFloat(redeemAmount);
-    if (redemptionChoice === 'cash_benefit') {
-      if (!amt || amt <= 0) { toast.error('Enter an amount to redeem for Cash Benefit.'); return; }
-      if (amt > balance + 0.5) { toast.error(`Exceeds available balance of ${fmt(balance)}`); return; }
-    }
-    if (!confirm(`Redeem for ${sub.customerName} via ${redemptionChoice === 'cash_benefit' ? 'Cash Benefit' : 'Gold Conversion'}?`)) return;
+    if (!amt || amt <= 0) { toast.error('Enter an amount to redeem.'); return; }
+    if (amt > balance + 0.5) { toast.error(`Exceeds available balance of ${fmt(balance)}`); return; }
+    if (!confirm(`Redeem for ${sub.customerName} via ${redemptionChoice === 'cash_benefit' ? 'Cash Benefit' : 'Making Charge Waiver'}?`)) return;
     setRedeemLoading(true);
     try {
       const updated = await redeemGoldSubscription(sub._id, {
-        amount: redemptionChoice === 'cash_benefit' ? amt : undefined,
+        amount: amt,
         redemptionType: redemptionChoice,
         jewelrySubtotal: redeemJewelrySubtotal,
         taxPercentage: redeemTaxPercentage,
         jewelryGoldWeightGrams: redeemGoldWeightGrams,
         makingChargesOnJewelry: redeemMakingCharges,
-        metalPriceOnJewelry: redeemMetalPrice,
         saleReference: redeemRef,
         note: redeemNote,
       });
@@ -1199,7 +1193,7 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
                 <input
                   type="number" min="1" max={balance} value={redeemAmount}
                   onChange={e => setRedeemAmount(e.target.value)}
-                  placeholder={`Amount to redeem for Cash Benefit (max ${fmt(balance)}) — not needed for Gold Conversion`}
+                  placeholder={`Amount to redeem (max ${fmt(balance)})`}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-blue-500 bg-white"
                 />
               )}
@@ -1221,7 +1215,7 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
                 <button onClick={() => { setShowRedeem(false); setRedeemRef(''); setRedeemAmount(''); setRedemptionChoice(null); setRedemptionPreview(null); }} className="flex-1 py-2.5 border border-slate-200 text-slate-600 text-[10px] font-black uppercase rounded-xl hover:bg-slate-50 transition-all">
                   Cancel
                 </button>
-                <button onClick={handleRedeem} disabled={redeemLoading || !redeemRef || !redemptionChoice || (redemptionChoice === 'cash_benefit' && !redeemAmount)} className="flex-1 py-2.5 bg-blue-600 text-white text-[10px] font-black uppercase rounded-xl hover:bg-blue-700 disabled:opacity-50 transition-all">
+                <button onClick={handleRedeem} disabled={redeemLoading || !redeemRef || !redemptionChoice || !redeemAmount} className="flex-1 py-2.5 bg-blue-600 text-white text-[10px] font-black uppercase rounded-xl hover:bg-blue-700 disabled:opacity-50 transition-all">
                   {redeemLoading ? 'Processing...' : 'Confirm Redemption'}
                 </button>
               </div>
@@ -1338,9 +1332,8 @@ function BatchRedeemPanel({
           onAdvanceChanged(updated);
         }),
         ...Object.entries(subAmounts).filter(([, amt]) => amt > 0).map(async ([id, amt]) => {
-          // This bulk tool applies a manually-chosen rupee amount per source (no per-source
-          // redemption-type comparison), so it maps to Cash Benefit — Gold Conversion has no
-          // manual amount and doesn't fit this "type an amount" pattern.
+          // This bulk tool applies a manually-chosen rupee amount per source with no per-source
+          // redemption-type comparison, so it always uses Cash Benefit.
           const updated = await redeemGoldSubscription(id, {
             amount: amt,
             redemptionType: 'cash_benefit',

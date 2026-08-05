@@ -341,7 +341,7 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
         </section>}
 
         {/* Administration Section */}
-        {(['users','customers','feedback','gold-investment','whatsapp','sms','mail','blogs','settings'].some(k => can(k)) || permissions === null) && <section>
+        {(['users','customers','feedback','gold-investment','investment-approvals','whatsapp','sms','mail','blogs','settings'].some(k => can(k)) || permissions === null) && <section>
           {!isCollapsed && <p className="px-8 mb-4 text-[10px] font-black uppercase tracking-[0.25em] text-slate-400 animate-[fadeRise_400ms_ease-out]">Security & Access</p>}
           <div className="space-y-2">
             {/* Roles is only shown to full admins (permissions === null) */}
@@ -381,6 +381,11 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
               {isCollapsed && pathname.startsWith('/dashboard/gold-investment') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
               <NavIcon active={pathname.startsWith('/dashboard/gold-investment')} color={pathname.startsWith('/dashboard/gold-investment') ? colors.activeText : colors.textMuted}><circle cx="12" cy="12" r="10" /><path d="M12 8v8" /><path d="M8 12h8" /></NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Gold Investment</span>}
+            </Link>}
+            {can('investment-approvals') && <Link href="/dashboard/investment-approvals" onClick={onNavigate} title={isCollapsed ? "Investment Approvals" : ""} className={navClass(pathname.startsWith('/dashboard/investment-approvals'))} style={getNavStyle(pathname.startsWith('/dashboard/investment-approvals'))}>
+              {isCollapsed && pathname.startsWith('/dashboard/investment-approvals') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname.startsWith('/dashboard/investment-approvals')} color={pathname.startsWith('/dashboard/investment-approvals') ? colors.activeText : colors.textMuted}><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" /></NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Investment Approvals</span>}
             </Link>}
             {can('whatsapp') && <Link href="/dashboard/whatsapp" onClick={onNavigate} title={isCollapsed ? "WhatsApp Control" : ""} className={navClass(pathname.startsWith('/dashboard/whatsapp'))} style={getNavStyle(pathname.startsWith('/dashboard/whatsapp'))}>
               {isCollapsed && pathname.startsWith('/dashboard/whatsapp') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
