@@ -1,4 +1,4 @@
-import { IsBoolean, IsNumber, IsObject, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsNumber, IsObject, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class UpdateSettingsDto {
   /** Per-metal rates in ₹/g — e.g. { gold: 6800, silver: 90, platinum: 3200 } */
@@ -209,4 +209,17 @@ export class UpdateSettingsDto {
   @Min(0)
   @Max(100)
   prebooking_cancellation_deduction_pct?: number;
+
+  // ── Hold My Gold (investment plans) ─────────────────────────────────────────
+
+  /** Monthly amount at/above which a gold-investment subscription becomes Hold My Gold */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  hold_my_gold_threshold?: number;
+
+  /** Discount tiers by monthly-amount range — [{ minAmount, maxAmount, discountPercent }] */
+  @IsOptional()
+  @IsArray()
+  hold_my_gold_tiers?: { minAmount: number; maxAmount: number | null; discountPercent: number }[];
 }

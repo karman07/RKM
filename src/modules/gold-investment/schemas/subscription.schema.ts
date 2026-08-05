@@ -23,6 +23,21 @@ export enum PaymentMode {
   EMI = 'emi',
 }
 
+export enum PendingPaymentStatus {
+  PENDING = 'pending',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+}
+
+export enum PlanCategory {
+  STANDARD = 'standard',
+  /** Copied from the plan's planType at enroll time. A tiered cash-style benefit applies at
+   *  redemption instead of the plan's flat cashBenefitPercent; the making-charge-waiver
+   *  redemption option is only available when `makingChargeWaiverEnabled` is set (admin, per
+   *  subscription) — see computeRedemptionOptions() in gold-investment.service.ts. */
+  HOLD_MY_GOLD = 'hold_my_gold',
+}
+
 @Schema({ timestamps: true })
 export class Subscription {
   @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'InvestmentPlan', required: true })
@@ -55,6 +70,19 @@ export class Subscription {
 
   @Prop({ enum: SubscriptionStatus, default: SubscriptionStatus.PENDING })
   status: SubscriptionStatus;
+
+  /** Customer's own chosen monthly amount, if they didn't use the plan's default */
+  @Prop({ type: Number, default: null })
+  customMonthlyAmount: number | null;
+
+  /** Copied from plan.planType at enroll time */
+  @Prop({ enum: PlanCategory, default: PlanCategory.STANDARD })
+  planCategory: PlanCategory;
+
+  /** Admin-granted, per subscription — only meaningful when planCategory is HOLD_MY_GOLD. When
+   *  true, the making-charge-waiver redemption option becomes available for this subscription. */
+  @Prop({ default: false })
+  makingChargeWaiverEnabled: boolean;
 
   /** Amount accumulated so far (sum of successful charges in INR) */
   @Prop({ default: 0 })
@@ -154,6 +182,11 @@ export class Subscription {
         note: { type: String },
         goldRateAtPayment: { type: Number },
         gramsCredited: { type: Number },
+        /** Set only when this cash entry originated from a sales-submitted payment that was approved */
+        submittedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        submittedByName: { type: String },
+        approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        approvedByName: { type: String },
       },
     ],
     default: [],
@@ -168,6 +201,45 @@ export class Subscription {
     note?: string;
     goldRateAtPayment?: number;
     gramsCredited?: number;
+    submittedBy?: mongoose.Types.ObjectId;
+    submittedByName?: string;
+    approvedBy?: mongoose.Types.ObjectId;
+    approvedByName?: string;
+  }[];
+
+  /**
+   * Payments a Sales rep has collected and submitted, awaiting Admin/Manager review.
+   * Entries are never deleted — only transitioned pending → approved/rejected — for audit history.
+   * Approval applies the payment to `paymentLedger` via the same path as a direct admin/manager mark.
+   */
+  @Prop({
+    type: [
+      {
+        month: { type: Number, required: true },
+        submittedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+        submittedByName: { type: String, required: true },
+        note: { type: String },
+        status: { type: String, enum: Object.values(PendingPaymentStatus), default: PendingPaymentStatus.PENDING },
+        reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        reviewedByName: { type: String },
+        reviewedAt: { type: Date },
+        rejectionReason: { type: String },
+      },
+    ],
+    default: [],
+  })
+  pendingPayments: {
+    _id: mongoose.Types.ObjectId;
+    month: number;
+    submittedBy: mongoose.Types.ObjectId;
+    submittedByName: string;
+    note?: string;
+    status: PendingPaymentStatus;
+    reviewedBy?: mongoose.Types.ObjectId;
+    reviewedByName?: string;
+    reviewedAt?: Date;
+    rejectionReason?: string;
+    createdAt?: Date;
   }[];
 
   /**

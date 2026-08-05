@@ -118,7 +118,10 @@ export class NotificationsService implements OnModuleInit {
    * Admins see admin-targeted ones.
    */
   async getForUser(role: string, userId: string, branchId?: string): Promise<any[]> {
-    const orConditions: any[] = [{ target: role === 'admin' ? 'admins' : 'all-managers' }];
+    const orConditions: any[] = [
+      { target: role === 'admin' ? 'admins' : 'all-managers' },
+      { target: `user:${userId}` },
+    ];
     if (role === 'manager' && branchId) {
       orConditions.push({ target: `managers:${branchId}` });
     }

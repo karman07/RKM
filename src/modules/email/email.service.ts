@@ -382,6 +382,40 @@ export class EmailService {
     });
   }
 
+  buildPaymentReceivedAdminHtml(data: {
+    customerName: string;
+    customerPhone?: string;
+    planName: string;
+    month: number;
+    amount: number;
+    source: 'autopay' | 'manual' | 'sales_approved';
+    staffName?: string;
+    approverName?: string;
+  }): string {
+    const sourceLabel =
+      data.source === 'autopay'
+        ? 'Autopay (Razorpay)'
+        : data.source === 'sales_approved'
+          ? `Cash — collected by ${data.staffName || 'sales'}, approved by ${data.approverName || 'admin'}`
+          : `Cash — recorded by ${data.staffName || 'staff'}`;
+
+    const rows =
+      this.detailRow('Customer', data.customerName) +
+      (data.customerPhone ? this.detailRow('Phone', data.customerPhone) : '') +
+      this.detailRow('Plan', data.planName) +
+      this.detailRow('Month', `#${data.month}`) +
+      this.detailRow('Source', sourceLabel) +
+      this.detailRow('Amount', `Rs. ${Math.round(data.amount).toLocaleString('en-IN')}`, true);
+
+    return this.wrap({
+      eyebrow: 'RKM JEWELLERS — ADMIN NOTICE',
+      heading: 'Investment Payment Received',
+      intro: `A monthly installment was just received via ${data.source === 'autopay' ? 'autopay' : 'cash'}.`,
+      bodyHtml: `${this.detailCard('Payment Details', rows)}`,
+      footerNote: 'This is an automated admin notification.',
+    });
+  }
+
   // ─── HR: reimbursements & leave (admin notice only) ──────────────────────────
 
   buildReimbursementAdminHtml(data: { employeeName: string; category: string; amount: number; description?: string; branchName?: string }): string {

@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import * as admin from 'firebase-admin';
@@ -7,6 +7,7 @@ import { Customer, CustomerDocument, CustomerProfileFields } from './schemas/cus
 import { RegisterCustomerDto, LoginCustomerDto } from './dto/register-customer.dto';
 import { InventoryItem, InventoryItemDocument } from '../inventory/schemas/inventory-item.schema';
 import { OnlineOrder, OnlineOrderDocument } from '../online-orders/schemas/online-order.schema';
+import { buildOnlineOrderInvoiceHtml, renderBillPdf } from '../inventory/bill-pdf.builder.js';
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -265,6 +266,20 @@ export class CustomersService {
         createdAt: order.createdAt,
       })),
     };
+  }
+
+  /** Generates an order-receipt PDF for an online order — restricted to the customer it was placed by. */
+  async generateOnlineOrderInvoice(orderId: string, requestingPhone: string): Promise<Buffer> {
+    const order = await this.onlineOrderModel.findById(orderId).lean();
+    if (!order) throw new NotFoundException('Order not found');
+
+    const variants = [requestingPhone, requestingPhone.replace(/^\+/, ''), `+${requestingPhone.replace(/^\+/, '')}`];
+    if (!variants.includes(order.customer_phone)) {
+      throw new ForbiddenException('This order was not placed on your account');
+    }
+
+    const html = buildOnlineOrderInvoiceHtml(order);
+    return renderBillPdf(html);
   }
 
   /** Items currently reserved for this customer with an advance on file (via prebooking) */

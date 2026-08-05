@@ -386,6 +386,122 @@ export function buildBillPrintHtml(items: any[], date: string, customerRecordId:
 </html>`;
 }
 
+/**
+ * Order receipt for an online order — same branding, fonts, and fixed (non-responsive, no
+ * @media/vw/% units) desktop-style layout as buildBillPrintHtml above, rendered through the
+ * same renderBillPdf() pipeline, but built from OnlineOrder's own fields (no per-item
+ * weight/HSN/GST breakdown exists for online orders, unlike in-store jewellery sales).
+ */
+export function buildOnlineOrderInvoiceHtml(order: any): string {
+  const date = new Date(order.createdAt || Date.now()).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  const items = Array.isArray(order.items) ? order.items : [];
+
+  const itemsHtml = items.map((item: any) => `
+    <tr style="border-bottom:1px solid #ddd;vertical-align:top;">
+      <td style="padding:7px 5px 6px 12px;">
+        <div style="font-weight:700;font-size:9.5px;line-height:1.3;">${esc(item.name)}</div>
+      </td>
+      <td style="${cellR}text-align:center;font-weight:600;">${esc(item.quantity)}</td>
+      <td style="${cellR}">Rs.${fmt(item.price)}</td>
+      <td style="${cellR}font-weight:700;font-size:10px;padding-right:12px;">Rs.${fmt((item.price || 0) * (item.quantity || 0))}</td>
+    </tr>`).join('');
+
+  const deliveryLine = [order.delivery_address, order.delivery_city, order.delivery_state, order.delivery_pincode]
+    .filter(Boolean).join(', ');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Order Receipt</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "Arial", "Helvetica Neue", sans-serif; font-size: 10px; color: #000; background: #fff; }
+    table { border-collapse: collapse; }
+    img { max-width: 100%; display: block; }
+  </style>
+</head>
+<body>
+<div id="printable-bill" style="font-family:'Arial','Helvetica Neue',sans-serif;font-size:10px;color:#000;border:1.5px solid #000;">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:12px 16px 10px;border-bottom:2px solid #000;">
+    <div>
+      <div style="font-size:22px;font-weight:900;letter-spacing:3px;font-family:'Georgia',serif;">RKM JEWELLERS</div>
+      <div style="font-size:8px;letter-spacing:2px;color:#555;margin-bottom:4px;">FINE JEWELLERY &bull; EST. 2005 &bull; ONLINE STORE</div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-size:20px;font-weight:900;letter-spacing:2px;">ORDER RECEIPT</div>
+      <div style="font-size:9px;line-height:1.7;color:#333;margin-top:4px;">
+        <div style="background:#000;color:#fff;padding:3px 10px;display:inline-block;margin-bottom:4px;letter-spacing:1.5px;font-weight:900;font-size:10px;">ORDER NO: ${esc(order.order_number)}</div>
+        <div><b>Date:</b> ${esc(date)}</div>
+        <div><b>Payment:</b> ${esc((order.payment_status || '').toUpperCase())}</div>
+      </div>
+      <div style="margin-top:6px;padding:2px 10px;background:#fff;color:#000;border:1px solid #000;font-size:8px;font-weight:700;display:inline-block;letter-spacing:1.5px;">CUSTOMER COPY</div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1.5px solid #000;">
+    <div style="padding:8px 16px;border-right:1px solid #ccc;">
+      <div style="font-size:8px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:3px;">Customer Details</div>
+      <div style="font-weight:700;font-size:11px;margin-bottom:2px;">${esc(order.customer_name)}</div>
+      <div style="font-size:9px;line-height:1.65;color:#333;">
+        ${order.customer_phone ? `<div>Phone: ${esc(order.customer_phone)}</div>` : ''}
+        ${order.customer_email ? `<div>Email: ${esc(order.customer_email)}</div>` : ''}
+      </div>
+    </div>
+    <div style="padding:8px 16px;">
+      <div style="font-size:8px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:3px;">Delivery Address</div>
+      <div style="font-size:9px;line-height:1.65;color:#333;">
+        ${deliveryLine ? `<div>${esc(deliveryLine)}</div>` : '<div style="color:#777;">Not specified</div>'}
+      </div>
+    </div>
+  </div>
+
+  <div style="overflow-x:auto;width:100%;">
+    <table style="width:100%;border-collapse:collapse;table-layout:auto;">
+      <thead>
+        <tr>
+          <th style="${headCellL}width:60%;">Item</th>
+          <th style="${headCell}">Qty</th>
+          <th style="${headCell}">Unit Price (Rs.)</th>
+          <th style="${headCell}padding-right:12px;">Amount (Rs.)</th>
+        </tr>
+      </thead>
+      <tbody>${itemsHtml}</tbody>
+    </table>
+  </div>
+
+  <div style="border-top:1.5px solid #000;padding:10px 16px;display:flex;justify-content:flex-end;">
+    <div style="width:280px;font-size:9.5px;">
+      <div style="display:flex;justify-content:space-between;padding:2.5px 0;border-bottom:1px solid #eee;">
+        <span>Subtotal</span><span>Rs.${fmt(order.subtotal)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:2.5px 0;border-bottom:1px solid #eee;">
+        <span>Delivery Charge</span><span>${order.delivery_charge > 0 ? `Rs.${fmt(order.delivery_charge)}` : 'Free'}</span>
+      </div>
+      <div style="margin-top:8px;padding:10px 14px;background:#fff;color:#000;border:1px solid #000;border-radius:2px;">
+        <div style="display:flex;justify-content:space-between;font-weight:900;font-size:14px;">
+          <span>Total Amount</span>
+          <span>Rs.${fmt(order.total)}</span>
+        </div>
+        <div style="margin-top:4px;font-size:8px;color:#333;font-style:italic;">Rupees ${inWords(order.total)}</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="padding:7px 16px 12px;border-top:1.5px solid #000;display:flex;justify-content:space-between;align-items:flex-end;font-size:8.5px;color:#555;">
+    <div style="font-size:8px;color:#444;line-height:1.7;">
+      <div>RKM Jewellers Online Store</div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-weight:700;font-size:9.5px;color:#000;">RKM JEWELLERS</div>
+      <div style="margin-top:3px;color:#aaa;">E&amp;OE | Computer-generated receipt</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>`;
+}
+
 /** Renders the invoice HTML to a PDF buffer, matching BillModal's print settings (A4 landscape, 6mm margin). */
 export async function renderBillPdf(html: string): Promise<Buffer> {
   // On servers where Puppeteer's own Chromium download isn't available (missing unzip,

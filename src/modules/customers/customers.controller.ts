@@ -1,4 +1,5 @@
-import { Controller, Post, Body, Get, Patch, UseGuards, Request, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Body, Get, Patch, Param, Res, UseGuards, Request, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import type { Response } from 'express';
 import { CustomersService } from './customers.service';
 import { RegisterCustomerDto, LoginCustomerDto } from './dto/register-customer.dto';
 import { CustomerJwtAuthGuard } from './customer-jwt-auth.guard';
@@ -120,6 +121,16 @@ export class CustomersController {
   @Get('purchase-history')
   async getPurchaseHistory(@Request() req: any) {
     return this.customersService.getPurchaseHistory(req.user.phone);
+  }
+
+  /** Downloads an order-receipt PDF for one of the customer's own online orders. */
+  @UseGuards(CustomerJwtAuthGuard)
+  @Get('online-orders/:id/invoice')
+  async downloadOnlineOrderInvoice(@Request() req: any, @Param('id') id: string, @Res() res: Response) {
+    const pdf = await this.customersService.generateOnlineOrderInvoice(id, req.user.phone);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="RKM-Order-Receipt-${id}.pdf"`);
+    res.send(pdf);
   }
 
   /** Items this customer has pre-booked (reserved with an advance on file) but not yet collected */

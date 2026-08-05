@@ -6,11 +6,12 @@ import Razorpay from 'razorpay';
 import * as crypto from 'crypto';
 import * as https from 'https';
 
-import { InvestmentPlan, InvestmentPlanDocument } from './schemas/investment-plan.schema';
-import { Subscription, SubscriptionDocument, SubscriptionStatus, PaymentMode } from './schemas/subscription.schema';
+import { InvestmentPlan, InvestmentPlanDocument, PlanType } from './schemas/investment-plan.schema';
+import { Subscription, SubscriptionDocument, SubscriptionStatus, PaymentMode, PendingPaymentStatus, PlanCategory } from './schemas/subscription.schema';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '../email/email.service';
 import { SettingsService } from '../settings/settings.service';
+import { UsersService } from '../../users/users.service';
 import {
   CreateInvestmentPlanDto,
   UpdateInvestmentPlanDto,
@@ -23,6 +24,9 @@ import {
   AddInterestDto,
   CreateEmiOrderDto,
   VerifyEmiPaymentDto,
+  SubmitSalesPaymentDto,
+  ReviewSalesPaymentDto,
+  RequestHoldMyGoldEnrollmentDto,
 } from './dto/gold-investment.dto';
 
 @Injectable()
@@ -37,6 +41,7 @@ export class GoldInvestmentService {
     private notificationsService: NotificationsService,
     private emailService: EmailService,
     private settingsService: SettingsService,
+    private usersService: UsersService,
   ) {
     this.razorpay = new Razorpay({
       key_id: this.configService.get<string>('RAZORPAY_ID'),
@@ -50,11 +55,25 @@ export class GoldInvestmentService {
     return (settings as any)?.metal_rates?.gold || 0;
   }
 
+  /** The monthly amount actually governing a subscription — the customer's own chosen amount, or the plan's default. */
+  private effectiveMonthlyAmount(sub: any, plan: any): number {
+    return sub?.customMonthlyAmount ?? plan?.monthlyAmount ?? 0;
+  }
+
   // ─────────────────────────────────────────────────────────────────
   // INVESTMENT PLANS (Admin CRUD)
   // ─────────────────────────────────────────────────────────────────
 
   async createPlan(dto: CreateInvestmentPlanDto): Promise<InvestmentPlanDocument> {
+    if (dto.planType === PlanType.HOLD_MY_GOLD) {
+      // Hold My Gold is open-ended and staff-collected in-store — no Razorpay plan/mandate at all.
+      return this.planModel.create({ ...dto, durationMonths: undefined, razorpayPlanId: undefined });
+    }
+
+    if (!dto.durationMonths) {
+      throw new BadRequestException('durationMonths is required for a standard plan');
+    }
+
     let rzpPlan: any;
     try {
       rzpPlan = await this.razorpay.plans.create({
@@ -108,14 +127,33 @@ export class GoldInvestmentService {
     return rzpPlan.id;
   }
 
+  /** Creates a one-off Razorpay Plan for a custom monthly amount — NOT persisted onto the
+   *  InvestmentPlan template (which stays reusable at its own default amount). Razorpay bills a
+   *  subscription at whatever amount is on its linked Plan, so a custom amount needs its own. */
+  private async createAdHocRazorpayPlan(plan: InvestmentPlanDocument, amount: number): Promise<string> {
+    const rzpPlan = await this.razorpay.plans.create({
+      period: 'monthly',
+      interval: 1,
+      item: {
+        name: `${plan.name} (₹${amount}/mo)`,
+        amount: Math.round(amount * 100),
+        currency: 'INR',
+        description: plan.description || `RKM Gold Investment – ${plan.durationMonths} months`,
+      },
+    } as any);
+    return rzpPlan.id;
+  }
+
   /** Creates a Razorpay customer + a live autopay subscription mandate against `plan` for the
    *  given customer. Shared by createSubscription (first-time signup) and restartSubscription
-   *  (re-issuing a mandate after the previous one was cancelled). */
+   *  (re-issuing a mandate after the previous one was cancelled). `monthlyAmountOverride` is set
+   *  when the customer chose their own amount instead of the plan's default. */
   private async createRazorpaySubscriptionFor(
     plan: InvestmentPlanDocument,
     customerName: string,
     customerEmail: string | undefined,
     customerPhone: string | undefined,
+    monthlyAmountOverride?: number,
   ): Promise<{ rzpSub: any; rzpCustomer: any }> {
     let rzpCustomer: any;
     try {
@@ -128,11 +166,16 @@ export class GoldInvestmentService {
       this.logger.warn('Razorpay customer create failed; proceeding without customer id');
     }
 
+    const effectiveAmount = monthlyAmountOverride ?? plan.monthlyAmount;
+
     let rzpSub: any;
     try {
-      const totalCount = plan.durationMonths;
+      // This path only ever runs for STANDARD plans (Hold My Gold is blocked before reaching here — see createSubscription/restartSubscription), which always carry a durationMonths.
+      const totalCount = plan.durationMonths || 1;
       const startAt = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60);
-      const razorpayPlanId = await this.ensureLiveRazorpayPlan(plan);
+      const razorpayPlanId = effectiveAmount !== plan.monthlyAmount
+        ? await this.createAdHocRazorpayPlan(plan, effectiveAmount)
+        : await this.ensureLiveRazorpayPlan(plan);
 
       rzpSub = await (this.razorpay.subscriptions as any).create({
         plan_id: razorpayPlanId,
@@ -149,7 +192,7 @@ export class GoldInvestmentService {
           {
             item: {
               name: `First Month Payment - ${plan.name}`,
-              amount: plan.monthlyAmount * 100,
+              amount: effectiveAmount * 100,
               currency: 'INR',
             },
           },
@@ -174,11 +217,24 @@ export class GoldInvestmentService {
   }
 
   async updatePlan(id: string, dto: UpdateInvestmentPlanDto): Promise<InvestmentPlanDocument> {
-    const plan = await this.planModel.findByIdAndUpdate(id, dto, { new: true }).exec();
+    const existing = await this.planModel.findById(id).exec();
+    if (!existing) throw new NotFoundException('Investment plan not found');
+    const planType = dto.planType ?? existing.planType;
+
+    const set: any = { ...dto };
+    const update: any = { $set: set };
+    if (planType === PlanType.HOLD_MY_GOLD) {
+      delete set.durationMonths;
+      update.$unset = { durationMonths: 1 };
+    }
+
+    const plan = await this.planModel.findByIdAndUpdate(id, update, { new: true }).exec();
     if (!plan) throw new NotFoundException('Investment plan not found');
-    // Keep the displayed Razorpay id honest: heals it here too (not just at subscribe time)
-    // so admins see a valid, current-mode id immediately after saving.
-    await this.ensureLiveRazorpayPlan(plan);
+    if (plan.planType !== PlanType.HOLD_MY_GOLD) {
+      // Keep the displayed Razorpay id honest: heals it here too (not just at subscribe time)
+      // so admins see a valid, current-mode id immediately after saving.
+      await this.ensureLiveRazorpayPlan(plan);
+    }
     return plan;
   }
 
@@ -192,10 +248,91 @@ export class GoldInvestmentService {
   // SUBSCRIPTIONS
   // ─────────────────────────────────────────────────────────────────
 
+  /** Public config so the customer-facing Hold My Gold section can show the tiered redemption %
+   *  before a lead is submitted. No longer a classifier — planType on the InvestmentPlan decides
+   *  that; these tiers only affect the cash-benefit % used at redemption. */
+  async getHoldMyGoldConfig(): Promise<{ threshold: number; tiers: { minAmount: number; maxAmount: number | null; discountPercent: number }[] }> {
+    const settings = await this.settingsService.get();
+    return {
+      threshold: (settings as any)?.hold_my_gold_threshold ?? 25000,
+      tiers: (settings as any)?.hold_my_gold_tiers ?? [],
+    };
+  }
+
+  /** Validates a custom amount against the plan's floor (if provided) and resolves the effective amount + category. */
+  private resolveCustomAmount(plan: InvestmentPlanDocument, requested?: number): { customMonthlyAmount?: number; planCategory: PlanCategory } {
+    let customMonthlyAmount: number | undefined;
+    if (requested != null) {
+      const floor = plan.minMonthlyAmount ?? plan.monthlyAmount;
+      if (requested < floor) {
+        throw new BadRequestException(`Monthly amount must be at least ₹${floor} for this plan`);
+      }
+      customMonthlyAmount = requested;
+    }
+    const planCategory = plan.planType === PlanType.HOLD_MY_GOLD ? PlanCategory.HOLD_MY_GOLD : PlanCategory.STANDARD;
+    return { customMonthlyAmount, planCategory };
+  }
+
+  /**
+   * Admin/manager enrolls a customer in-store — active immediately, no Razorpay mandate at all.
+   * Payments are tracked entirely via markCashPayment/applyCashPayment going forward, same as any
+   * subscription whose autopay has stopped (requiresManualPayment: true from day one).
+   */
+  async enrollSubscription(dto: CreateSubscriptionDto): Promise<SubscriptionDocument> {
+    const plan = await this.planModel.findById(dto.planId).exec();
+    if (!plan) throw new NotFoundException('Investment plan not found');
+    if (!plan.isActive) throw new BadRequestException('This plan is no longer active');
+
+    const existingActiveForPlan = await this.subModel.findOne({
+      $or: [
+        { customerEmail: dto.customerEmail },
+        { customerPhone: dto.customerPhone },
+      ],
+      plan: plan._id,
+      status: { $in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.HALTED] },
+    }).exec();
+    if (existingActiveForPlan) {
+      throw new BadRequestException('This customer already has an active subscription for this plan.');
+    }
+
+    const { customMonthlyAmount, planCategory } = this.resolveCustomAmount(plan, dto.customMonthlyAmount);
+
+    const startedAt = new Date();
+    let maturesAt: Date | undefined;
+    if (plan.durationMonths) {
+      maturesAt = new Date(startedAt);
+      maturesAt.setMonth(maturesAt.getMonth() + plan.durationMonths);
+    }
+
+    const sub = await this.subModel.create({
+      plan: plan._id,
+      customerName: dto.customerName,
+      customerEmail: dto.customerEmail,
+      customerPhone: dto.customerPhone,
+      status: SubscriptionStatus.ACTIVE,
+      customMonthlyAmount: customMonthlyAmount ?? null,
+      planCategory,
+      amountAccumulated: 0,
+      interestAccumulated: 0,
+      startedAt,
+      maturesAt,
+      installmentsPaid: 0,
+      paymentLedger: [],
+      requiresManualPayment: true,
+      whatsappRemindersCount: 0,
+    });
+
+    this.logger.log(`Subscription ${sub._id} enrolled in-store for ${dto.customerName} (${plan.name})`);
+    return sub.populate('plan');
+  }
+
   async createSubscription(dto: CreateSubscriptionDto): Promise<any> {
     const plan = await this.planModel.findById(dto.planId).exec();
     if (!plan) throw new NotFoundException('Investment plan not found');
     if (!plan.isActive) throw new BadRequestException('This plan is no longer active');
+    if (plan.planType === PlanType.HOLD_MY_GOLD) {
+      throw new BadRequestException('Hold My Gold plans are enrolled in-store — please visit or contact an RKM Jewellers store.');
+    }
 
     const existingActiveForPlan = await this.subModel.findOne({
       $or: [
@@ -219,13 +356,16 @@ export class GoldInvestmentService {
       status: SubscriptionStatus.PENDING,
     }).exec();
 
+    const { customMonthlyAmount, planCategory } = this.resolveCustomAmount(plan, dto.customMonthlyAmount);
+
     const { rzpSub, rzpCustomer } = await this.createRazorpaySubscriptionFor(
-      plan, dto.customerName, dto.customerEmail, dto.customerPhone,
+      plan, dto.customerName, dto.customerEmail, dto.customerPhone, customMonthlyAmount,
     );
 
     const startedAt = new Date();
     const maturesAt = new Date(startedAt);
-    maturesAt.setMonth(maturesAt.getMonth() + plan.durationMonths);
+    // Guaranteed present — Hold My Gold plans are rejected above, before this point.
+    maturesAt.setMonth(maturesAt.getMonth() + (plan.durationMonths as number));
 
     const sub = await this.subModel.create({
       plan: plan._id,
@@ -235,6 +375,8 @@ export class GoldInvestmentService {
       razorpaySubscriptionId: rzpSub.id,
       razorpayCustomerId: rzpCustomer?.id,
       status: SubscriptionStatus.PENDING,
+      customMonthlyAmount: customMonthlyAmount ?? null,
+      planCategory,
       amountAccumulated: 0,
       interestAccumulated: 0,
       startedAt,
@@ -286,7 +428,7 @@ export class GoldInvestmentService {
     // Cancelled (or resume failed above) — issue a fresh mandate, carrying the customer's
     // existing progress forward so a bank-side mandate failure never costs them balance.
     const { rzpSub, rzpCustomer } = await this.createRazorpaySubscriptionFor(
-      plan, sub.customerName, sub.customerEmail, sub.customerPhone,
+      plan, sub.customerName, sub.customerEmail, sub.customerPhone, sub.customMonthlyAmount ?? undefined,
     );
 
     const newSub = await this.subModel.create({
@@ -297,6 +439,8 @@ export class GoldInvestmentService {
       razorpaySubscriptionId: rzpSub.id,
       razorpayCustomerId: rzpCustomer?.id,
       status: SubscriptionStatus.PENDING,
+      customMonthlyAmount: sub.customMonthlyAmount ?? null,
+      planCategory: sub.planCategory,
       amountAccumulated: sub.amountAccumulated,
       interestAccumulated: sub.interestAccumulated,
       bonusInterest: sub.bonusInterest,
@@ -342,7 +486,7 @@ export class GoldInvestmentService {
         if ((rzpSub.paid_count > 0 || dto.razorpay_payment_id) && sub.installmentsPaid === 0) {
           sub.installmentsPaid = Math.max(1, rzpSub.paid_count || 1);
           const plan = sub.plan as any;
-          const monthlyAmount = plan.monthlyAmount || 0;
+          const monthlyAmount = this.effectiveMonthlyAmount(sub, plan);
           sub.amountAccumulated = monthlyAmount * sub.installmentsPaid;
 
           // Add first payment to ledger
@@ -378,74 +522,10 @@ export class GoldInvestmentService {
   // full amount to us upfront exactly like any other payment method)
   // ─────────────────────────────────────────────────────────────────
 
-  async createEmiOrder(dto: CreateEmiOrderDto): Promise<any> {
-    const plan = await this.planModel.findById(dto.planId).exec();
-    if (!plan) throw new NotFoundException('Investment plan not found');
-    if (!plan.isActive) throw new BadRequestException('This plan is no longer active');
-
-    const existingActiveForPlan = await this.subModel.findOne({
-      $or: [
-        { customerEmail: dto.customerEmail },
-        { customerPhone: dto.customerPhone },
-      ],
-      plan: plan._id,
-      status: { $in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.HALTED] },
-    }).exec();
-
-    if (existingActiveForPlan) {
-      throw new BadRequestException('You already have an active subscription for this plan. You cannot set up another one until it completes.');
-    }
-
-    await this.subModel.deleteMany({
-      $or: [
-        { customerEmail: dto.customerEmail },
-        { customerPhone: dto.customerPhone },
-      ],
-      plan: plan._id,
-      status: SubscriptionStatus.PENDING,
-    }).exec();
-
-    const totalAmount = plan.monthlyAmount * plan.durationMonths;
-
-    let order: any;
-    try {
-      order = await this.razorpay.orders.create({
-        amount: Math.round(totalAmount * 100),
-        currency: 'INR',
-        payment_capture: true,
-        notes: {
-          plan_name: plan.name,
-          customer_name: dto.customerName,
-          customer_phone: dto.customerPhone || '',
-        },
-      } as any);
-    } catch (err) {
-      this.logger.error('Razorpay EMI order creation failed', err);
-      throw new BadRequestException(`Razorpay error: ${err.error?.description || err.message}`);
-    }
-
-    const sub = await this.subModel.create({
-      plan: plan._id,
-      customerName: dto.customerName,
-      customerEmail: dto.customerEmail,
-      customerPhone: dto.customerPhone,
-      razorpayOrderId: order.id,
-      paymentMode: PaymentMode.EMI,
-      status: SubscriptionStatus.PENDING,
-      amountAccumulated: 0,
-      interestAccumulated: 0,
-      installmentsPaid: 0,
-      paymentLedger: [],
-      requiresManualPayment: false,
-      whatsappRemindersCount: 0,
-    });
-
-    return {
-      subscription: sub,
-      order,
-      amount: totalAmount,
-      razorpayKey: this.configService.get<string>('RAZORPAY_ID'),
-    };
+  /** Disabled going forward — EMI plans are retired in favour of Autopay + manual/sales cash marking.
+   *  verifyEmiPayment() below is left intact so any order created before this change can still complete. */
+  async createEmiOrder(_dto: CreateEmiOrderDto): Promise<any> {
+    throw new BadRequestException('EMI sign-ups are no longer available. Please use Autopay.');
   }
 
   async verifyEmiPayment(dto: VerifyEmiPaymentDto) {
@@ -546,6 +626,7 @@ export class GoldInvestmentService {
   async updateSubscription(id: string, dto: UpdateSubscriptionDto) {
     const update: any = {};
     if (dto.adminNotes !== undefined) update.adminNotes = dto.adminNotes;
+    if (dto.makingChargeWaiverEnabled !== undefined) update.makingChargeWaiverEnabled = dto.makingChargeWaiverEnabled;
     if (dto.redeemed !== undefined) {
       if (dto.redeemed) {
         // Marking a plan redeemed pays out its balance same as redeemFromSubscription — it
@@ -572,58 +653,79 @@ export class GoldInvestmentService {
   // CASH PAYMENT MARKING (Manager/Admin)
   // ─────────────────────────────────────────────────────────────────
 
-  async markCashPayment(id: string, dto: MarkCashPaymentDto): Promise<SubscriptionDocument> {
-    const sub = await this.subModel.findById(id).populate('plan').exec();
-    if (!sub) throw new NotFoundException('Subscription not found');
-
-    const plan = sub.plan as any;
+  /** Validates a subscription is in a payable state and the given month isn't already settled or pending review. */
+  private assertMonthPayable(sub: SubscriptionDocument, plan: any, month: number) {
     if (!plan) throw new BadRequestException('Subscription has no associated plan');
-
     if (sub.status === SubscriptionStatus.COMPLETED) {
       throw new BadRequestException('This subscription is already completed');
     }
     if (sub.status === SubscriptionStatus.PENDING) {
       throw new BadRequestException('Subscription is still pending activation');
     }
-
-    // Prevent duplicate month marking
-    const alreadyPaid = sub.paymentLedger?.some(e => e.month === dto.month);
+    const alreadyPaid = sub.paymentLedger?.some(e => e.month === month);
     if (alreadyPaid) {
-      throw new BadRequestException(`Month ${dto.month} has already been marked as paid`);
+      throw new BadRequestException(`Month ${month} has already been marked as paid`);
     }
+    const alreadyPending = sub.pendingPayments?.some(e => e.month === month && e.status === PendingPaymentStatus.PENDING);
+    if (alreadyPending) {
+      throw new BadRequestException(`Month ${month} already has a payment awaiting approval`);
+    }
+  }
 
-    const monthlyAmount = plan.monthlyAmount || 0;
+  /**
+   * Applies a settled cash payment to a subscription's ledger — appends the entry, advances
+   * installments/amount/interest, auto-completes if this was the last month, and pauses any
+   * live autopay mandate for the covered cycle. Shared by markCashPayment (direct admin/manager
+   * entry) and reviewSalesPayment's approve path (sales-submitted, then admin/manager-approved).
+   */
+  private async applyCashPayment(
+    sub: SubscriptionDocument,
+    plan: any,
+    opts: {
+      month: number;
+      staffId?: string;
+      note?: string;
+      submittedBy?: string;
+      submittedByName?: string;
+      approvedBy?: string;
+      approvedByName?: string;
+    },
+  ): Promise<{ entry: Subscription['paymentLedger'][number] }> {
+    const monthlyAmount = this.effectiveMonthlyAmount(sub, plan);
     const annualRate = plan.interestRate || 0;
     const monthlyRate = annualRate / 12 / 100;
 
     const goldRate = await this.currentGoldRate();
     const gramsCredited = goldRate > 0 ? monthlyAmount / goldRate : 0;
 
-    sub.paymentLedger = [
-      ...(sub.paymentLedger || []),
-      {
-        month: dto.month,
-        amount: monthlyAmount,
-        date: new Date(),
-        type: 'cash',
-        staffId: dto.staffId,
-        note: dto.note,
-        goldRateAtPayment: goldRate,
-        gramsCredited,
-      },
-    ];
+    const entry = {
+      month: opts.month,
+      amount: monthlyAmount,
+      date: new Date(),
+      type: 'cash' as const,
+      staffId: opts.staffId,
+      note: opts.note,
+      goldRateAtPayment: goldRate,
+      gramsCredited,
+      submittedBy: opts.submittedBy as any,
+      submittedByName: opts.submittedByName,
+      approvedBy: opts.approvedBy as any,
+      approvedByName: opts.approvedByName,
+    };
+
+    sub.paymentLedger = [...(sub.paymentLedger || []), entry];
     sub.goldGramsAccumulated = (sub.goldGramsAccumulated || 0) + gramsCredited;
 
     sub.installmentsPaid += 1;
     sub.amountAccumulated += monthlyAmount;
     sub.interestAccumulated = sub.amountAccumulated * monthlyRate * sub.installmentsPaid;
 
-    // Mark as completed if all months are now paid
-    if (sub.installmentsPaid >= plan.durationMonths) {
+    // Mark as completed if all months are now paid (open-ended plans have no durationMonths, so never auto-complete here)
+    if (plan.durationMonths && sub.installmentsPaid >= plan.durationMonths) {
       sub.status = SubscriptionStatus.COMPLETED;
       sub.endedAt = new Date();
       sub.interestStopped = false;
-      this.logger.log(`Subscription ${id} marked COMPLETED after cash payment of month ${dto.month}`);
+      this.logger.log(`Subscription ${sub._id} marked COMPLETED after cash payment of month ${opts.month}`);
     } else if (
       sub.status === SubscriptionStatus.ACTIVE &&
       sub.paymentMode === PaymentMode.AUTOPAY &&
@@ -635,15 +737,173 @@ export class GoldInvestmentService {
       try {
         const rzpSub = await (this.razorpay.subscriptions as any).fetch(sub.razorpaySubscriptionId);
         await (this.razorpay.subscriptions as any).pause(sub.razorpaySubscriptionId, { pause_at: 'now' });
-        sub.pausedForCashMonth = dto.month;
+        sub.pausedForCashMonth = opts.month;
         sub.autopayResumeAt = rzpSub.current_end ? new Date(rzpSub.current_end * 1000) : null;
-        this.logger.log(`Paused autopay for subscription ${id} — cash covers month ${dto.month}, resumes ${sub.autopayResumeAt}`);
+        this.logger.log(`Paused autopay for subscription ${sub._id} — cash covers month ${opts.month}, resumes ${sub.autopayResumeAt}`);
       } catch (err) {
-        this.logger.error(`Failed to pause autopay for subscription ${id} after cash payment`, err);
+        this.logger.error(`Failed to pause autopay for subscription ${sub._id} after cash payment`, err);
       }
     }
 
+    return { entry };
+  }
+
+  async markCashPayment(id: string, dto: MarkCashPaymentDto): Promise<SubscriptionDocument> {
+    const sub = await this.subModel.findById(id).populate('plan').exec();
+    if (!sub) throw new NotFoundException('Subscription not found');
+
+    const plan = sub.plan as any;
+    this.assertMonthPayable(sub, plan, dto.month);
+
+    const { entry } = await this.applyCashPayment(sub, plan, { month: dto.month, staffId: dto.staffId, note: dto.note });
     await sub.save();
+
+    this.notifyPaymentReceived(sub, plan, entry, { source: 'manual' });
+    return sub;
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // SALES SUBMIT / ADMIN-MANAGER APPROVE
+  // ─────────────────────────────────────────────────────────────────
+
+  /** Sales rep submits a cash payment they collected in the field — stays pending until admin/manager approves it. */
+  async submitSalesPayment(id: string, dto: SubmitSalesPaymentDto, salesUserId: string): Promise<SubscriptionDocument> {
+    const sub = await this.subModel.findById(id).populate('plan').exec();
+    if (!sub) throw new NotFoundException('Subscription not found');
+
+    const plan = sub.plan as any;
+    this.assertMonthPayable(sub, plan, dto.month);
+
+    const salesUser = await this.usersService.findById(salesUserId);
+
+    sub.pendingPayments = [
+      ...(sub.pendingPayments || []),
+      {
+        month: dto.month,
+        submittedBy: salesUserId as any,
+        submittedByName: salesUser.name,
+        note: dto.note,
+        status: PendingPaymentStatus.PENDING,
+      } as any,
+    ];
+    await sub.save();
+
+    this.logger.log(`Sales rep ${salesUser.name} submitted month ${dto.month} for subscription ${id}, awaiting approval`);
+    return sub;
+  }
+
+  /** Flattened queue of every subscription's pending (unreviewed) sales-submitted payments. */
+  async listPendingPayments() {
+    const subs = await this.subModel
+      .find({ 'pendingPayments.status': PendingPaymentStatus.PENDING })
+      .populate('plan')
+      .sort({ createdAt: -1 })
+      .exec();
+
+    const out: any[] = [];
+    for (const sub of subs) {
+      const plan = sub.plan as any;
+      for (const entry of sub.pendingPayments || []) {
+        if (entry.status !== PendingPaymentStatus.PENDING) continue;
+        out.push({
+          subscriptionId: String(sub._id),
+          entryId: String((entry as any)._id),
+          customerName: sub.customerName,
+          customerPhone: sub.customerPhone,
+          planName: plan?.name,
+          month: entry.month,
+          note: entry.note,
+          submittedByName: entry.submittedByName,
+          submittedAt: (entry as any).createdAt,
+        });
+      }
+    }
+    return out;
+  }
+
+  /** A sales rep's own submitted payments, across all statuses, for their "My Submissions" view. */
+  async listMySubmittedPayments(salesUserId: string) {
+    const subs = await this.subModel
+      .find({ 'pendingPayments.submittedBy': salesUserId })
+      .populate('plan')
+      .sort({ createdAt: -1 })
+      .exec();
+
+    const out: any[] = [];
+    for (const sub of subs) {
+      const plan = sub.plan as any;
+      for (const entry of sub.pendingPayments || []) {
+        if (String(entry.submittedBy) !== String(salesUserId)) continue;
+        out.push({
+          subscriptionId: String(sub._id),
+          entryId: String((entry as any)._id),
+          customerName: sub.customerName,
+          customerPhone: sub.customerPhone,
+          planName: plan?.name,
+          month: entry.month,
+          note: entry.note,
+          status: entry.status,
+          rejectionReason: entry.rejectionReason,
+          submittedAt: (entry as any).createdAt,
+          reviewedAt: entry.reviewedAt,
+        });
+      }
+    }
+    return out;
+  }
+
+  /** Admin/manager approves or rejects a sales-submitted payment. */
+  async reviewSalesPayment(id: string, entryId: string, dto: ReviewSalesPaymentDto, reviewerId: string): Promise<SubscriptionDocument> {
+    const sub = await this.subModel.findById(id).populate('plan').exec();
+    if (!sub) throw new NotFoundException('Subscription not found');
+
+    const entry = (sub.pendingPayments || []).find(e => String((e as any)._id) === entryId);
+    if (!entry) throw new NotFoundException('Pending payment not found');
+    if (entry.status !== PendingPaymentStatus.PENDING) {
+      throw new BadRequestException('This payment has already been reviewed');
+    }
+
+    const reviewer = await this.usersService.findById(reviewerId);
+    entry.reviewedBy = reviewerId as any;
+    entry.reviewedByName = reviewer.name;
+    entry.reviewedAt = new Date();
+
+    if (dto.action === 'reject') {
+      if (!dto.rejectionReason) throw new BadRequestException('A rejection reason is required');
+      entry.status = PendingPaymentStatus.REJECTED;
+      entry.rejectionReason = dto.rejectionReason;
+      await sub.save();
+
+      this.notificationsService.sendToUser(
+        String(entry.submittedBy),
+        'Investment Payment Rejected',
+        `Month ${entry.month} for ${sub.customerName} was rejected: ${dto.rejectionReason}`,
+        { type: 'investment_payment_rejected', subscriptionId: String(sub._id), entryId },
+      ).catch(err => this.logger.error('Failed to notify sales rep of rejected payment', err));
+
+      return sub;
+    }
+
+    const plan = sub.plan as any;
+    entry.status = PendingPaymentStatus.APPROVED;
+    this.assertMonthPayable(sub, plan, entry.month);
+
+    const { entry: ledgerEntry } = await this.applyCashPayment(sub, plan, {
+      month: entry.month,
+      staffId: reviewerId,
+      note: entry.note,
+      submittedBy: String(entry.submittedBy),
+      submittedByName: entry.submittedByName,
+      approvedBy: reviewerId,
+      approvedByName: reviewer.name,
+    });
+    await sub.save();
+
+    this.notifyPaymentReceived(sub, plan, ledgerEntry, {
+      source: 'sales_approved',
+      staffName: entry.submittedByName,
+      approverName: reviewer.name,
+    });
     return sub;
   }
 
@@ -661,8 +921,8 @@ export class GoldInvestmentService {
     }
 
     const plan = sub.plan as any;
-    const pendingMonths = (plan?.durationMonths || 0) - (sub.installmentsPaid || 0);
-    const monthlyAmount = plan?.monthlyAmount || 0;
+    const pendingMonths = Math.max(0, (plan?.durationMonths || 0) - (sub.installmentsPaid || 0));
+    const monthlyAmount = this.effectiveMonthlyAmount(sub, plan);
     const pendingAmount = pendingMonths * monthlyAmount;
 
     // Create or reuse payment link
@@ -774,7 +1034,7 @@ export class GoldInvestmentService {
     const whatsappApiUrl = this.configService.get<string>('WHATSAPP_API_URL');
     const whatsappToken = this.configService.get<string>('WHATSAPP_API_TOKEN');
     const link = shortUrl || 'Please contact RKM Jewellers to set up your new autopay mandate.';
-    const message = this.buildMandateAuthorizationMessage(sub.customerName, plan?.name, plan?.monthlyAmount || 0, link);
+    const message = this.buildMandateAuthorizationMessage(sub.customerName, plan?.name, this.effectiveMonthlyAmount(sub, plan), link);
 
     if (whatsappApiUrl && whatsappToken) {
       await this.callWhatsappApi(whatsappApiUrl, whatsappToken, sub.customerPhone, message);
@@ -831,7 +1091,7 @@ export class GoldInvestmentService {
     if (!sub) return { received: true };
 
     const plan = sub.plan as any;
-    const monthlyAmount = plan?.monthlyAmount || 0;
+    const monthlyAmount = this.effectiveMonthlyAmount(sub, plan);
     const annualRate = plan?.interestRate || 0;
     const monthlyRate = annualRate / 12 / 100;
 
@@ -852,19 +1112,21 @@ export class GoldInvestmentService {
         sub.goldGramsAccumulated = (sub.goldGramsAccumulated || 0) + gramsCredited;
 
         // Add entry to payment ledger
-        sub.paymentLedger = [
-          ...(sub.paymentLedger || []),
-          {
-            month: sub.installmentsPaid,
-            amount: monthlyAmount,
-            date: new Date(),
-            type: 'autopay',
-            razorpayPaymentId: paymentId,
-            goldRateAtPayment: goldRate,
-            gramsCredited,
-          },
-        ];
-        if (isFirstPayment) this.notifyInvestmentPlanStarted(sub, plan);
+        const chargedEntry = {
+          month: sub.installmentsPaid,
+          amount: monthlyAmount,
+          date: new Date(),
+          type: 'autopay' as const,
+          razorpayPaymentId: paymentId,
+          goldRateAtPayment: goldRate,
+          gramsCredited,
+        };
+        sub.paymentLedger = [...(sub.paymentLedger || []), chargedEntry];
+        if (isFirstPayment) {
+          this.notifyInvestmentPlanStarted(sub, plan);
+        } else {
+          this.notifyPaymentReceived(sub, plan, chargedEntry, { source: 'autopay' });
+        }
         break;
       }
 
@@ -914,7 +1176,7 @@ export class GoldInvestmentService {
   /** Emails the customer and every admin once a plan's first installment lands — the moment it becomes a real, active investment. */
   private notifyInvestmentPlanStarted(sub: SubscriptionDocument, plan: any) {
     const planName = plan?.name || 'Gold Savings Plan';
-    const monthlyAmount = plan?.monthlyAmount || 0;
+    const monthlyAmount = this.effectiveMonthlyAmount(sub, plan);
     const durationMonths = plan?.durationMonths || 0;
 
     if (sub.customerEmail) {
@@ -943,6 +1205,29 @@ export class GoldInvestmentService {
       .catch(err => this.logger.error(`Failed to notify admins of investment start: ${err?.message}`));
   }
 
+  /** Emails every admin whenever a payment actually lands — direct admin/manager mark, a sales-submitted
+   *  payment being approved, or an autopay charge (month 2 onward; month 1 is covered by the "plan started"
+   *  email above so admins don't get two emails for the same event). */
+  private notifyPaymentReceived(
+    sub: SubscriptionDocument,
+    plan: any,
+    entry: { month: number; amount: number },
+    opts: { source: 'autopay' | 'manual' | 'sales_approved'; staffName?: string; approverName?: string },
+  ) {
+    const html = this.emailService.buildPaymentReceivedAdminHtml({
+      customerName: sub.customerName,
+      customerPhone: sub.customerPhone,
+      planName: plan?.name || 'Gold Savings Plan',
+      month: entry.month,
+      amount: entry.amount,
+      source: opts.source,
+      staffName: opts.staffName,
+      approverName: opts.approverName,
+    });
+    this.emailService.notifyAdminsByEmail('Investment Payment Received | RKM Jewellers', html, { trigger: 'investment_payment_received' })
+      .catch(err => this.logger.error(`Failed to notify admins of payment received: ${err?.message}`));
+  }
+
   // ─────────────────────────────────────────────────────────────────
   // BALANCE & REDEMPTION
   // ─────────────────────────────────────────────────────────────────
@@ -969,7 +1254,7 @@ export class GoldInvestmentService {
     if (!plan) return 0;
     if (!this.isPastRedemptionLockIn(sub)) return 0;
 
-    const monthlyAmount = plan.monthlyAmount || 0;
+    const monthlyAmount = this.effectiveMonthlyAmount(sub, plan);
     const interestPerMonth = monthlyAmount * (plan.interestRate || 0) / 100;
     const totalMonths = plan.durationMonths || 0;
 
@@ -983,14 +1268,31 @@ export class GoldInvestmentService {
     return Math.max(0, principal + interest - redeemed);
   }
 
+  /** Looks up the admin-configured tiered % for a Hold My Gold subscription's effective monthly
+   *  amount (0 if no tier matches or none are configured). */
+  private async getHoldMyGoldDiscountPercent(amount: number): Promise<number> {
+    const settings = await this.settingsService.get();
+    const tiers = ((settings as any)?.hold_my_gold_tiers ?? []) as { minAmount: number; maxAmount: number | null; discountPercent: number }[];
+    const tier = tiers.find(t => amount >= t.minAmount && (t.maxAmount == null || amount <= t.maxAmount));
+    return tier?.discountPercent ?? 0;
+  }
+
   /**
-   * Pure computation of both redemption options against a subscription's current balance —
-   * no persistence. Shared by previewRedemption() (comparison screen) and redeemFromSubscription()
-   * (commit) so the numbers shown to the customer always match what gets saved.
+   * Computes redemption options against a subscription's current balance — no persistence.
+   * Shared by previewRedemption() (comparison screen) and redeemFromSubscription() (commit) so
+   * the numbers shown to the customer always match what gets saved.
+   *
+   * Hold My Gold subscriptions use a tiered cash-style % (by monthly amount range, admin-configured
+   * in Settings) instead of the plan's flat cashBenefitPercent. The Making Charge Waiver option is
+   * only available when the admin has granted it for that specific subscription
+   * (sub.makingChargeWaiverEnabled) — otherwise makingChargeWaiverOption comes back null.
    */
-  private computeRedemptionOptions(sub: any, dto: { amount: number; jewelrySubtotal: number; taxPercentage: number; jewelryGoldWeightGrams?: number; makingChargesOnJewelry?: number }) {
+  private async computeRedemptionOptions(sub: any, dto: { amount: number; jewelrySubtotal: number; taxPercentage: number; jewelryGoldWeightGrams?: number; makingChargesOnJewelry?: number }) {
     const plan = sub.plan as any;
-    const cashBenefitPercent = plan?.cashBenefitPercent || 0;
+    const isHoldMyGold = sub.planCategory === PlanCategory.HOLD_MY_GOLD;
+    const cashBenefitPercent = isHoldMyGold
+      ? await this.getHoldMyGoldDiscountPercent(this.effectiveMonthlyAmount(sub, plan))
+      : (plan?.cashBenefitPercent || 0);
     const goldGramsAccumulated = sub.goldGramsAccumulated || 0;
 
     // Option 1 — Cash Benefit: investment amount + cash benefit both reduce the taxable subtotal.
@@ -1005,6 +1307,10 @@ export class GoldInvestmentService {
       gstAmount: cashGst,
       finalPayableAmount: cashRemainingAmount + cashGst,
     };
+
+    if (isHoldMyGold && !sub.makingChargeWaiverEnabled) {
+      return { cashBenefitOption, makingChargeWaiverOption: null };
+    }
 
     // Option 2 — Making Charge Waiver: waived only on the gold-weight portion the customer's
     // accumulated grams actually cover; investment amount still applies as payment.
@@ -1087,16 +1393,22 @@ export class GoldInvestmentService {
       throw new BadRequestException(`Redemption amount (₹${dto.amount}) exceeds available balance (₹${available.toFixed(0)})`);
     }
 
-    if (dto.redemptionType === RedemptionType.MAKING_CHARGE_WAIVER && !dto.jewelryGoldWeightGrams) {
-      throw new BadRequestException('jewelryGoldWeightGrams is required for the making-charge-waiver redemption option');
+    if (dto.redemptionType === RedemptionType.MAKING_CHARGE_WAIVER) {
+      if (sub.planCategory === PlanCategory.HOLD_MY_GOLD && !sub.makingChargeWaiverEnabled) {
+        throw new BadRequestException('Making charge waiver has not been enabled for this Hold My Gold subscription. Ask an admin to enable it if applicable.');
+      }
+      if (!dto.jewelryGoldWeightGrams) {
+        throw new BadRequestException('jewelryGoldWeightGrams is required for the making-charge-waiver redemption option');
+      }
     }
 
-    const { cashBenefitOption, makingChargeWaiverOption } = this.computeRedemptionOptions(sub, dto);
+    const { cashBenefitOption, makingChargeWaiverOption } = await this.computeRedemptionOptions(sub, dto);
     const chosen = dto.redemptionType === RedemptionType.CASH_BENEFIT ? cashBenefitOption : makingChargeWaiverOption;
+    if (!chosen) throw new BadRequestException('That redemption option is not available for this subscription');
     const goldRateAtRedemption = await this.currentGoldRate();
 
     sub.amountRedeemed = (sub.amountRedeemed || 0) + dto.amount;
-    if (dto.redemptionType === RedemptionType.MAKING_CHARGE_WAIVER) {
+    if (dto.redemptionType === RedemptionType.MAKING_CHARGE_WAIVER && makingChargeWaiverOption) {
       sub.goldGramsAccumulated = Math.max(0, (sub.goldGramsAccumulated || 0) - makingChargeWaiverOption.eligibleGoldGramsUsed);
     }
 
@@ -1112,10 +1424,10 @@ export class GoldInvestmentService {
         saleItemIds: dto.saleItemIds,
         goldRateAtRedemption,
         cashBenefitAmount: dto.redemptionType === RedemptionType.CASH_BENEFIT ? cashBenefitOption.cashBenefitAmount : undefined,
-        eligibleGoldGramsUsed: dto.redemptionType === RedemptionType.MAKING_CHARGE_WAIVER ? makingChargeWaiverOption.eligibleGoldGramsUsed : undefined,
+        eligibleGoldGramsUsed: dto.redemptionType === RedemptionType.MAKING_CHARGE_WAIVER ? makingChargeWaiverOption?.eligibleGoldGramsUsed : undefined,
         jewelryGoldWeightGrams: dto.jewelryGoldWeightGrams,
-        waivedMakingCharges: dto.redemptionType === RedemptionType.MAKING_CHARGE_WAIVER ? makingChargeWaiverOption.waivedMakingCharges : undefined,
-        remainingMakingCharges: dto.redemptionType === RedemptionType.MAKING_CHARGE_WAIVER ? makingChargeWaiverOption.remainingMakingCharges : undefined,
+        waivedMakingCharges: dto.redemptionType === RedemptionType.MAKING_CHARGE_WAIVER ? makingChargeWaiverOption?.waivedMakingCharges : undefined,
+        remainingMakingCharges: dto.redemptionType === RedemptionType.MAKING_CHARGE_WAIVER ? makingChargeWaiverOption?.remainingMakingCharges : undefined,
         gstAmount: chosen.gstAmount,
         finalPayableAmount: chosen.finalPayableAmount,
       },
@@ -1156,17 +1468,23 @@ export class GoldInvestmentService {
   // ─────────────────────────────────────────────────────────────────
 
   async getDashboardStats() {
-    const [total, active, cancelled, completed, halted, manualPending] = await Promise.all([
+    const [total, active, cancelled, completed, halted, manualPending, holdMyGoldActiveCount] = await Promise.all([
       this.subModel.countDocuments(),
       this.subModel.countDocuments({ status: SubscriptionStatus.ACTIVE }),
       this.subModel.countDocuments({ status: SubscriptionStatus.CANCELLED }),
       this.subModel.countDocuments({ status: SubscriptionStatus.COMPLETED }),
       this.subModel.countDocuments({ status: SubscriptionStatus.HALTED }),
       this.subModel.countDocuments({ requiresManualPayment: true }),
+      this.subModel.countDocuments({ planCategory: PlanCategory.HOLD_MY_GOLD, status: SubscriptionStatus.ACTIVE }),
     ]);
 
     const agg = await this.subModel.aggregate([
       { $group: { _id: null, totalAccumulated: { $sum: '$amountAccumulated' }, totalInterest: { $sum: '$interestAccumulated' } } },
+    ]);
+
+    const hmgAgg = await this.subModel.aggregate([
+      { $match: { planCategory: PlanCategory.HOLD_MY_GOLD } },
+      { $group: { _id: null, totalGoldGrams: { $sum: '$goldGramsAccumulated' } } },
     ]);
 
     return {
@@ -1178,6 +1496,19 @@ export class GoldInvestmentService {
       manualPending,
       totalAccumulated: agg[0]?.totalAccumulated || 0,
       totalInterest: agg[0]?.totalInterest || 0,
+      holdMyGoldActiveCount,
+      holdMyGoldGoldGramsAccumulated: hmgAgg[0]?.totalGoldGrams || 0,
     };
+  }
+
+  /** Public lead-capture from the customer-facing Hold My Gold section — no subscription is created
+   *  here; staff follow up and enroll the customer in-store via enrollSubscription(). */
+  async requestHoldMyGoldEnrollment(dto: RequestHoldMyGoldEnrollmentDto): Promise<{ received: boolean }> {
+    await this.notificationsService.notifyAdmins(
+      'Hold My Gold — New Enrollment Request',
+      `${dto.name} (${dto.phone}${dto.email ? `, ${dto.email}` : ''}) wants to start Hold My Gold at ₹${dto.desiredMonthlyAmount}/month. Follow up and enroll them in-store from the Gold Investment dashboard.`,
+      { type: 'hold_my_gold_lead', name: dto.name, phone: dto.phone, desiredMonthlyAmount: String(dto.desiredMonthlyAmount) },
+    ).catch(err => this.logger.error('Hold My Gold lead notify failed', err));
+    return { received: true };
   }
 }

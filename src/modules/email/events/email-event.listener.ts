@@ -42,6 +42,12 @@ export class EmailEventListener {
 
   @OnEvent(SALE_COMPLETED_EVENT, { async: true })
   async onSaleCompleted(payload: SaleCompletedEvent): Promise<void> {
+    if (payload.skipEmail) {
+      // Part of a batch sale — InventoryService sends one consolidated email for the
+      // whole bill instead (see sendConsolidatedSaleEmails). WhatsApp/SMS listeners on
+      // this same event are unaffected since they don't check this flag.
+      return;
+    }
     if (!(await this.shouldSendEmail())) {
       this.logger.log('[EmailListener] Email notifications disabled, skipping sale_completed');
       return;

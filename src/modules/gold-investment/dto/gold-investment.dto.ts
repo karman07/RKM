@@ -1,4 +1,5 @@
 import { IsString, IsNumber, IsOptional, IsBoolean, IsEnum, IsArray, Min, Max } from 'class-validator';
+import { PlanType } from '../schemas/investment-plan.schema';
 
 export enum RedemptionType {
   CASH_BENEFIT = 'cash_benefit',
@@ -13,13 +14,19 @@ export class CreateInvestmentPlanDto {
   @IsOptional()
   description?: string;
 
+  @IsEnum(PlanType)
+  @IsOptional()
+  planType?: PlanType;
+
   @IsNumber()
   @Min(100)
   monthlyAmount: number;
 
+  /** Required for STANDARD plans; must be omitted for HOLD_MY_GOLD (open-ended) — enforced in the service. */
   @IsNumber()
   @Min(1)
-  durationMonths: number;
+  @IsOptional()
+  durationMonths?: number;
 
   @IsNumber()
   @Min(0)
@@ -34,6 +41,12 @@ export class CreateInvestmentPlanDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  /** Floor for a customer's own custom monthly amount on this plan — defaults to monthlyAmount when unset */
+  @IsNumber()
+  @Min(1)
+  @IsOptional()
+  minMonthlyAmount?: number;
 }
 
 export class UpdateInvestmentPlanDto {
@@ -44,6 +57,10 @@ export class UpdateInvestmentPlanDto {
   @IsString()
   @IsOptional()
   description?: string;
+
+  @IsEnum(PlanType)
+  @IsOptional()
+  planType?: PlanType;
 
   @IsNumber()
   @IsOptional()
@@ -64,6 +81,11 @@ export class UpdateInvestmentPlanDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  @IsNumber()
+  @Min(1)
+  @IsOptional()
+  minMonthlyAmount?: number;
 }
 
 export class CreateSubscriptionDto {
@@ -80,6 +102,12 @@ export class CreateSubscriptionDto {
   @IsString()
   @IsOptional()
   customerPhone?: string;
+
+  /** Customer's own chosen monthly amount — as much as they want, floored at the plan's minMonthlyAmount/monthlyAmount */
+  @IsNumber()
+  @Min(1)
+  @IsOptional()
+  customMonthlyAmount?: number;
 }
 
 export class CreateEmiOrderDto {
@@ -117,6 +145,28 @@ export class UpdateSubscriptionDto {
   @IsBoolean()
   @IsOptional()
   redeemed?: boolean;
+
+  /** Admin-granted, per subscription — only meaningful for Hold My Gold subscriptions. */
+  @IsBoolean()
+  @IsOptional()
+  makingChargeWaiverEnabled?: boolean;
+}
+
+/** Public lead-capture from the customer-facing Hold My Gold section — staff follows up in-store. */
+export class RequestHoldMyGoldEnrollmentDto {
+  @IsString()
+  name: string;
+
+  @IsString()
+  phone: string;
+
+  @IsString()
+  @IsOptional()
+  email?: string;
+
+  @IsNumber()
+  @Min(1)
+  desiredMonthlyAmount: number;
 }
 
 export class RedeemBalanceDto {
@@ -202,6 +252,27 @@ export class MarkCashPaymentDto {
   @IsString()
   @IsOptional()
   note?: string;
+}
+
+/** A sales rep submits a cash payment they collected — awaits admin/manager approval before it counts */
+export class SubmitSalesPaymentDto {
+  @IsNumber()
+  @Min(1)
+  month: number;
+
+  @IsString()
+  @IsOptional()
+  note?: string;
+}
+
+/** Admin/manager approves or rejects a sales-submitted payment */
+export class ReviewSalesPaymentDto {
+  @IsEnum(['approve', 'reject'])
+  action: 'approve' | 'reject';
+
+  @IsString()
+  @IsOptional()
+  rejectionReason?: string;
 }
 
 /** Manually credits bonus interest onto a subscription's balance (admin only) */

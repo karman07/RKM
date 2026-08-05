@@ -230,6 +230,25 @@ export class Settings {
    */
   @Prop({ type: Number, min: 0, max: 100, default: 5 })
   prebooking_cancellation_deduction_pct: number;
+
+  // ── Hold My Gold (investment plans) ───────────────────────────────────────────
+
+  /** A gold-investment subscription whose effective monthly amount is at/above this becomes a
+   * "Hold My Gold" plan — a tiered cash-style benefit applies at redemption instead of the
+   * plan's flat cashBenefitPercent, and the making-charge-waiver option is unavailable.
+   */
+  @Prop({ type: Number, min: 0, default: 25000 })
+  hold_my_gold_threshold: number;
+
+  /**
+   * Discount tiers by monthly-amount range, e.g. [{minAmount:25000,maxAmount:30000,discountPercent:2}, ...].
+   * maxAmount: null means "and above". Ranges should not overlap.
+   */
+  @Prop({
+    type: [{ minAmount: Number, maxAmount: Number, discountPercent: Number }],
+    default: [],
+  })
+  hold_my_gold_tiers: { minAmount: number; maxAmount: number | null; discountPercent: number }[];
 }
 
 export const SettingsSchema = SchemaFactory.createForClass(Settings);

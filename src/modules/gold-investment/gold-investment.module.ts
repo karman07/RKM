@@ -9,6 +9,7 @@ import { Subscription, SubscriptionSchema } from './schemas/subscription.schema'
 import { NotificationsModule } from '../notifications/notifications.module';
 import { EmailModule } from '../email/email.module';
 import { SettingsModule } from '../settings/settings.module';
+import { UsersModule } from '../../users/users.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { SettingsModule } from '../settings/settings.module';
     NotificationsModule,
     EmailModule,
     SettingsModule,
+    UsersModule,
   ],
   controllers: [GoldInvestmentController],
   providers: [GoldInvestmentService, GoldInvestmentSchedulerService],

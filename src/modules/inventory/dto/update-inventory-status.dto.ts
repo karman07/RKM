@@ -141,6 +141,7 @@ export class UpdateInventoryStatusDto {
 
   /** Which redemption option the customer chose — required to redeem an investment plan atomically with the sale */
   @IsOptional()
+  @IsEnum(['cash_benefit', 'making_charge_waiver'])
   investment_redemption_type?: 'cash_benefit' | 'making_charge_waiver';
 
   /** Pre-tax subtotal of the bill (all items) — needed to compute the redemption breakdown server-side */

@@ -179,15 +179,11 @@ export class InventoryService {
     });
   }
 
-  /**
-   * Emails the customer (if they have an address on file) and every admin the exact same Tax
-   * Invoice PDF the admin/manager BillModal renders — same layout, same fields — built
-   * server-side via bill-pdf.builder.ts and Puppeteer so it can be sent automatically the
-   * moment a sale completes, without a staff member opening it.
-   */
-  private async sendBillEmail(savedItem: InventoryItemDocument): Promise<void> {
-    const fullItem = await this.inventoryModel
-      .findById(savedItem._id)
+  /** Shared population + pricing-enrichment for the Tax Invoice template — used by both the
+   *  single-item bill email and the consolidated batch bill email so their output matches exactly. */
+  private async fetchAndEnrichSoldItems(itemIds: string[]): Promise<any[]> {
+    const fullItems = await this.inventoryModel
+      .find({ _id: { $in: itemIds } })
       .populate({
         path: 'product_id',
         select: 'name sku metal_type purity stones wastage_percentage net_weight stone_weight stone_type making_charge_type making_charge_rate fixed_making_charge tax_percentage discount_percentage price_override purchase_price max_manager_discount barcode images dimensions extra_charges gross_weight',
@@ -196,9 +192,18 @@ export class InventoryService {
       .populate({ path: 'sold_at_branch_id', select: 'name code city address phone email state pincode gstin' })
       .populate({ path: 'sold_by_user_id', select: 'name email role' })
       .lean();
-    if (!fullItem) return;
+    return this.enrichItemsWithPricing(fullItems);
+  }
 
-    const [enriched] = await this.enrichItemsWithPricing([fullItem]);
+  /**
+   * Emails the customer (if they have an address on file) and every admin the exact same Tax
+   * Invoice PDF the admin/manager BillModal renders — same layout, same fields — built
+   * server-side via bill-pdf.builder.ts and Puppeteer so it can be sent automatically the
+   * moment a sale completes, without a staff member opening it.
+   */
+  private async sendBillEmail(savedItem: InventoryItemDocument): Promise<void> {
+    const [enriched] = await this.fetchAndEnrichSoldItems([String(savedItem._id)]);
+    if (!enriched) return;
 
     let customerRecordId: string | null = null;
     if (savedItem.sold_customer_phone) {
@@ -253,6 +258,126 @@ export class InventoryService {
       itemId: savedItem._id?.toString(),
       attachments,
     });
+  }
+
+  private async shouldSendEmail(): Promise<boolean> {
+    try {
+      const settings = await this.settingsService.get();
+      return (settings as any).email_notifications_enabled !== false;
+    } catch {
+      return true;
+    }
+  }
+
+  private async isEmailTriggerEnabled(trigger: string): Promise<boolean> {
+    try {
+      const settings = await this.settingsService.get();
+      const triggers = (settings as any).email_triggers as Record<string, boolean> | undefined;
+      if (!triggers) return true;
+      return triggers[trigger] !== false;
+    } catch {
+      return true;
+    }
+  }
+
+  /**
+   * Sends ONE Tax Invoice email (customer) + ONE admin notification + ONE purchase-confirmation
+   * email covering every item that shares `saleReference` — used after a batch sale/approval
+   * completes (sellBatch, approveSaleRequestBatch), which pass `{ suppressEmail: true }` to
+   * updateStatus for each item in their loop specifically so those three emails don't fire
+   * once per item. Reuses the exact same buildBillPrintHtml/renderBillPdf pipeline as a single
+   * sale — that template already supports multiple items in one bill, it was just never called
+   * with more than one before.
+   */
+  private async sendConsolidatedSaleEmails(saleReference: string): Promise<void> {
+    if (!saleReference) return;
+
+    const rawItems = await this.inventoryModel.find({ sale_reference: saleReference }).select('_id').lean();
+    if (!rawItems.length) return;
+
+    const enriched = await this.fetchAndEnrichSoldItems(rawItems.map((i: any) => String(i._id)));
+    if (!enriched.length) return;
+
+    const first: any = enriched[0];
+    const date = new Date(first.sold_at || Date.now()).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+
+    let customerRecordId: string | null = null;
+    if (first.sold_customer_phone) {
+      const matches = await this.customersService.searchByPhone(first.sold_customer_phone);
+      customerRecordId = (matches?.[0] as any)?._id?.toString() ?? null;
+    }
+
+    const printHtml = buildBillPrintHtml(enriched, date, customerRecordId);
+    const pdf = await renderBillPdf(printHtml);
+
+    const totalAmount = enriched.reduce((sum: number, it: any) => sum + (it.selling_price || 0), 0);
+    const invoiceNumber = saleReference;
+    const branchName = first.sold_at_branch_id?.name;
+    const soldBy = first.sold_by_user_id?.name;
+    const itemCount = enriched.length;
+    const itemName = itemCount > 1 ? `${itemCount} Items` : (first.product_id?.name || first.unique_item_code);
+    const itemCode = itemCount > 1 ? undefined : first.unique_item_code;
+    const attachments = [{ filename: `Invoice-${invoiceNumber}.pdf`, content: pdf }];
+
+    if (first.sold_customer_email) {
+      const emailHtml = this.emailService.buildBillHtml({
+        customerName: first.sold_customer_name,
+        invoiceNumber,
+        date,
+        amount: totalAmount,
+        branchName,
+        paymentMode: first.payment_mode,
+      });
+      await this.emailService.sendMail({
+        to: first.sold_customer_email,
+        toName: first.sold_customer_name,
+        subject: `Tax Invoice ${invoiceNumber} | RKM Jewellers`,
+        html: emailHtml,
+        trigger: 'sale_bill',
+        saleReference,
+        attachments,
+      });
+    }
+
+    const adminHtml = this.emailService.buildSaleAdminHtml({
+      customerName: first.sold_customer_name,
+      customerPhone: first.sold_customer_phone,
+      itemName,
+      itemCode,
+      saleReference,
+      amount: totalAmount,
+      branchName,
+      paymentMode: first.payment_mode,
+      soldBy,
+    });
+    await this.emailService.notifyAdminsByEmail(`New Sale Completed — ${invoiceNumber} | RKM Jewellers`, adminHtml, {
+      trigger: 'sale_bill',
+      saleReference,
+      attachments,
+    });
+
+    // Purchase-confirmation ("Thank You") email — normally sent per item by the event
+    // listener; sent once here instead, honoring the same settings toggles it would have.
+    if (first.sold_customer_email && await this.shouldSendEmail() && await this.isEmailTriggerEnabled('sale_completed')) {
+      const confirmationHtml = this.emailService.buildSaleConfirmationHtml({
+        customerName: first.sold_customer_name,
+        itemName,
+        itemCode,
+        saleReference,
+        amount: totalAmount,
+        branchName,
+        paymentMode: first.payment_mode,
+        fromName: this.emailService.fromDisplayName,
+      });
+      await this.emailService.sendMail({
+        to: first.sold_customer_email,
+        toName: first.sold_customer_name,
+        subject: `Thank You For Your Purchase — ${invoiceNumber} | RKM Jewellers`,
+        html: confirmationHtml,
+        trigger: 'sale_completed',
+        saleReference,
+      });
+    }
   }
 
   /** Replicates ProductsService.normalizePurityRates for use without circular dependency. */
@@ -1357,6 +1482,7 @@ export class InventoryService {
     requestingUserId?: string,
     requestingUserBranchId?: string,
     requestingUserRole?: string,
+    opts?: { suppressEmail?: boolean },
   ): Promise<InventoryItemDocument> {
     this.validateObjectId(id);
 
@@ -1623,11 +1749,16 @@ export class InventoryService {
           amount: savedItem.selling_price,
           branchName: (savedItem as any).sold_at_branch_id?.name || (savedItem as any).branch_id?.name,
           paymentMode: savedItem.payment_mode,
+          skipEmail: opts?.suppressEmail || undefined,
         });
         // Bill email — same Tax Invoice template as the admin/manager BillModal, sent as a PDF attachment.
-        this.sendBillEmail(savedItem).catch(err =>
-          this.logger.error(`[InventoryService] Failed to send bill email: ${err?.message}`),
-        );
+        // Suppressed for batch sales (sellBatch/approveSaleRequestBatch), which send one
+        // consolidated email covering every item in the bill once the whole batch completes.
+        if (!opts?.suppressEmail) {
+          this.sendBillEmail(savedItem).catch(err =>
+            this.logger.error(`[InventoryService] Failed to send bill email: ${err?.message}`),
+          );
+        }
       } else if (dto.status === InventoryStatus.RETURNED) {
         this.eventEmitter.emit(SALE_RETURNED_EVENT, {
           customerPhone: savedItem.sold_customer_phone,
@@ -1738,9 +1869,15 @@ export class InventoryService {
         itemDto.advance_id = dto.advance_id;
         itemDto.advance_making_charges_discount = dto.advance_making_charges_discount;
       }
-      const updated = await this.updateStatus(it.id, itemDto, requestingUserId, requestingUserBranchId, requestingUserRole);
+      const updated = await this.updateStatus(it.id, itemDto, requestingUserId, requestingUserBranchId, requestingUserRole, { suppressEmail: true });
       results.push(updated);
     }
+
+    // One consolidated email for the whole bill, instead of one per item (each updateStatus
+    // call above suppressed its own individual email via suppressEmail).
+    this.sendConsolidatedSaleEmails(sharedReference).catch(err =>
+      this.logger.error(`[InventoryService] Failed to send consolidated batch sale emails: ${err?.message}`),
+    );
 
     return results;
   }
@@ -1854,6 +1991,7 @@ export class InventoryService {
       advance_making_charges_discount?: number;
       payment_splits?: Array<{ mode: string; amount: number; reference?: string }>;
     },
+    opts?: { suppressEmail?: boolean },
   ): Promise<InventoryItemDocument> {
     this.validateObjectId(id);
     const item = await this.inventoryModel.findById(id);
@@ -1912,7 +2050,7 @@ export class InventoryService {
     // redemption) has actually succeeded — otherwise a redemption failure (insufficient balance,
     // locked advance, etc.) would leave the request stuck in an "approved but not sold" limbo
     // that could never be retried, since the pending-status guard above would reject it.
-    const savedItem = await this.updateStatus(id, dto, reviewerId, undefined, reviewerRole);
+    const savedItem = await this.updateStatus(id, dto, reviewerId, undefined, reviewerRole, opts);
 
     (savedItem as any).sale_request_status = 'approved';
     (savedItem as any).sale_request_reviewer = reviewerId && Types.ObjectId.isValid(reviewerId)
@@ -2076,8 +2214,17 @@ export class InventoryService {
         if (overrides?.advance_id) perItemOverrides.advance_id = overrides.advance_id;
         if (overrides?.advance_making_charges_discount != null) perItemOverrides.advance_making_charges_discount = overrides.advance_making_charges_discount;
       }
-      results.push(await this.approveSaleRequest(item._id.toString(), reviewerId, reviewerRole, perItemOverrides));
+      results.push(await this.approveSaleRequest(item._id.toString(), reviewerId, reviewerRole, perItemOverrides, { suppressEmail: true }));
     }
+
+    // One consolidated email for the whole bill, instead of one per item.
+    const sharedRef = (items[0] as any).sale_request_data?.sale_reference;
+    if (sharedRef) {
+      this.sendConsolidatedSaleEmails(sharedRef).catch(err =>
+        this.logger.error(`[InventoryService] Failed to send consolidated batch sale emails: ${err?.message}`),
+      );
+    }
+
     return results;
   }
 

@@ -20,6 +20,9 @@ import {
   MarkCashPaymentDto,
   AddInterestDto,
   VerifyEmiPaymentDto,
+  SubmitSalesPaymentDto,
+  ReviewSalesPaymentDto,
+  RequestHoldMyGoldEnrollmentDto,
 } from './dto/gold-investment.dto';
 
 @Controller('gold-investment')
@@ -44,6 +47,18 @@ export class GoldInvestmentController {
   @Get('plans/public')
   publicPlans() {
     return this.svc.findAllPlans();
+  }
+
+  /** Public — lets the customer-facing signup page show the Hold My Gold threshold/tiers before subscribing. */
+  @Get('hold-my-gold-config')
+  getHoldMyGoldConfig() {
+    return this.svc.getHoldMyGoldConfig();
+  }
+
+  /** Public — lead capture from the customer-facing Hold My Gold section; staff follow up and enroll in-store. */
+  @Post('hold-my-gold/request-enrollment')
+  requestHoldMyGoldEnrollment(@Body() dto: RequestHoldMyGoldEnrollmentDto) {
+    return this.svc.requestHoldMyGoldEnrollment(dto);
   }
 
   @Get('plans/:id')
@@ -76,12 +91,13 @@ export class GoldInvestmentController {
 
   @UseGuards(CustomerJwtAuthGuard)
   @Post('my-subscriptions')
-  subscribeToPlan(@Req() req: any, @Body() dto: { planId: string }) {
+  subscribeToPlan(@Req() req: any, @Body() dto: { planId: string; customMonthlyAmount?: number }) {
     return this.svc.createSubscription({
       planId: dto.planId,
       customerName: req.user.name,
       customerEmail: req.user.email,
       customerPhone: req.user.phone,
+      customMonthlyAmount: dto.customMonthlyAmount,
     });
   }
 
@@ -117,6 +133,14 @@ export class GoldInvestmentController {
     return this.svc.createSubscription(dto);
   }
 
+  /** Admin/manager enrolls a customer in-store — active immediately, no Razorpay mandate. Payments are then marked via mark-payment. */
+  @Post('subscriptions/enroll')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  enrollSubscription(@Body() dto: CreateSubscriptionDto) {
+    return this.svc.enrollSubscription(dto);
+  }
+
   @Get('subscriptions')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
@@ -127,6 +151,22 @@ export class GoldInvestmentController {
     @Query('email') email?: string,
   ) {
     return this.svc.findAllSubscriptions({ status, planId, phone, email });
+  }
+
+  /** Queue of every sales-submitted payment still awaiting review. Registered before `:id` so it isn't swallowed as a param. */
+  @Get('subscriptions/pending-payments')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  listPendingPayments() {
+    return this.svc.listPendingPayments();
+  }
+
+  /** The logged-in sales rep's own submitted payments (any status), for their "My Submissions" view. */
+  @Get('subscriptions/my-submitted-payments')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.SALES)
+  listMySubmittedPayments(@Req() req: any) {
+    return this.svc.listMySubmittedPayments(req.user.userId);
   }
 
   @Get('subscriptions/:id')
@@ -149,6 +189,22 @@ export class GoldInvestmentController {
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   markCashPayment(@Param('id') id: string, @Body() dto: MarkCashPaymentDto) {
     return this.svc.markCashPayment(id, dto);
+  }
+
+  /** Sales rep submits a cash payment they collected — awaits admin/manager approval */
+  @Post('subscriptions/:id/submit-payment')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.SALES)
+  submitSalesPayment(@Param('id') id: string, @Body() dto: SubmitSalesPaymentDto, @Req() req: any) {
+    return this.svc.submitSalesPayment(id, dto, req.user.userId);
+  }
+
+  /** Admin/manager approves or rejects a sales-submitted payment */
+  @Post('subscriptions/:id/pending-payments/:entryId/review')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  reviewSalesPayment(@Param('id') id: string, @Param('entryId') entryId: string, @Body() dto: ReviewSalesPaymentDto, @Req() req: any) {
+    return this.svc.reviewSalesPayment(id, entryId, dto, req.user.userId);
   }
 
   /** Restart a cancelled/halted subscription — resumes the mandate directly if possible, otherwise issues a new one */

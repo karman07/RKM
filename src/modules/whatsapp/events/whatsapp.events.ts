@@ -19,6 +19,10 @@ export interface SaleCompletedEvent {
   amount?: number;
   branchName?: string;
   paymentMode?: string;
+  /** Set when this item was part of a batch sale whose email is sent once, consolidated,
+   *  after the whole batch completes (see InventoryService.sendConsolidatedSaleEmails) —
+   *  the email listener skips its per-item send; WhatsApp/SMS listeners are unaffected. */
+  skipEmail?: boolean;
 }
 
 export interface SaleReturnedEvent {

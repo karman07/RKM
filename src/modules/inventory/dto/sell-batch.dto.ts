@@ -1,7 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   IsArray, ArrayMinSize, ValidateNested, IsMongoId, IsOptional, IsString,
-  MaxLength, IsNumber, Min, IsBoolean,
+  MaxLength, IsNumber, Min, IsBoolean, IsEnum,
 } from 'class-validator';
 
 export class SellBatchItemDto {
@@ -120,6 +120,7 @@ export class SellBatchDto {
   investment_sub_id?: string;
 
   @IsOptional()
+  @IsEnum(['cash_benefit', 'making_charge_waiver'])
   investment_redemption_type?: 'cash_benefit' | 'making_charge_waiver';
 
   @IsOptional()

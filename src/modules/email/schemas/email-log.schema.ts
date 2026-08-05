@@ -11,13 +11,14 @@ export type EmailTrigger =
   | 'sale_reserved'
   | 'advance_created'
   | 'investment_started'
+  | 'investment_payment_received'
   | 'reimbursement_submitted'
   | 'leave_submitted'
   | 'manual';
 
 const EMAIL_TRIGGERS: EmailTrigger[] = [
   'sale_completed', 'sale_bill', 'sale_returned', 'sale_reserved',
-  'advance_created', 'investment_started', 'reimbursement_submitted', 'leave_submitted', 'manual',
+  'advance_created', 'investment_started', 'investment_payment_received', 'reimbursement_submitted', 'leave_submitted', 'manual',
 ];
 
 @Schema({ timestamps: true, collection: 'email_logs' })
