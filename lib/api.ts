@@ -1067,7 +1067,7 @@ export const updateInventoryStatus = (
 
 /** Sells multiple inventory items in one bill — all share a single auto-generated sale_reference. Admin/manager only. */
 export const sellItemsBatch = (payload: {
-  items: { id: string; selling_price?: number }[];
+  items: { id: string; selling_price?: number; manager_discount?: number }[];
   sale_reference?: string;
   sold_by_user_id?: string;
   sold_at_branch_id?: string;

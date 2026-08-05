@@ -2,11 +2,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
-  getPurchaseOrder, updatePurchaseOrder, publishPurchaseOrder,
+  getPurchaseOrder, createPurchaseOrder, updatePurchaseOrder, publishPurchaseOrder,
   getSuppliers, getCategories, getLookupsByType, getBranches,
   getProducts, uploadProductImages, staticUrl,
   type PurchaseOrder, type Supplier, type Category, type Lookup, type Branch, type Product,
 } from '@/lib/api';
+import PrintablePO from './PrintablePO';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type ItemMode = 'new' | 'existing' | 'template';
@@ -142,10 +143,10 @@ export default function PurchaseOrderDetailPage() {
     getLookupsByType('making_charge_type').then(r => setMakingTypes(r || [])).catch(() => {});
   }, []);
 
-  async function loadPO() {
-    if (id === 'new') { setLoading(false); return; }
+  async function loadPOById(targetId: string) {
+    if (targetId === 'new') { setLoading(false); return; }
     try {
-      const data = await getPurchaseOrder(id as string);
+      const data = await getPurchaseOrder(targetId);
       const normalized = {
         ...data,
         supplier_id: (data.supplier_id && typeof data.supplier_id === 'object') ? (data.supplier_id as any)._id : data.supplier_id,
@@ -170,6 +171,10 @@ export default function PurchaseOrderDetailPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function loadPO() {
+    return loadPOById(id as string);
   }
 
   useEffect(() => { loadPO(); }, [id]);
@@ -233,7 +238,11 @@ export default function PurchaseOrderDetailPage() {
   }
 
   // ── Save ──────────────────────────────────────────────────────────────────────
-  async function handleSave() {
+  // Returns the persisted PO's id on success (the freshly-created id when this was
+  // a new draft), or undefined if the save failed — callers that chain into publish
+  // rely on this instead of the route param, which doesn't update until navigation
+  // actually lands.
+  async function handleSave(): Promise<string | undefined> {
     setSaving(true);
     try {
       const payload = {
@@ -248,7 +257,12 @@ export default function PurchaseOrderDetailPage() {
           tax_percentage: (item.taxes || []).reduce((s: number, t: TaxRow) => s + (Number(t.percentage) || 0), 0),
         })),
       };
-      const saved = await updatePurchaseOrder(id as string, payload);
+
+      const isNew = id === 'new';
+      const saved = isNew
+        ? await createPurchaseOrder(payload)
+        : await updatePurchaseOrder(id as string, payload);
+      const resolvedId = (saved as any)?._id as string | undefined;
 
       // Upload any pending images for new products created in previous saves
       for (let i = 0; i < (poForm.items || []).length; i++) {
@@ -260,10 +274,18 @@ export default function PurchaseOrderDetailPage() {
         }
       }
 
-      showToast('Purchase order saved successfully', 'success');
-      loadPO();
+      showToast(isNew ? 'Purchase order created successfully' : 'Purchase order saved successfully', 'success');
+
+      if (isNew && resolvedId) {
+        router.replace(`/dashboard/purchase-orders/${resolvedId}`);
+        await loadPOById(resolvedId);
+      } else {
+        await loadPO();
+      }
+      return resolvedId ?? (id as string);
     } catch (e: any) {
       showToast(e?.message || 'Failed to save changes', 'danger');
+      return undefined;
     } finally {
       setSaving(false);
     }
@@ -274,15 +296,69 @@ export default function PurchaseOrderDetailPage() {
     setPublishing(true);
     setShowPublishModal(false);
     try {
-      await handleSave();
-      await publishPurchaseOrder(id as string);
+      const resolvedId = await handleSave();
+      if (!resolvedId) throw new Error('Save failed — cannot publish');
+      await publishPurchaseOrder(resolvedId);
       showToast('Published to inventory!', 'success');
-      loadPO();
+      router.replace(`/dashboard/purchase-orders/${resolvedId}`);
+      await loadPOById(resolvedId);
     } catch (e: any) {
       showToast(e?.message || 'Publishing failed', 'danger');
     } finally {
       setPublishing(false);
     }
+  }
+
+  // ── Print ─────────────────────────────────────────────────────────────────────
+  function handlePrint() {
+    const el = document.getElementById('printable-po');
+    if (!el) return;
+
+    const printWindow = window.open('', '_blank', 'width=1200,height=850,scrollbars=yes');
+    if (!printWindow) { window.print(); return; } // fallback if popups blocked
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Purchase Order ${poForm.po_number || ''}</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Arial", "Helvetica Neue", sans-serif;
+      font-size: 10px;
+      color: #000;
+      background: #fff;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    @page { size: A4 landscape; margin: 6mm; }
+    @media print {
+      body { background: white !important; }
+      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    }
+    table { border-collapse: collapse; }
+    .hidden { display: block !important; }
+  </style>
+</head>
+<body>
+${el.outerHTML}
+</body>
+</html>`;
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+
+    printWindow.onload = () => {
+      setTimeout(() => {
+        printWindow.focus();
+        printWindow.print();
+        printWindow.close();
+      }, 400);
+    };
   }
 
   const isPublished = po?.status === 'published';
@@ -323,7 +399,7 @@ export default function PurchaseOrderDetailPage() {
           <p className="text-sm text-slate-500 mt-0.5">{totalItems} item{totalItems !== 1 ? 's' : ''} &middot; Total: ₹{fmt(poForm.total_amount || 0)}</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-300 bg-white text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors">
+          <button onClick={handlePrint} className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-300 bg-white text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors">
             <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z" /></svg>
             Print
           </button>
@@ -480,6 +556,8 @@ export default function PurchaseOrderDetailPage() {
           </div>
         </div>
       )}
+
+      <PrintablePO po={poForm} supplier={suppliers.find(s => s._id === (poForm.supplier_id as string)) || null} />
     </div>
   );
 }

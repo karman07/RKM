@@ -7,15 +7,16 @@ import {
 } from 'recharts';
 import {
   TrendingUp, CreditCard, DollarSign, ShoppingBag,
-  ArrowUpRight, Calendar, Building2, Banknote, Repeat, Download, Loader2, Plus, Receipt,
+  ArrowUpRight, Calendar, Building2, Banknote, Repeat, Download, Loader2, Plus, Receipt, Wallet,
 } from 'lucide-react';
 import { useAppTheme } from '@/components/AppThemeContext';
 import { APP_THEME } from '@/lib/theme-constants';
-import { API_BASE, getInventory, fetchAllPages, getAdvanceAnalytics, getMiscPayments, type InventoryItem, type AdvanceAnalytics, type MiscPayment, type CustomerAdvance } from '@/lib/api';
+import { API_BASE, getInventory, fetchAllPages, getAdvanceAnalytics, getMiscPayments, type InventoryItem, type AdvanceAnalytics, type MiscPayment, type CustomerAdvance, type GoldSubscription } from '@/lib/api';
 import { downloadCsv } from '@/lib/export-utils';
 import AddAdvancePaymentModal from '@/components/AddAdvancePaymentModal';
 import AdvanceReceiptModal from '@/components/AdvanceReceiptModal';
 import CreateInvoiceModal from '@/components/CreateInvoiceModal';
+import RecordInvestmentPaymentModal from '@/components/RecordInvestmentPaymentModal';
 import BillModal from '@/components/BillModal';
 import { toast } from 'sonner';
 
@@ -83,6 +84,7 @@ export default function PaymentsPage() {
   const [newAdvanceReceipt, setNewAdvanceReceipt] = useState<CustomerAdvance | null>(null);
   const [showCreateInvoice, setShowCreateInvoice] = useState(false);
   const [newInvoiceItems, setNewInvoiceItems] = useState<InventoryItem[] | null>(null);
+  const [showRecordInvestmentPayment, setShowRecordInvestmentPayment] = useState(false);
 
   useEffect(() => {
     getAdvanceAnalytics(days).then(setAdvanceData).catch(() => setAdvanceData(null));
@@ -118,6 +120,10 @@ export default function PaymentsPage() {
     setNewInvoiceItems(soldItems);
     toast.success(`Invoice created — ${soldItems.length} item${soldItems.length !== 1 ? 's' : ''} billed`);
     loadAnalytics();
+  }
+
+  function handleInvestmentPaymentRecorded(_sub: GoldSubscription) {
+    setShowRecordInvestmentPayment(false);
   }
 
   async function handleExportHistory() {
@@ -236,6 +242,12 @@ export default function PaymentsPage() {
             <Receipt className="w-3.5 h-3.5" /> Create Invoice
           </button>
           <button
+            onClick={() => setShowRecordInvestmentPayment(true)}
+            className="inline-flex items-center gap-2 px-5 py-3 bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-amber-500/20 transition-all"
+          >
+            <Wallet className="w-3.5 h-3.5" /> Record Investment Payment
+          </button>
+          <button
             onClick={handleExportHistory}
             disabled={exporting}
             className="inline-flex items-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-blue-500/20 transition-all disabled:opacity-60"
@@ -255,6 +267,10 @@ export default function PaymentsPage() {
 
       {showCreateInvoice && (
         <CreateInvoiceModal onClose={() => setShowCreateInvoice(false)} onCreated={handleInvoiceCreated} />
+      )}
+
+      {showRecordInvestmentPayment && (
+        <RecordInvestmentPaymentModal onClose={() => setShowRecordInvestmentPayment(false)} onRecorded={handleInvestmentPaymentRecorded} />
       )}
 
       {newInvoiceItems && (

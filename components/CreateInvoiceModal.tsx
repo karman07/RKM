@@ -16,7 +16,8 @@ import { toast } from 'sonner';
 
 interface CartLine {
   item: InventoryItem;
-  price: string;
+  /** Discount % off the item's admin-discounted base price — admins are uncapped here (managers are capped via the manager app's own copy of this modal). */
+  discountPct: string;
 }
 
 interface Props {
@@ -28,17 +29,21 @@ interface Props {
 const fmt = (n: number) => Math.round(n).toLocaleString('en-IN');
 
 /**
- * The floor a manager is allowed to discount down to: reverse out any manager_discount
- * already baked into the live price to get the post-admin-discount base, then apply
- * max_manager_discount to that base. Mirrors the same formula used on the Inventory page.
+ * Reverses out any manager_discount already baked into the live price to get the
+ * post-admin-discount base — the 100% reference point a new discount % is applied against.
+ * Mirrors the same formula used on the Inventory page.
  */
-function floorInfo(item: InventoryItem) {
+function baseInfo(item: InventoryItem) {
   const current = Number(item.live_selling_price ?? item.selling_price) || 0;
   const managerDiscount = Number(item.manager_discount) || 0;
-  const maxManagerDiscount = Number(item.max_manager_discount) || 0;
   const afterAdmin = managerDiscount > 0 && managerDiscount < 100 ? current / (1 - managerDiscount / 100) : current;
-  const floor = maxManagerDiscount > 0 ? afterAdmin * (1 - maxManagerDiscount / 100) : afterAdmin;
-  return { current, managerDiscount, maxManagerDiscount, floor: Math.round(floor) };
+  return { current, managerDiscount, afterAdmin: Math.round(afterAdmin) };
+}
+
+/** Final per-line sale price given a discount % off the item's admin-discounted base. */
+function priceForLine(item: InventoryItem, discountPct: number) {
+  const { afterAdmin } = baseInfo(item);
+  return Math.max(0, Math.round(afterAdmin * (1 - discountPct / 100)));
 }
 
 export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
@@ -255,8 +260,7 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
     void addByBarcode(code);
   }
 
-  const cartTotal = cart.reduce((s, c) => s + (parseFloat(c.price) || 0), 0);
-  const hasBelowFloorLine = cart.some(c => (parseFloat(c.price) || 0) < floorInfo(c.item).floor);
+  const cartTotal = cart.reduce((s, c) => s + priceForLine(c.item, parseFloat(c.discountPct) || 0), 0);
 
   const cartMakingCharges = cart.reduce((sum, c) => sum + ((c.item as any).pricing_breakdown?.making_charges ?? 0), 0);
   const cartTaxableAmount = cart.reduce((sum, c) => sum + ((c.item as any).pricing_breakdown?.taxable_amount ?? 0), 0);
@@ -327,7 +331,7 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
   function addItem(item: InventoryItem) {
     setCart(prev => (prev.some(c => c.item._id === item._id)
       ? prev
-      : [...prev, { item, price: String(Math.round(Number(item.live_selling_price ?? item.selling_price) || 0)) }]));
+      : [...prev, { item, discountPct: '0' }]));
     setQuery('');
     setResults([]);
   }
@@ -336,8 +340,9 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
     setCart(prev => prev.filter(c => c.item._id !== id));
   }
 
-  function updatePrice(id: string, price: string) {
-    setCart(prev => prev.map(c => (c.item._id === id ? { ...c, price } : c)));
+  function updateDiscount(id: string, discountPct: string) {
+    const clamped = Math.max(0, Math.min(100, Number(discountPct) || 0));
+    setCart(prev => prev.map(c => (c.item._id === id ? { ...c, discountPct: discountPct === '' ? '' : String(clamped) } : c)));
   }
 
   async function handleSubmit() {
@@ -347,15 +352,6 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
     if (!customerDraft.phone.trim()) { setError('Customer phone is required.'); return; }
     if (!customerVerified) { setError('Verify the customer\'s phone number (search an existing customer or complete OTP verification) before creating the invoice.'); return; }
     if (!soldAtBranchId) { setError('Select a sale branch.'); return; }
-
-    for (const { item, price } of cart) {
-      const { floor } = floorInfo(item);
-      if ((parseFloat(price) || 0) < floor) {
-        const product = typeof item.product_id === 'object' ? (item.product_id as any) : null;
-        setError(`${product?.name || item.unique_item_code} is priced below the allowed floor of ₹${fmt(floor)}. Raise the price or check the max manager discount.`);
-        return;
-      }
-    }
 
     if (investmentSubId && !redemptionChoice) {
       setError('Choose a redemption option (Cash Benefit or Making Charge Waiver) before confirming the sale.');
@@ -388,7 +384,10 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
       // sellItemsBatch, using the exact same breakdown shown on the comparison screen — the
       // sale fails outright if the redemption fails, instead of silently under-deducting.
       const sold = await sellItemsBatch({
-        items: cart.map(c => ({ id: c.item._id, selling_price: parseFloat(c.price) || undefined })),
+        items: cart.map(c => {
+          const discountPct = parseFloat(c.discountPct) || 0;
+          return { id: c.item._id, selling_price: priceForLine(c.item, discountPct), manager_discount: discountPct };
+        }),
         sold_at_branch_id: soldAtBranchId,
         sold_by_user_id: soldByUserId || undefined,
         sold_customer_name: customerDraft.name,
@@ -510,45 +509,46 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
             <p className="text-xs text-slate-400 font-bold text-center py-6">Search above and add items to start the invoice.</p>
           ) : (
             <div className="space-y-2 border-t border-slate-50 pt-3">
-              {cart.map(({ item, price }) => {
+              {cart.map(({ item, discountPct }) => {
                 const product = typeof item.product_id === 'object' ? item.product_id as any : null;
-                const original = Math.round(Number(item.live_selling_price ?? item.selling_price) || 0);
-                const current = parseFloat(price) || 0;
-                const discountPct = original > 0 && current < original ? ((original - current) / original) * 100 : 0;
-                const { floor, maxManagerDiscount, managerDiscount } = floorInfo(item);
-                const belowFloor = current > 0 && current < floor;
+                const { afterAdmin, managerDiscount: alreadyApplied } = baseInfo(item);
+                const pct = parseFloat(discountPct) || 0;
+                const linePrice = priceForLine(item, pct);
                 return (
                   <div key={item._id} className="py-2 border-b border-slate-50 last:border-0">
                     <div className="flex items-center gap-3">
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-bold text-slate-800 truncate">{product?.name || 'Item'} <span className="text-slate-400 font-medium">#{item.unique_item_code}</span></p>
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
-                          {discountPct > 0 && (
-                            <span className="text-[10px] font-black text-emerald-600">₹{fmt(original)} → {discountPct.toFixed(1)}% off</span>
+                          <span className="text-[10px] font-black text-emerald-600">₹{fmt(afterAdmin)} → ₹{fmt(linePrice)}</span>
+                          {alreadyApplied > 0 && (
+                            <span className="text-[10px] font-bold text-slate-400">{alreadyApplied}% manager discount already on this item</span>
                           )}
-                          <span className="text-[10px] font-bold text-slate-400">
-                            Max discount {maxManagerDiscount}%{managerDiscount > 0 ? ` (${managerDiscount}% already applied)` : ''} · Floor ₹{fmt(floor)}
-                          </span>
                         </div>
                       </div>
-                      <div className="relative w-32 flex-shrink-0">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
-                        <input
-                          type="number"
-                          min={floor}
-                          value={price}
-                          onChange={e => updatePrice(item._id, e.target.value)}
-                          className={`w-full pl-6 pr-2 py-2 bg-slate-50 border rounded-xl text-sm font-black focus:outline-none focus:ring-2 ${belowFloor ? 'border-red-300 text-red-600 focus:ring-red-400' : 'border-slate-200 text-slate-900 focus:ring-blue-500'}`}
-                        />
+                      <div className="flex-shrink-0 w-20">
+                        <label className="block text-[8px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Discount</label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={discountPct}
+                            onChange={e => updateDiscount(item._id, e.target.value)}
+                            className="w-full pl-2 pr-5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">%</span>
+                        </div>
+                      </div>
+                      <div className="flex-shrink-0 w-28 text-right">
+                        <label className="block text-[8px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Sale Price</label>
+                        <p className="text-sm font-black text-slate-900 py-2">₹{fmt(linePrice)}</p>
                       </div>
                       <button type="button" onClick={() => removeItem(item._id)}
                         className="flex-shrink-0 w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center text-red-400 hover:text-red-600 transition-colors">
                         <Trash2 size={13} />
                       </button>
                     </div>
-                    {belowFloor && (
-                      <p className="text-[10px] font-black text-red-500 mt-1">Below the allowed floor of ₹{fmt(floor)} — the max discount on this item is {maxManagerDiscount}%.</p>
-                    )}
                   </div>
                 );
               })}
@@ -803,7 +803,7 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
           <button onClick={onClose} className="flex-1 py-3.5 border border-slate-200 rounded-2xl text-sm font-bold text-slate-500 hover:bg-slate-50 transition-all">
             Cancel
           </button>
-          <button onClick={handleSubmit} disabled={submitting || cart.length === 0 || hasBelowFloorLine || !customerVerified || Boolean(investmentSubId && (!redemptionChoice || investmentAmount <= 0))}
+          <button onClick={handleSubmit} disabled={submitting || cart.length === 0 || !customerVerified || Boolean(investmentSubId && (!redemptionChoice || investmentAmount <= 0))}
             className="flex-[2] py-3.5 rounded-2xl text-white text-sm font-black bg-blue-600 hover:bg-blue-700 transition-all disabled:opacity-40 flex items-center justify-center gap-2">
             {submitting && <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
             {submitting ? 'Creating…' : `Create Invoice (${cart.length})`}
