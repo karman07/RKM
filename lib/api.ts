@@ -1034,7 +1034,7 @@ export const previewGoldRedemption = (id: string, data: RedemptionPreviewInput) 
   request<RedemptionPreview>(`/gold-investment/subscriptions/${id}/redeem/preview`, { method: 'POST', body: JSON.stringify(data) });
 
 export const redeemGoldSubscription = (id: string, data: RedemptionPreviewInput & { redemptionType: RedemptionType; saleReference?: string; note?: string; saleItemIds?: string[] }) =>
-  request<GoldBalance>(`/gold-investment/subscriptions/${id}/redeem`, { method: 'POST', body: JSON.stringify(data) });
+  request<GoldSubscription>(`/gold-investment/subscriptions/${id}/redeem`, { method: 'POST', body: JSON.stringify(data) });
 
 export const updateInventoryStatus = (
   id: string,
