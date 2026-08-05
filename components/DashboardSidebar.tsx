@@ -32,7 +32,9 @@ const NAV_ITEMS = [
   {
     id: 'plans', label: 'Investment Plans', href: '/dashboard/plans',
     icon: 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6',
-    sub: [],
+    sub: [
+      { label: 'Record Payment', href: '/dashboard/investments' },
+    ],
   },
   {
     id: 'enquiries', label: 'Enquiries', href: '/dashboard/enquiries',

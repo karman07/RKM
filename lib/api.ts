@@ -405,6 +405,30 @@ export interface GoldBalance {
 export const getCustomerGoldBalance = (phone: string) =>
   request<GoldBalance[]>(`/gold-investment/balance?phone=${encodeURIComponent(phone)}`);
 
+// Submit a cash payment collected in the field — awaits admin/manager approval before it counts
+export const submitInvestmentPayment = (subscriptionId: string, data: { month: number; note?: string }) =>
+  request<GoldBalance>(`/gold-investment/subscriptions/${subscriptionId}/submit-payment`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+export interface MySubmittedPayment {
+  subscriptionId: string;
+  entryId: string;
+  customerName: string;
+  customerPhone?: string;
+  planName?: string;
+  month: number;
+  note?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  rejectionReason?: string;
+  submittedAt: string;
+  reviewedAt?: string;
+}
+
+export const getMySubmittedInvestmentPayments = () =>
+  request<MySubmittedPayment[]>('/gold-investment/subscriptions/my-submitted-payments');
+
 // ── Investment Plans (read-only, public endpoint) ────────────────────────────
 
 export interface InvestmentPlan {
