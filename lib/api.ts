@@ -399,7 +399,7 @@ export const updateInventoryStatus = (id: string, payload: {
 
 /** Multi-item cart checkout: sells several inventory items in one shot under a single shared sale_reference. */
 export const sellItemsBatch = (payload: {
-  items: { id: string; selling_price?: number }[];
+  items: { id: string; selling_price?: number; manager_discount?: number }[];
   sale_reference?: string;
   sold_by_user_id?: string;
   sold_at_branch_id?: string;

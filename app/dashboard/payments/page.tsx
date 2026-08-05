@@ -4,11 +4,12 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
   getProfile, getBranchAnalytics, getAdvanceAnalytics,
-  type UserProfile, type BranchAnalytics, type AdvanceAnalytics, type CustomerAdvance, type InventoryItem,
+  type UserProfile, type BranchAnalytics, type AdvanceAnalytics, type CustomerAdvance, type InventoryItem, type GoldSubscription,
 } from '@/lib/api';
 import AddAdvancePaymentModal from '@/components/AddAdvancePaymentModal';
 import AdvanceReceiptModal from '@/components/AdvanceReceiptModal';
 import CreateInvoiceModal from '@/components/CreateInvoiceModal';
+import RecordInvestmentPaymentModal from '@/components/RecordInvestmentPaymentModal';
 import BillModal from '@/components/BillModal';
 
 const PAYMENT_COLORS: Record<string, string> = {
@@ -73,6 +74,7 @@ export default function ManagerPaymentsPage() {
   const [newAdvanceReceipt, setNewAdvanceReceipt] = useState<CustomerAdvance | null>(null);
   const [showCreateInvoice, setShowCreateInvoice] = useState(false);
   const [newInvoiceItems, setNewInvoiceItems] = useState<InventoryItem[] | null>(null);
+  const [showRecordInvestmentPayment, setShowRecordInvestmentPayment] = useState(false);
 
   function load() {
     setLoading(true);
@@ -101,6 +103,10 @@ export default function ManagerPaymentsPage() {
     setNewInvoiceItems(soldItems);
     toast.success(`Invoice created — ${soldItems.length} item${soldItems.length !== 1 ? 's' : ''} billed`);
     load();
+  }
+
+  function handleInvestmentPaymentRecorded(_sub: GoldSubscription) {
+    setShowRecordInvestmentPayment(false);
   }
 
   if (loading && !analytics) {
@@ -139,6 +145,13 @@ export default function ManagerPaymentsPage() {
             <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 14l2 2 4-4M7 21l2-1.5L11 21l2-1.5L15 21l2-1.5L19 21V4a1 1 0 00-1-1H6a1 1 0 00-1 1v17l2-1.5z" /></svg>
             Create Invoice
           </button>
+          <button
+            onClick={() => setShowRecordInvestmentPayment(true)}
+            className="inline-flex items-center gap-2 px-5 py-3 bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl shadow-lg transition-all"
+          >
+            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21 12V7H5a2 2 0 0 1 0-4h14v4M3 5v14a2 2 0 0 0 2 2h16v-5M18 12a2 2 0 0 0 0 4h4v-4h-4z" /></svg>
+            Record Investment Payment
+          </button>
         </div>
       </div>
 
@@ -150,6 +163,9 @@ export default function ManagerPaymentsPage() {
       )}
       {showCreateInvoice && (
         <CreateInvoiceModal onClose={() => setShowCreateInvoice(false)} onCreated={handleInvoiceCreated} />
+      )}
+      {showRecordInvestmentPayment && (
+        <RecordInvestmentPaymentModal onClose={() => setShowRecordInvestmentPayment(false)} onRecorded={handleInvestmentPaymentRecorded} />
       )}
       {newInvoiceItems && (
         <BillModal
