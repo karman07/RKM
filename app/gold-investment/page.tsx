@@ -13,10 +13,15 @@ interface Plan {
   _id: string;
   name: string;
   description: string;
+  /** 'hold_my_gold' plans are open-ended and staff-collected in-store — no Autopay/EMI checkout */
+  planType?: 'standard' | 'hold_my_gold';
   monthlyAmount: number;
-  durationMonths: number;
+  /** Absent for Hold My Gold plans (open-ended, no fixed maturity) */
+  durationMonths?: number | null;
   interestRate: number;
   cashBenefitPercent: number;
+  /** Floor for a customer's own custom monthly amount on this plan — defaults to monthlyAmount when unset */
+  minMonthlyAmount?: number | null;
 }
 
 const Typewriter = ({ text, delay = 80 }: { text: string; delay?: number }) => {
@@ -49,6 +54,14 @@ export default function GoldInvestmentPage() {
   const [userSubs, setUserSubs] = useState<any[]>([]);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [expandedPlans, setExpandedPlans] = useState<Record<string, boolean>>({});
+  const [customAmounts, setCustomAmounts] = useState<Record<string, number>>({});
+
+  // Hold My Gold lead-capture form
+  const [hmgAmount, setHmgAmount] = useState<number | null>(null);
+  const [hmgName, setHmgName] = useState('');
+  const [hmgPhone, setHmgPhone] = useState('');
+  const [hmgSubmitting, setHmgSubmitting] = useState(false);
+  const [hmgSubmitted, setHmgSubmitted] = useState(false);
 
   const authState = useAppSelector(state => state.auth);
   const router = useRouter();
@@ -60,15 +73,60 @@ export default function GoldInvestmentPage() {
     if (authState.token) fetchUserSubscriptions();
   }, [authState.token]);
 
+  useEffect(() => {
+    if (authState.customer) {
+      setHmgName(prev => prev || authState.customer?.name || '');
+      setHmgPhone(prev => prev || authState.customer?.phone || '');
+    }
+  }, [authState.customer]);
+
+  const standardPlans = plans.filter(p => p.planType !== 'hold_my_gold');
+  const holdMyGoldPlan = plans.find(p => p.planType === 'hold_my_gold');
+
   const fetchPlans = async () => {
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/gold-investment/plans/public`);
       const data = await res.json();
-      if (res.ok) setPlans(data.filter((p: any) => p.isActive));
+      if (res.ok) {
+        const active: Plan[] = data.filter((p: any) => p.isActive);
+        setPlans(active);
+        setCustomAmounts(prev => {
+          const next = { ...prev };
+          for (const p of active) if (next[p._id] == null) next[p._id] = p.monthlyAmount;
+          return next;
+        });
+        const hmg = active.find(p => p.planType === 'hold_my_gold');
+        if (hmg) setHmgAmount(prev => prev ?? (hmg.minMonthlyAmount ?? hmg.monthlyAmount));
+      }
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRequestHoldMyGoldEnrollment = async () => {
+    if (!holdMyGoldPlan) return;
+    if (!hmgName.trim() || !hmgPhone.trim()) {
+      toast.error('Please enter your name and phone number.');
+      return;
+    }
+    const floor = holdMyGoldPlan.minMonthlyAmount ?? holdMyGoldPlan.monthlyAmount;
+    const amount = Math.max(floor, hmgAmount ?? floor);
+    setHmgSubmitting(true);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/gold-investment/hold-my-gold/request-enrollment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: hmgName.trim(), phone: hmgPhone.trim(), email: authState.customer?.email, desiredMonthlyAmount: amount }),
+      });
+      if (!res.ok) throw new Error((await res.json()).message || 'Request failed');
+      setHmgSubmitted(true);
+      toast.success('Request received — our team will contact you shortly.');
+    } catch (err: any) {
+      toast.error(err.message || 'Could not submit your request. Please try again.');
+    } finally {
+      setHmgSubmitting(false);
     }
   };
 
@@ -107,6 +165,10 @@ export default function GoldInvestmentPage() {
     setSubscribeLoading(planId);
     setError('');
 
+    const plan = plans.find(p => p._id === planId);
+    const chosenAmount = customAmounts[planId];
+    const customMonthlyAmount = plan && chosenAmount && chosenAmount !== plan.monthlyAmount ? chosenAmount : undefined;
+
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/gold-investment/my-subscriptions`, {
         method: 'POST',
@@ -114,7 +176,7 @@ export default function GoldInvestmentPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${authState.token}`,
         },
-        body: JSON.stringify({ planId }),
+        body: JSON.stringify({ planId, customMonthlyAmount }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Subscription failed');
@@ -263,7 +325,12 @@ export default function GoldInvestmentPage() {
                   <div className="flex justify-between items-center">
                     <div>
                       <h4 className="font-serif font-black text-2xl text-slate-900 mb-4">{sub.plan?.name}</h4>
-                      <p className="text-sm font-bold text-slate-400 mb-2">PAID: {sub.installmentsPaid} / {sub.plan?.durationMonths}</p>
+                      <p className="text-sm font-bold text-slate-400 mb-2">
+                        {sub.plan?.durationMonths ? `PAID: ${sub.installmentsPaid} / ${sub.plan.durationMonths}` : `PAID: ${sub.installmentsPaid} MONTHS (OPEN-ENDED)`}
+                      </p>
+                      {sub.planCategory === 'hold_my_gold' && (
+                        <p className="text-sm font-bold text-[#7A1238]">PAY YOUR NEXT MONTHLY INSTALMENT IN-STORE</p>
+                      )}
                       {sub.nextDueDate && sub.installmentsPaid < (sub.plan?.durationMonths || 0) && (
                         <p className="text-sm font-bold text-[#7A1238]">
                           NEXT DUE: {new Date(sub.nextDueDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }).toUpperCase()}
@@ -297,7 +364,7 @@ export default function GoldInvestmentPage() {
                   <div className="flex justify-between items-center gap-6 flex-wrap">
                     <div>
                       <h4 className="font-serif font-black text-2xl text-slate-900 mb-2">{sub.plan?.name}</h4>
-                      <p className="text-sm font-bold text-emerald-700">COMPLETED: {sub.installmentsPaid} / {sub.plan?.durationMonths} MONTHS</p>
+                      <p className="text-sm font-bold text-emerald-700">COMPLETED: {sub.installmentsPaid}{sub.plan?.durationMonths ? ` / ${sub.plan.durationMonths}` : ''} MONTHS</p>
                       <p className="font-black text-[#7A1238] text-2xl mt-4">{fmt(sub.amountAccumulated)}</p>
                     </div>
                     <button
@@ -328,13 +395,13 @@ export default function GoldInvestmentPage() {
             <div className="col-span-full h-64 flex items-center justify-center">
               <Loader2 className="animate-spin text-[#5C0828]" size={32} />
             </div>
-          ) : plans.length === 0 ? (
+          ) : standardPlans.length === 0 ? (
             <div className="col-span-full h-40 flex flex-col items-center justify-center text-slate-300 gap-2">
               <Gem size={24} />
               <p className="text-xs font-black uppercase tracking-widest">No Active Plans Found</p>
             </div>
           ) : (
-            plans.map((p, index) => {
+            standardPlans.map((p, index) => {
               const isEnrolledInThis = activeSubs.some(s => s.plan?._id === p._id);
               const canRenewThis = !isEnrolledInThis && maturedPlanIds.has(p._id);
 
@@ -384,9 +451,23 @@ export default function GoldInvestmentPage() {
                           <RefreshCw size={12} /> Autopay
                         </span>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Monthly Payment</span>
-                        <span className="text-xl font-bold text-slate-900">{fmt(p.monthlyAmount)}</span>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Monthly Payment</span>
+                        {isEnrolledInThis ? (
+                          <span className="text-xl font-bold text-slate-900">{fmt(p.monthlyAmount)}</span>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-slate-400 text-sm font-bold">₹</span>
+                            <input
+                              type="number"
+                              min={p.minMonthlyAmount ?? p.monthlyAmount}
+                              step={500}
+                              value={customAmounts[p._id] ?? p.monthlyAmount}
+                              onChange={e => setCustomAmounts(prev => ({ ...prev, [p._id]: Math.max(p.minMonthlyAmount ?? p.monthlyAmount, Number(e.target.value) || 0) }))}
+                              className="w-28 text-right text-xl font-bold text-slate-900 border-b-2 border-slate-100 focus:border-[#5C0828] outline-none transition-all bg-transparent"
+                            />
+                          </div>
+                        )}
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Plan Duration</span>
@@ -398,7 +479,7 @@ export default function GoldInvestmentPage() {
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Maturity Value</span>
-                        <span className="text-sm font-bold text-slate-700">{fmt(p.monthlyAmount * p.durationMonths)}</span>
+                        <span className="text-sm font-bold text-slate-700">{fmt((customAmounts[p._id] ?? p.monthlyAmount) * (p.durationMonths || 0))}</span>
                       </div>
                     </div>
 
@@ -430,6 +511,105 @@ export default function GoldInvestmentPage() {
           )}
         </div>
       </section>
+
+      {/* ── Hold My Gold — separate, open-ended plan ── */}
+      {holdMyGoldPlan && (
+        <section className="py-24 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #3A0418 0%, #5C0828 55%, #7A1238 100%)' }}>
+          <div className="max-w-4xl mx-auto px-6">
+            <div className="text-center mb-14">
+              <span className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.3em] text-[#B8975A] mb-4">
+                <Sparkles size={14} /> A Different Kind of Plan
+              </span>
+              <h2 className="text-4xl font-serif font-black text-white mb-4">{holdMyGoldPlan.name}</h2>
+              {holdMyGoldPlan.description && <p className="text-white/60 font-medium max-w-2xl mx-auto">{holdMyGoldPlan.description}</p>}
+            </div>
+
+            <div className="bg-white rounded-[2.5rem] p-10 md:p-12 shadow-2xl">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-6 mb-10 pb-10 border-b border-slate-100">
+                <div className="flex items-center justify-between md:col-span-2">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Your Monthly Amount</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-400 text-lg font-bold">₹</span>
+                    <input
+                      type="number"
+                      min={holdMyGoldPlan.minMonthlyAmount ?? holdMyGoldPlan.monthlyAmount}
+                      step={500}
+                      value={hmgAmount ?? (holdMyGoldPlan.minMonthlyAmount ?? holdMyGoldPlan.monthlyAmount)}
+                      onChange={e => setHmgAmount(Math.max(holdMyGoldPlan.minMonthlyAmount ?? holdMyGoldPlan.monthlyAmount, Number(e.target.value) || 0))}
+                      className="w-32 text-right text-2xl font-bold text-slate-900 border-b-2 border-slate-100 focus:border-[#5C0828] outline-none transition-all bg-transparent"
+                    />
+                  </div>
+                </div>
+                <p className="md:col-span-2 -mt-4 text-[9px] font-bold text-slate-400">
+                  Enter any amount you like — minimum {fmt(holdMyGoldPlan.minMonthlyAmount ?? holdMyGoldPlan.monthlyAmount)}/month, no upper limit.
+                </p>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Payment Mode</span>
+                  <span className="flex items-center gap-1.5 bg-[#B8975A]/10 text-[#5C0828] px-3 py-1 rounded-lg text-sm font-bold">
+                    <Store size={12} /> Monthly, In-Store
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Plan Duration</span>
+                  <span className="bg-slate-50 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold">Open-Ended</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Annual Benefit</span>
+                  <span className="text-xl font-bold text-[#5C0828]">+{holdMyGoldPlan.interestRate}% Int.</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Est. Value After 12 Months*</span>
+                  <span className="text-sm font-bold text-slate-700">{fmt((hmgAmount ?? holdMyGoldPlan.monthlyAmount) * 12)}</span>
+                </div>
+                <div className="flex items-start justify-between gap-4 md:col-span-2 pt-2">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Making Charges</span>
+                  <p className="text-xs font-bold text-slate-600 text-right leading-relaxed">
+                    Waiver available on Hold My Gold — approved per account by our team when you enrol.
+                  </p>
+                </div>
+                <p className="md:col-span-2 -mt-2 text-[9px] font-bold text-slate-300">*Illustrative only — there's no fixed maturity, pay for as long as you like and redeem any time after the minimum lock-in.</p>
+              </div>
+
+              {hmgSubmitted ? (
+                <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-100 rounded-2xl p-5">
+                  <CheckCircle2 className="text-emerald-600 shrink-0 mt-0.5" size={20} />
+                  <p className="text-sm font-bold text-emerald-800">Request received — our team will contact you shortly to complete enrolment in-store.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Hold My Gold is enrolled in-store — leave your details and we&apos;ll set it up for you</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <input
+                      value={hmgName}
+                      onChange={e => setHmgName(e.target.value)}
+                      placeholder="Your name"
+                      className="w-full border-b-2 border-slate-100 focus:border-[#5C0828] py-2.5 text-sm font-bold outline-none transition-all bg-transparent"
+                    />
+                    <input
+                      value={hmgPhone}
+                      onChange={e => setHmgPhone(e.target.value)}
+                      placeholder="Phone number"
+                      className="w-full border-b-2 border-slate-100 focus:border-[#5C0828] py-2.5 text-sm font-bold outline-none transition-all bg-transparent"
+                    />
+                  </div>
+                  <button
+                    onClick={handleRequestHoldMyGoldEnrollment}
+                    disabled={hmgSubmitting}
+                    className="w-full py-5 rounded-2xl text-white shadow-xl transition-all text-sm font-bold uppercase tracking-[0.18em] flex items-center justify-center gap-3 disabled:opacity-40 bg-[#5C0828] hover:bg-[#7A1238] shadow-[#5C0828]/10"
+                  >
+                    {hmgSubmitting ? (
+                      <><Loader2 size={16} className="animate-spin" /><span>Sending…</span></>
+                    ) : (
+                      <><span>Request Enrolment</span><ArrowRight size={18} /></>
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* ── Details & Policy ── */}
       <div className="max-w-6xl mx-auto px-6 py-24 border-t border-slate-100">

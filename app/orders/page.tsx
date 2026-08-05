@@ -137,8 +137,21 @@ export default function OrdersPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [goldSubs, setGoldSubs] = useState<any[]>([]);
   const [certGeneratingId, setCertGeneratingId] = useState<string | null>(null);
+  const [invoiceGeneratingId, setInvoiceGeneratingId] = useState<string | null>(null);
 
-  async function handleDownloadCertificate(itemId: string) {
+  /** Forces a real save-as download of `blob` — immune to popup blockers, unlike window.open(). */
+  function downloadBlob(blob: Blob, filename: string) {
+    const blobUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(blobUrl);
+  }
+
+  async function handleDownloadCertificate(itemId: string, itemCode?: string) {
     if (!authState.token) return;
     setCertGeneratingId(itemId);
     try {
@@ -149,11 +162,33 @@ export default function OrdersPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || 'Certificate generation failed');
       const url = data.url?.startsWith('http') ? data.url : `${STATIC_BASE_URL}${data.url}`;
-      window.open(url, '_blank');
+
+      const fileRes = await fetch(url);
+      if (!fileRes.ok) throw new Error('Could not download the certificate file');
+      downloadBlob(await fileRes.blob(), `RKM-Certificate-${itemCode || itemId}.pdf`);
     } catch (err: any) {
       toast.error(err.message || 'Certificate generation failed');
     } finally {
       setCertGeneratingId(null);
+    }
+  }
+
+  async function handleDownloadOnlineInvoice(orderId: string, orderNumber?: string) {
+    if (!authState.token) return;
+    setInvoiceGeneratingId(orderId);
+    try {
+      const res = await fetch(`${API_BASE_URL}/customers/auth/online-orders/${orderId}/invoice`, {
+        headers: { Authorization: `Bearer ${authState.token}` },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || 'Invoice generation failed');
+      }
+      downloadBlob(await res.blob(), `RKM-Order-Receipt-${orderNumber || orderId}.pdf`);
+    } catch (err: any) {
+      toast.error(err.message || 'Invoice generation failed');
+    } finally {
+      setInvoiceGeneratingId(null);
     }
   }
 
@@ -446,6 +481,15 @@ export default function OrdersPage() {
                               </div>
                             </div>
                           )}
+
+                          <button
+                            onClick={() => handleDownloadOnlineInvoice(order._id, order.order_number)}
+                            disabled={invoiceGeneratingId === order._id}
+                            className="flex items-center justify-center gap-2 w-full sm:w-auto px-5 py-2.5 rounded-2xl bg-[#7A1238] hover:bg-[#5A0F1A] text-white text-[11px] font-black uppercase tracking-wider transition-all disabled:opacity-50"
+                          >
+                            <Receipt size={14} />
+                            {invoiceGeneratingId === order._id ? 'Generating…' : 'Download Invoice'}
+                          </button>
                         </div>
                       )}
                     </div>
@@ -534,7 +578,7 @@ export default function OrdersPage() {
                             ))}
                           </div>
                           <button
-                            onClick={() => handleDownloadCertificate(item._id)}
+                            onClick={() => handleDownloadCertificate(item._id, item.unique_item_code)}
                             disabled={certGeneratingId === item._id}
                             className="mt-4 flex items-center justify-center gap-2 w-full sm:w-auto px-5 py-2.5 rounded-2xl bg-[#7A1238] hover:bg-[#5A0F1A] text-white text-[11px] font-black uppercase tracking-wider transition-all disabled:opacity-50"
                           >

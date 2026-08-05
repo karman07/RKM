@@ -228,6 +228,15 @@ export default function GoldInvestmentTracker({ sub }: { sub: GoldSub }) {
   const isAutopayPaused = sub.pausedForCashMonth != null;
   const isMatured = sub.status === 'completed';
 
+  // Always-correct summary figures — deliberately independent of the scroll-triggered
+  // reveal animation above (visibleMonths/animatedInterest start at 0 until the card is
+  // scrolled into view), so paid/pending/interest are never misread as zero on first paint.
+  const pendingMonths = Math.max(0, total - paid);
+  const paidAmount = paid * plan.monthlyAmount;
+  const pendingAmount = pendingMonths * plan.monthlyAmount;
+  const realCreditedMonths = timeBasedComplete ? paid : Math.max(0, paid - 1);
+  const interestEarnedToDate = realCreditedMonths * interestPerMonth + bonusInterest;
+
   return (
     <div ref={ref} className="bg-white rounded-[28px] border border-[#EDEAE4] shadow-[0_16px_48px_rgba(0,0,0,0.05)] overflow-hidden">
       <style>{`
@@ -372,6 +381,34 @@ export default function GoldInvestmentTracker({ sub }: { sub: GoldSub }) {
       )}
 
       <div className="px-6 py-6 space-y-5">
+
+        {/* ── At-a-glance summary — always the real numbers, no animation gating ── */}
+        <div className="grid grid-cols-3 gap-2.5">
+          <div className="rounded-2xl px-3 py-3 border" style={{ background: '#FAFAF9', borderColor: '#EDEAE4' }}>
+            <div className="flex items-center gap-1.5 mb-1">
+              <CheckCircle2 size={11} style={{ color: '#5C0828' }} />
+              <p className="text-[8px] font-black uppercase tracking-[0.15em] text-slate-400">Paid</p>
+            </div>
+            <p className="text-[15px] font-black leading-tight" style={{ color: '#5C0828' }}>{paid}/{total} mo</p>
+            <p className="text-[9px] font-bold text-slate-400 mt-0.5">{fmt(paidAmount)}</p>
+          </div>
+          <div className="rounded-2xl px-3 py-3 border" style={{ background: '#FAFAF9', borderColor: '#EDEAE4' }}>
+            <div className="flex items-center gap-1.5 mb-1">
+              <Clock size={11} style={{ color: '#A09890' }} />
+              <p className="text-[8px] font-black uppercase tracking-[0.15em] text-slate-400">Pending</p>
+            </div>
+            <p className="text-[15px] font-black leading-tight text-slate-700">{pendingMonths} mo</p>
+            <p className="text-[9px] font-bold text-slate-400 mt-0.5">{fmt(pendingAmount)}</p>
+          </div>
+          <div className="rounded-2xl px-3 py-3 border" style={{ background: 'rgba(184,151,90,0.08)', borderColor: 'rgba(184,151,90,0.25)' }}>
+            <div className="flex items-center gap-1.5 mb-1">
+              <TrendingUp size={11} style={{ color: '#B8975A' }} />
+              <p className="text-[8px] font-black uppercase tracking-[0.15em]" style={{ color: '#92713A' }}>Monthly Interest</p>
+            </div>
+            <p className="text-[15px] font-black leading-tight" style={{ color: '#92713A' }}>{fmtDecimal(interestPerMonth)}</p>
+            <p className="text-[9px] font-bold mt-0.5" style={{ color: '#B8975A' }}>{fmtDecimal(interestEarnedToDate)} earned · {plan.interestRate}% p.a.</p>
+          </div>
+        </div>
 
         {/* ── Plan progress bar ── */}
         <div>
