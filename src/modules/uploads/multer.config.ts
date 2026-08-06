@@ -5,7 +5,7 @@ import { BadRequestException } from '@nestjs/common';
 import type { Request } from 'express';
 
 const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp'];
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
 
 const DOC_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.pdf'];
 const DOC_MAX_SIZE   = 10 * 1024 * 1024; // 10 MB
