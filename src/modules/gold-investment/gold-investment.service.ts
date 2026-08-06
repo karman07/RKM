@@ -27,6 +27,8 @@ import {
   SubmitSalesPaymentDto,
   ReviewSalesPaymentDto,
   RequestHoldMyGoldEnrollmentDto,
+  CreateHoldMyGoldTopUpDto,
+  VerifyHoldMyGoldTopUpDto,
 } from './dto/gold-investment.dto';
 
 @Injectable()
@@ -66,6 +68,13 @@ export class GoldInvestmentService {
 
   async createPlan(dto: CreateInvestmentPlanDto): Promise<InvestmentPlanDocument> {
     if (dto.planType === PlanType.HOLD_MY_GOLD) {
+      // Hold My Gold is a singleton — every customer's holding, the customer-facing invest page,
+      // and the admin/manager/sales/cashier UIs all pick "the" Hold My Gold plan by planType alone
+      // (not by id), so a second one silently causes whichever is newest to win unpredictably.
+      const existing = await this.planModel.findOne({ planType: PlanType.HOLD_MY_GOLD }).exec();
+      if (existing) {
+        throw new BadRequestException('A Hold My Gold plan already exists — edit it instead of creating another one.');
+      }
       // Hold My Gold is open-ended and staff-collected in-store — no Razorpay plan/mandate at all.
       return this.planModel.create({ ...dto, durationMonths: undefined, razorpayPlanId: undefined });
     }
@@ -221,6 +230,13 @@ export class GoldInvestmentService {
     if (!existing) throw new NotFoundException('Investment plan not found');
     const planType = dto.planType ?? existing.planType;
 
+    if (planType === PlanType.HOLD_MY_GOLD && existing.planType !== PlanType.HOLD_MY_GOLD) {
+      const otherHoldMyGold = await this.planModel.findOne({ planType: PlanType.HOLD_MY_GOLD, _id: { $ne: id } }).exec();
+      if (otherHoldMyGold) {
+        throw new BadRequestException('A Hold My Gold plan already exists — edit it instead of converting another plan into one.');
+      }
+    }
+
     const set: any = { ...dto };
     const update: any = { $set: set };
     if (planType === PlanType.HOLD_MY_GOLD) {
@@ -259,11 +275,26 @@ export class GoldInvestmentService {
     };
   }
 
+  /** The floor a customer's own chosen amount must clear for this plan. Hold My Gold has no
+   *  meaningful "default monthly amount" to fall back to (it's open-ended, pay-as-you-like), so
+   *  it floors at the plan's own minimum if the admin set one, otherwise the admin-configured
+   *  Hold My Gold threshold (Settings → Hold My Gold) — the same floor used by the online
+   *  self-serve top-up path, so the minimum is consistent everywhere the customer's own amount
+   *  is accepted, in-store or online, and always reflects whatever the admin last configured. */
+  private async minAmountFor(plan: InvestmentPlanDocument): Promise<number> {
+    if (plan.planType === PlanType.HOLD_MY_GOLD) {
+      if (plan.minMonthlyAmount != null) return plan.minMonthlyAmount;
+      const { threshold } = await this.getHoldMyGoldConfig();
+      return threshold;
+    }
+    return plan.minMonthlyAmount ?? plan.monthlyAmount;
+  }
+
   /** Validates a custom amount against the plan's floor (if provided) and resolves the effective amount + category. */
-  private resolveCustomAmount(plan: InvestmentPlanDocument, requested?: number): { customMonthlyAmount?: number; planCategory: PlanCategory } {
+  private async resolveCustomAmount(plan: InvestmentPlanDocument, requested?: number): Promise<{ customMonthlyAmount?: number; planCategory: PlanCategory }> {
     let customMonthlyAmount: number | undefined;
     if (requested != null) {
-      const floor = plan.minMonthlyAmount ?? plan.monthlyAmount;
+      const floor = await this.minAmountFor(plan);
       if (requested < floor) {
         throw new BadRequestException(`Monthly amount must be at least ₹${floor} for this plan`);
       }
@@ -295,7 +326,7 @@ export class GoldInvestmentService {
       throw new BadRequestException('This customer already has an active subscription for this plan.');
     }
 
-    const { customMonthlyAmount, planCategory } = this.resolveCustomAmount(plan, dto.customMonthlyAmount);
+    const { customMonthlyAmount, planCategory } = await this.resolveCustomAmount(plan, dto.customMonthlyAmount);
 
     const startedAt = new Date();
     let maturesAt: Date | undefined;
@@ -323,6 +354,166 @@ export class GoldInvestmentService {
     });
 
     this.logger.log(`Subscription ${sub._id} enrolled in-store for ${dto.customerName} (${plan.name})`);
+    return sub.populate('plan');
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // HOLD MY GOLD — SELF-SERVE ONLINE TOP-UPS
+  // Unlike STANDARD plans (fixed recurring Autopay mandate), Hold My Gold is open-ended and
+  // pay-as-you-like, so each top-up is its own one-time Razorpay order rather than a subscription
+  // mandate. The customer can invest any amount (≥ the plan's or the admin-configured Hold My
+  // Gold threshold's floor — see minAmountFor()) as often as they like; each payment is credited
+  // at that moment's gold rate.
+  // ─────────────────────────────────────────────────────────────────
+
+  /** Reuses the customer's existing active Hold My Gold subscription for this plan, or opens one —
+   *  same shape as enrollSubscription's in-store path, just triggered by the customer's own first payment. */
+  private async getOrCreateHoldMyGoldSubscription(
+    plan: InvestmentPlanDocument,
+    customerName: string,
+    customerEmail?: string,
+    customerPhone?: string,
+  ): Promise<SubscriptionDocument> {
+    const or: any[] = [];
+    if (customerEmail) or.push({ customerEmail });
+    if (customerPhone) or.push({ customerPhone });
+
+    const existing = await this.subModel.findOne({
+      plan: plan._id,
+      status: SubscriptionStatus.ACTIVE,
+      ...(or.length ? { $or: or } : {}),
+    }).exec();
+    if (existing) return existing;
+
+    return this.subModel.create({
+      plan: plan._id,
+      customerName,
+      customerEmail,
+      customerPhone,
+      status: SubscriptionStatus.ACTIVE,
+      planCategory: PlanCategory.HOLD_MY_GOLD,
+      amountAccumulated: 0,
+      interestAccumulated: 0,
+      startedAt: new Date(),
+      installmentsPaid: 0,
+      paymentLedger: [],
+      requiresManualPayment: true,
+      whatsappRemindersCount: 0,
+    });
+  }
+
+  /** Credits one self-serve online top-up to a Hold My Gold subscription's ledger — parallel to
+   *  applyCashPayment, minus the fixed-month/autopay-pause logic that only applies to STANDARD plans. */
+  private async applyOnlineTopUp(
+    sub: SubscriptionDocument,
+    plan: any,
+    opts: { amount: number; razorpayPaymentId: string },
+  ): Promise<{ entry: Subscription['paymentLedger'][number] }> {
+    const annualRate = plan.interestRate || 0;
+    const monthlyRate = annualRate / 12 / 100;
+
+    const goldRate = await this.currentGoldRate();
+    const gramsCredited = goldRate > 0 ? opts.amount / goldRate : 0;
+
+    const entry = {
+      month: sub.installmentsPaid + 1,
+      amount: opts.amount,
+      date: new Date(),
+      type: 'online' as const,
+      razorpayPaymentId: opts.razorpayPaymentId,
+      goldRateAtPayment: goldRate,
+      gramsCredited,
+    };
+
+    sub.paymentLedger = [...(sub.paymentLedger || []), entry];
+    sub.goldGramsAccumulated = (sub.goldGramsAccumulated || 0) + gramsCredited;
+    sub.installmentsPaid += 1;
+    sub.amountAccumulated += opts.amount;
+    sub.interestAccumulated = sub.amountAccumulated * monthlyRate * sub.installmentsPaid;
+
+    return { entry };
+  }
+
+  /** Creates a one-time Razorpay order for the customer's chosen Hold My Gold top-up amount.
+   *  Opens (or reuses) their subscription up front so the order's notes can carry its id — the
+   *  payment itself is only applied to the ledger once verifyHoldMyGoldTopUp confirms it. */
+  async createHoldMyGoldTopUp(opts: {
+    customerName: string;
+    customerEmail?: string;
+    customerPhone?: string;
+    amount: number;
+    planId?: string;
+  }): Promise<{ orderId: string; amount: number; subscriptionId: string; razorpayKey: string }> {
+    const plan = opts.planId
+      ? await this.planModel.findById(opts.planId).exec()
+      : await this.planModel.findOne({ planType: PlanType.HOLD_MY_GOLD, isActive: true }).exec();
+    if (!plan || plan.planType !== PlanType.HOLD_MY_GOLD) {
+      throw new NotFoundException('Hold My Gold plan not found');
+    }
+    if (!plan.isActive) throw new BadRequestException('This plan is no longer active');
+
+    const floor = await this.minAmountFor(plan);
+    if (opts.amount < floor) {
+      throw new BadRequestException(`Minimum investment amount is ₹${floor}`);
+    }
+
+    const sub = await this.getOrCreateHoldMyGoldSubscription(plan, opts.customerName, opts.customerEmail, opts.customerPhone);
+
+    let order: any;
+    try {
+      order = await (this.razorpay.orders as any).create({
+        amount: Math.round(opts.amount * 100),
+        currency: 'INR',
+        notes: { subscriptionId: String(sub._id), purpose: 'hold_my_gold_topup' },
+      });
+    } catch (err) {
+      this.logger.error('Razorpay order creation failed for Hold My Gold top-up', err);
+      throw new BadRequestException(`Razorpay error: ${err.error?.description || err.message}`);
+    }
+
+    return {
+      orderId: order.id,
+      amount: opts.amount,
+      subscriptionId: String(sub._id),
+      razorpayKey: this.configService.get<string>('RAZORPAY_ID') ?? '',
+    };
+  }
+
+  /** Verifies a Hold My Gold top-up's payment signature, then credits the paid (server-fetched,
+   *  never client-supplied) amount to the subscription named in the order's own notes. */
+  async verifyHoldMyGoldTopUp(dto: VerifyHoldMyGoldTopUpDto, customer: { email?: string; phone?: string }): Promise<SubscriptionDocument> {
+    const secret = this.configService.get<string>('RAZORPAY_SECRET') || '';
+    const expected = crypto
+      .createHmac('sha256', secret)
+      .update(`${dto.razorpay_order_id}|${dto.razorpay_payment_id}`)
+      .digest('hex');
+    if (expected !== dto.razorpay_signature) {
+      throw new BadRequestException('Payment signature verification failed');
+    }
+
+    const order = await (this.razorpay.orders as any).fetch(dto.razorpay_order_id);
+    const subscriptionId = order?.notes?.subscriptionId;
+    if (!subscriptionId) throw new BadRequestException('Order not recognized');
+
+    const sub = await this.subModel.findById(subscriptionId).populate('plan').exec();
+    if (!sub) throw new NotFoundException('Subscription not found');
+    const emailMatches = !!customer.email && sub.customerEmail === customer.email;
+    const phoneMatches = !!customer.phone && sub.customerPhone === customer.phone;
+    if (!emailMatches && !phoneMatches) {
+      throw new BadRequestException('This payment does not belong to your account');
+    }
+
+    // Idempotent: a client retry (e.g. re-firing the handler) must not double-credit the same payment.
+    const alreadyCredited = sub.paymentLedger?.some(e => e.razorpayPaymentId === dto.razorpay_payment_id);
+    if (alreadyCredited) return sub.populate('plan');
+
+    const plan = sub.plan as any;
+    const amount = (order.amount_paid || order.amount) / 100;
+
+    const { entry } = await this.applyOnlineTopUp(sub, plan, { amount, razorpayPaymentId: dto.razorpay_payment_id });
+    await sub.save();
+
+    this.notifyPaymentReceived(sub, plan, entry, { source: 'online' });
     return sub.populate('plan');
   }
 
@@ -356,7 +547,7 @@ export class GoldInvestmentService {
       status: SubscriptionStatus.PENDING,
     }).exec();
 
-    const { customMonthlyAmount, planCategory } = this.resolveCustomAmount(plan, dto.customMonthlyAmount);
+    const { customMonthlyAmount, planCategory } = await this.resolveCustomAmount(plan, dto.customMonthlyAmount);
 
     const { rzpSub, rzpCustomer } = await this.createRazorpaySubscriptionFor(
       plan, dto.customerName, dto.customerEmail, dto.customerPhone, customMonthlyAmount,
@@ -683,6 +874,9 @@ export class GoldInvestmentService {
     plan: any,
     opts: {
       month: number;
+      /** Hold My Gold has no fixed installment — staff enters what the customer actually handed
+       *  over. Ignored for STANDARD plans, which always settle at their fixed effective amount. */
+      amount?: number;
       staffId?: string;
       note?: string;
       submittedBy?: string;
@@ -691,7 +885,9 @@ export class GoldInvestmentService {
       approvedByName?: string;
     },
   ): Promise<{ entry: Subscription['paymentLedger'][number] }> {
-    const monthlyAmount = this.effectiveMonthlyAmount(sub, plan);
+    const monthlyAmount = sub.planCategory === PlanCategory.HOLD_MY_GOLD && opts.amount
+      ? opts.amount
+      : this.effectiveMonthlyAmount(sub, plan);
     const annualRate = plan.interestRate || 0;
     const monthlyRate = annualRate / 12 / 100;
 
@@ -755,7 +951,7 @@ export class GoldInvestmentService {
     const plan = sub.plan as any;
     this.assertMonthPayable(sub, plan, dto.month);
 
-    const { entry } = await this.applyCashPayment(sub, plan, { month: dto.month, staffId: dto.staffId, note: dto.note });
+    const { entry } = await this.applyCashPayment(sub, plan, { month: dto.month, amount: dto.amount, staffId: dto.staffId, note: dto.note });
     await sub.save();
 
     this.notifyPaymentReceived(sub, plan, entry, { source: 'manual' });
@@ -776,10 +972,17 @@ export class GoldInvestmentService {
 
     const salesUser = await this.usersService.findById(salesUserId);
 
+    const isHoldMyGold = sub.planCategory === PlanCategory.HOLD_MY_GOLD;
+    const submittedAmount = isHoldMyGold ? dto.amount : undefined;
+    if (isHoldMyGold && !submittedAmount) {
+      throw new BadRequestException('Enter the amount collected — Hold My Gold has no fixed installment.');
+    }
+
     sub.pendingPayments = [
       ...(sub.pendingPayments || []),
       {
         month: dto.month,
+        amount: submittedAmount,
         submittedBy: salesUserId as any,
         submittedByName: salesUser.name,
         note: dto.note,
@@ -790,9 +993,10 @@ export class GoldInvestmentService {
 
     this.logger.log(`Sales rep ${salesUser.name} submitted month ${dto.month} for subscription ${id}, awaiting approval`);
 
+    const displayAmount = submittedAmount ?? this.effectiveMonthlyAmount(sub, plan);
     this.notificationsService.notifyAdmins(
       'Investment Payment Awaiting Approval',
-      `${salesUser.name} collected month ${dto.month} (₹${this.effectiveMonthlyAmount(sub, plan).toLocaleString('en-IN')}) from ${sub.customerName} for "${plan?.name || 'a gold plan'}". Review it from Investment Approvals.`,
+      `${salesUser.name} collected month ${dto.month} (₹${displayAmount.toLocaleString('en-IN')}) from ${sub.customerName} for "${plan?.name || 'a gold plan'}". Review it from Investment Approvals.`,
       { type: 'gold_sales_payment_pending', subscriptionId: String(sub._id), month: String(dto.month) },
     ).catch(err => this.logger.error('Admin notify on sales payment submission failed', err));
 
@@ -819,6 +1023,7 @@ export class GoldInvestmentService {
           customerPhone: sub.customerPhone,
           planName: plan?.name,
           month: entry.month,
+          amount: entry.amount,
           note: entry.note,
           submittedByName: entry.submittedByName,
           submittedAt: (entry as any).createdAt,
@@ -848,6 +1053,7 @@ export class GoldInvestmentService {
           customerPhone: sub.customerPhone,
           planName: plan?.name,
           month: entry.month,
+          amount: entry.amount,
           note: entry.note,
           status: entry.status,
           rejectionReason: entry.rejectionReason,
@@ -897,6 +1103,7 @@ export class GoldInvestmentService {
 
     const { entry: ledgerEntry } = await this.applyCashPayment(sub, plan, {
       month: entry.month,
+      amount: entry.amount,
       staffId: reviewerId,
       note: entry.note,
       submittedBy: String(entry.submittedBy),
@@ -1227,7 +1434,7 @@ export class GoldInvestmentService {
     sub: SubscriptionDocument,
     plan: any,
     entry: { month: number; amount: number },
-    opts: { source: 'autopay' | 'manual' | 'sales_approved'; staffName?: string; approverName?: string },
+    opts: { source: 'autopay' | 'manual' | 'sales_approved' | 'online'; staffName?: string; approverName?: string },
   ) {
     const html = this.emailService.buildPaymentReceivedAdminHtml({
       customerName: sub.customerName,
@@ -1301,6 +1508,11 @@ export class GoldInvestmentService {
    * in Settings) instead of the plan's flat cashBenefitPercent. The Making Charge Waiver option is
    * only available when the admin has granted it for that specific subscription
    * (sub.makingChargeWaiverEnabled) — otherwise makingChargeWaiverOption comes back null.
+   *
+   * The waiver itself is capped by two independent factors: how much of the jewellery's gold weight
+   * the customer's accumulated grams actually cover (waiverRatio), and the plan's own
+   * makingChargeDiscountPercent (defaults to 100 — full waiver on the covered portion; admins can
+   * dial it down to offer a partial discount instead). Applies to STANDARD and HOLD_MY_GOLD plans alike.
    */
   private async computeRedemptionOptions(sub: any, dto: { amount: number; jewelrySubtotal: number; taxPercentage: number; jewelryGoldWeightGrams?: number; makingChargesOnJewelry?: number }) {
     const plan = sub.plan as any;
@@ -1327,13 +1539,15 @@ export class GoldInvestmentService {
       return { cashBenefitOption, makingChargeWaiverOption: null };
     }
 
-    // Option 2 — Making Charge Waiver: waived only on the gold-weight portion the customer's
-    // accumulated grams actually cover; investment amount still applies as payment.
+    // Option 2 — Making Charge Waiver: discounted only on the gold-weight portion the customer's
+    // accumulated grams actually cover; investment amount still applies as payment. The discount
+    // itself is the plan's own %, not always the full amount.
+    const makingChargeDiscountPercent = plan?.makingChargeDiscountPercent ?? 100;
     const jewelryGoldWeightGrams = dto.jewelryGoldWeightGrams || 0;
     const makingChargesOnJewelry = dto.makingChargesOnJewelry || 0;
     const eligibleGoldGramsUsed = Math.min(goldGramsAccumulated, jewelryGoldWeightGrams);
     const waiverRatio = jewelryGoldWeightGrams > 0 ? eligibleGoldGramsUsed / jewelryGoldWeightGrams : 0;
-    const waivedMakingCharges = Math.round(makingChargesOnJewelry * waiverRatio);
+    const waivedMakingCharges = Math.round(makingChargesOnJewelry * waiverRatio * (makingChargeDiscountPercent / 100));
     const remainingMakingCharges = makingChargesOnJewelry - waivedMakingCharges;
     const waiverRemainingAmount = Math.max(0, dto.jewelrySubtotal - waivedMakingCharges - dto.amount);
     const waiverGst = Math.round(waiverRemainingAmount * dto.taxPercentage / 100);
@@ -1343,6 +1557,7 @@ export class GoldInvestmentService {
       goldAccumulated: goldGramsAccumulated,
       eligibleGoldGramsUsed,
       jewelryGoldWeightGrams,
+      makingChargeDiscountPercent,
       waivedMakingCharges,
       remainingMakingCharges,
       remainingAmount: waiverRemainingAmount,
@@ -1441,6 +1656,7 @@ export class GoldInvestmentService {
         cashBenefitAmount: dto.redemptionType === RedemptionType.CASH_BENEFIT ? cashBenefitOption.cashBenefitAmount : undefined,
         eligibleGoldGramsUsed: dto.redemptionType === RedemptionType.MAKING_CHARGE_WAIVER ? makingChargeWaiverOption?.eligibleGoldGramsUsed : undefined,
         jewelryGoldWeightGrams: dto.jewelryGoldWeightGrams,
+        makingChargeDiscountPercent: dto.redemptionType === RedemptionType.MAKING_CHARGE_WAIVER ? makingChargeWaiverOption?.makingChargeDiscountPercent : undefined,
         waivedMakingCharges: dto.redemptionType === RedemptionType.MAKING_CHARGE_WAIVER ? makingChargeWaiverOption?.waivedMakingCharges : undefined,
         remainingMakingCharges: dto.redemptionType === RedemptionType.MAKING_CHARGE_WAIVER ? makingChargeWaiverOption?.remainingMakingCharges : undefined,
         gstAmount: chosen.gstAmount,

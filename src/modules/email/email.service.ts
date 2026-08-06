@@ -388,16 +388,18 @@ export class EmailService {
     planName: string;
     month: number;
     amount: number;
-    source: 'autopay' | 'manual' | 'sales_approved';
+    source: 'autopay' | 'manual' | 'sales_approved' | 'online';
     staffName?: string;
     approverName?: string;
   }): string {
     const sourceLabel =
       data.source === 'autopay'
         ? 'Autopay (Razorpay)'
-        : data.source === 'sales_approved'
-          ? `Cash — collected by ${data.staffName || 'sales'}, approved by ${data.approverName || 'admin'}`
-          : `Cash — recorded by ${data.staffName || 'staff'}`;
+        : data.source === 'online'
+          ? 'Online (Razorpay, self-serve)'
+          : data.source === 'sales_approved'
+            ? `Cash — collected by ${data.staffName || 'sales'}, approved by ${data.approverName || 'admin'}`
+            : `Cash — recorded by ${data.staffName || 'staff'}`;
 
     const rows =
       this.detailRow('Customer', data.customerName) +
@@ -410,7 +412,7 @@ export class EmailService {
     return this.wrap({
       eyebrow: 'RKM JEWELLERS — ADMIN NOTICE',
       heading: 'Investment Payment Received',
-      intro: `A monthly installment was just received via ${data.source === 'autopay' ? 'autopay' : 'cash'}.`,
+      intro: `A monthly installment was just received via ${data.source === 'autopay' ? 'autopay' : data.source === 'online' ? 'a self-serve online payment' : 'cash'}.`,
       bodyHtml: `${this.detailCard('Payment Details', rows)}`,
       footerNote: 'This is an automated admin notification.',
     });

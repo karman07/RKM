@@ -38,6 +38,13 @@ export class CreateInvestmentPlanDto {
   @Max(100)
   cashBenefitPercent: number;
 
+  /** % off making charges on the eligible gold-weight portion at redemption — defaults to 100 (full waiver) when omitted */
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  @IsOptional()
+  makingChargeDiscountPercent?: number;
+
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
@@ -77,6 +84,12 @@ export class UpdateInvestmentPlanDto {
   @IsNumber()
   @IsOptional()
   cashBenefitPercent?: number;
+
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  @IsOptional()
+  makingChargeDiscountPercent?: number;
 
   @IsBoolean()
   @IsOptional()
@@ -169,6 +182,31 @@ export class RequestHoldMyGoldEnrollmentDto {
   desiredMonthlyAmount: number;
 }
 
+/** Customer self-serve Hold My Gold top-up — creates a one-time Razorpay order for any amount
+ *  they choose (floored server-side at the plan's minMonthlyAmount, or the admin-configured
+ *  Hold My Gold threshold if unset — see minAmountFor() in gold-investment.service.ts). */
+export class CreateHoldMyGoldTopUpDto {
+  @IsNumber()
+  @Min(1)
+  amount: number;
+
+  @IsString()
+  @IsOptional()
+  planId?: string;
+}
+
+/** Verifies a Hold My Gold top-up's Razorpay order payment and credits it to the customer's holding. */
+export class VerifyHoldMyGoldTopUpDto {
+  @IsString()
+  razorpay_order_id: string;
+
+  @IsString()
+  razorpay_payment_id: string;
+
+  @IsString()
+  razorpay_signature: string;
+}
+
 export class RedeemBalanceDto {
   /** Investment amount applied toward the jewelry price — used in both redemption types */
   @IsNumber()
@@ -245,6 +283,13 @@ export class MarkCashPaymentDto {
   @Min(1)
   month: number;
 
+  /** Only honored for Hold My Gold subscriptions — what the customer actually handed over, since
+   *  there's no fixed installment. Ignored for STANDARD plans, which always settle at their fixed amount. */
+  @IsNumber()
+  @Min(1)
+  @IsOptional()
+  amount?: number;
+
   @IsString()
   @IsOptional()
   staffId?: string;
@@ -259,6 +304,12 @@ export class SubmitSalesPaymentDto {
   @IsNumber()
   @Min(1)
   month: number;
+
+  /** Only honored for Hold My Gold subscriptions — what the rep actually collected in the field. */
+  @IsNumber()
+  @Min(1)
+  @IsOptional()
+  amount?: number;
 
   @IsString()
   @IsOptional()

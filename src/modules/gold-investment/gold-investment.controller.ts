@@ -23,6 +23,8 @@ import {
   SubmitSalesPaymentDto,
   ReviewSalesPaymentDto,
   RequestHoldMyGoldEnrollmentDto,
+  CreateHoldMyGoldTopUpDto,
+  VerifyHoldMyGoldTopUpDto,
 } from './dto/gold-investment.dto';
 
 @Controller('gold-investment')
@@ -105,6 +107,26 @@ export class GoldInvestmentController {
   @Post('my-subscriptions/verify')
   verifySubscription(@Body() dto: any) {
     return this.svc.verifyCustomerSubscription(dto);
+  }
+
+  /** Self-serve Hold My Gold: create a one-time Razorpay order for any amount (≥ ₹1000) the customer chooses to invest. */
+  @UseGuards(CustomerJwtAuthGuard)
+  @Post('my-subscriptions/hold-my-gold/topup')
+  createHoldMyGoldTopUp(@Req() req: any, @Body() dto: CreateHoldMyGoldTopUpDto) {
+    return this.svc.createHoldMyGoldTopUp({
+      customerName: req.user.name,
+      customerEmail: req.user.email,
+      customerPhone: req.user.phone,
+      amount: dto.amount,
+      planId: dto.planId,
+    });
+  }
+
+  /** Verifies a Hold My Gold top-up payment and credits the gold grams to the customer's holding. */
+  @UseGuards(CustomerJwtAuthGuard)
+  @Post('my-subscriptions/hold-my-gold/topup/verify')
+  verifyHoldMyGoldTopUp(@Req() req: any, @Body() dto: VerifyHoldMyGoldTopUpDto) {
+    return this.svc.verifyHoldMyGoldTopUp(dto, { email: req.user.email, phone: req.user.phone });
   }
 
   /** Creates a one-time Razorpay order for the full plan value, to be paid via bank/card EMI */

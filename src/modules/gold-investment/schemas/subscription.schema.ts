@@ -16,6 +16,8 @@ export enum PaymentEntryType {
   CASH = 'cash',
   WHATSAPP_LINK = 'whatsapp_link',
   EMI = 'emi',
+  /** Self-serve one-time online payment — used for Hold My Gold top-ups the customer pays themselves. */
+  ONLINE = 'online',
 }
 
 export enum PaymentMode {
@@ -136,6 +138,8 @@ export class Subscription {
         cashBenefitAmount: { type: Number },
         eligibleGoldGramsUsed: { type: Number },
         jewelryGoldWeightGrams: { type: Number },
+        /** The plan's makingChargeDiscountPercent at the time of this redemption (100 = full waiver on the eligible portion) */
+        makingChargeDiscountPercent: { type: Number },
         waivedMakingCharges: { type: Number },
         remainingMakingCharges: { type: Number },
         gstAmount: { type: Number },
@@ -156,6 +160,7 @@ export class Subscription {
     cashBenefitAmount?: number;
     eligibleGoldGramsUsed?: number;
     jewelryGoldWeightGrams?: number;
+    makingChargeDiscountPercent?: number;
     waivedMakingCharges?: number;
     remainingMakingCharges?: number;
     gstAmount?: number;
@@ -176,7 +181,7 @@ export class Subscription {
         month: { type: Number, required: true },
         amount: { type: Number, required: true },
         date: { type: Date, required: true },
-        type: { type: String, enum: ['autopay', 'cash', 'whatsapp_link', 'emi'], required: true },
+        type: { type: String, enum: ['autopay', 'cash', 'whatsapp_link', 'emi', 'online'], required: true },
         razorpayPaymentId: { type: String },
         staffId: { type: String },
         note: { type: String },
@@ -195,7 +200,7 @@ export class Subscription {
     month: number;
     amount: number;
     date: Date;
-    type: 'autopay' | 'cash' | 'whatsapp_link' | 'emi';
+    type: 'autopay' | 'cash' | 'whatsapp_link' | 'emi' | 'online';
     razorpayPaymentId?: string;
     staffId?: string;
     note?: string;
@@ -216,6 +221,8 @@ export class Subscription {
     type: [
       {
         month: { type: Number, required: true },
+        /** Only meaningful for Hold My Gold — the amount the sales rep actually collected, since there's no fixed installment. */
+        amount: { type: Number },
         submittedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
         submittedByName: { type: String, required: true },
         note: { type: String },
@@ -231,6 +238,7 @@ export class Subscription {
   pendingPayments: {
     _id: mongoose.Types.ObjectId;
     month: number;
+    amount?: number;
     submittedBy: mongoose.Types.ObjectId;
     submittedByName: string;
     note?: string;

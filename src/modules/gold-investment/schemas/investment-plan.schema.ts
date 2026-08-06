@@ -38,6 +38,13 @@ export class InvestmentPlan {
   @Prop({ required: true, default: 0 })
   cashBenefitPercent: number;
 
+  /** % off making charges on the gold-weight portion the customer's accumulated grams cover —
+   *  Option 2 (Making Charge Waiver) only. Defaults to 100 (full waiver on the eligible portion,
+   *  the original behavior) — admins can dial it down to offer a partial discount instead. Applies
+   *  to STANDARD and HOLD_MY_GOLD plans alike; see computeRedemptionOptions() in gold-investment.service.ts. */
+  @Prop({ required: true, default: 100, min: 0, max: 100 })
+  makingChargeDiscountPercent: number;
+
   /** Whether admin has made this plan active for new subscriptions */
   @Prop({ default: true })
   isActive: boolean;
