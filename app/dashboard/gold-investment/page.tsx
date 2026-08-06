@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import {
   getGoldStats, getInvestmentPlans, getGoldSubscriptions, updateGoldSubscription,
-  markGoldCashPayment, sendGoldReminder, restartGoldSubscription, getSettings,
+  markGoldCashPayment, sendGoldReminder, restartGoldSubscription, getSettings, updateSettings,
   enrollSubscription, searchCustomers,
   GoldInvestmentPlan, GoldSubscription, GoldStats, FullCustomer,
 } from '@/lib/api';
@@ -20,15 +20,19 @@ const statusColor: Record<string, string> = {
   pending: 'bg-slate-100 text-slate-600 border-slate-200',
 };
 
-const paymentTypeBadge = (type: 'autopay' | 'cash' | 'whatsapp_link') => {
+const paymentTypeBadge = (type: 'autopay' | 'cash' | 'whatsapp_link' | 'emi' | 'online') => {
   if (type === 'autopay') return 'bg-amber-50 text-amber-700 border-amber-200';
   if (type === 'cash') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  if (type === 'online') return 'bg-rose-50 text-rose-700 border-rose-200';
+  if (type === 'emi') return 'bg-indigo-50 text-indigo-700 border-indigo-200';
   return 'bg-sky-50 text-sky-700 border-sky-200';
 };
 
-const paymentTypeLabel = (type: 'autopay' | 'cash' | 'whatsapp_link') => {
+const paymentTypeLabel = (type: 'autopay' | 'cash' | 'whatsapp_link' | 'emi' | 'online') => {
   if (type === 'autopay') return 'Autopay';
   if (type === 'cash') return 'Cash';
+  if (type === 'online') return 'Online (Self-Serve)';
+  if (type === 'emi') return 'Bank EMI';
   return 'WhatsApp Link';
 };
 
@@ -73,10 +77,11 @@ export default function ManagerGoldInvestment() {
   const [enrollSaving, setEnrollSaving] = useState(false);
   const [enrollError, setEnrollError] = useState('');
 
-  // Hold My Gold config (read-only here — admin manages it)
+  // Hold My Gold config — managers can edit this too (backend already allows ADMIN or MANAGER)
   const [hmgThreshold, setHmgThreshold] = useState(25000);
   const [hmgTiers, setHmgTiers] = useState<HoldMyGoldTier[]>([]);
   const [hmgLoading, setHmgLoading] = useState(false);
+  const [hmgSaving, setHmgSaving] = useState(false);
 
   useEffect(() => {
     if (tab !== 'hold-my-gold') return;
@@ -85,6 +90,18 @@ export default function ManagerGoldInvestment() {
       .then(s => { setHmgThreshold(s.hold_my_gold_threshold ?? 25000); setHmgTiers(s.hold_my_gold_tiers ?? []); })
       .finally(() => setHmgLoading(false));
   }, [tab]);
+
+  const saveHoldMyGoldConfig = async () => {
+    setHmgSaving(true);
+    try {
+      await updateSettings({ hold_my_gold_threshold: hmgThreshold, hold_my_gold_tiers: hmgTiers });
+      toast.success('Hold My Gold settings saved');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to save');
+    } finally {
+      setHmgSaving(false);
+    }
+  };
 
   const loadAll = async () => {
     setLoading(true);
@@ -304,9 +321,10 @@ export default function ManagerGoldInvestment() {
                   <div className="grid grid-cols-2 gap-2 mt-4">
                     {[
                       { l: 'Monthly', v: fmt(p.monthlyAmount) },
-                      { l: 'Duration', v: `${p.durationMonths} months` },
+                      { l: 'Duration', v: p.durationMonths ? `${p.durationMonths} months` : 'Open-Ended' },
                       { l: 'Interest', v: `${p.interestRate}% p.a.` },
                       { l: 'Cash Benefit', v: `${p.cashBenefitPercent}%` },
+                      { l: 'Making Charge Off', v: `${p.makingChargeDiscountPercent ?? 100}%` },
                     ].map((item, i) => (
                       <div key={i} className="bg-slate-50 rounded-xl p-2.5 border border-slate-100">
                         <p className="text-[8px] font-black text-slate-300 uppercase mb-0.5">{item.l}</p>
@@ -389,15 +407,15 @@ export default function ManagerGoldInvestment() {
         </div>
       )}
 
-      {/* HOLD MY GOLD (read-only — admin manages the threshold/tiers) */}
+      {/* HOLD MY GOLD — managers can edit the threshold/tiers too */}
       {tab === 'hold-my-gold' && (
         <div className="space-y-6 max-w-2xl">
           <div className="bg-amber-50 border border-amber-100 rounded-2xl p-5">
             <p className="text-xs font-bold text-amber-800 leading-relaxed">
-              Any investment plan where the customer's monthly amount is at or above the threshold below automatically
-              becomes a <strong>Hold My Gold</strong> plan. At redemption, it uses the tiered cash-benefit % configured
-              here (instead of the plan's flat Cash Benefit %), and the Making Charge Waiver option is not available.
-              Only Admin can change these settings.
+              <strong>Hold My Gold</strong> is a dedicated plan type (created/edited from Admin&apos;s Plans tab) — it&apos;s
+              open-ended, with no fixed maturity. The tiers below control only the cash-benefit % used at redemption for
+              Hold My Gold subscriptions; the Making Charge Waiver option is granted per subscription from that
+              subscription&apos;s detail drawer below, independent of these tiers.
             </p>
           </div>
 
@@ -405,24 +423,53 @@ export default function ManagerGoldInvestment() {
             <div className="flex items-center justify-center h-40"><div className="w-8 h-8 border-[3px] border-[#5A0F1A] border-t-transparent rounded-full animate-spin" /></div>
           ) : (
             <>
-              <div className="bg-white border border-slate-100 rounded-2xl p-5">
-                <p className="text-[8px] font-black text-slate-300 uppercase mb-1">Threshold</p>
-                <p className="text-lg font-bold text-slate-900">{fmt(hmgThreshold)} / month</p>
-              </div>
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-[#5A0F1A] mb-3">Discount Tiers</p>
-                <div className="space-y-2">
+                <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Default Tier Floor (INR)</label>
+                <input type="number" value={hmgThreshold} onChange={e => setHmgThreshold(Number(e.target.value) || 0)}
+                  className="w-full border-b-2 border-slate-100 focus:border-[#5A0F1A] py-2.5 text-sm font-bold outline-none transition-all" />
+                <p className="text-[9px] text-slate-400 mt-1">Just the default minimum prefilled when you click &quot;+ Add Tier&quot; below — lower it (or raise it) to change what a new tier starts at.</p>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400">Discount Tiers</label>
+                  <button
+                    onClick={() => setHmgTiers(t => [...t, { minAmount: hmgThreshold, maxAmount: null, discountPercent: 0 }])}
+                    className="text-[10px] font-black uppercase text-[#5A0F1A] hover:underline"
+                  >
+                    + Add Tier
+                  </button>
+                </div>
+                <div className="space-y-3">
                   {hmgTiers.map((tier, i) => (
-                    <div key={i} className="bg-white border border-slate-100 rounded-xl p-4 flex items-center justify-between">
-                      <p className="text-sm font-bold text-slate-800">
-                        {fmt(tier.minAmount)} {tier.maxAmount != null ? `– ${fmt(tier.maxAmount)}` : 'and above'}
-                      </p>
-                      <span className="px-3 py-1 rounded-full text-[10px] font-black bg-amber-50 text-amber-700 border border-amber-200">{tier.discountPercent}% off</span>
+                    <div key={i} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-center bg-slate-50 border border-slate-100 rounded-xl p-3">
+                      <div>
+                        <label className="block text-[8px] font-black uppercase text-slate-400 mb-1">Min (₹)</label>
+                        <input type="number" value={tier.minAmount} onChange={e => setHmgTiers(ts => ts.map((t, ti) => ti === i ? { ...t, minAmount: Number(e.target.value) || 0 } : t))}
+                          className="w-full border-b-2 border-slate-200 focus:border-[#5A0F1A] py-1.5 text-xs font-bold outline-none bg-transparent" />
+                      </div>
+                      <div>
+                        <label className="block text-[8px] font-black uppercase text-slate-400 mb-1">Max (₹, blank = no cap)</label>
+                        <input type="number" value={tier.maxAmount ?? ''} onChange={e => setHmgTiers(ts => ts.map((t, ti) => ti === i ? { ...t, maxAmount: e.target.value === '' ? null : Number(e.target.value) } : t))}
+                          className="w-full border-b-2 border-slate-200 focus:border-[#5A0F1A] py-1.5 text-xs font-bold outline-none bg-transparent" />
+                      </div>
+                      <div>
+                        <label className="block text-[8px] font-black uppercase text-slate-400 mb-1">Off %</label>
+                        <input type="number" step="0.1" value={tier.discountPercent} onChange={e => setHmgTiers(ts => ts.map((t, ti) => ti === i ? { ...t, discountPercent: Number(e.target.value) || 0 } : t))}
+                          className="w-full border-b-2 border-slate-200 focus:border-[#5A0F1A] py-1.5 text-xs font-bold outline-none bg-transparent" />
+                      </div>
+                      <button onClick={() => setHmgTiers(ts => ts.filter((_, ti) => ti !== i))} className="text-red-400 hover:text-red-600 text-[10px] font-black uppercase px-2">
+                        Remove
+                      </button>
                     </div>
                   ))}
-                  {hmgTiers.length === 0 && <p className="text-xs text-slate-400 italic">No tiers configured yet.</p>}
+                  {hmgTiers.length === 0 && <p className="text-xs text-slate-400 italic">No tiers configured yet — Hold My Gold subscriptions get 0% until you add one.</p>}
                 </div>
               </div>
+
+              <button onClick={saveHoldMyGoldConfig} disabled={hmgSaving} className="px-6 py-3 bg-[#5A0F1A] text-white text-xs font-black uppercase tracking-widest rounded-2xl hover:bg-[#7A1238] transition-all disabled:opacity-50">
+                {hmgSaving ? 'Saving...' : 'Save Hold My Gold Settings'}
+              </button>
             </>
           )}
         </div>
@@ -550,6 +597,7 @@ export default function ManagerGoldInvestment() {
                           <div><p className="text-[8px] text-white/50 font-bold">Redeemed</p><p className="text-sm font-bold">{fmt(selectedSub.amountRedeemed || 0)}</p></div>
                           <div><p className="text-[8px] text-white/50 font-bold">Gold Accumulated</p><p className="text-sm font-bold">{(selectedSub.goldGramsAccumulated || 0).toFixed(2)}g</p></div>
                           <div><p className="text-[8px] text-white/50 font-bold">Cash Benefit</p><p className="text-sm font-bold">{selectedSub.plan?.cashBenefitPercent}%</p></div>
+                          <div><p className="text-[8px] text-white/50 font-bold">Making Charge Off</p><p className="text-sm font-bold">{selectedSub.plan?.makingChargeDiscountPercent ?? 100}%</p></div>
                         </div>
                       </div>
                     );

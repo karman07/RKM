@@ -284,13 +284,18 @@ export interface AppSettings {
   stone_refund_percentage?: number;
   /** Default deduction (% of the advance) suggested when cancelling a pre-booking (default 0) */
   prebooking_cancellation_deduction_pct?: number;
-  /** Monthly amount at/above which a gold-investment subscription becomes Hold My Gold (default 25000) */
+  /** Default floor prefilled when adding a new Hold My Gold discount tier (default 25000) — informational only, does not gate anything on its own */
   hold_my_gold_threshold?: number;
-  /** Discount tiers by monthly-amount range for Hold My Gold subscriptions */
+  /** Discount tiers by invested-amount range, used for the cash-benefit % at redemption for Hold My Gold subscriptions */
   hold_my_gold_tiers?: { minAmount: number; maxAmount: number | null; discountPercent: number }[];
   updatedAt?: string;
 }
 export const getSettings = () => request<AppSettings>('/settings');
+export const updateSettings = (data: Partial<AppSettings>) =>
+  request<AppSettings>('/settings', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
 
 // ── Lookups ──────────────────────────────────────────────────────────────────
 
@@ -1135,10 +1140,13 @@ export interface GoldInvestmentPlan {
   name: string;
   description?: string;
   monthlyAmount: number;
-  durationMonths: number;
+  /** Absent for Hold My Gold plans — open-ended, no fixed maturity */
+  durationMonths?: number | null;
   interestRate: number;
   /** Cash benefit %, paid on top of the investment amount redeemed at purchase — Option 1 only */
   cashBenefitPercent: number;
+  /** % off making charges on the eligible gold-weight portion at redemption — Option 2 only; defaults to 100 (full waiver) when unset */
+  makingChargeDiscountPercent?: number;
   isActive: boolean;
   razorpayPlanId: string;
   /** Floor for a customer's own custom monthly amount on this plan — defaults to monthlyAmount when unset */
@@ -1149,10 +1157,12 @@ export interface PaymentLedgerEntry {
   month: number;
   amount: number;
   date: string;
-  type: 'autopay' | 'cash' | 'whatsapp_link';
+  type: 'autopay' | 'cash' | 'whatsapp_link' | 'emi' | 'online';
   razorpayPaymentId?: string;
   staffId?: string;
   note?: string;
+  goldRateAtPayment?: number;
+  gramsCredited?: number;
 }
 
 export interface GoldSubscription {
@@ -1164,10 +1174,12 @@ export interface GoldSubscription {
   status: 'active' | 'cancelled' | 'completed' | 'halted' | 'pending';
   /** Customer's own chosen monthly amount, if they didn't use the plan's default */
   customMonthlyAmount?: number | null;
-  /** 'hold_my_gold' when the effective monthly amount is at/above the admin-configured threshold */
+  /** Copied from the plan's planType at enroll time — hold_my_gold plans are open-ended (no fixed durationMonths) */
   planCategory?: 'standard' | 'hold_my_gold';
   amountAccumulated: number;
   interestAccumulated: number;
+  /** Extra interest credited manually by an admin, on top of the plan's auto-accrued interest */
+  bonusInterest?: number;
   amountRedeemed: number;
   goldGramsAccumulated: number;
   redemptionHistory: {
@@ -1180,6 +1192,7 @@ export interface GoldSubscription {
     cashBenefitAmount?: number;
     eligibleGoldGramsUsed?: number;
     jewelryGoldWeightGrams?: number;
+    makingChargeDiscountPercent?: number;
     waivedMakingCharges?: number;
     remainingMakingCharges?: number;
     gstAmount?: number;
@@ -1252,6 +1265,7 @@ export interface RedemptionOptionQuote {
   goldAccumulated?: number;
   eligibleGoldGramsUsed?: number;
   jewelryGoldWeightGrams?: number;
+  makingChargeDiscountPercent?: number;
   waivedMakingCharges?: number;
   remainingMakingCharges?: number;
 }
@@ -1322,7 +1336,7 @@ export interface GoldBalance {
   goldGramsAccumulated: number;
   interestStopped: boolean;
   availableBalance: number;
-  plan: { name: string; monthlyAmount: number; cashBenefitPercent: number; durationMonths: number; interestRate: number };
+  plan: { name: string; monthlyAmount: number; cashBenefitPercent: number; makingChargeDiscountPercent?: number; durationMonths?: number | null; interestRate: number };
   installmentsPaid: number;
 }
 

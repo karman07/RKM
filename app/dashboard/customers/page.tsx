@@ -1586,45 +1586,56 @@ function CustomerDrawer({ customer, onClose, onUpdated }: { customer: FullCustom
                 <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-3">{plans.length} plan{plans.length !== 1 ? 's' : ''}</p>
                 {plans.map(plan => {
                   const totalMonths = plan.plan?.durationMonths || 0;
+                  const isOpenEnded = totalMonths === 0;
                   const paid = plan.installmentsPaid || 0;
                   const ipm = (plan.plan?.monthlyAmount || 0) * (plan.plan?.interestRate || 0) / 100;
                   const cm = paid >= totalMonths ? paid : Math.max(0, paid - 1);
                   const interest = plan.interestStopped ? 0 : cm * ipm;
-                  const balance = Math.max(0, paid * (plan.plan?.monthlyAmount || 0) + interest - (plan.amountRedeemed || 0));
+                  // Open-ended (Hold My Gold) plans have variable per-payment amounts, so the real
+                  // accumulated principal/interest from the backend must be used rather than
+                  // paid-count × fixed-monthly-amount, which only holds for fixed-installment plans.
+                  const principal = isOpenEnded ? (plan.amountAccumulated || 0) : paid * (plan.plan?.monthlyAmount || 0);
+                  const balance = isOpenEnded
+                    ? Math.max(0, (plan.amountAccumulated || 0) + (plan.interestAccumulated || 0) + (plan.bonusInterest || 0) - (plan.amountRedeemed || 0))
+                    : Math.max(0, principal + interest - (plan.amountRedeemed || 0));
+                  const goldGrams = plan.goldGramsAccumulated || 0;
                   return (
                     <div key={plan._id} className="border border-slate-200 rounded-2xl overflow-hidden">
                       <div className="px-5 py-4 flex items-start justify-between" style={{ background: `linear-gradient(135deg, ${PRIMARY_D} 0%, ${PRIMARY} 100%)` }}>
                         <div>
                           <p className="text-[9px] font-black uppercase tracking-widest text-rose-200 mb-0.5">Gold Savings Plan</p>
                           <p className="text-base font-black text-white">{plan.plan?.name || 'Gold Plan'}</p>
-                          <p className="text-[10px] text-rose-200 mt-0.5">{plan.plan?.interestRate}% p.a. · {totalMonths} months</p>
+                          <p className="text-[10px] text-rose-200 mt-0.5">{plan.plan?.interestRate}% p.a. · {isOpenEnded ? 'Open-Ended' : `${totalMonths} months`}</p>
                         </div>
                         <span className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase border ${statusColor(plan.status)}`}>{plan.status}</span>
                       </div>
                       <div className="p-4 space-y-3">
-                        <div className="grid grid-cols-3 gap-2">
+                        <div className="grid grid-cols-4 gap-2">
                           {[
-                            { l: 'Monthly', v: fmtMoney(plan.plan?.monthlyAmount || 0) },
-                            { l: 'Paid', v: `${paid} / ${totalMonths}` },
+                            { l: isOpenEnded ? 'Invested' : 'Monthly', v: isOpenEnded ? fmtMoney(principal) : fmtMoney(plan.plan?.monthlyAmount || 0) },
+                            { l: isOpenEnded ? 'Payments' : 'Paid', v: isOpenEnded ? `${paid}` : `${paid} / ${totalMonths}` },
+                            { l: 'Gold Held', v: `${goldGrams.toFixed(3)}g`, amber: true },
                             { l: 'Balance', v: fmtMoney(balance), green: true },
                           ].map((x, i) => (
-                            <div key={i} className={`rounded-xl p-3 border ${x.green ? 'bg-emerald-50 border-emerald-100' : 'bg-slate-50 border-slate-100'}`}>
-                              <p className={`text-[8px] font-black uppercase mb-1 ${x.green ? 'text-emerald-400' : 'text-slate-300'}`}>{x.l}</p>
-                              <p className={`text-xs font-bold ${x.green ? 'text-emerald-700' : 'text-slate-800'}`}>{x.v}</p>
+                            <div key={i} className={`rounded-xl p-3 border ${x.green ? 'bg-emerald-50 border-emerald-100' : x.amber ? 'bg-amber-50 border-amber-100' : 'bg-slate-50 border-slate-100'}`}>
+                              <p className={`text-[8px] font-black uppercase mb-1 ${x.green ? 'text-emerald-400' : x.amber ? 'text-amber-500' : 'text-slate-300'}`}>{x.l}</p>
+                              <p className={`text-xs font-bold ${x.green ? 'text-emerald-700' : x.amber ? 'text-amber-700' : 'text-slate-800'}`}>{x.v}</p>
                             </div>
                           ))}
                         </div>
-                        <div>
-                          <div className="flex justify-between text-[9px] font-bold text-slate-400 mb-1">
-                            <span>Progress</span><span>{paid}/{totalMonths} months</span>
+                        {!isOpenEnded && (
+                          <div>
+                            <div className="flex justify-between text-[9px] font-bold text-slate-400 mb-1">
+                              <span>Progress</span><span>{paid}/{totalMonths} months</span>
+                            </div>
+                            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                              <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${totalMonths ? (paid / totalMonths) * 100 : 0}%` }} />
+                            </div>
                           </div>
-                          <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                            <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${totalMonths ? (paid / totalMonths) * 100 : 0}%` }} />
-                          </div>
-                        </div>
+                        )}
                         <div className="flex items-center justify-between text-xs border-t border-slate-100 pt-2">
                           <span className="text-slate-400 font-medium">Total paid in</span>
-                          <span className="font-black text-slate-900">{fmtMoney(paid * (plan.plan?.monthlyAmount || 0))}</span>
+                          <span className="font-black text-slate-900">{fmtMoney(principal)}</span>
                         </div>
                         {(plan.amountRedeemed || 0) > 0 && (
                           <div className="flex items-center justify-between text-xs">
