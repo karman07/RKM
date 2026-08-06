@@ -732,10 +732,13 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
   const { principal, interest, bonusInterest, balance, displayedPaid } = computeTimeBasedBalance(sub);
   const plan = sub.plan;
   const totalMonths = effectiveDurationMonths(sub);
+  const isOpenEnded = totalMonths === 0;
   const monthlyAmount = effectiveMonthlyAmount(sub);
   const totalProjected = totalMonths * monthlyAmount + totalMonths * (monthlyAmount * (plan?.interestRate || 0) / 100);
   const progressPct = totalMonths > 0 ? (displayedPaid / totalMonths) * 100 : 0;
-  const canAddPayment = displayedPaid < totalMonths && sub.status !== 'completed' && sub.status !== 'cancelled';
+  const goldGrams = sub.goldGramsAccumulated || 0;
+  // Hold My Gold (and any other open-ended plan) never hits a fixed month count, so it can always take another payment.
+  const canAddPayment = (isOpenEnded || displayedPaid < totalMonths) && sub.status !== 'completed' && sub.status !== 'cancelled';
   const redeemableSales = orders.filter(o => o.sale_reference);
   const monthsElapsed = monthsSinceStart(sub.startedAt);
   const isRedemptionLocked = monthsElapsed < GOLD_PLAN_MIN_REDEMPTION_LOCK_MONTHS;
@@ -753,6 +756,8 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
 
   const [showPayment, setShowPayment] = useState(false);
   const [paymentNote, setPaymentNote] = useState('');
+  /** Only used for Hold My Gold — the amount actually collected, since there's no fixed installment. */
+  const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentLoading, setPaymentLoading] = useState(false);
 
   const [showInterest, setShowInterest] = useState(false);
@@ -836,12 +841,20 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
   }
 
   async function handleAddPayment() {
+    if (isOpenEnded && !(parseFloat(paymentAmount) > 0)) {
+      toast.error('Enter the amount collected — Hold My Gold has no fixed installment.');
+      return;
+    }
     setPaymentLoading(true);
     try {
-      const updated = await markGoldCashPayment(sub._id, { month: displayedPaid + 1, note: paymentNote });
+      const updated = await markGoldCashPayment(sub._id, {
+        month: displayedPaid + 1,
+        amount: isOpenEnded ? parseFloat(paymentAmount) : undefined,
+        note: paymentNote,
+      });
       onRedeemed(updated);
       setShowPayment(false);
-      setPaymentNote('');
+      setPaymentNote(''); setPaymentAmount('');
       toast.success('Payment recorded');
     } catch (e: any) {
       toast.error(e?.message || 'Failed to record payment');
@@ -883,7 +896,7 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
             </div>
             <h4 className="text-lg font-bold text-white">{plan?.name}</h4>
             <p className="text-[9px] font-bold text-white/40 uppercase tracking-wider mt-0.5">
-              {plan?.interestRate}% p.a. · {totalMonths} months
+              {plan?.interestRate}% p.a. · {isOpenEnded ? 'Open-Ended' : `${totalMonths} months`}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -906,19 +919,20 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
             <p className="text-3xl font-bold text-white">{fmt(balance)}</p>
           </div>
           <div className="text-right">
-            <p className="text-[8px] font-black uppercase text-white/40 mb-1">Maturity Value</p>
-            <p className="text-base font-black text-amber-300">{fmt(totalProjected)}</p>
+            <p className="text-[8px] font-black uppercase text-white/40 mb-1">{isOpenEnded ? 'Gold Held' : 'Maturity Value'}</p>
+            <p className="text-base font-black text-amber-300">{isOpenEnded ? `${goldGrams.toFixed(3)} g` : fmt(totalProjected)}</p>
           </div>
         </div>
       </div>
 
       {/* Stats grid */}
-      <div className="grid grid-cols-4 divide-x divide-slate-50 border-b border-slate-50">
+      <div className="grid grid-cols-5 divide-x divide-slate-50 border-b border-slate-50">
         {[
-          { label: 'Paid Months', value: `${displayedPaid} / ${totalMonths}` },
+          { label: isOpenEnded ? 'Payments Made' : 'Paid Months', value: isOpenEnded ? `${displayedPaid}` : `${displayedPaid} / ${totalMonths}` },
           { label: 'Principal', value: fmt(principal) },
           { label: 'Interest Earned', value: fmt(interest), highlight: true, sub: bonusInterest > 0 ? `incl. ${fmt(bonusInterest)} bonus` : undefined },
           { label: 'Redeemed', value: fmt(sub.amountRedeemed || 0) },
+          { label: 'Gold Accumulated', value: `${goldGrams.toFixed(3)} g`, sub: 'redeemable at purchase' },
         ].map((s, i) => (
           <div key={i} className="px-5 py-4">
             <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">{s.label}</p>
@@ -928,26 +942,45 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
         ))}
       </div>
 
-      {/* Progress bar */}
-      <div className="px-8 py-5">
-        <div className="flex justify-between mb-2">
-          <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Plan Progress</span>
-          <span className="text-[9px] font-black text-blue-600">{displayedPaid}/{totalMonths} months</span>
+      {/* Progress bar — only meaningful for fixed-duration plans; Hold My Gold has no month count to bar-chart */}
+      {!isOpenEnded && (
+        <div className="px-8 py-5">
+          <div className="flex justify-between mb-2">
+            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Plan Progress</span>
+            <span className="text-[9px] font-black text-blue-600">{displayedPaid}/{totalMonths} months</span>
+          </div>
+          <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all duration-700"
+              style={{ width: `${progressPct}%`, background: 'linear-gradient(90deg, #1f63d8, #3b82f6, #fbbf24)' }}
+            />
+          </div>
+          <div className="flex justify-between mt-1.5">
+            <span className="text-[8px] font-bold text-slate-300">Month 1</span>
+            <span className="text-[8px] font-bold text-slate-300">Month {totalMonths}</span>
+          </div>
         </div>
-        <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
-          <div
-            className="h-full rounded-full transition-all duration-700"
-            style={{ width: `${progressPct}%`, background: 'linear-gradient(90deg, #1f63d8, #3b82f6, #fbbf24)' }}
-          />
-        </div>
-        <div className="flex justify-between mt-1.5">
-          <span className="text-[8px] font-bold text-slate-300">Month 1</span>
-          <span className="text-[8px] font-bold text-slate-300">Month {totalMonths}</span>
-        </div>
-      </div>
+      )}
 
       {/* Redemption options at jewelry purchase */}
-      {(plan?.cashBenefitPercent ?? 0) > 0 && (
+      {isOpenEnded ? (
+        <div className="mx-8 mb-5 px-5 py-4 rounded-2xl bg-blue-50 border border-blue-100">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[8px] font-black uppercase tracking-widest mb-0.5 text-blue-700">Hold My Gold Redemption</p>
+              <p className="text-[10px] font-bold text-slate-500">Cash-benefit % is tiered by amount invested — configure tiers from Gold Investment → Hold My Gold.</p>
+            </div>
+            <span className={`px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border ${sub.makingChargeWaiverEnabled ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>
+              Making Charge Waiver {sub.makingChargeWaiverEnabled ? 'Enabled' : 'Not Enabled'}
+            </span>
+          </div>
+          <p className="mt-2 text-[9px] text-slate-400 font-bold">
+            {sub.makingChargeWaiverEnabled
+              ? `Approved for this subscription — at purchase the customer can waive making charges on the gold their ${goldGrams.toFixed(3)}g accumulated balance covers, instead of the tiered cash benefit.`
+              : `Not yet approved for this subscription — only the tiered cash benefit is available at purchase. Enable the waiver from Gold Investment → Subscriptions → this subscription's detail drawer.`}
+          </p>
+        </div>
+      ) : (plan?.cashBenefitPercent ?? 0) > 0 && (
         <div className="mx-8 mb-5 px-5 py-4 rounded-2xl bg-blue-50 border border-blue-100">
           <div className="flex items-center justify-between">
             <div>
@@ -979,8 +1012,37 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
         </div>
       )}
 
-      {/* Payment Ledger — every month, received or still due */}
-      {totalMonths > 0 && (
+      {/* Payment Ledger — open-ended plans have no month slots to project, just the real payments made */}
+      {isOpenEnded ? (
+        (sub.paymentLedger?.length ?? 0) > 0 && (
+          <div className="px-8 pb-5">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Investment History</p>
+              <span className="text-[9px] font-bold text-slate-300">{sub.paymentLedger.length} received</span>
+            </div>
+            <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+              {[...sub.paymentLedger].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((p, i) => (
+                <div key={i} className="flex items-center justify-between bg-slate-50 rounded-xl px-4 py-3 border border-slate-100">
+                  <div className="flex items-center gap-3">
+                    <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center shrink-0">
+                      <CheckCircle2 size={12} color="white" strokeWidth={2.5} />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-900">{fmt(p.amount)}</p>
+                      <p className="text-[9px] text-slate-400">
+                        {new Date(p.date).toLocaleDateString('en-IN', { dateStyle: 'medium' })}
+                        {p.gramsCredited != null && ` · ${p.gramsCredited.toFixed(3)}g @ ${p.goldRateAtPayment ? fmt(p.goldRateAtPayment) : '—'}/g`}
+                      </p>
+                      {p.note && <p className="text-[9px] text-slate-400 italic">{p.note}</p>}
+                    </div>
+                  </div>
+                  <span className="text-[8px] font-black uppercase text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-lg whitespace-nowrap">{p.type.replace('_', ' ')}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      ) : (
         <div className="px-8 pb-5">
           <div className="flex items-center justify-between mb-3">
             <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Payment Ledger</p>
@@ -1036,6 +1098,7 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
         </div>
       )}
 
+
       {/* Interest Adjustments (admin bonus credits) */}
       {(sub.interestAdjustments?.length ?? 0) > 0 && (
         <div className="px-8 pb-5">
@@ -1082,11 +1145,20 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
               onClick={() => setShowPayment(true)}
               className="w-full py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest border-2 border-emerald-600 text-emerald-600 hover:bg-emerald-600 hover:text-white transition-all flex items-center justify-center gap-1.5"
             >
-              <Plus size={12} /> Add Payment (Month {displayedPaid + 1})
+              <Plus size={12} /> {isOpenEnded ? 'Record Cash Top-Up' : `Add Payment (Month ${displayedPaid + 1})`}
             </button>
           ) : (
             <div className="border border-emerald-200 rounded-2xl p-5 bg-emerald-50/40 space-y-3">
-              <p className="text-[9px] font-black uppercase tracking-widest text-emerald-700">Record Cash Payment — Month {displayedPaid + 1} ({fmt(monthlyAmount)})</p>
+              <p className="text-[9px] font-black uppercase tracking-widest text-emerald-700">
+                {isOpenEnded ? 'Record Cash Top-Up' : `Record Cash Payment — Month ${displayedPaid + 1} (${fmt(monthlyAmount)})`}
+              </p>
+              {isOpenEnded && (
+                <input
+                  type="number" min={1} value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)}
+                  placeholder="Amount collected (₹)"
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-emerald-500 bg-white"
+                />
+              )}
               <input
                 type="text" value={paymentNote} onChange={e => setPaymentNote(e.target.value)}
                 placeholder="Note (optional)"

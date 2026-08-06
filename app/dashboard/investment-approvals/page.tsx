@@ -119,7 +119,7 @@ export default function InvestmentApprovalsPage() {
           <table className="w-full text-left">
             <thead>
               <tr className="bg-slate-50/50 border-b border-slate-100">
-                {['Customer', 'Plan', 'Month', 'Note', 'Submitted By', 'Submitted', 'Actions'].map(h => (
+                {['Customer', 'Plan', 'Month', 'Amount', 'Note', 'Submitted By', 'Submitted', 'Actions'].map(h => (
                   <th key={h} className="px-6 py-5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{h}</th>
                 ))}
               </tr>
@@ -128,12 +128,12 @@ export default function InvestmentApprovalsPage() {
               {loading ? (
                 [1, 2, 3].map(i => (
                   <tr key={i} className="animate-pulse">
-                    <td colSpan={7} className="px-6 py-5 h-16 bg-white" />
+                    <td colSpan={8} className="px-6 py-5 h-16 bg-white" />
                   </tr>
                 ))
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-24 text-center text-slate-400 italic text-sm">
+                  <td colSpan={8} className="px-6 py-24 text-center text-slate-400 italic text-sm">
                     No payments awaiting approval.
                   </td>
                 </tr>
@@ -149,6 +149,11 @@ export default function InvestmentApprovalsPage() {
                     </td>
                     <td className="px-6 py-4">
                       <span className="text-sm font-black text-slate-900">#{item.month}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-[11px] font-bold text-slate-700">
+                        {item.amount != null ? new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(item.amount) : '—'}
+                      </span>
                     </td>
                     <td className="px-6 py-4 max-w-[200px]">
                       <p className="text-[11px] text-slate-500 truncate italic">{item.note ? `"${item.note}"` : '—'}</p>

@@ -67,6 +67,7 @@ export default function RedemptionComparisonPanel({ preview, loading, error, cho
             <div className="space-y-1 text-[11px]">
               <div className="flex justify-between"><span className="text-slate-400">Gold Accumulated</span><span className="font-bold">{(makingChargeWaiverOption.goldAccumulated || 0).toFixed(2)}g</span></div>
               <div className="flex justify-between"><span className="text-slate-400">Matched Gold</span><span className="font-bold">{(makingChargeWaiverOption.eligibleGoldGramsUsed || 0).toFixed(2)}g of {(makingChargeWaiverOption.jewelryGoldWeightGrams || 0).toFixed(2)}g</span></div>
+              <div className="flex justify-between"><span className="text-slate-400">Plan Discount</span><span className="font-bold">{makingChargeWaiverOption.makingChargeDiscountPercent ?? 100}% of matched-gold charges</span></div>
               <div className="flex justify-between"><span className="text-slate-400">Making Charges Waived</span><span className="font-bold text-amber-700">− ₹{fmt(makingChargeWaiverOption.waivedMakingCharges || 0)}</span></div>
               <div className="flex justify-between"><span className="text-slate-400">Remaining Making Charges</span><span className="font-bold">₹{fmt(makingChargeWaiverOption.remainingMakingCharges || 0)}</span></div>
               <div className="flex justify-between"><span className="text-slate-400">Remaining Amount</span><span className="font-bold">₹{fmt(makingChargeWaiverOption.remainingAmount)}</span></div>

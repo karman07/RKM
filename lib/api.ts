@@ -996,7 +996,7 @@ export interface GoldBalance {
   goldGramsAccumulated: number;
   interestStopped: boolean;
   availableBalance: number;
-  plan: { name: string; monthlyAmount: number; cashBenefitPercent: number; durationMonths?: number | null; interestRate: number; minMonthlyAmount?: number };
+  plan: { name: string; monthlyAmount: number; cashBenefitPercent: number; makingChargeDiscountPercent?: number; durationMonths?: number | null; interestRate: number; minMonthlyAmount?: number };
   /** Customer's own chosen monthly amount, if they didn't use the plan's default */
   customMonthlyAmount?: number | null;
   /** Copied from plan.planType at enroll time — different redemption rules apply */
@@ -1016,11 +1016,13 @@ export interface RedemptionOptionQuote {
   // Cash Benefit only
   investmentAmountUsed?: number;
   cashBenefitAmount?: number;
-  // Making Charge Waiver only — waives making charges on the gold grams matched between what
-  // the customer has accumulated and the jewelry's own gold weight.
+  // Making Charge Waiver only — discounts making charges on the gold grams matched between what
+  // the customer has accumulated and the jewelry's own gold weight, by the plan's own % (see
+  // makingChargeDiscountPercent on InvestmentPlan — 100 = full waiver on the eligible portion).
   goldAccumulated?: number;
   eligibleGoldGramsUsed?: number;
   jewelryGoldWeightGrams?: number;
+  makingChargeDiscountPercent?: number;
   waivedMakingCharges?: number;
   remainingMakingCharges?: number;
 }
@@ -1339,9 +1341,9 @@ export interface AppSettings {
   sales_commission_rate_percentage?: number;
   /** Default deduction (% of the advance) suggested when cancelling a pre-booking (default 0) */
   prebooking_cancellation_deduction_pct?: number;
-  /** Monthly amount at/above which a gold-investment subscription becomes Hold My Gold (default 25000) */
+  /** Default floor prefilled when adding a new Hold My Gold discount tier (default 25000) — informational only, does not gate anything on its own */
   hold_my_gold_threshold?: number;
-  /** Discount tiers by monthly-amount range for Hold My Gold subscriptions */
+  /** Discount tiers by invested-amount range, used for the cash-benefit % at redemption for Hold My Gold subscriptions */
   hold_my_gold_tiers?: { minAmount: number; maxAmount: number | null; discountPercent: number }[];
   updatedAt?: string;
 }
@@ -1893,6 +1895,8 @@ export interface InvestmentPlan {
   interestRate: number;
   /** Cash benefit %, paid on top of the investment amount redeemed at purchase — Option 1 only */
   cashBenefitPercent: number;
+  /** % off making charges on the eligible gold-weight portion at redemption — Option 2 only; defaults to 100 (full waiver) when unset */
+  makingChargeDiscountPercent?: number;
   isActive: boolean;
   razorpayPlanId?: string;
   /** Floor for a customer's custom monthly amount on this plan — defaults to monthlyAmount when unset */
@@ -1905,10 +1909,12 @@ export interface PaymentLedgerEntry {
   month: number;
   amount: number;
   date: string;
-  type: 'autopay' | 'cash' | 'whatsapp_link';
+  type: 'autopay' | 'cash' | 'whatsapp_link' | 'emi' | 'online';
   razorpayPaymentId?: string;
   staffId?: string;
   note?: string;
+  goldRateAtPayment?: number;
+  gramsCredited?: number;
 }
 
 export interface GoldSubscription {
@@ -1946,6 +1952,7 @@ export interface GoldSubscription {
     cashBenefitAmount?: number;
     eligibleGoldGramsUsed?: number;
     jewelryGoldWeightGrams?: number;
+    makingChargeDiscountPercent?: number;
     waivedMakingCharges?: number;
     remainingMakingCharges?: number;
     gstAmount?: number;
@@ -2031,7 +2038,7 @@ export async function redeemSubscription(id: string, data: { amount: number; sal
   return request<GoldSubscription>(`/gold-investment/subscriptions/${id}/redeem`, { method: 'POST', body: JSON.stringify(data) });
 }
 
-export async function markGoldCashPayment(id: string, data: { month: number; staffId?: string; note?: string }): Promise<GoldSubscription> {
+export async function markGoldCashPayment(id: string, data: { month: number; amount?: number; staffId?: string; note?: string }): Promise<GoldSubscription> {
   return request<GoldSubscription>(`/gold-investment/subscriptions/${id}/mark-payment`, { method: 'POST', body: JSON.stringify(data) });
 }
 
@@ -2053,6 +2060,8 @@ export interface PendingInvestmentPayment {
   customerPhone?: string;
   planName?: string;
   month: number;
+  /** Only set for Hold My Gold — the amount the rep actually collected, since there's no fixed installment */
+  amount?: number;
   note?: string;
   submittedByName: string;
   submittedAt: string;
