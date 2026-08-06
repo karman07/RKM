@@ -29,6 +29,7 @@ export default function SalesInvestmentsPage() {
   const [loadingSubs, setLoadingSubs] = useState(false);
   const [selectedSub, setSelectedSub] = useState<GoldBalance | null>(null);
   const [month, setMonth] = useState<number>(1);
+  const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -80,15 +81,26 @@ export default function SalesInvestmentsPage() {
   function selectSub(s: GoldBalance) {
     setSelectedSub(s);
     setMonth((s.installmentsPaid || 0) + 1);
+    setAmount('');
     setNote('');
   }
 
+  const isOpenEndedSub = !selectedSub?.plan?.durationMonths;
+
   async function handleSubmit() {
     if (!selectedSub) return;
+    if (isOpenEndedSub && !(parseFloat(amount) > 0)) {
+      toast.error('Enter the amount collected — Hold My Gold has no fixed installment.');
+      return;
+    }
     setSubmitting(true);
     try {
-      await submitInvestmentPayment(selectedSub._id, { month, note: note.trim() || undefined });
-      toast.success(`Month ${month} payment submitted for ${selectedSub.customerName || customer?.name} — awaiting approval`);
+      await submitInvestmentPayment(selectedSub._id, {
+        month,
+        amount: isOpenEndedSub ? parseFloat(amount) : undefined,
+        note: note.trim() || undefined,
+      });
+      toast.success(`Payment submitted for ${selectedSub.customerName || customer?.name} — awaiting approval`);
       setSelectedSub(null);
       setCustomer(null);
       setQuery('');
@@ -181,7 +193,9 @@ export default function SalesInvestmentsPage() {
                         <span className="text-[10px] font-black uppercase text-slate-400">{s.status}</span>
                       </div>
                       <p className="text-[11px] text-slate-400 mt-0.5">
-                        {s.installmentsPaid}/{s.plan?.durationMonths ?? '—'} months paid · ₹{(s.plan?.monthlyAmount ?? 0).toLocaleString('en-IN')}/mo
+                        {s.plan?.durationMonths
+                          ? `${s.installmentsPaid}/${s.plan.durationMonths} months paid · ₹${(s.plan?.monthlyAmount ?? 0).toLocaleString('en-IN')}/mo`
+                          : `${s.installmentsPaid} payment${s.installmentsPaid === 1 ? '' : 's'} · Open-Ended${s.goldGramsAccumulated ? ` · ${s.goldGramsAccumulated.toFixed(3)}g held` : ''}`}
                       </p>
                     </button>
                   ))}
@@ -203,6 +217,19 @@ export default function SalesInvestmentsPage() {
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none transition-all"
                 />
               </div>
+              {isOpenEndedSub && (
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Amount Collected (₹)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={amount}
+                    onChange={e => setAmount(e.target.value)}
+                    placeholder="Hold My Gold has no fixed amount — enter what was collected"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none transition-all"
+                  />
+                </div>
+              )}
               <div>
                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Note (optional)</label>
                 <textarea
@@ -239,7 +266,9 @@ export default function SalesInvestmentsPage() {
                       <p className="text-sm font-black text-slate-900">{m.customerName}</p>
                       <span className={`inline-flex px-2.5 py-1 rounded-full border text-[10px] font-black uppercase ${meta.bg} ${meta.text}`}>{meta.label}</span>
                     </div>
-                    <p className="text-[11px] text-slate-400 mt-1">{m.planName || 'Gold Plan'} · Month #{m.month}</p>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      {m.planName || 'Gold Plan'} · Month #{m.month}{m.amount != null ? ` · ₹${m.amount.toLocaleString('en-IN')}` : ''}
+                    </p>
                     {m.status === 'rejected' && m.rejectionReason && (
                       <p className="text-[11px] text-red-600 font-bold mt-1">Reason: {m.rejectionReason}</p>
                     )}

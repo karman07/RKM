@@ -116,7 +116,7 @@ function NewEnquiryModal({
 
   function selectPlan(plan: InvestmentPlan) {
     setPickedPlanId(plan._id);
-    setDescription(`${plan.name} — ${rupeeShort(plan.monthlyAmount)}/mo × ${plan.durationMonths} months`);
+    setDescription(`${plan.name} — ${rupeeShort(plan.monthlyAmount)}/mo${plan.durationMonths ? ` × ${plan.durationMonths} months` : ' · Open-Ended'}`);
     setAmount(String(plan.monthlyAmount));
     setReference(plan._id);
   }
@@ -274,7 +274,7 @@ function NewEnquiryModal({
               className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A] bg-white transition-all">
               <option value="">Select a plan…</option>
               {plans.filter(p => p.isActive).map(p => (
-                <option key={p._id} value={p._id}>{p.name} — {rupeeShort(p.monthlyAmount)}/mo × {p.durationMonths}mo</option>
+                <option key={p._id} value={p._id}>{p.name} — {rupeeShort(p.monthlyAmount)}/mo{p.durationMonths ? ` × ${p.durationMonths}mo` : ' · Open-Ended'}</option>
               ))}
             </select>
           </div>

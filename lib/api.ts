@@ -397,16 +397,21 @@ export interface GoldBalance {
   amountAccumulated: number;
   amountRedeemed: number;
   availableBalance: number;
+  /** Gold accumulated so far, in grams — meaningful mainly for Hold My Gold subscriptions */
+  goldGramsAccumulated?: number;
+  planCategory?: 'standard' | 'hold_my_gold';
   interestStopped?: boolean;
   startedAt?: string;
-  plan: { _id: string; name: string; monthlyAmount: number; durationMonths: number; interestRate: number } | null;
+  /** durationMonths is absent for Hold My Gold plans — open-ended, no fixed maturity */
+  plan: { _id: string; name: string; monthlyAmount: number; durationMonths?: number | null; interestRate: number } | null;
 }
 
 export const getCustomerGoldBalance = (phone: string) =>
   request<GoldBalance[]>(`/gold-investment/balance?phone=${encodeURIComponent(phone)}`);
 
-// Submit a cash payment collected in the field — awaits admin/manager approval before it counts
-export const submitInvestmentPayment = (subscriptionId: string, data: { month: number; note?: string }) =>
+// Submit a cash payment collected in the field — awaits admin/manager approval before it counts.
+// `amount` is only honored (and required) for Hold My Gold — there's no fixed installment to fall back on.
+export const submitInvestmentPayment = (subscriptionId: string, data: { month: number; amount?: number; note?: string }) =>
   request<GoldBalance>(`/gold-investment/subscriptions/${subscriptionId}/submit-payment`, {
     method: 'POST',
     body: JSON.stringify(data),
@@ -419,6 +424,7 @@ export interface MySubmittedPayment {
   customerPhone?: string;
   planName?: string;
   month: number;
+  amount?: number;
   note?: string;
   status: 'pending' | 'approved' | 'rejected';
   rejectionReason?: string;
@@ -436,9 +442,12 @@ export interface InvestmentPlan {
   name: string;
   description?: string;
   monthlyAmount: number;
-  durationMonths: number;
+  /** Absent for Hold My Gold plans — open-ended, no fixed maturity */
+  durationMonths?: number | null;
   interestRate: number;
   cashBenefitPercent: number;
+  /** % off making charges on the eligible gold-weight portion at redemption — defaults to 100 (full waiver) when unset */
+  makingChargeDiscountPercent?: number;
   isActive: boolean;
 }
 

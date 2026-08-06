@@ -63,7 +63,7 @@ export default function PlansPage() {
                     </div>
                     <div className="rounded-xl p-3 bg-slate-50 border border-slate-100">
                       <p className="text-[8px] font-black uppercase text-slate-300 mb-1">Duration</p>
-                      <p className="text-sm font-black text-slate-800">{plan.durationMonths} mo</p>
+                      <p className="text-sm font-black text-slate-800">{plan.durationMonths ? `${plan.durationMonths} mo` : 'Open-Ended'}</p>
                     </div>
                     <div className="rounded-xl p-3 bg-emerald-50 border border-emerald-100">
                       <p className="text-[8px] font-black uppercase text-emerald-400 mb-1">Interest</p>
@@ -72,6 +72,10 @@ export default function PlansPage() {
                     <div className="rounded-xl p-3 bg-amber-50 border border-amber-100">
                       <p className="text-[8px] font-black uppercase text-amber-500 mb-1">Cash Benefit</p>
                       <p className="text-sm font-black text-amber-700">{plan.cashBenefitPercent}%</p>
+                    </div>
+                    <div className="rounded-xl p-3 bg-amber-50 border border-amber-100">
+                      <p className="text-[8px] font-black uppercase text-amber-500 mb-1">Making Charge Off</p>
+                      <p className="text-sm font-black text-amber-700">{plan.makingChargeDiscountPercent ?? 100}%</p>
                     </div>
                   </div>
                   <Link href={`/dashboard/enquiries?new=1&plan_id=${plan._id}`}
@@ -91,7 +95,7 @@ export default function PlansPage() {
                 {inactivePlans.map(plan => (
                   <div key={plan._id} className="border border-slate-200 rounded-[24px] p-4 bg-slate-50">
                     <p className="text-sm font-black text-slate-700">{plan.name}</p>
-                    <p className="text-[11px] text-slate-400 mt-1">{rupee(plan.monthlyAmount)}/mo · {plan.durationMonths} months</p>
+                    <p className="text-[11px] text-slate-400 mt-1">{rupee(plan.monthlyAmount)}/mo · {plan.durationMonths ? `${plan.durationMonths} months` : 'Open-Ended'}</p>
                   </div>
                 ))}
               </div>

@@ -612,18 +612,24 @@ export default function CustomerDetailPage() {
                     <div>
                       <p className="text-[9px] font-black uppercase tracking-widest text-rose-200 mb-0.5">Gold Savings Plan</p>
                       <p className="text-base font-black text-white">{sub.plan?.name || 'Gold Plan'}</p>
-                      <p className="text-[10px] text-rose-200 mt-0.5">{sub.plan?.interestRate}% p.a. · {sub.plan?.durationMonths} months</p>
+                      <p className="text-[10px] text-rose-200 mt-0.5">
+                        {sub.plan?.interestRate}% p.a. · {sub.plan?.durationMonths ? `${sub.plan.durationMonths} months` : 'Open-Ended'}
+                      </p>
                     </div>
                     <span className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase border ${PLAN_STATUS_COLOR[sub.status]}`}>{sub.status}</span>
                   </div>
-                  <div className="p-4 grid grid-cols-3 gap-2">
+                  <div className="p-4 grid grid-cols-4 gap-2">
                     <div className="rounded-xl p-3 bg-slate-50 border border-slate-100">
-                      <p className="text-[8px] font-black uppercase text-slate-300 mb-1">Monthly</p>
+                      <p className="text-[8px] font-black uppercase text-slate-300 mb-1">{sub.plan?.durationMonths ? 'Monthly' : 'Last Paid'}</p>
                       <p className="text-xs font-bold text-slate-800">{sub.plan ? rupee(sub.plan.monthlyAmount) : '—'}</p>
                     </div>
                     <div className="rounded-xl p-3 bg-slate-50 border border-slate-100">
-                      <p className="text-[8px] font-black uppercase text-slate-300 mb-1">Installments</p>
-                      <p className="text-xs font-bold text-slate-800">{sub.installmentsPaid} / {sub.plan?.durationMonths ?? '—'}</p>
+                      <p className="text-[8px] font-black uppercase text-slate-300 mb-1">{sub.plan?.durationMonths ? 'Installments' : 'Payments'}</p>
+                      <p className="text-xs font-bold text-slate-800">{sub.plan?.durationMonths ? `${sub.installmentsPaid} / ${sub.plan.durationMonths}` : sub.installmentsPaid}</p>
+                    </div>
+                    <div className="rounded-xl p-3 bg-amber-50 border border-amber-100">
+                      <p className="text-[8px] font-black uppercase text-amber-500 mb-1">Gold Held</p>
+                      <p className="text-xs font-bold text-amber-700">{(sub.goldGramsAccumulated || 0).toFixed(3)}g</p>
                     </div>
                     <div className="rounded-xl p-3 bg-emerald-50 border border-emerald-100">
                       <p className="text-[8px] font-black uppercase text-emerald-400 mb-1">Balance</p>
