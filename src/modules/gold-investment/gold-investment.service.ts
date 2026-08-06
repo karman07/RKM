@@ -789,6 +789,13 @@ export class GoldInvestmentService {
     await sub.save();
 
     this.logger.log(`Sales rep ${salesUser.name} submitted month ${dto.month} for subscription ${id}, awaiting approval`);
+
+    this.notificationsService.notifyAdmins(
+      'Investment Payment Awaiting Approval',
+      `${salesUser.name} collected month ${dto.month} (₹${this.effectiveMonthlyAmount(sub, plan).toLocaleString('en-IN')}) from ${sub.customerName} for "${plan?.name || 'a gold plan'}". Review it from Investment Approvals.`,
+      { type: 'gold_sales_payment_pending', subscriptionId: String(sub._id), month: String(dto.month) },
+    ).catch(err => this.logger.error('Admin notify on sales payment submission failed', err));
+
     return sub;
   }
 
@@ -904,6 +911,14 @@ export class GoldInvestmentService {
       staffName: entry.submittedByName,
       approverName: reviewer.name,
     });
+
+    this.notificationsService.sendToUser(
+      String(entry.submittedBy),
+      'Investment Payment Approved',
+      `Month ${entry.month} for ${sub.customerName} was approved by ${reviewer.name}.`,
+      { type: 'investment_payment_approved', subscriptionId: String(sub._id), entryId },
+    ).catch(err => this.logger.error('Failed to notify sales rep of approved payment', err));
+
     return sub;
   }
 
