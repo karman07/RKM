@@ -31,6 +31,11 @@ import {
   VerifyHoldMyGoldTopUpDto,
 } from './dto/gold-investment.dto';
 
+/** Escapes regex special characters so user-typed search text is matched literally. */
+function escapeRegex(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 @Injectable()
 export class GoldInvestmentService {
   private readonly logger = new Logger(GoldInvestmentService.name);
@@ -773,9 +778,13 @@ export class GoldInvestmentService {
     if (filter?.status) query.status = filter.status;
     if (filter?.planId) query.plan = filter.planId;
     if (filter?.phone || filter?.email) {
+      // Partial match, not exact — staff search by however many digits they have on hand (the
+      // "Record Investment Payment" quick-action explicitly invites this: "at least 4 digits").
+      // An exact match against the full stored number silently returned nothing for any partial
+      // or differently-formatted (e.g. missing country code) query.
       const or: any[] = [];
-      if (filter.phone) or.push({ customerPhone: filter.phone });
-      if (filter.email) or.push({ customerEmail: filter.email });
+      if (filter.phone) or.push({ customerPhone: new RegExp(escapeRegex(filter.phone.trim()), 'i') });
+      if (filter.email) or.push({ customerEmail: new RegExp(escapeRegex(filter.email.trim()), 'i') });
       query.$or = or;
     }
 
