@@ -21,6 +21,8 @@ function fmtDate(d?: string) {
 const paymentTypeLabel = (type: string) => {
   if (type === 'autopay') return 'Autopay';
   if (type === 'cash') return 'Cash';
+  if (type === 'online') return 'Online';
+  if (type === 'emi') return 'Bank EMI';
   return 'WhatsApp Link';
 };
 
@@ -99,14 +101,16 @@ ${el.outerHTML}
         <div style={{ padding: '12px 20px', borderBottom: '1.5px solid #000' }}>
           <div style={{ fontSize: '8px', fontWeight: 700, color: '#555', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '4px' }}>Plan</div>
           <div style={{ fontWeight: 700, fontSize: '12px', marginBottom: '2px' }}>{plan?.name ?? 'Gold Savings Plan'}</div>
-          <div>{plan?.interestRate ?? 0}% p.a. · {plan?.durationMonths ?? 0} months · {sub.installmentsPaid}/{plan?.durationMonths ?? 0} paid</div>
+          <div>
+            {plan?.interestRate ?? 0}% p.a. · {plan?.durationMonths ? `${plan.durationMonths} months · ${sub.installmentsPaid}/${plan.durationMonths} paid` : `Open-ended · ${sub.installmentsPaid} payment${sub.installmentsPaid === 1 ? '' : 's'} made`}
+          </div>
           <div style={{ textTransform: 'uppercase', fontWeight: 700, marginTop: '2px' }}>Status: {sub.status}</div>
         </div>
 
         {/* Balance summary */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', borderBottom: '1.5px solid #000', textAlign: 'center' }}>
           {[
-            { label: 'Principal', value: fmt(sub.installmentsPaid * (plan?.monthlyAmount ?? 0)) },
+            { label: 'Principal', value: fmt(sub.amountAccumulated ?? sub.installmentsPaid * (plan?.monthlyAmount ?? 0)) },
             { label: 'Interest Earned', value: fmt((sub.interestAccumulated ?? 0) + (sub.bonusInterest ?? 0)) },
             { label: 'Redeemed', value: fmt(sub.amountRedeemed ?? 0) },
             { label: 'Available Balance', value: fmt(balance) },

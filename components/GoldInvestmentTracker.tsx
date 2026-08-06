@@ -9,10 +9,12 @@ interface PaymentLedgerEntry {
   month: number;
   amount: number;
   date: string;
-  type: 'autopay' | 'cash' | 'whatsapp_link';
+  type: 'autopay' | 'cash' | 'whatsapp_link' | 'emi' | 'online';
   razorpayPaymentId?: string;
   staffId?: string;
   note?: string;
+  goldRateAtPayment?: number;
+  gramsCredited?: number;
 }
 
 interface RedemptionEntry {
@@ -47,13 +49,20 @@ export interface GoldSub {
   bonusInterest?: number;
   interestAdjustments?: InterestAdjustment[];
   interestStopped?: boolean;
+  /** 'hold_my_gold' subscriptions are open-ended (no plan.durationMonths) and pay-as-you-like */
+  planCategory?: 'standard' | 'hold_my_gold';
+  /** Gold accumulated so far, in grams — meaningful mainly for Hold My Gold subscriptions */
+  goldGramsAccumulated?: number;
   plan: {
     _id?: string;
     name: string;
     monthlyAmount: number;
-    durationMonths: number;
+    /** Absent for Hold My Gold plans — open-ended, no fixed maturity */
+    durationMonths?: number | null;
     interestRate: number;
     cashBenefitPercent?: number;
+    /** % off making charges on the eligible gold-weight portion at redemption — defaults to 100 (full waiver) when unset */
+    makingChargeDiscountPercent?: number;
   };
 }
 
@@ -109,19 +118,32 @@ function useCountUp(target: number, duration: number, trigger: boolean) {
   return val;
 }
 
-const paymentTypeIcon = (type: 'autopay' | 'cash' | 'whatsapp_link') => {
+const paymentTypeIcon = (type: PaymentLedgerEntry['type']) => {
   if (type === 'autopay') return <Zap size={10} className="shrink-0" style={{ color: '#B8975A' }} />;
   if (type === 'cash') return <Banknote size={10} className="shrink-0" style={{ color: '#16a34a' }} />;
+  if (type === 'online') return <Gem size={10} className="shrink-0" style={{ color: '#5C0828' }} />;
   return <MessageCircle size={10} className="shrink-0" style={{ color: '#0ea5e9' }} />;
 };
 
-const paymentTypeLabel = (type: 'autopay' | 'cash' | 'whatsapp_link') => {
+const paymentTypeLabel = (type: PaymentLedgerEntry['type']) => {
   if (type === 'autopay') return 'Autopay';
   if (type === 'cash') return 'Cash';
+  if (type === 'online') return 'Online';
+  if (type === 'emi') return 'Bank EMI';
   return 'WhatsApp Link';
 };
 
 export default function GoldInvestmentTracker({ sub }: { sub: GoldSub }) {
+  // Hold My Gold subscriptions are open-ended (no fixed plan.durationMonths / month-by-month
+  // maturity timeline), so they get their own simpler tracker rather than forcing the
+  // fixed-duration timeline math below onto data that doesn't have a duration.
+  if (!sub.plan?.durationMonths) {
+    return <OpenEndedGoldTracker sub={sub} />;
+  }
+  return <StandardGoldTracker sub={sub} />;
+}
+
+function StandardGoldTracker({ sub }: { sub: GoldSub }) {
   const router = useRouter();
   const [started, setStarted] = useState(false);
   const [visibleMonths, setVisibleMonths] = useState(0);
@@ -131,7 +153,7 @@ export default function GoldInvestmentTracker({ sub }: { sub: GoldSub }) {
 
   const plan = sub.plan;
   const paid = sub.installmentsPaid;
-  const total = plan.durationMonths;
+  const total = plan.durationMonths as number;
 
   const fmt = (v: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v);
@@ -618,7 +640,254 @@ export default function GoldInvestmentTracker({ sub }: { sub: GoldSub }) {
           <div className="flex items-center gap-2 mt-3 pt-3 border-t" style={{ borderColor: '#EEE0C8' }}>
             <Sparkles size={13} style={{ color: '#B8975A' }} className="shrink-0" />
             <p className="text-[9px] font-bold text-slate-600">
-              At jewelry purchase, choose{(plan.cashBenefitPercent ?? 0) > 0 ? <> a <span className="font-black" style={{ color: '#5C0828' }}>{plan.cashBenefitPercent}% cash benefit</span> or</> : ''} a making-charge waiver on your accumulated gold at RKM Jewellers
+              At jewelry purchase, choose{(plan.cashBenefitPercent ?? 0) > 0 ? <> a <span className="font-black" style={{ color: '#5C0828' }}>{plan.cashBenefitPercent}% cash benefit</span> or</> : ''} a <span className="font-black" style={{ color: '#5C0828' }}>{plan.makingChargeDiscountPercent ?? 100}% making-charge waiver</span> on your accumulated gold at RKM Jewellers
+            </p>
+          </div>
+        </div>
+
+      </div>
+
+      {showReceipt && (
+        <InvestmentReceiptModal sub={sub} balance={availableBalance} onClose={() => setShowReceipt(false)} />
+      )}
+    </div>
+  );
+}
+
+/** Hold My Gold tracker — pay-as-you-like, no fixed month timeline. Shows the running total
+ *  invested, gold grams accumulated (bound to the rate at each payment), and a ledger of every
+ *  top-up instead of the fixed-duration month-by-month projection used for STANDARD plans. */
+function OpenEndedGoldTracker({ sub }: { sub: GoldSub }) {
+  const router = useRouter();
+  const [showReceipt, setShowReceipt] = useState(false);
+
+  const plan = sub.plan;
+  const isCancelled = sub.status === 'cancelled' || sub.status === 'halted';
+
+  const fmt = (v: number) =>
+    new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v);
+  const fmtDecimal = (v: number) =>
+    new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
+  const fmtGrams = (g: number) => `${g.toFixed(3)} g`;
+
+  const invested = sub.amountAccumulated || 0;
+  const bonusInterest = sub.bonusInterest || 0;
+  const interestEarned = (sub.interestAccumulated || 0) + bonusInterest;
+  const redeemedTotal = sub.amountRedeemed || 0;
+  const availableBalance = Math.max(0, invested + interestEarned - redeemedTotal);
+  const goldGrams = sub.goldGramsAccumulated || 0;
+  const isFullyRedeemed = availableBalance <= 0 && redeemedTotal > 0;
+
+  const ledger = [...(sub.paymentLedger || [])].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  return (
+    <div className="bg-white rounded-[28px] border border-[#EDEAE4] shadow-[0_16px_48px_rgba(0,0,0,0.05)] overflow-hidden">
+      {/* ── Header ── */}
+      <div className="relative px-7 pt-6 pb-7 overflow-hidden" style={{ background: 'linear-gradient(135deg, #3A0418 0%, #5C0828 55%, #7A1238 100%)' }}>
+        <div className="absolute -top-10 -right-10 w-44 h-44 rounded-full bg-white/5 pointer-events-none" />
+        <div className="absolute -bottom-8 -left-6 w-28 h-28 rounded-full bg-white/5 pointer-events-none" />
+
+        <div className="relative z-10 flex items-start justify-between mb-5">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Gem size={13} style={{ color: '#B8975A' }} />
+              <span className="text-[8px] font-black uppercase tracking-[0.3em]" style={{ color: 'rgba(184,151,90,0.7)' }}>Hold My Gold · Open-Ended</span>
+            </div>
+            <h3 className="text-lg font-serif font-bold text-white leading-tight">{plan.name}</h3>
+            <p className="text-[9px] font-bold uppercase tracking-wider mt-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
+              {plan.interestRate}% p.a. · invest any amount, anytime
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowReceipt(true)}
+              title="View printable receipt"
+              className="flex items-center gap-1.5 text-[8px] font-black uppercase px-3 py-1.5 rounded-full tracking-widest border transition-colors hover:bg-white/10"
+              style={{ background: 'rgba(255,255,255,0.07)', borderColor: 'rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.8)' }}
+            >
+              <FileText size={10} /> Receipt
+            </button>
+            <button
+              type="button"
+              onClick={() => downloadStatement(sub, fmt)}
+              title="Download statement (CSV)"
+              className="flex items-center gap-1.5 text-[8px] font-black uppercase px-3 py-1.5 rounded-full tracking-widest border transition-colors hover:bg-white/10"
+              style={{ background: 'rgba(255,255,255,0.07)', borderColor: 'rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.8)' }}
+            >
+              <Download size={10} /> Statement
+            </button>
+            <span className="text-[7px] font-black uppercase px-3 py-1.5 rounded-full tracking-widest border"
+              style={{
+                background: 'rgba(255,255,255,0.07)',
+                borderColor: sub.status === 'active' ? 'rgba(184,151,90,0.4)' : 'rgba(255,255,255,0.2)',
+                color: sub.status === 'active' ? '#B8975A' : 'rgba(255,255,255,0.55)',
+              }}>
+              {sub.status}
+            </span>
+          </div>
+        </div>
+
+        <div className="relative z-10 text-center">
+          <p className="text-[8px] font-black uppercase tracking-[0.3em] mb-1.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
+            {isFullyRedeemed ? 'Fully Redeemed' : 'Available Balance'}
+          </p>
+          <p className="text-[42px] leading-none font-serif font-black text-white tabular-nums">{fmt(availableBalance)}</p>
+          <div className="flex items-center justify-center gap-3 mt-3 flex-wrap">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ background: 'rgba(255,255,255,0.09)' }}>
+              <Wallet size={10} style={{ color: 'rgba(255,255,255,0.6)' }} />
+              <span className="text-[9px] font-bold text-white">{fmt(invested)}</span>
+              <span className="text-[8px]" style={{ color: 'rgba(255,255,255,0.4)' }}>invested</span>
+            </div>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ background: 'rgba(184,151,90,0.15)', border: '1px solid rgba(184,151,90,0.25)' }}>
+              <TrendingUp size={10} style={{ color: '#B8975A' }} />
+              <span className="text-[9px] font-bold" style={{ color: '#B8975A' }}>+{fmtDecimal(interestEarned)}</span>
+              <span className="text-[8px]" style={{ color: 'rgba(184,151,90,0.65)' }}>earned{bonusInterest > 0 ? ' incl. bonus' : ''}</span>
+            </div>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ background: 'rgba(255,255,255,0.09)' }}>
+              <Gem size={10} style={{ color: 'rgba(255,255,255,0.6)' }} />
+              <span className="text-[9px] font-bold text-white">{fmtGrams(goldGrams)}</span>
+              <span className="text-[8px]" style={{ color: 'rgba(255,255,255,0.4)' }}>gold held</span>
+            </div>
+            {redeemedTotal > 0 && (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)' }}>
+                <Receipt size={10} style={{ color: 'rgba(255,255,255,0.6)' }} />
+                <span className="text-[9px] font-bold text-white">{fmt(redeemedTotal)}</span>
+                <span className="text-[8px]" style={{ color: 'rgba(255,255,255,0.4)' }}>redeemed</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {isCancelled && (
+        <div className="mx-6 mt-4 rounded-2xl px-4 py-3 flex items-start gap-3 border border-amber-200 bg-amber-50">
+          <AlertCircle size={15} className="text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-[10px] font-black text-amber-800 uppercase tracking-wider mb-0.5">Plan {sub.status === 'halted' ? 'Halted' : 'Cancelled'}</p>
+            <p className="text-[10px] text-amber-700 leading-relaxed">
+              Your accumulated gold and balance are unaffected — visit any RKM Jewellers store or contact us to resolve this and keep investing.
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className="px-6 py-6 space-y-5">
+
+        {/* ── At-a-glance summary ── */}
+        <div className="grid grid-cols-3 gap-2.5">
+          <div className="rounded-2xl px-3 py-3 border" style={{ background: '#FAFAF9', borderColor: '#EDEAE4' }}>
+            <div className="flex items-center gap-1.5 mb-1">
+              <Wallet size={11} style={{ color: '#5C0828' }} />
+              <p className="text-[8px] font-black uppercase tracking-[0.15em] text-slate-400">Invested</p>
+            </div>
+            <p className="text-[15px] font-black leading-tight" style={{ color: '#5C0828' }}>{fmt(invested)}</p>
+            <p className="text-[9px] font-bold text-slate-400 mt-0.5">{ledger.length} payment{ledger.length !== 1 ? 's' : ''}</p>
+          </div>
+          <div className="rounded-2xl px-3 py-3 border" style={{ background: '#FAFAF9', borderColor: '#EDEAE4' }}>
+            <div className="flex items-center gap-1.5 mb-1">
+              <Gem size={11} style={{ color: '#A09890' }} />
+              <p className="text-[8px] font-black uppercase tracking-[0.15em] text-slate-400">Gold Held</p>
+            </div>
+            <p className="text-[15px] font-black leading-tight text-slate-700">{fmtGrams(goldGrams)}</p>
+            <p className="text-[9px] font-bold text-slate-400 mt-0.5">redeemable at purchase</p>
+          </div>
+          <div className="rounded-2xl px-3 py-3 border" style={{ background: 'rgba(184,151,90,0.08)', borderColor: 'rgba(184,151,90,0.25)' }}>
+            <div className="flex items-center gap-1.5 mb-1">
+              <TrendingUp size={11} style={{ color: '#B8975A' }} />
+              <p className="text-[8px] font-black uppercase tracking-[0.15em]" style={{ color: '#92713A' }}>Interest</p>
+            </div>
+            <p className="text-[15px] font-black leading-tight" style={{ color: '#92713A' }}>{fmtDecimal(interestEarned)}</p>
+            <p className="text-[9px] font-bold mt-0.5" style={{ color: '#B8975A' }}>{plan.interestRate}% p.a.</p>
+          </div>
+        </div>
+
+        {/* ── Invest more ── */}
+        <button
+          type="button"
+          onClick={() => router.push('/gold-investment#hold-my-gold')}
+          className="w-full py-4 rounded-2xl text-white shadow-xl transition-all text-xs font-bold uppercase tracking-[0.18em] flex items-center justify-center gap-3 hover:-translate-y-[1px] bg-[#5C0828] hover:bg-[#7A1238] shadow-[#5C0828]/10"
+        >
+          <span>Invest More</span><ArrowRight size={16} />
+        </button>
+
+        {/* ── Investment history ── */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-400 flex items-center gap-2">
+              <TrendingUp size={11} /> Investment History
+            </p>
+            <span className="text-[8px] font-bold text-slate-300">{ledger.length} received</span>
+          </div>
+
+          {ledger.length === 0 ? (
+            <div className="rounded-2xl px-4 py-6 border border-dashed border-slate-200 text-center">
+              <p className="text-[10px] font-bold text-slate-400">No payments yet — invest any amount to get started.</p>
+            </div>
+          ) : (
+            <div className="space-y-2 overflow-y-auto pr-1" style={{ maxHeight: 300, scrollbarWidth: 'thin', scrollbarColor: '#EDEAE4 transparent' }}>
+              {ledger.map((entry, i) => (
+                <div key={i} className="flex items-center gap-3 rounded-2xl px-4 py-3 border" style={{ background: '#FAFAF9', borderColor: '#EDEAE4' }}>
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center" style={{ background: '#5C0828' }}>
+                    <CheckCircle2 size={15} color="white" strokeWidth={2.5} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] font-black text-slate-700">
+                      {new Date(entry.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="flex items-center gap-0.5 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md"
+                        style={{
+                          background: entry.type === 'autopay' ? 'rgba(184,151,90,0.1)' : entry.type === 'cash' ? 'rgba(22,163,74,0.1)' : entry.type === 'online' ? 'rgba(92,8,40,0.08)' : 'rgba(14,165,233,0.1)',
+                          color: entry.type === 'autopay' ? '#92713A' : entry.type === 'cash' ? '#16a34a' : entry.type === 'online' ? '#5C0828' : '#0369a1',
+                        }}>
+                        {paymentTypeIcon(entry.type)}
+                        {paymentTypeLabel(entry.type)}
+                      </span>
+                      {entry.gramsCredited != null && (
+                        <span className="text-[8px] font-bold text-slate-400">{fmtGrams(entry.gramsCredited)} @ {entry.goldRateAtPayment ? fmt(entry.goldRateAtPayment) : '—'}/g</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-[11px] font-black text-slate-800">{fmt(entry.amount)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── Redemption History (receipts) ── */}
+        {(sub.redemptionHistory?.length ?? 0) > 0 && (
+          <div>
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 mb-3 flex items-center gap-2">
+              <Receipt size={11} /> Redemption Receipts
+            </p>
+            <div className="space-y-2">
+              {sub.redemptionHistory!.map((r, i) => (
+                <div key={i} className="flex items-center justify-between rounded-2xl px-4 py-3 border" style={{ background: '#FAFAF9', borderColor: '#EDEAE4' }}>
+                  <div>
+                    <p className="text-[10px] font-black text-slate-800">{fmt(r.amount)}</p>
+                    <p className="text-[9px] text-slate-400 font-bold">
+                      {new Date(r.date).toLocaleDateString('en-IN', { dateStyle: 'medium' })}{r.saleReference ? ` · Bill: ${r.saleReference}` : ''}
+                    </p>
+                  </div>
+                  <span className="text-[8px] font-black uppercase tracking-wider px-2 py-1 rounded-lg" style={{ background: 'rgba(184,151,90,0.12)', color: '#92713A' }}>
+                    Redeemed
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Redemption note ── */}
+        <div className="rounded-2xl p-4 border" style={{ background: '#FDF3E7', borderColor: '#EEE0C8' }}>
+          <div className="flex items-center gap-2">
+            <Sparkles size={13} style={{ color: '#B8975A' }} className="shrink-0" />
+            <p className="text-[9px] font-bold text-slate-600">
+              At jewelry purchase, redeem your gold with a <span className="font-black" style={{ color: '#5C0828' }}>{plan.makingChargeDiscountPercent ?? 100}% making-charge waiver</span> — approved per account by RKM Jewellers — or a cash-style benefit. GST applies only on the amount remaining after redemption.
             </p>
           </div>
         </div>

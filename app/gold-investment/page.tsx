@@ -20,6 +20,8 @@ interface Plan {
   durationMonths?: number | null;
   interestRate: number;
   cashBenefitPercent: number;
+  /** % off making charges on the eligible gold-weight portion at redemption — defaults to 100 (full waiver) when unset */
+  makingChargeDiscountPercent?: number;
   /** Floor for a customer's own custom monthly amount on this plan — defaults to monthlyAmount when unset */
   minMonthlyAmount?: number | null;
 }
@@ -54,14 +56,24 @@ export default function GoldInvestmentPage() {
   const [userSubs, setUserSubs] = useState<any[]>([]);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [expandedPlans, setExpandedPlans] = useState<Record<string, boolean>>({});
-  const [customAmounts, setCustomAmounts] = useState<Record<string, number>>({});
 
-  // Hold My Gold lead-capture form
+  // Hold My Gold — self-serve online investment
   const [hmgAmount, setHmgAmount] = useState<number | null>(null);
+  const [hmgInvesting, setHmgInvesting] = useState(false);
+  const [successKind, setSuccessKind] = useState<'autopay' | 'topup'>('autopay');
+
+  // Hold My Gold — fallback in-store lead-capture form
+  const [showHmgInstoreForm, setShowHmgInstoreForm] = useState(false);
   const [hmgName, setHmgName] = useState('');
   const [hmgPhone, setHmgPhone] = useState('');
   const [hmgSubmitting, setHmgSubmitting] = useState(false);
   const [hmgSubmitted, setHmgSubmitted] = useState(false);
+
+  /** Absolute fallback floor if the plan has no minMonthlyAmount and the Hold My Gold config fails to load. */
+  const HOLD_MY_GOLD_MIN_INVESTMENT = 1000;
+  /** Admin-configured Hold My Gold threshold (Settings → Hold My Gold) — used as the investment
+   *  floor whenever the plan itself doesn't set its own minMonthlyAmount override. */
+  const [hmgConfigThreshold, setHmgConfigThreshold] = useState<number | null>(null);
 
   const authState = useAppSelector(state => state.auth);
   const router = useRouter();
@@ -70,6 +82,7 @@ export default function GoldInvestmentPage() {
 
   useEffect(() => {
     fetchPlans();
+    fetchHoldMyGoldConfig();
     if (authState.token) fetchUserSubscriptions();
   }, [authState.token]);
 
@@ -81,9 +94,11 @@ export default function GoldInvestmentPage() {
   }, [authState.customer]);
 
   const standardPlans = plans.filter(p => p.planType !== 'hold_my_gold');
-  // Hold My Gold is temporarily hidden from the storefront — UI-only, the plan/data and
-  // in-store enrollment flow are untouched, so re-enable by restoring the `.find(...)` lookup.
-  const holdMyGoldPlan = undefined as Plan | undefined;
+  const holdMyGoldPlan = plans.find(p => p.planType === 'hold_my_gold');
+  const holdMyGoldFloor =
+    holdMyGoldPlan?.minMonthlyAmount ?? hmgConfigThreshold ?? HOLD_MY_GOLD_MIN_INVESTMENT;
+  /** Slider tops out at a sensible ceiling — the numeric field next to it still accepts any amount above this. */
+  const hmgSliderMax = Math.max(100000, holdMyGoldFloor * 10);
 
   const fetchPlans = async () => {
     try {
@@ -92,18 +107,21 @@ export default function GoldInvestmentPage() {
       if (res.ok) {
         const active: Plan[] = data.filter((p: any) => p.isActive);
         setPlans(active);
-        setCustomAmounts(prev => {
-          const next = { ...prev };
-          for (const p of active) if (next[p._id] == null) next[p._id] = p.monthlyAmount;
-          return next;
-        });
-        const hmg = active.find(p => p.planType === 'hold_my_gold');
-        if (hmg) setHmgAmount(prev => prev ?? (hmg.minMonthlyAmount ?? hmg.monthlyAmount));
       }
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchHoldMyGoldConfig = async () => {
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/gold-investment/hold-my-gold-config`);
+      const data = await res.json();
+      if (res.ok && typeof data.threshold === 'number') setHmgConfigThreshold(data.threshold);
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -113,8 +131,7 @@ export default function GoldInvestmentPage() {
       toast.error('Please enter your name and phone number.');
       return;
     }
-    const floor = holdMyGoldPlan.minMonthlyAmount ?? holdMyGoldPlan.monthlyAmount;
-    const amount = Math.max(floor, hmgAmount ?? floor);
+    const amount = Math.max(holdMyGoldFloor, hmgAmount ?? holdMyGoldFloor);
     setHmgSubmitting(true);
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/gold-investment/hold-my-gold/request-enrollment`, {
@@ -153,6 +170,89 @@ export default function GoldInvestmentPage() {
       document.body.appendChild(script);
     });
 
+  /** Hold My Gold self-serve investment — a one-time Razorpay order (not a recurring mandate),
+   *  since the customer can invest any amount, as often as they like. */
+  const handleInvestHoldMyGoldOnline = async () => {
+    if (!holdMyGoldPlan) return;
+    if (!authState.token) {
+      toast.error('Please login or register to invest.');
+      return;
+    }
+    if (!authState.customer?.name || !authState.customer?.phone) {
+      toast.error('Please complete your profile (Name and Phone) before investing.');
+      router.push('/profile');
+      return;
+    }
+
+    const amount = Math.max(holdMyGoldFloor, hmgAmount ?? holdMyGoldFloor);
+    setHmgInvesting(true);
+    setError('');
+
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/gold-investment/my-subscriptions/hold-my-gold/topup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authState.token}`,
+        },
+        body: JSON.stringify({ amount, planId: holdMyGoldPlan._id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Could not start payment');
+
+      const loaded = await loadRazorpayScript();
+      if (!loaded) throw new Error('Razorpay SDK failed to load. Are you online?');
+
+      const options = {
+        key: data.razorpayKey,
+        order_id: data.orderId,
+        amount: Math.round(amount * 100),
+        currency: 'INR',
+        name: 'RKM Jewellers',
+        description: 'Hold My Gold — Investment',
+        image: 'https://via.placeholder.com/150/064E3B/FFFFFF?text=RKM',
+        handler: async (response: any) => {
+          try {
+            const verifyRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/gold-investment/my-subscriptions/hold-my-gold/topup/verify`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authState.token}`,
+              },
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+              }),
+            });
+            if (!verifyRes.ok) throw new Error((await verifyRes.json()).message || 'Verification failed');
+            setSuccessKind('topup');
+            setShowSuccessDialog(true);
+            fetchUserSubscriptions();
+          } catch {
+            toast.info('Payment received. Your gold will be credited shortly — check your profile in a few minutes.');
+            router.push('/profile');
+          }
+        },
+        prefill: {
+          name: authState.customer.name || '',
+          email: authState.customer.email || '',
+          contact: authState.customer.phone || '',
+        },
+        theme: { color: '#5C0828' },
+      };
+
+      const rzp = new (window as any).Razorpay(options);
+      rzp.on('payment.failed', (response: any) => toast.error(`Payment Failed: ${response.error.description}`));
+      rzp.open();
+    } catch (err: any) {
+      setError(err.message);
+      toast.error(err.message);
+    } finally {
+      setHmgInvesting(false);
+    }
+  };
+
   const handleSubscribe = async (planId: string) => {
     if (!authState.token) {
       toast.error('Please login or register to subscribe to a plan.');
@@ -167,10 +267,6 @@ export default function GoldInvestmentPage() {
     setSubscribeLoading(planId);
     setError('');
 
-    const plan = plans.find(p => p._id === planId);
-    const chosenAmount = customAmounts[planId];
-    const customMonthlyAmount = plan && chosenAmount && chosenAmount !== plan.monthlyAmount ? chosenAmount : undefined;
-
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/gold-investment/my-subscriptions`, {
         method: 'POST',
@@ -178,7 +274,7 @@ export default function GoldInvestmentPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${authState.token}`,
         },
-        body: JSON.stringify({ planId, customMonthlyAmount }),
+        body: JSON.stringify({ planId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Subscription failed');
@@ -207,6 +303,7 @@ export default function GoldInvestmentPage() {
                 razorpay_signature: response.razorpay_signature,
               }),
             });
+            setSuccessKind('autopay');
             setShowSuccessDialog(true);
           } catch {
             toast.info('Payment received. Your plan will activate shortly — check your profile in a few minutes.');
@@ -331,7 +428,7 @@ export default function GoldInvestmentPage() {
                         {sub.plan?.durationMonths ? `PAID: ${sub.installmentsPaid} / ${sub.plan.durationMonths}` : `PAID: ${sub.installmentsPaid} MONTHS (OPEN-ENDED)`}
                       </p>
                       {sub.planCategory === 'hold_my_gold' && (
-                        <p className="text-sm font-bold text-[#7A1238]">PAY YOUR NEXT MONTHLY INSTALMENT IN-STORE</p>
+                        <p className="text-sm font-bold text-[#7A1238]">INVEST MORE ANYTIME — ONLINE OR IN-STORE</p>
                       )}
                       {sub.nextDueDate && sub.installmentsPaid < (sub.plan?.durationMonths || 0) && (
                         <p className="text-sm font-bold text-[#7A1238]">
@@ -344,9 +441,14 @@ export default function GoldInvestmentPage() {
                     </div>
                     <div className="text-right flex flex-col items-end">
                       <p className="font-black text-[#7A1238] text-3xl mb-4">{fmt(sub.amountAccumulated)}</p>
-                      <span className="text-[11px] font-black uppercase bg-[#5C0828]/10 text-[#5C0828] px-4 py-1.5 rounded-lg tracking-widest">
+                      <span className="text-[11px] font-black uppercase bg-[#5C0828]/10 text-[#5C0828] px-4 py-1.5 rounded-lg tracking-widest mb-3">
                         {sub.status}
                       </span>
+                      {sub.planCategory === 'hold_my_gold' && (
+                        <a href="#hold-my-gold" className="text-[10px] font-black uppercase tracking-widest text-[#5C0828] hover:underline">
+                          Invest More →
+                        </a>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -455,21 +557,7 @@ export default function GoldInvestmentPage() {
                       </div>
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Monthly Payment</span>
-                        {isEnrolledInThis ? (
-                          <span className="text-xl font-bold text-slate-900">{fmt(p.monthlyAmount)}</span>
-                        ) : (
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-slate-400 text-sm font-bold">₹</span>
-                            <input
-                              type="number"
-                              min={p.minMonthlyAmount ?? p.monthlyAmount}
-                              step={500}
-                              value={customAmounts[p._id] ?? p.monthlyAmount}
-                              onChange={e => setCustomAmounts(prev => ({ ...prev, [p._id]: Math.max(p.minMonthlyAmount ?? p.monthlyAmount, Number(e.target.value) || 0) }))}
-                              className="w-28 text-right text-xl font-bold text-slate-900 border-b-2 border-slate-100 focus:border-[#5C0828] outline-none transition-all bg-transparent"
-                            />
-                          </div>
-                        )}
+                        <span className="text-xl font-bold text-slate-900">{fmt(p.monthlyAmount)}</span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Plan Duration</span>
@@ -481,7 +569,7 @@ export default function GoldInvestmentPage() {
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Maturity Value</span>
-                        <span className="text-sm font-bold text-slate-700">{fmt((customAmounts[p._id] ?? p.monthlyAmount) * (p.durationMonths || 0))}</span>
+                        <span className="text-sm font-bold text-slate-700">{fmt(p.monthlyAmount * (p.durationMonths || 0))}</span>
                       </div>
                     </div>
 
@@ -516,7 +604,7 @@ export default function GoldInvestmentPage() {
 
       {/* ── Hold My Gold — separate, open-ended plan ── */}
       {holdMyGoldPlan && (
-        <section className="py-24 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #3A0418 0%, #5C0828 55%, #7A1238 100%)' }}>
+        <section id="hold-my-gold" className="py-24 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #3A0418 0%, #5C0828 55%, #7A1238 100%)' }}>
           <div className="max-w-4xl mx-auto px-6">
             <div className="text-center mb-14">
               <span className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.3em] text-[#B8975A] mb-4">
@@ -529,27 +617,42 @@ export default function GoldInvestmentPage() {
             <div className="bg-white rounded-[2.5rem] p-10 md:p-12 shadow-2xl">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-6 mb-10 pb-10 border-b border-slate-100">
                 <div className="flex items-center justify-between md:col-span-2">
-                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Your Monthly Amount</span>
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Amount To Invest</span>
                   <div className="flex items-center gap-1.5">
                     <span className="text-slate-400 text-lg font-bold">₹</span>
                     <input
                       type="number"
-                      min={holdMyGoldPlan.minMonthlyAmount ?? holdMyGoldPlan.monthlyAmount}
+                      min={holdMyGoldFloor}
                       step={500}
-                      value={hmgAmount ?? (holdMyGoldPlan.minMonthlyAmount ?? holdMyGoldPlan.monthlyAmount)}
-                      onChange={e => setHmgAmount(Math.max(holdMyGoldPlan.minMonthlyAmount ?? holdMyGoldPlan.monthlyAmount, Number(e.target.value) || 0))}
+                      value={hmgAmount ?? holdMyGoldFloor}
+                      onChange={e => setHmgAmount(Math.max(holdMyGoldFloor, Number(e.target.value) || 0))}
                       className="w-32 text-right text-2xl font-bold text-slate-900 border-b-2 border-slate-100 focus:border-[#5C0828] outline-none transition-all bg-transparent"
                     />
                   </div>
                 </div>
+                <div className="md:col-span-2 -mt-2">
+                  <input
+                    type="range"
+                    min={holdMyGoldFloor}
+                    max={hmgSliderMax}
+                    step={Math.max(500, Math.round(holdMyGoldFloor / 2 / 500) * 500 || 500)}
+                    value={Math.min(hmgAmount ?? holdMyGoldFloor, hmgSliderMax)}
+                    onChange={e => setHmgAmount(Math.max(holdMyGoldFloor, Number(e.target.value) || holdMyGoldFloor))}
+                    className="w-full accent-[#5C0828] cursor-pointer"
+                  />
+                  <div className="flex justify-between mt-1">
+                    <span className="text-[9px] font-bold text-slate-300">{fmt(holdMyGoldFloor)}</span>
+                    <span className="text-[9px] font-bold text-slate-300">{fmt(hmgSliderMax)}+</span>
+                  </div>
+                </div>
                 <p className="md:col-span-2 -mt-4 text-[9px] font-bold text-slate-400">
-                  Enter any amount you like — minimum {fmt(holdMyGoldPlan.minMonthlyAmount ?? holdMyGoldPlan.monthlyAmount)}/month, no upper limit.
+                  Invest any amount you like — minimum {fmt(holdMyGoldFloor)}, no upper limit. Top up as often as you want; each payment locks in that day&apos;s gold rate.
                 </p>
 
                 <div className="flex items-center justify-between">
                   <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Payment Mode</span>
                   <span className="flex items-center gap-1.5 bg-[#B8975A]/10 text-[#5C0828] px-3 py-1 rounded-lg text-sm font-bold">
-                    <Store size={12} /> Monthly, In-Store
+                    <Zap size={12} /> Online or In-Store
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -561,53 +664,76 @@ export default function GoldInvestmentPage() {
                   <span className="text-xl font-bold text-[#5C0828]">+{holdMyGoldPlan.interestRate}% Int.</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Est. Value After 12 Months*</span>
-                  <span className="text-sm font-bold text-slate-700">{fmt((hmgAmount ?? holdMyGoldPlan.monthlyAmount) * 12)}</span>
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Gold Coins</span>
+                  <span className="text-sm font-bold text-slate-700">Credited instantly, at today&apos;s rate</span>
                 </div>
                 <div className="flex items-start justify-between gap-4 md:col-span-2 pt-2">
                   <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Making Charges</span>
                   <p className="text-xs font-bold text-slate-600 text-right leading-relaxed">
-                    Waiver available on Hold My Gold — approved per account by our team when you enrol.
+                    Waiver available on Hold My Gold — approved per account by our team when you redeem, in place of a fixed cash benefit. GST applies only on the amount remaining after redemption.
                   </p>
                 </div>
-                <p className="md:col-span-2 -mt-2 text-[9px] font-bold text-slate-300">*Illustrative only — there's no fixed maturity, pay for as long as you like and redeem any time after the minimum lock-in.</p>
+                <p className="md:col-span-2 -mt-2 text-[9px] font-bold text-slate-300">There&apos;s no fixed maturity — pay for as long as you like and redeem any time after the minimum lock-in.</p>
               </div>
 
-              {hmgSubmitted ? (
-                <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-100 rounded-2xl p-5">
-                  <CheckCircle2 className="text-emerald-600 shrink-0 mt-0.5" size={20} />
-                  <p className="text-sm font-bold text-emerald-800">Request received — our team will contact you shortly to complete enrolment in-store.</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Hold My Gold is enrolled in-store — leave your details and we&apos;ll set it up for you</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input
-                      value={hmgName}
-                      onChange={e => setHmgName(e.target.value)}
-                      placeholder="Your name"
-                      className="w-full border-b-2 border-slate-100 focus:border-[#5C0828] py-2.5 text-sm font-bold outline-none transition-all bg-transparent"
-                    />
-                    <input
-                      value={hmgPhone}
-                      onChange={e => setHmgPhone(e.target.value)}
-                      placeholder="Phone number"
-                      className="w-full border-b-2 border-slate-100 focus:border-[#5C0828] py-2.5 text-sm font-bold outline-none transition-all bg-transparent"
-                    />
+              <div className="space-y-4">
+                <button
+                  onClick={handleInvestHoldMyGoldOnline}
+                  disabled={hmgInvesting}
+                  className="w-full py-5 rounded-2xl text-white shadow-xl transition-all text-sm font-bold uppercase tracking-[0.18em] flex items-center justify-center gap-3 disabled:opacity-40 bg-[#5C0828] hover:bg-[#7A1238] shadow-[#5C0828]/10"
+                >
+                  {hmgInvesting ? (
+                    <><Loader2 size={16} className="animate-spin" /><span>Processing…</span></>
+                  ) : (
+                    <><span>Invest {fmt(hmgAmount ?? holdMyGoldFloor)} Now</span><ArrowRight size={18} /></>
+                  )}
+                </button>
+                <p className="text-center text-[9px] font-bold text-slate-300">Secure online payment via Razorpay</p>
+
+                {hmgSubmitted ? (
+                  <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-100 rounded-2xl p-5">
+                    <CheckCircle2 className="text-emerald-600 shrink-0 mt-0.5" size={20} />
+                    <p className="text-sm font-bold text-emerald-800">Request received — our team will contact you shortly to complete enrolment in-store.</p>
                   </div>
+                ) : showHmgInstoreForm ? (
+                  <div className="space-y-4 pt-4 border-t border-slate-100">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Leave your details and we&apos;ll set it up for you in-store</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <input
+                        value={hmgName}
+                        onChange={e => setHmgName(e.target.value)}
+                        placeholder="Your name"
+                        className="w-full border-b-2 border-slate-100 focus:border-[#5C0828] py-2.5 text-sm font-bold outline-none transition-all bg-transparent"
+                      />
+                      <input
+                        value={hmgPhone}
+                        onChange={e => setHmgPhone(e.target.value)}
+                        placeholder="Phone number"
+                        className="w-full border-b-2 border-slate-100 focus:border-[#5C0828] py-2.5 text-sm font-bold outline-none transition-all bg-transparent"
+                      />
+                    </div>
+                    <button
+                      onClick={handleRequestHoldMyGoldEnrollment}
+                      disabled={hmgSubmitting}
+                      className="w-full py-5 rounded-2xl text-white shadow-xl transition-all text-sm font-bold uppercase tracking-[0.18em] flex items-center justify-center gap-3 disabled:opacity-40 bg-[#5C0828] hover:bg-[#7A1238] shadow-[#5C0828]/10"
+                    >
+                      {hmgSubmitting ? (
+                        <><Loader2 size={16} className="animate-spin" /><span>Sending…</span></>
+                      ) : (
+                        <><span>Request Enrolment</span><ArrowRight size={18} /></>
+                      )}
+                    </button>
+                  </div>
+                ) : (
                   <button
-                    onClick={handleRequestHoldMyGoldEnrollment}
-                    disabled={hmgSubmitting}
-                    className="w-full py-5 rounded-2xl text-white shadow-xl transition-all text-sm font-bold uppercase tracking-[0.18em] flex items-center justify-center gap-3 disabled:opacity-40 bg-[#5C0828] hover:bg-[#7A1238] shadow-[#5C0828]/10"
+                    type="button"
+                    onClick={() => setShowHmgInstoreForm(true)}
+                    className="w-full text-center text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-[#5C0828] transition-colors py-2 flex items-center justify-center gap-2"
                   >
-                    {hmgSubmitting ? (
-                      <><Loader2 size={16} className="animate-spin" /><span>Sending…</span></>
-                    ) : (
-                      <><span>Request Enrolment</span><ArrowRight size={18} /></>
-                    )}
+                    <Store size={11} /> Prefer to pay in cash at a store instead?
                   </button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
         </section>
@@ -667,9 +793,13 @@ export default function GoldInvestmentPage() {
             <div className="w-20 h-20 bg-[#B8975A]/10 rounded-full flex items-center justify-center mx-auto mb-6">
               <CheckCircle2 className="text-[#5C0828]" size={40} />
             </div>
-            <h3 className="text-2xl font-serif font-black text-slate-900 mb-3">Autopay Authorized!</h3>
+            <h3 className="text-2xl font-serif font-black text-slate-900 mb-3">
+              {successKind === 'topup' ? 'Investment Received!' : 'Autopay Authorized!'}
+            </h3>
             <p className="text-slate-500 mb-8 text-sm leading-relaxed">
-              Your first month's payment is being processed and your autopay mandate is now active. Your gold savings plan will start earning interest right away, with future instalments collected automatically each month.
+              {successKind === 'topup'
+                ? "Your payment is confirmed and gold has been credited to your Hold My Gold holding at today's rate. Invest again anytime, whenever you like."
+                : "Your first month's payment is being processed and your autopay mandate is now active. Your gold savings plan will start earning interest right away, with future instalments collected automatically each month."}
             </p>
             <button
               onClick={() => { setShowSuccessDialog(false); router.push('/profile'); }}
