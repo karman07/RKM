@@ -17,9 +17,18 @@ interface Lookup {
   value: string;
 }
 
+interface Branch {
+  _id: string;
+  name: string;
+  address: string;
+  pincode?: string;
+  is_active: boolean;
+}
+
 export default function Footer() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [lookups, setLookups] = useState<Record<string, Lookup[]>>({});
+  const [branches, setBranches] = useState<Branch[]>([]);
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/categories`)
@@ -41,6 +50,13 @@ export default function Footer() {
           }, {} as Record<string, Lookup[]>);
           setLookups(grouped);
         }
+      });
+
+    fetch(`${API_BASE_URL}/branches`)
+      .then((res) => res.json())
+      .then((data) => {
+        // Same "no back office" rule as the homepage location section.
+        if (Array.isArray(data)) setBranches(data.filter((b: Branch) => b.is_active && !/office|corporate/i.test(b.name)));
       });
   }, []);
 
@@ -126,9 +142,16 @@ export default function Footer() {
             >
               Client Feedback
             </a>
-            <address className="not-italic opacity-50 text-[9px] leading-loose mt-4 uppercase tracking-[0.3em] font-medium transition-opacity hover:opacity-100">
-              Phase 3B2, Mohali<br/>Punjab 160059<br/>Serving Chandigarh & Tri-city
-            </address>
+            {branches.length > 0 && (
+              <address className="not-italic opacity-50 text-[9px] leading-loose mt-4 uppercase tracking-[0.3em] font-medium transition-opacity hover:opacity-100 space-y-4">
+                {branches.map((b) => (
+                  <div key={b._id}>
+                    <span className="block text-[#B8975A] opacity-100">{b.name}</span>
+                    {b.address}{b.pincode ? ` – ${b.pincode}` : ''}
+                  </div>
+                ))}
+              </address>
+            )}
           </div>
         </div>
       </div>

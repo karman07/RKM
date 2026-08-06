@@ -81,7 +81,9 @@ export default function GoldInvestmentPage() {
   }, [authState.customer]);
 
   const standardPlans = plans.filter(p => p.planType !== 'hold_my_gold');
-  const holdMyGoldPlan = plans.find(p => p.planType === 'hold_my_gold');
+  // Hold My Gold is temporarily hidden from the storefront — UI-only, the plan/data and
+  // in-store enrollment flow are untouched, so re-enable by restoring the `.find(...)` lookup.
+  const holdMyGoldPlan = undefined as Plan | undefined;
 
   const fetchPlans = async () => {
     try {
