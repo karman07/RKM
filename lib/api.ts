@@ -1289,7 +1289,7 @@ export const previewGoldRedemption = (id: string, data: RedemptionPreviewInput) 
 export const redeemGoldSubscription = (id: string, data: RedemptionPreviewInput & { redemptionType: RedemptionType; saleReference?: string; note?: string; saleItemIds?: string[] }) =>
   request<GoldSubscription>(`/gold-investment/subscriptions/${id}/redeem`, { method: 'POST', body: JSON.stringify(data) });
 
-export const markGoldCashPayment = (id: string, data: { month: number; staffId?: string; note?: string }) =>
+export const markGoldCashPayment = (id: string, data: { month: number; amount?: number; staffId?: string; note?: string }) =>
   request<GoldSubscription>(`/gold-investment/subscriptions/${id}/mark-payment`, { method: 'POST', body: JSON.stringify(data) });
 
 /** Restarts a cancelled/halted subscription — resumes the mandate directly if Razorpay allows it, otherwise issues a fresh one and messages the customer a new authorization link. */
