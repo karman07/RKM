@@ -27,6 +27,7 @@ export default function RecordInvestmentPaymentModal({ onClose, onRecorded }: Pr
 
   const [selected, setSelected] = useState<GoldSubscription | null>(null);
   const [month, setMonth] = useState(1);
+  const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -52,17 +53,28 @@ export default function RecordInvestmentPaymentModal({ onClose, onRecorded }: Pr
   function selectSub(sub: GoldSubscription) {
     setSelected(sub);
     setMonth((sub.installmentsPaid || 0) + 1);
+    setAmount('');
     setNote('');
     setSaveError('');
   }
 
+  const isOpenEnded = !selected?.plan?.durationMonths;
+
   async function handleConfirm() {
     if (!selected) return;
+    if (isOpenEnded && !(parseFloat(amount) > 0)) {
+      setSaveError('Enter the amount collected — Hold My Gold has no fixed instalment.');
+      return;
+    }
     setSaveError('');
     setSaving(true);
     try {
-      const updated = await markGoldCashPayment(selected._id, { month, note: note.trim() || undefined });
-      toast.success(`Payment for month ${month} recorded for ${selected.customerName}`);
+      const updated = await markGoldCashPayment(selected._id, {
+        month,
+        amount: isOpenEnded ? parseFloat(amount) : undefined,
+        note: note.trim() || undefined,
+      });
+      toast.success(`Payment recorded for ${selected.customerName}`);
       onRecorded(updated);
     } catch (e: any) {
       setSaveError(e?.message || 'Failed to record payment');
@@ -72,6 +84,7 @@ export default function RecordInvestmentPaymentModal({ onClose, onRecorded }: Pr
   }
 
   const monthlyAmount = selected ? (selected.customMonthlyAmount ?? selected.plan?.monthlyAmount ?? 0) : 0;
+  const confirmAmount = isOpenEnded ? (parseFloat(amount) || 0) : monthlyAmount;
 
   return (
     <Modal open onClose={onClose} title="Record Investment Payment" width="max-w-lg">
@@ -122,10 +135,10 @@ export default function RecordInvestmentPaymentModal({ onClose, onRecorded }: Pr
                         className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-slate-200 bg-white hover:border-amber-300 hover:bg-amber-50/40 transition-all text-left">
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-black text-slate-900 truncate">{sub.customerName}</p>
-                          <p className="text-[11px] text-slate-400">{sub.plan?.name} · {sub.installmentsPaid}{total ? ` / ${total}` : ''} months paid</p>
+                          <p className="text-[11px] text-slate-400">{sub.plan?.name} · {total ? `${sub.installmentsPaid} / ${total} months paid` : `${sub.installmentsPaid} payments · Open-Ended`}</p>
                         </div>
                         <div className="text-right flex-shrink-0">
-                          <p className="text-sm font-black text-amber-700">{fmt(amt)}/mo</p>
+                          <p className="text-sm font-black text-amber-700">{total ? `${fmt(amt)}/mo` : `${(sub.goldGramsAccumulated || 0).toFixed(3)}g held`}</p>
                           <p className="text-[9px] text-slate-400 font-medium uppercase">{sub.status}</p>
                         </div>
                       </button>
@@ -156,12 +169,20 @@ export default function RecordInvestmentPaymentModal({ onClose, onRecorded }: Pr
               </div>
               <div>
                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Amount</label>
-                <div className="w-full px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-sm font-black text-blue-700">
-                  {fmt(monthlyAmount)}
-                </div>
+                {isOpenEnded ? (
+                  <input type="number" min={1} value={amount} onChange={e => setAmount(e.target.value)}
+                    placeholder="Amount collected (₹)"
+                    className="w-full px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-sm font-black text-blue-700 focus:outline-none transition-all" />
+                ) : (
+                  <div className="w-full px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-sm font-black text-blue-700">
+                    {fmt(monthlyAmount)}
+                  </div>
+                )}
               </div>
             </div>
-            <p className="text-[11px] text-slate-400 -mt-2">Fixed instalment for this plan — defaults to the next unpaid month.</p>
+            <p className="text-[11px] text-slate-400 -mt-2">
+              {isOpenEnded ? 'Hold My Gold has no fixed instalment — enter what the customer actually paid.' : 'Fixed instalment for this plan — defaults to the next unpaid month.'}
+            </p>
 
             <div>
               <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Note (optional)</label>
@@ -178,7 +199,7 @@ export default function RecordInvestmentPaymentModal({ onClose, onRecorded }: Pr
               <button onClick={handleConfirm} disabled={saving}
                 className="flex-[2] py-3.5 rounded-2xl text-white text-sm font-black bg-amber-600 hover:bg-amber-700 transition-all disabled:opacity-40 flex items-center justify-center gap-2">
                 {saving && <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
-                {saving ? 'Recording…' : `Confirm Payment — ${fmt(monthlyAmount)}`}
+                {saving ? 'Recording…' : `Confirm Payment${confirmAmount ? ` — ${fmt(confirmAmount)}` : ''}`}
               </button>
             </div>
           </div>
