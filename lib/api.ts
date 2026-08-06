@@ -24,6 +24,17 @@ function authHeadersMultipart(): HeadersInit {
   return { Authorization: `Bearer ${getToken()}` };
 }
 
+/** Pulls the real reason (e.g. "File too large", "File type '.heic' not allowed") out of a
+ *  failed upload response instead of hiding it behind a generic message. */
+async function extractUploadError(res: Response, fallback: string): Promise<string> {
+  try {
+    const body = await res.json();
+    return body?.message || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: authHeaders(),
@@ -677,7 +688,7 @@ export const uploadCategoryImage = async (
     headers: authHeadersMultipart(),
     body: form,
   });
-  if (!res.ok) throw new Error('Image upload failed');
+  if (!res.ok) throw new Error(await extractUploadError(res, 'Image upload failed'));
   return res.json() as Promise<{ image_url: string }>;
 };
 
@@ -744,7 +755,7 @@ export const uploadProductImages = async (
     headers: authHeadersMultipart(),
     body: form,
   });
-  if (!res.ok) throw new Error('Upload failed');
+  if (!res.ok) throw new Error(await extractUploadError(res, 'Upload failed'));
   return res.json() as Promise<{ images: string[] }>;
 };
 
