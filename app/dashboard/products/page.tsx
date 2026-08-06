@@ -473,11 +473,14 @@ export default function ProductsPage() {
         if (pendingImages.length > 0) {
           try {
             await uploadProductImages(created._id, pendingImages);
+            showToast('Product created');
           } catch (imgErr) {
-            console.error("Failed to upload images for new product", imgErr);
+            const msg = imgErr instanceof Error ? imgErr.message : 'Image upload failed';
+            showToast(`Product created, but images failed to upload: ${msg}`);
           }
+        } else {
+          showToast('Product created');
         }
-        showToast('Product created');
       }
       setModalOpen(false);
       load();
@@ -1550,7 +1553,8 @@ export default function ProductsPage() {
                         e.target.value = '';
                       }
                     } else {
-                      setPendingImages((prev) => [...prev, ...Array.from(e.target.files!)]);
+                      const selected = Array.from(e.target.files);
+                      setPendingImages((prev) => [...prev, ...selected]);
                       e.target.value = '';
                     }
                   }}
