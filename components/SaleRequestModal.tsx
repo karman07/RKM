@@ -326,7 +326,10 @@ function InvestmentBalanceSection({ phone, onSelect, selectedSub, appliedAmount,
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-bold text-slate-900">{b.plan?.name}</p>
-              <p className="text-[10px] text-slate-500">{b.status} · {b.installmentsPaid}/{b.plan?.durationMonths} payments</p>
+              <p className="text-[10px] text-slate-500">
+                {b.status} · {b.plan?.durationMonths ? `${b.installmentsPaid}/${b.plan.durationMonths} payments` : `${b.installmentsPaid} payments · Open-Ended`}
+                {b.goldGramsAccumulated ? ` · ${b.goldGramsAccumulated.toFixed(3)}g held` : ''}
+              </p>
             </div>
             <div className="text-right">
               <p className="text-sm font-black text-[#5A0F1A]">{fmt(b.availableBalance)}</p>
@@ -348,6 +351,13 @@ function InvestmentBalanceSection({ phone, onSelect, selectedSub, appliedAmount,
             onChange={e => onSelect(selectedSub, Math.min(parseFloat(e.target.value) || 0, selectedSub.availableBalance))}
             placeholder={`Up to ${fmt(selectedSub.availableBalance)}`}
           />
+          {appliedAmount > 0 && (
+            <p className="text-[10px] font-bold text-slate-500">
+              {appliedAmount >= selectedSub.availableBalance
+                ? 'Uses the full available balance — nothing left in this plan after approval.'
+                : `${fmt(Math.max(0, selectedSub.availableBalance - appliedAmount))} stays in the plan for a future purchase.`}
+            </p>
+          )}
           <div className="space-y-1.5">
             <label className={LABEL}>Preferred Redemption Option</label>
             <p className="text-[10px] text-slate-500 font-medium -mt-1">Non-binding — the exact numbers are confirmed and locked by admin/manager at approval time.</p>
@@ -355,12 +365,19 @@ function InvestmentBalanceSection({ phone, onSelect, selectedSub, appliedAmount,
               <button type="button" onClick={() => onRedemptionTypeChange('cash_benefit')}
                 className={`rounded-xl border-2 px-3 py-2.5 text-left transition-all ${redemptionType === 'cash_benefit' ? 'border-[#5A0F1A] bg-[#5A0F1A]/10' : 'border-slate-200 bg-white hover:border-[#5A0F1A]/40'}`}>
                 <p className="text-[10px] font-black text-slate-900">Cash Benefit</p>
-                <p className="text-[9px] text-slate-400">+{selectedSub.plan?.cashBenefitPercent ?? 0}% of redeemed amount</p>
+                <p className="text-[9px] text-slate-400">
+                  {selectedSub.planCategory === 'hold_my_gold'
+                    ? 'Tiered % by amount invested — confirmed at approval'
+                    : `+${selectedSub.plan?.cashBenefitPercent ?? 0}% of redeemed amount`}
+                </p>
               </button>
               <button type="button" onClick={() => onRedemptionTypeChange('making_charge_waiver')}
                 className={`rounded-xl border-2 px-3 py-2.5 text-left transition-all ${redemptionType === 'making_charge_waiver' ? 'border-[#5A0F1A] bg-[#5A0F1A]/10' : 'border-slate-200 bg-white hover:border-[#5A0F1A]/40'}`}>
                 <p className="text-[10px] font-black text-slate-900">Making Charge Waiver</p>
-                <p className="text-[9px] text-slate-400">On eligible accumulated gold</p>
+                <p className="text-[9px] text-slate-400">
+                  {(selectedSub.plan?.makingChargeDiscountPercent ?? 100)}% off, on up to {(selectedSub.goldGramsAccumulated || 0).toFixed(3)}g accumulated
+                  {selectedSub.planCategory === 'hold_my_gold' ? ' — only if admin/manager enabled it' : ''}
+                </p>
               </button>
             </div>
           </div>

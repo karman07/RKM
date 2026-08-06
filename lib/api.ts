@@ -530,10 +530,15 @@ export interface GoldBalance {
   goldGramsAccumulated: number;
   interestStopped: boolean;
   availableBalance: number;
+  /** Copied from the plan's planType at enroll time — hold_my_gold plans are open-ended (no fixed durationMonths) */
+  planCategory?: 'standard' | 'hold_my_gold';
   plan: {
     name: string;
     cashBenefitPercent: number;
-    durationMonths: number;
+    /** % off making charges on the eligible gold-weight portion at redemption — defaults to 100 (full waiver) when unset */
+    makingChargeDiscountPercent?: number;
+    /** Absent for Hold My Gold plans — open-ended, no fixed maturity */
+    durationMonths?: number | null;
   };
   installmentsPaid: number;
 }
