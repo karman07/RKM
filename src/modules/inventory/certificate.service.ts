@@ -200,6 +200,13 @@ export class CertificateService {
       draw('diamond_weight', diamondWeight > 0 ? `${diamondWeight.toFixed(3)} ct` : '');
     }
 
+    // The template is a 4-page document, but the certificate only ever needs the filled-in
+    // "PRODUCT DETAILS" page — drop the rest so the output PDF is that single page.
+    const pageCount = pdf.getPageCount();
+    for (let i = pageCount - 1; i >= 0; i--) {
+      if (i !== 1) pdf.removePage(i);
+    }
+
     const filename = `CERT-${item.unique_item_code}-${Date.now()}.pdf`;
     const filepath = path.join(this.outDir, filename);
     const outBytes = await pdf.save();
