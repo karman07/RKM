@@ -5,7 +5,7 @@
   "compilerOptions": {
     "deleteOutDir": true,
     "assets": [
-      { "include": "modules/inventory/certificate-templates/**/*", "outDir": "dist" }
+      { "include": "modules/inventory/certificate-templates/**/*", "outDir": "dist/src" }
     ]
   }
 }
