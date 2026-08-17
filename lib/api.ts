@@ -1174,6 +1174,16 @@ export interface GoldSubscription {
   status: 'active' | 'cancelled' | 'completed' | 'halted' | 'pending';
   /** Customer's own chosen monthly amount, if they didn't use the plan's default */
   customMonthlyAmount?: number | null;
+  /** True when any custom term below overrides the plan's defaults (set at in-store enrollment) */
+  isCustomPlan?: boolean;
+  /** Per-subscription override of plan.interestRate, set only at in-store enrollment */
+  customInterestRate?: number | null;
+  /** Per-subscription override of plan.durationMonths, set only at in-store enrollment */
+  customDurationMonths?: number | null;
+  /** Per-subscription override of plan.cashBenefitPercent, set only at in-store enrollment */
+  customCashBenefitPercent?: number | null;
+  /** Per-subscription override of plan.makingChargeDiscountPercent, set only at in-store enrollment */
+  customMakingChargeDiscountPercent?: number | null;
   /** Copied from the plan's planType at enroll time — hold_my_gold plans are open-ended (no fixed durationMonths) */
   planCategory?: 'standard' | 'hold_my_gold';
   amountAccumulated: number;
@@ -1238,7 +1248,12 @@ export const getGoldSubscriptions = (params?: { status?: string }) => {
 };
 
 /** Enrolls a customer in-store — active immediately, no Razorpay mandate. Mark payments via markGoldCashPayment thereafter. */
-export const enrollSubscription = (data: { planId: string; customerName: string; customerEmail?: string; customerPhone?: string; customMonthlyAmount?: number }) =>
+export const enrollSubscription = (data: {
+  planId: string; customerName: string; customerEmail?: string; customerPhone?: string;
+  customMonthlyAmount?: number;
+  /** Custom term overrides for this enrollment only — leave unset to use the plan's defaults */
+  customInterestRate?: number; customDurationMonths?: number; customCashBenefitPercent?: number; customMakingChargeDiscountPercent?: number;
+}) =>
   request<GoldSubscription>('/gold-investment/subscriptions/enroll', { method: 'POST', body: JSON.stringify(data) });
 
 export const getSubscriptions = (params?: { status?: string; planId?: string; phone?: string; email?: string }) => {

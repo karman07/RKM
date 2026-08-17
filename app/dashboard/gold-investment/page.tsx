@@ -76,6 +76,13 @@ export default function ManagerGoldInvestment() {
   const [enrollAmount, setEnrollAmount] = useState<number>(0);
   const [enrollSaving, setEnrollSaving] = useState(false);
   const [enrollError, setEnrollError] = useState('');
+  // Custom terms — lets staff override interest rate / duration / cash benefit / making charge
+  // discount for this one enrollment instead of using the selected plan's defaults.
+  const [enrollCustomTerms, setEnrollCustomTerms] = useState(false);
+  const [enrollInterestRate, setEnrollInterestRate] = useState<number>(0);
+  const [enrollDurationMonths, setEnrollDurationMonths] = useState<number>(0);
+  const [enrollCashBenefitPercent, setEnrollCashBenefitPercent] = useState<number>(0);
+  const [enrollMakingChargeDiscountPercent, setEnrollMakingChargeDiscountPercent] = useState<number>(100);
 
   // Hold My Gold config — managers can edit this too (backend already allows ADMIN or MANAGER)
   const [hmgThreshold, setHmgThreshold] = useState(25000);
@@ -121,16 +128,24 @@ export default function ManagerGoldInvestment() {
 
   useEffect(() => { loadAll(); }, [statusFilter]);
 
+  /** The monthly amount/duration/rate/etc. actually governing a subscription — a staff-set custom
+   *  term from in-store enrollment, or the template's default otherwise. */
+  const effectiveMonthlyAmount = (sub: GoldSubscription) => sub.customMonthlyAmount ?? sub.plan?.monthlyAmount ?? 0;
+  const effectiveDurationMonths = (sub: GoldSubscription) => sub.customDurationMonths ?? sub.plan?.durationMonths ?? 0;
+  const effectiveInterestRate = (sub: GoldSubscription) => sub.customInterestRate ?? sub.plan?.interestRate ?? 0;
+  const effectiveCashBenefitPercent = (sub: GoldSubscription) => sub.customCashBenefitPercent ?? sub.plan?.cashBenefitPercent ?? 0;
+  const effectiveMakingChargeDiscountPercent = (sub: GoldSubscription) => sub.customMakingChargeDiscountPercent ?? sub.plan?.makingChargeDiscountPercent ?? 100;
+
   const computeAvailableBalance = (sub: GoldSubscription) => {
     const plan = sub.plan;
     if (!plan) return 0;
-    const monthlyAmount = plan.monthlyAmount || 0;
-    const interestPerMonth = monthlyAmount * (plan.interestRate || 0) / 100;
-    const totalMonths = plan.durationMonths || 0;
+    const monthlyAmount = effectiveMonthlyAmount(sub);
+    const interestPerMonth = monthlyAmount * effectiveInterestRate(sub) / 100;
+    const totalMonths = effectiveDurationMonths(sub);
     const paid = sub.installmentsPaid || 0;
     const creditedMonths = paid >= totalMonths ? paid : Math.max(0, paid - 1);
     const principal = paid * monthlyAmount;
-    const interest = sub.interestStopped ? 0 : creditedMonths * interestPerMonth;
+    const interest = (sub.interestStopped ? 0 : creditedMonths * interestPerMonth) + (sub.bonusInterest || 0);
     return Math.max(0, principal + interest - (sub.amountRedeemed || 0));
   };
 
@@ -212,6 +227,11 @@ export default function ManagerGoldInvestment() {
     const firstActive = plans.find(p => p.isActive);
     setEnrollPlanId(firstActive?._id || '');
     setEnrollAmount(firstActive?.monthlyAmount || 0);
+    setEnrollCustomTerms(false);
+    setEnrollInterestRate(firstActive?.interestRate || 0);
+    setEnrollDurationMonths(firstActive?.durationMonths || 0);
+    setEnrollCashBenefitPercent(firstActive?.cashBenefitPercent || 0);
+    setEnrollMakingChargeDiscountPercent(firstActive?.makingChargeDiscountPercent ?? 100);
     setEnrollError('');
   };
 
@@ -245,6 +265,10 @@ export default function ManagerGoldInvestment() {
         customerEmail: enrollCustomer.email,
         customerPhone: enrollCustomer.phone,
         customMonthlyAmount: enrollSelectedPlan && enrollAmount !== enrollSelectedPlan.monthlyAmount ? enrollAmount : undefined,
+        customInterestRate: enrollCustomTerms && enrollSelectedPlan && enrollInterestRate !== enrollSelectedPlan.interestRate ? enrollInterestRate : undefined,
+        customDurationMonths: enrollCustomTerms && enrollSelectedPlan?.durationMonths && enrollDurationMonths !== enrollSelectedPlan.durationMonths ? enrollDurationMonths : undefined,
+        customCashBenefitPercent: enrollCustomTerms && enrollSelectedPlan && enrollCashBenefitPercent !== enrollSelectedPlan.cashBenefitPercent ? enrollCashBenefitPercent : undefined,
+        customMakingChargeDiscountPercent: enrollCustomTerms && enrollSelectedPlan && enrollMakingChargeDiscountPercent !== (enrollSelectedPlan.makingChargeDiscountPercent ?? 100) ? enrollMakingChargeDiscountPercent : undefined,
       });
       toast.success(`${enrollCustomer.name} enrolled — plan is now active`);
       setEnrollModal(false);
@@ -380,9 +404,10 @@ export default function ManagerGoldInvestment() {
                       {s.redeemed && <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase bg-blue-100 text-blue-700 border border-blue-200">Redeemed</span>}
                       {(s as any).requiresManualPayment && <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase bg-amber-100 text-amber-700 border border-amber-200">Manual Payments</span>}
                       {s.pausedForCashMonth != null && <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase bg-emerald-100 text-emerald-700 border border-emerald-200">Paused (Cash Covered)</span>}
+                      {s.isCustomPlan && <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase bg-purple-100 text-purple-700 border border-purple-200">Custom Plan</span>}
                     </div>
                     <p className="text-xs text-slate-400 font-bold">{s.customerPhone} · {s.customerEmail}</p>
-                    <p className="text-xs font-bold text-slate-500">{s.plan?.name} · {s.installmentsPaid}/{s.plan?.durationMonths} payments</p>
+                    <p className="text-xs font-bold text-slate-500">{s.plan?.name} · {s.installmentsPaid}/{effectiveDurationMonths(s)} payments</p>
                   </div>
                   <div className="grid grid-cols-3 gap-4 text-center">
                     <div>
@@ -528,6 +553,10 @@ export default function ManagerGoldInvestment() {
                   const p = plans.find(pl => pl._id === e.target.value);
                   setEnrollPlanId(e.target.value);
                   setEnrollAmount(p?.monthlyAmount || 0);
+                  setEnrollInterestRate(p?.interestRate || 0);
+                  setEnrollDurationMonths(p?.durationMonths || 0);
+                  setEnrollCashBenefitPercent(p?.cashBenefitPercent || 0);
+                  setEnrollMakingChargeDiscountPercent(p?.makingChargeDiscountPercent ?? 100);
                 }} className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all bg-transparent">
                   <option value="">Select a plan…</option>
                   {plans.filter(p => p.isActive).map(p => (
@@ -542,6 +571,51 @@ export default function ManagerGoldInvestment() {
                   <input type="number" min={enrollFloor} value={enrollAmount} onChange={e => setEnrollAmount(Number(e.target.value) || 0)}
                     className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all" />
                   <p className="text-[9px] text-slate-400 mt-1">Minimum {fmt(enrollFloor)}/month for this plan.</p>
+                </div>
+              )}
+
+              {enrollSelectedPlan && (
+                <div className="border border-slate-100 rounded-2xl p-4 bg-slate-50/50">
+                  <button type="button" onClick={() => setEnrollCustomTerms(v => !v)} className="flex items-center gap-3 w-full text-left">
+                    <div className={`w-10 h-5 rounded-full transition-all duration-300 relative flex items-center px-1 flex-none ${enrollCustomTerms ? 'bg-blue-600' : 'bg-slate-300'}`}>
+                      <div className={`w-3.5 h-3.5 bg-white rounded-full shadow-sm transform transition-transform duration-300 ${enrollCustomTerms ? 'translate-x-5' : 'translate-x-0'}`} />
+                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-600">Custom Plan Terms</span>
+                  </button>
+                  {!enrollCustomTerms && (
+                    <p className="text-[9px] text-slate-400 mt-2">Uses {enrollSelectedPlan.name}&apos;s defaults — {enrollSelectedPlan.interestRate}% p.a. · {enrollSelectedPlan.durationMonths ? `${enrollSelectedPlan.durationMonths}mo` : 'open-ended'} · {enrollSelectedPlan.cashBenefitPercent}% cash benefit · {enrollSelectedPlan.makingChargeDiscountPercent ?? 100}% making charge off.</p>
+                  )}
+                  {enrollCustomTerms && (
+                    <div className="grid grid-cols-2 gap-4 mt-4">
+                      <div>
+                        <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Annual Interest Rate (%)</label>
+                        <input type="number" step="0.1" min={0} value={enrollInterestRate} onChange={e => setEnrollInterestRate(Number(e.target.value) || 0)}
+                          className="w-full border-b-2 border-slate-200 focus:border-slate-900 py-2 text-sm font-bold outline-none transition-all bg-transparent" />
+                      </div>
+                      {enrollSelectedPlan.durationMonths ? (
+                        <div>
+                          <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Duration (months)</label>
+                          <input type="number" min={1} value={enrollDurationMonths} onChange={e => setEnrollDurationMonths(Number(e.target.value) || 0)}
+                            className="w-full border-b-2 border-slate-200 focus:border-slate-900 py-2 text-sm font-bold outline-none transition-all bg-transparent" />
+                        </div>
+                      ) : (
+                        <div className="flex items-end pb-2">
+                          <p className="text-[9px] text-slate-400">Open-ended — no duration to set.</p>
+                        </div>
+                      )}
+                      <div>
+                        <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Cash Benefit (%)</label>
+                        <input type="number" step="0.1" min={0} max={100} value={enrollCashBenefitPercent} onChange={e => setEnrollCashBenefitPercent(Number(e.target.value) || 0)}
+                          className="w-full border-b-2 border-slate-200 focus:border-slate-900 py-2 text-sm font-bold outline-none transition-all bg-transparent" />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Making Charge Discount (%)</label>
+                        <input type="number" step="0.1" min={0} max={100} value={enrollMakingChargeDiscountPercent} onChange={e => setEnrollMakingChargeDiscountPercent(Number(e.target.value) || 0)}
+                          className="w-full border-b-2 border-slate-200 focus:border-slate-900 py-2 text-sm font-bold outline-none transition-all bg-transparent" />
+                      </div>
+                      <p className="col-span-2 text-[9px] text-slate-400">These terms apply only to this customer&apos;s enrollment — the plan template itself is unchanged. Visible to the customer on their profile.</p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -596,9 +670,11 @@ export default function ManagerGoldInvestment() {
                           <div><p className="text-[8px] text-white/50 font-bold">Accumulated</p><p className="text-sm font-bold">{fmt(selectedSub.amountAccumulated)}</p></div>
                           <div><p className="text-[8px] text-white/50 font-bold">Redeemed</p><p className="text-sm font-bold">{fmt(selectedSub.amountRedeemed || 0)}</p></div>
                           <div><p className="text-[8px] text-white/50 font-bold">Gold Accumulated</p><p className="text-sm font-bold">{(selectedSub.goldGramsAccumulated || 0).toFixed(2)}g</p></div>
-                          <div><p className="text-[8px] text-white/50 font-bold">Cash Benefit</p><p className="text-sm font-bold">{selectedSub.plan?.cashBenefitPercent}%</p></div>
-                          <div><p className="text-[8px] text-white/50 font-bold">Making Charge Off</p><p className="text-sm font-bold">{selectedSub.plan?.makingChargeDiscountPercent ?? 100}%</p></div>
+                          <div><p className="text-[8px] text-white/50 font-bold">Interest Rate</p><p className="text-sm font-bold">{effectiveInterestRate(selectedSub)}% p.a.</p></div>
+                          <div><p className="text-[8px] text-white/50 font-bold">Cash Benefit</p><p className="text-sm font-bold">{effectiveCashBenefitPercent(selectedSub)}%</p></div>
+                          <div><p className="text-[8px] text-white/50 font-bold">Making Charge Off</p><p className="text-sm font-bold">{effectiveMakingChargeDiscountPercent(selectedSub)}%</p></div>
                         </div>
+                        {selectedSub.isCustomPlan && <p className="text-[9px] font-black uppercase tracking-widest text-white/60 mt-3 bg-white/10 rounded-lg px-3 py-1.5 w-fit">Custom terms for this customer — differ from {selectedSub.plan?.name}&apos;s defaults</p>}
                       </div>
                     );
                   })()}
@@ -606,15 +682,15 @@ export default function ManagerGoldInvestment() {
                   <div className="grid grid-cols-2 gap-3">
                     {(() => {
                       const paid = selectedSub.installmentsPaid || 0;
-                      const totalMonths = selectedSub.plan?.durationMonths || 0;
-                      const ipm = (selectedSub.plan?.monthlyAmount || 0) * (selectedSub.plan?.interestRate || 0) / 100;
+                      const totalMonths = effectiveDurationMonths(selectedSub);
+                      const ipm = effectiveMonthlyAmount(selectedSub) * effectiveInterestRate(selectedSub) / 100;
                       const cm = paid >= totalMonths ? paid : Math.max(0, paid - 1);
-                      const interest = fmt(selectedSub.interestStopped ? 0 : cm * ipm);
+                      const interest = fmt((selectedSub.interestStopped ? 0 : cm * ipm) + (selectedSub.bonusInterest || 0));
                       return [
                         { l: 'Phone', v: selectedSub.customerPhone || '-' },
                         { l: 'Email', v: selectedSub.customerEmail || '-' },
                         { l: 'Payments Made', v: `${paid} / ${totalMonths}` },
-                        { l: 'Accumulated', v: fmt(paid * (selectedSub.plan?.monthlyAmount || 0)) },
+                        { l: 'Accumulated', v: fmt(paid * effectiveMonthlyAmount(selectedSub)) },
                         { l: 'Interest Earned', v: interest },
                         { l: 'Manual Follow-up', v: (selectedSub as any).requiresManualPayment ? 'Yes' : 'No' },
                       ];
@@ -675,8 +751,8 @@ export default function ManagerGoldInvestment() {
 
               {/* LEDGER TAB */}
               {drawerTab === 'ledger' && (() => {
-                const totalMonths = selectedSub.plan?.durationMonths || 0;
-                const monthlyAmount = selectedSub.plan?.monthlyAmount || 0;
+                const totalMonths = effectiveDurationMonths(selectedSub);
+                const monthlyAmount = effectiveMonthlyAmount(selectedSub);
                 const paidByMonth: Record<number, any> = {};
                 ((selectedSub as any).paymentLedger || []).forEach((e: any) => { paidByMonth[e.month] = e; });
                 const installmentsPaid = selectedSub.installmentsPaid || 0;
