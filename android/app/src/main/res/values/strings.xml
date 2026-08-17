@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">RKM Sales</string>
+    <string name="title_activity_main">RKM Sales</string>
+    <string name="package_name">com.rkm.sales</string>
+    <string name="custom_url_scheme">com.rkm.sales</string>
+</resources>
