@@ -113,7 +113,7 @@ export default function PurchaseOrderDetailPage() {
   const [productSearch, setProductSearch] = useState<Record<number, string>>({});
   const [productResults, setProductResults] = useState<Record<number, Product[]>>({});
   const [productSearchOpen, setProductSearchOpen] = useState<Record<number, boolean>>({});
-  const searchTimers = useRef<Record<number, NodeJS.Timeout>>({});
+  const searchTimers = useRef<Record<number, ReturnType<typeof window.setTimeout>>>({});
 
   const [poForm, setPoForm] = useState<Partial<PurchaseOrder>>({
     supplier_id: '', vendor_name: '', purchase_date: new Date().toISOString().split('T')[0],
