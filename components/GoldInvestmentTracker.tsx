@@ -53,6 +53,18 @@ export interface GoldSub {
   planCategory?: 'standard' | 'hold_my_gold';
   /** Gold accumulated so far, in grams — meaningful mainly for Hold My Gold subscriptions */
   goldGramsAccumulated?: number;
+  /** Set when any custom term below was set by staff at in-store enrollment */
+  isCustomPlan?: boolean;
+  /** Customer's own chosen monthly amount, if they didn't use the plan's default */
+  customMonthlyAmount?: number | null;
+  /** Per-subscription override of plan.interestRate, set only at in-store enrollment */
+  customInterestRate?: number | null;
+  /** Per-subscription override of plan.durationMonths, set only at in-store enrollment */
+  customDurationMonths?: number | null;
+  /** Per-subscription override of plan.cashBenefitPercent, set only at in-store enrollment */
+  customCashBenefitPercent?: number | null;
+  /** Per-subscription override of plan.makingChargeDiscountPercent, set only at in-store enrollment */
+  customMakingChargeDiscountPercent?: number | null;
   plan: {
     _id?: string;
     name: string;
@@ -151,7 +163,16 @@ function StandardGoldTracker({ sub }: { sub: GoldSub }) {
   const feedRef = useRef<HTMLDivElement>(null);
   const ref = useRef<HTMLDivElement>(null);
 
-  const plan = sub.plan;
+  // Overlays any staff-set custom terms from in-store enrollment on top of the plan template's
+  // defaults, so every `plan.X` read below already reflects what this customer actually agreed to.
+  const plan = {
+    ...sub.plan,
+    monthlyAmount: sub.customMonthlyAmount ?? sub.plan.monthlyAmount,
+    interestRate: sub.customInterestRate ?? sub.plan.interestRate,
+    durationMonths: sub.customDurationMonths ?? sub.plan.durationMonths,
+    cashBenefitPercent: sub.customCashBenefitPercent ?? sub.plan.cashBenefitPercent,
+    makingChargeDiscountPercent: sub.customMakingChargeDiscountPercent ?? sub.plan.makingChargeDiscountPercent,
+  };
   const paid = sub.installmentsPaid;
   const total = plan.durationMonths as number;
 
@@ -283,6 +304,9 @@ function StandardGoldTracker({ sub }: { sub: GoldSub }) {
             <div className="flex items-center gap-2 mb-1">
               <Gem size={13} className="rkm-gem" style={{ color: '#B8975A' }} />
               <span className="text-[8px] font-black uppercase tracking-[0.3em]" style={{ color: 'rgba(184,151,90,0.7)' }}>Gold Savings Plan</span>
+              {sub.isCustomPlan && (
+                <span className="text-[7px] font-black uppercase tracking-[0.2em] px-1.5 py-0.5 rounded-full border" style={{ color: '#B8975A', borderColor: 'rgba(184,151,90,0.4)' }}>Custom Terms</span>
+              )}
             </div>
             <h3 className="text-lg font-serif font-bold text-white leading-tight">{plan.name}</h3>
             <p className="text-[9px] font-bold uppercase tracking-wider mt-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
@@ -661,7 +685,16 @@ function OpenEndedGoldTracker({ sub }: { sub: GoldSub }) {
   const router = useRouter();
   const [showReceipt, setShowReceipt] = useState(false);
 
-  const plan = sub.plan;
+  // Overlays any staff-set custom terms from in-store enrollment on top of the plan template's
+  // defaults, so every `plan.X` read below already reflects what this customer actually agreed to.
+  const plan = {
+    ...sub.plan,
+    monthlyAmount: sub.customMonthlyAmount ?? sub.plan.monthlyAmount,
+    interestRate: sub.customInterestRate ?? sub.plan.interestRate,
+    durationMonths: sub.customDurationMonths ?? sub.plan.durationMonths,
+    cashBenefitPercent: sub.customCashBenefitPercent ?? sub.plan.cashBenefitPercent,
+    makingChargeDiscountPercent: sub.customMakingChargeDiscountPercent ?? sub.plan.makingChargeDiscountPercent,
+  };
   const isCancelled = sub.status === 'cancelled' || sub.status === 'halted';
 
   const fmt = (v: number) =>
@@ -692,6 +725,9 @@ function OpenEndedGoldTracker({ sub }: { sub: GoldSub }) {
             <div className="flex items-center gap-2 mb-1">
               <Gem size={13} style={{ color: '#B8975A' }} />
               <span className="text-[8px] font-black uppercase tracking-[0.3em]" style={{ color: 'rgba(184,151,90,0.7)' }}>Hold My Gold · Open-Ended</span>
+              {sub.isCustomPlan && (
+                <span className="text-[7px] font-black uppercase tracking-[0.2em] px-1.5 py-0.5 rounded-full border" style={{ color: '#B8975A', borderColor: 'rgba(184,151,90,0.4)' }}>Custom Terms</span>
+              )}
             </div>
             <h3 className="text-lg font-serif font-bold text-white leading-tight">{plan.name}</h3>
             <p className="text-[9px] font-bold uppercase tracking-wider mt-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>

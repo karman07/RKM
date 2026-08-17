@@ -37,8 +37,22 @@ export interface StatementSubscription {
     interestRate: number;
     cashBenefitPercent?: number;
   };
+  /** Staff-set custom terms from in-store enrollment — override the plan's defaults above when set */
+  customMonthlyAmount?: number | null;
+  customInterestRate?: number | null;
+  customDurationMonths?: number | null;
   /** Current available (non-redeemed) balance — principal + accrued interest - redeemed, computed by the caller */
   computedBalance: number;
+}
+
+/** The plan terms actually governing this subscription — a staff-set custom term from in-store
+ *  enrollment, or the plan template's default otherwise. */
+function effectiveTerms(sub: StatementSubscription) {
+  return {
+    monthlyAmount: sub.customMonthlyAmount ?? sub.plan.monthlyAmount,
+    interestRate: sub.customInterestRate ?? sub.plan.interestRate,
+    durationMonths: sub.customDurationMonths ?? sub.plan.durationMonths,
+  };
 }
 
 const fmt = (n: number) =>
@@ -151,7 +165,7 @@ export function downloadInvestmentStatementPdf({
   }
 
   // ── Portfolio summary across all plans ──
-  const totalInvested = subs.reduce((acc, s) => acc + s.installmentsPaid * s.plan.monthlyAmount, 0);
+  const totalInvested = subs.reduce((acc, s) => acc + s.installmentsPaid * effectiveTerms(s).monthlyAmount, 0);
   const totalRedeemed = subs.reduce((acc, s) => acc + (s.amountRedeemed || 0), 0);
   const totalAvailable = subs.reduce((acc, s) => acc + s.computedBalance, 0);
   const totalInterestCredited = subs.reduce(
@@ -186,8 +200,9 @@ export function downloadInvestmentStatementPdf({
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8.5);
     doc.setTextColor(110, 110, 110);
+    const terms = effectiveTerms(sub);
     doc.text(
-      `${sub.plan.interestRate}% p.a.  |  ${sub.plan.durationMonths} months  |  ${sub.installmentsPaid}/${sub.plan.durationMonths} paid  |  Status: ${sub.status.toUpperCase()}  |  Balance: ${fmt(sub.computedBalance)}`,
+      `${terms.interestRate}% p.a.  |  ${terms.durationMonths} months  |  ${sub.installmentsPaid}/${terms.durationMonths} paid  |  Status: ${sub.status.toUpperCase()}  |  Balance: ${fmt(sub.computedBalance)}`,
       margin,
       cursorY + 13
     );

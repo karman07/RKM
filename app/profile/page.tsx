@@ -310,9 +310,10 @@ export default function ProfilePage() {
           function computeTimeBasedBalance(sub: any): number {
             const plan = sub.plan;
             if (!plan) return 0;
-            const monthlyAmount = plan.monthlyAmount || 0;
-            const interestPerMonth = monthlyAmount * (plan.interestRate || 0) / 100;
-            const totalMonths = plan.durationMonths || 0;
+            // A staff-set custom term from in-store enrollment takes precedence over the plan's default.
+            const monthlyAmount = sub.customMonthlyAmount ?? plan.monthlyAmount ?? 0;
+            const interestPerMonth = monthlyAmount * (sub.customInterestRate ?? plan.interestRate ?? 0) / 100;
+            const totalMonths = sub.customDurationMonths ?? plan.durationMonths ?? 0;
             const paid = sub.installmentsPaid || 0;
             const complete = paid >= totalMonths;
             const creditedMonths = complete ? paid : Math.max(0, paid - 1);

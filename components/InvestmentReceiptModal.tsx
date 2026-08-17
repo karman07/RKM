@@ -27,7 +27,16 @@ const paymentTypeLabel = (type: string) => {
 };
 
 export default function InvestmentReceiptModal({ sub, balance, onClose }: InvestmentReceiptModalProps) {
-  const plan = sub.plan;
+  // Overlays any staff-set custom terms from in-store enrollment on top of the plan template's
+  // defaults, so the printed statement reflects what this customer actually agreed to.
+  const plan = {
+    ...sub.plan,
+    monthlyAmount: sub.customMonthlyAmount ?? sub.plan.monthlyAmount,
+    interestRate: sub.customInterestRate ?? sub.plan.interestRate,
+    durationMonths: sub.customDurationMonths ?? sub.plan.durationMonths,
+    cashBenefitPercent: sub.customCashBenefitPercent ?? sub.plan.cashBenefitPercent,
+    makingChargeDiscountPercent: sub.customMakingChargeDiscountPercent ?? sub.plan.makingChargeDiscountPercent,
+  };
 
   const handlePrint = () => {
     const el = document.getElementById('printable-investment-receipt');
