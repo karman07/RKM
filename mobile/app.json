@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "RKM Admin",
+    "slug": "rkm-admin",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.rkm.admin"
+    },
+    "android": {
+      "package": "com.rkm.admin",
+      "adaptiveIcon": {
+        "backgroundColor": "#5C0828",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "0ae6f8e6-3b6d-477e-a2a8-9d40742406c8"
+      }
+    },
+    "owner": "karman_singh_01"
+  }
+}

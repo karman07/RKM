@@ -39,3 +39,15 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Android native project (Capacitor) — keep the scaffolded project, ignore local/build state
+/android/local.properties
+/android/.gradle/
+/android/.idea/
+/android/build/
+/android/app/build/
+/android/captures/
+/android/**/*.keystore
+/android/**/*.jks
+/android/keystore.properties
+

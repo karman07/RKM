@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
-  getBranches, getUsers, getWorkers, createUser, updateUser, deleteUser, getCustomRoles,
+  getBranches, getUsers, getWorkers, createUser, updateUser, deleteUser, restoreUser, getCustomRoles,
   markWorkerAttendance, staticUrl, uploadUserDoc, uploadUserAvatar, generateUserDocument,
   getSettings,
   type User, type Branch, type CustomRole, type DocumentType, type AppSettings,
@@ -15,7 +15,7 @@ import {
   Plus, Edit2, Trash2, ChevronLeft, ChevronRight, Shield, UserCheck,
   Building2, Mail, Loader2, User as UserIcon, FileText, CreditCard,
   DollarSign, Calendar, Upload, Phone, Users, Wrench, Camera,
-  Download, RefreshCw, CheckCircle2, Sparkles, Search, X, UserCog,
+  Download, RefreshCw, RotateCcw, CheckCircle2, Sparkles, Search, X, UserCog,
   Landmark, Briefcase,
 } from 'lucide-react';
 
@@ -181,6 +181,7 @@ export default function UsersPage() {
   const [appSettings, setAppSettings] = useState<Partial<AppSettings>>({});
   const [loading, setLoading]       = useState(true);
   const [roleFilter, setRoleFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'active' | 'deleted' | 'all'>('active');
   const [page, setPage]             = useState(1);
   const [total, setTotal]           = useState(0);
   const limit = 10;
@@ -198,6 +199,8 @@ export default function UsersPage() {
   const [error, setError]           = useState('');
   const [toast, setToast]           = useState<{ message: string; type: 'success' | 'danger' } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
+  const [restoreTarget, setRestoreTarget] = useState<User | null>(null);
+  const [restoring, setRestoring]   = useState(false);
   const [historyUser, setHistoryUser]   = useState<User | null>(null);
   const [newEmployeeCard, setNewEmployeeCard] = useState<User | null>(null);
 
@@ -218,9 +221,11 @@ export default function UsersPage() {
     setLoading(true);
     try {
       const [userData, branchData, roleData, settingsData] = await Promise.all([
+        // Workers can never log in, so the deleted/deactivated distinction isn't useful there yet —
+        // the status filter only applies to login-capable staff.
         isWorkersTab
           ? getWorkers(undefined, page, limit)
-          : getUsers(roleFilter || undefined, page, limit),
+          : getUsers(roleFilter || undefined, page, limit, statusFilter),
         getBranches(),
         getCustomRoles().catch(() => [] as CustomRole[]),
         getSettings().catch(() => ({} as AppSettings)),
@@ -238,7 +243,7 @@ export default function UsersPage() {
   }
 
   const searchParams = useSearchParams();
-  useEffect(() => { load(); }, [roleFilter, page]);
+  useEffect(() => { load(); }, [roleFilter, statusFilter, page]);
   useEffect(() => {
     const profileId = searchParams.get('profile');
     if (profileId && users.length > 0) {
@@ -427,6 +432,21 @@ export default function UsersPage() {
     }
   }
 
+  async function handleRestore() {
+    if (!restoreTarget) return;
+    setRestoring(true);
+    try {
+      await restoreUser(restoreTarget._id);
+      setRestoreTarget(null);
+      showToast(`${restoreTarget.name} reactivated`, 'success');
+      load();
+    } catch (e: any) {
+      showToast(e.message || 'Restore failed', 'danger');
+    } finally {
+      setRestoring(false);
+    }
+  }
+
   const totalPages = Math.ceil(total / limit);
 
   return (
@@ -486,6 +506,31 @@ export default function UsersPage() {
           </button>
         ))}
       </div>
+
+      {/* Status filter — deleted/deactivated accounts are hidden by default so they don't clutter
+          the everyday list; switch here to find one and restore it. */}
+      {!isWorkersTab && (
+        <div className="flex items-center gap-2 mb-8">
+          <span className="text-[9px] font-black uppercase tracking-widest text-slate-300 mr-1">Show:</span>
+          {[
+            { value: 'active' as const,  label: 'Active' },
+            { value: 'deleted' as const, label: 'Removed' },
+            { value: 'all' as const,     label: 'All' },
+          ].map(s => (
+            <button
+              key={s.value}
+              onClick={() => { setStatusFilter(s.value); setPage(1); }}
+              className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${
+                statusFilter === s.value
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-white border border-slate-200 text-slate-400 hover:text-slate-600 hover:border-slate-300'
+              }`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Table */}
       <div className="bg-white border border-slate-200 rounded-[2.5rem] shadow-sm overflow-hidden">
@@ -559,9 +604,9 @@ export default function UsersPage() {
                               <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">No contact</span>
                             )}
                             <div className="flex items-center gap-2">
-                              <div className={`w-1.5 h-1.5 rounded-full ${u.is_active ? 'bg-emerald-500' : 'bg-red-400'}`} />
-                              <span className={`text-[10px] font-black uppercase tracking-widest ${u.is_active ? 'text-emerald-600' : 'text-red-400'}`}>
-                                {u.is_active ? 'Active' : 'Inactive'}
+                              <div className={`w-1.5 h-1.5 rounded-full ${u.is_deleted ? 'bg-slate-400' : u.is_active ? 'bg-emerald-500' : 'bg-red-400'}`} />
+                              <span className={`text-[10px] font-black uppercase tracking-widest ${u.is_deleted ? 'text-slate-400' : u.is_active ? 'text-emerald-600' : 'text-red-400'}`}>
+                                {u.is_deleted ? 'Removed' : u.is_active ? 'Active' : 'Inactive'}
                               </span>
                             </div>
                           </div>
@@ -574,9 +619,9 @@ export default function UsersPage() {
                               </span>
                             </div>
                             <div className="flex items-center gap-2">
-                              <div className={`w-1.5 h-1.5 rounded-full ${u.is_active ? 'bg-emerald-500' : 'bg-red-400'}`} />
-                              <span className={`text-[10px] font-black uppercase tracking-widest ${u.is_active ? 'text-emerald-600' : 'text-red-400'}`}>
-                                {u.is_active ? 'Active' : 'Suspended'}
+                              <div className={`w-1.5 h-1.5 rounded-full ${u.is_deleted ? 'bg-slate-400' : u.is_active ? 'bg-emerald-500' : 'bg-red-400'}`} />
+                              <span className={`text-[10px] font-black uppercase tracking-widest ${u.is_deleted ? 'text-slate-400' : u.is_active ? 'text-emerald-600' : 'text-red-400'}`}>
+                                {u.is_deleted ? 'Removed' : u.is_active ? 'Active' : 'Suspended'}
                               </span>
                             </div>
                           </div>
@@ -607,8 +652,19 @@ export default function UsersPage() {
                               Mark
                             </button>
                           )}
-                          <button onClick={e => { e.stopPropagation(); openEdit(u); }} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><Edit2 className="w-4 h-4" /></button>
-                          <button onClick={e => { e.stopPropagation(); setDeleteTarget(u); }} className="p-2 bg-red-50 text-red-600 rounded-xl hover:bg-red-600 hover:text-white transition-all"><Trash2 className="w-4 h-4" /></button>
+                          {u.is_deleted ? (
+                            <button
+                              onClick={e => { e.stopPropagation(); setRestoreTarget(u); }}
+                              className="flex items-center gap-2 px-3 py-2 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-emerald-600 hover:text-white hover:border-emerald-600 transition-all"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" /> Restore
+                            </button>
+                          ) : (
+                            <>
+                              <button onClick={e => { e.stopPropagation(); openEdit(u); }} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><Edit2 className="w-4 h-4" /></button>
+                              <button onClick={e => { e.stopPropagation(); setDeleteTarget(u); }} className="p-2 bg-red-50 text-red-600 rounded-xl hover:bg-red-600 hover:text-white transition-all"><Trash2 className="w-4 h-4" /></button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1429,6 +1485,29 @@ export default function UsersPage() {
             </button>
             <button onClick={handleDelete} className="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs font-bold uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-red-600/20">
               Remove
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Restore Confirmation */}
+      <Modal open={!!restoreTarget} onClose={() => setRestoreTarget(null)} title="Restore Employee">
+        <div className="space-y-6 text-center">
+          <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto">
+            <RotateCcw className="w-8 h-8 text-emerald-500" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-slate-900 mb-2">Reactivate Account</h3>
+            <p className="text-sm text-slate-500 leading-relaxed px-4">
+              Restore <strong>{restoreTarget?.name}</strong>? Their {restoreTarget?.role} access, employee ID, and history will be reinstated immediately — they&apos;ll be able to log in again right away.
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <button onClick={() => setRestoreTarget(null)} className="flex-1 py-3.5 border border-slate-200 rounded-xl text-xs font-bold uppercase tracking-widest text-slate-500 hover:bg-slate-50 transition-all">
+              Cancel
+            </button>
+            <button onClick={handleRestore} disabled={restoring} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-emerald-600/20 disabled:opacity-50">
+              {restoring ? 'Restoring...' : 'Restore'}
             </button>
           </div>
         </div>

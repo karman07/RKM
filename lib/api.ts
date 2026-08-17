@@ -133,6 +133,9 @@ export interface User {
   employee_id?: string;
   joining_date?: string;
   custom_field_values?: Record<string, any>;
+  /** Soft-deleted (removed) users are excluded from the default list — see getUsers(status) */
+  is_deleted?: boolean;
+  deleted_at?: string;
 }
 
 // ─── Custom Fields (admin-defined, for employee profiles & customer records) ──
@@ -575,9 +578,10 @@ export const getMe = async () => normalizeUser(await request<UserApiResponse>('/
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 
-export const getUsers = (role?: string, page: number = 1, limit: number = 20) => {
+/** status: 'active' (default, excludes removed users) | 'deleted' (only removed users) | 'all' */
+export const getUsers = (role?: string, page: number = 1, limit: number = 20, status?: 'active' | 'deleted' | 'all') => {
   const path = role ? `/users/role/${role}` : '/users';
-  const qs = `?page=${page}&limit=${limit}`;
+  const qs = `?page=${page}&limit=${limit}${status ? `&status=${status}` : ''}`;
   return request<PaginatedResponse<UserApiResponse>>(`${path}${qs}`).then((res) => ({
     data: res.data.map(normalizeUser),
     meta: res.meta,
@@ -595,6 +599,10 @@ export const updateUser = (id: string, data: object) =>
 
 export const deleteUser = (id: string) =>
   request<void>(`/users/${id}`, { method: 'DELETE' });
+
+/** Reactivates a deactivated/removed employee account — the inverse of deleteUser. */
+export const restoreUser = (id: string) =>
+  request<UserApiResponse>(`/users/${id}/restore`, { method: 'PATCH' }).then(normalizeUser);
 
 export const generateEmployeeId = (id: string) =>
   request<UserApiResponse>(`/users/${id}/generate-employee-id`, { method: 'POST' }).then(normalizeUser);
@@ -1927,6 +1935,16 @@ export interface GoldSubscription {
   razorpayCustomerId?: string;
   /** Customer's own chosen monthly amount, if they didn't use the plan's default */
   customMonthlyAmount?: number | null;
+  /** True when any custom term below overrides the plan's defaults (set at in-store enrollment) */
+  isCustomPlan?: boolean;
+  /** Per-subscription override of plan.interestRate, set only at in-store enrollment */
+  customInterestRate?: number | null;
+  /** Per-subscription override of plan.durationMonths, set only at in-store enrollment */
+  customDurationMonths?: number | null;
+  /** Per-subscription override of plan.cashBenefitPercent, set only at in-store enrollment */
+  customCashBenefitPercent?: number | null;
+  /** Per-subscription override of plan.makingChargeDiscountPercent, set only at in-store enrollment */
+  customMakingChargeDiscountPercent?: number | null;
   /** Copied from plan.planType at enroll time — different redemption rules apply */
   planCategory?: 'standard' | 'hold_my_gold';
   /** Admin-granted, per subscription — only meaningful when planCategory is 'hold_my_gold' */
@@ -2026,7 +2044,12 @@ export async function createSubscription(data: { planId: string; customerName: s
 }
 
 /** Enrolls a customer in-store — active immediately, no Razorpay mandate. Mark payments via markGoldCashPayment thereafter. */
-export async function enrollSubscription(data: { planId: string; customerName: string; customerEmail?: string; customerPhone?: string; customMonthlyAmount?: number }): Promise<GoldSubscription> {
+export async function enrollSubscription(data: {
+  planId: string; customerName: string; customerEmail?: string; customerPhone?: string;
+  customMonthlyAmount?: number;
+  /** Custom term overrides for this enrollment only — leave unset to use the plan's defaults */
+  customInterestRate?: number; customDurationMonths?: number; customCashBenefitPercent?: number; customMakingChargeDiscountPercent?: number;
+}): Promise<GoldSubscription> {
   return request<GoldSubscription>('/gold-investment/subscriptions/enroll', { method: 'POST', body: JSON.stringify(data) });
 }
 
