@@ -81,9 +81,18 @@ export class UsersService implements OnModuleInit {
     return { data, meta: { total, page, limit, total_pages: Math.ceil(total / limit) } };
   }
 
-  async findAll(page: number = 1, limit: number = 20): Promise<{ data: UserDocument[]; meta: any }> {
+  /** 'active' (default) excludes deleted users, matching every existing caller's behavior;
+   *  'deleted' shows only soft-deleted users (so admin can find someone to restore());
+   *  'all' applies no is_deleted filter at all. */
+  private deletionFilter(status?: string): Record<string, any> {
+    if (status === 'deleted') return { is_deleted: true };
+    if (status === 'all') return {};
+    return { is_deleted: { $ne: true } };
+  }
+
+  async findAll(page: number = 1, limit: number = 20, status?: string): Promise<{ data: UserDocument[]; meta: any }> {
     const skip = (page - 1) * limit;
-    const query = { is_deleted: { $ne: true } };
+    const query = this.deletionFilter(status);
     const [data, total] = await Promise.all([
       this.userModel.find(query)
         .select('-password')
@@ -106,9 +115,9 @@ export class UsersService implements OnModuleInit {
     };
   }
 
-  async findByRole(role: UserRole, page: number = 1, limit: number = 20, branchId?: string): Promise<{ data: UserDocument[]; meta: any }> {
+  async findByRole(role: UserRole, page: number = 1, limit: number = 20, branchId?: string, status?: string): Promise<{ data: UserDocument[]; meta: any }> {
     const skip = (page - 1) * limit;
-    const query: any = { role, is_deleted: { $ne: true } };
+    const query: any = { role, ...this.deletionFilter(status) };
     if (branchId) query.branch = branchId;
     
     const [data, total] = await Promise.all([
@@ -224,6 +233,23 @@ export class UsersService implements OnModuleInit {
       .exec();
     if (!user) throw new NotFoundException(`User ${id} not found`);
     return { message: 'User deleted successfully' };
+  }
+
+  /** Reactivates a deactivated or soft-deleted user — the inverse of remove(). Reinstates their
+   *  original role/branch/history untouched, just clears the deleted/inactive flags. */
+  async restore(id: string): Promise<UserDocument> {
+    const user = await this.userModel
+      .findByIdAndUpdate(
+        id,
+        { $set: { is_deleted: false, isActive: true }, $unset: { deleted_at: '' } },
+        { new: true },
+      )
+      .select('-password')
+      .populate('branch')
+      .populate('custom_role')
+      .exec();
+    if (!user) throw new NotFoundException(`User ${id} not found`);
+    return user;
   }
 
   async seedAdmin(): Promise<void> {

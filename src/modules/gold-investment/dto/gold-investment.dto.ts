@@ -121,6 +121,33 @@ export class CreateSubscriptionDto {
   @Min(1)
   @IsOptional()
   customMonthlyAmount?: number;
+
+  /**
+   * Custom term overrides — only ever honored by the staff in-store enroll path
+   * (`enrollSubscription`, ADMIN/MANAGER only). The customer self-serve signup path
+   * (`createSubscription`) ignores these even if present on the request body.
+   */
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  customInterestRate?: number;
+
+  @IsNumber()
+  @Min(1)
+  @IsOptional()
+  customDurationMonths?: number;
+
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  @IsOptional()
+  customCashBenefitPercent?: number;
+
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  @IsOptional()
+  customMakingChargeDiscountPercent?: number;
 }
 
 export class CreateEmiOrderDto {

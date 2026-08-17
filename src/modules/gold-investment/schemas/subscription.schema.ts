@@ -77,6 +77,28 @@ export class Subscription {
   @Prop({ type: Number, default: null })
   customMonthlyAmount: number | null;
 
+  /** True when this subscription was enrolled with any custom term below overriding the plan's
+   *  defaults — set once at enroll time, purely informational (drives the "Custom Plan" badge). */
+  @Prop({ default: false })
+  isCustomPlan: boolean;
+
+  /** Per-subscription override of plan.interestRate, set only at in-store enrollment. Never
+   *  settable via the customer self-serve signup path — see resolveCustomTerms() in the service. */
+  @Prop({ type: Number, default: null })
+  customInterestRate: number | null;
+
+  /** Per-subscription override of plan.durationMonths, set only at in-store enrollment. */
+  @Prop({ type: Number, default: null })
+  customDurationMonths: number | null;
+
+  /** Per-subscription override of plan.cashBenefitPercent, set only at in-store enrollment. */
+  @Prop({ type: Number, default: null })
+  customCashBenefitPercent: number | null;
+
+  /** Per-subscription override of plan.makingChargeDiscountPercent, set only at in-store enrollment. */
+  @Prop({ type: Number, default: null })
+  customMakingChargeDiscountPercent: number | null;
+
   /** Copied from plan.planType at enroll time */
   @Prop({ enum: PlanCategory, default: PlanCategory.STANDARD })
   planCategory: PlanCategory;

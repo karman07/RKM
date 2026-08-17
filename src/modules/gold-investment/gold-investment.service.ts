@@ -67,6 +67,26 @@ export class GoldInvestmentService {
     return sub?.customMonthlyAmount ?? plan?.monthlyAmount ?? 0;
   }
 
+  /** The annual interest rate actually governing a subscription — a staff-set custom rate at enrollment, or the plan's default. */
+  private effectiveInterestRate(sub: any, plan: any): number {
+    return sub?.customInterestRate ?? plan?.interestRate ?? 0;
+  }
+
+  /** The duration actually governing a subscription — a staff-set custom duration at enrollment, or the plan's default (undefined/null for open-ended plans like Hold My Gold). */
+  private effectiveDurationMonths(sub: any, plan: any): number | undefined {
+    return sub?.customDurationMonths ?? plan?.durationMonths ?? undefined;
+  }
+
+  /** The cash-benefit % actually governing a subscription — a staff-set custom % at enrollment, or the plan's default. */
+  private effectiveCashBenefitPercent(sub: any, plan: any): number {
+    return sub?.customCashBenefitPercent ?? plan?.cashBenefitPercent ?? 0;
+  }
+
+  /** The making-charge discount % actually governing a subscription — a staff-set custom % at enrollment, or the plan's default. */
+  private effectiveMakingChargeDiscountPercent(sub: any, plan: any): number {
+    return sub?.customMakingChargeDiscountPercent ?? plan?.makingChargeDiscountPercent ?? 100;
+  }
+
   // ─────────────────────────────────────────────────────────────────
   // INVESTMENT PLANS (Admin CRUD)
   // ─────────────────────────────────────────────────────────────────
@@ -310,6 +330,24 @@ export class GoldInvestmentService {
   }
 
   /**
+   * Resolves per-subscription term overrides for in-store enrollment only — never called from the
+   * customer self-serve signup path, so a customer can never set their own interest rate/duration/etc.
+   * Values equal to the plan's own default are dropped (kept null) so the "effective" reads later
+   * naturally fall back to the plan if it's edited afterwards.
+   */
+  private resolveCustomTerms(plan: InvestmentPlanDocument, dto: CreateSubscriptionDto) {
+    if (dto.customDurationMonths != null && plan.planType === PlanType.HOLD_MY_GOLD) {
+      throw new BadRequestException('Hold My Gold plans are open-ended and cannot have a custom duration.');
+    }
+    const customInterestRate = dto.customInterestRate != null && dto.customInterestRate !== plan.interestRate ? dto.customInterestRate : null;
+    const customDurationMonths = dto.customDurationMonths != null && dto.customDurationMonths !== plan.durationMonths ? dto.customDurationMonths : null;
+    const customCashBenefitPercent = dto.customCashBenefitPercent != null && dto.customCashBenefitPercent !== plan.cashBenefitPercent ? dto.customCashBenefitPercent : null;
+    const customMakingChargeDiscountPercent = dto.customMakingChargeDiscountPercent != null && dto.customMakingChargeDiscountPercent !== (plan.makingChargeDiscountPercent ?? 100) ? dto.customMakingChargeDiscountPercent : null;
+    const isCustomPlan = [customInterestRate, customDurationMonths, customCashBenefitPercent, customMakingChargeDiscountPercent].some(v => v != null);
+    return { customInterestRate, customDurationMonths, customCashBenefitPercent, customMakingChargeDiscountPercent, isCustomPlan };
+  }
+
+  /**
    * Admin/manager enrolls a customer in-store — active immediately, no Razorpay mandate at all.
    * Payments are tracked entirely via markCashPayment/applyCashPayment going forward, same as any
    * subscription whose autopay has stopped (requiresManualPayment: true from day one).
@@ -332,12 +370,14 @@ export class GoldInvestmentService {
     }
 
     const { customMonthlyAmount, planCategory } = await this.resolveCustomAmount(plan, dto.customMonthlyAmount);
+    const { customInterestRate, customDurationMonths, customCashBenefitPercent, customMakingChargeDiscountPercent, isCustomPlan } = this.resolveCustomTerms(plan, dto);
 
     const startedAt = new Date();
+    const effectiveDuration = customDurationMonths ?? plan.durationMonths;
     let maturesAt: Date | undefined;
-    if (plan.durationMonths) {
+    if (effectiveDuration) {
       maturesAt = new Date(startedAt);
-      maturesAt.setMonth(maturesAt.getMonth() + plan.durationMonths);
+      maturesAt.setMonth(maturesAt.getMonth() + effectiveDuration);
     }
 
     const sub = await this.subModel.create({
@@ -347,6 +387,11 @@ export class GoldInvestmentService {
       customerPhone: dto.customerPhone,
       status: SubscriptionStatus.ACTIVE,
       customMonthlyAmount: customMonthlyAmount ?? null,
+      isCustomPlan,
+      customInterestRate,
+      customDurationMonths,
+      customCashBenefitPercent,
+      customMakingChargeDiscountPercent,
       planCategory,
       amountAccumulated: 0,
       interestAccumulated: 0,
@@ -358,7 +403,7 @@ export class GoldInvestmentService {
       whatsappRemindersCount: 0,
     });
 
-    this.logger.log(`Subscription ${sub._id} enrolled in-store for ${dto.customerName} (${plan.name})`);
+    this.logger.log(`Subscription ${sub._id} enrolled in-store for ${dto.customerName} (${plan.name})${isCustomPlan ? ' with custom terms' : ''}`);
     return sub.populate('plan');
   }
 
@@ -897,7 +942,7 @@ export class GoldInvestmentService {
     const monthlyAmount = sub.planCategory === PlanCategory.HOLD_MY_GOLD && opts.amount
       ? opts.amount
       : this.effectiveMonthlyAmount(sub, plan);
-    const annualRate = plan.interestRate || 0;
+    const annualRate = this.effectiveInterestRate(sub, plan);
     const monthlyRate = annualRate / 12 / 100;
 
     const goldRate = await this.currentGoldRate();
@@ -926,7 +971,8 @@ export class GoldInvestmentService {
     sub.interestAccumulated = sub.amountAccumulated * monthlyRate * sub.installmentsPaid;
 
     // Mark as completed if all months are now paid (open-ended plans have no durationMonths, so never auto-complete here)
-    if (plan.durationMonths && sub.installmentsPaid >= plan.durationMonths) {
+    const effectiveDuration = this.effectiveDurationMonths(sub, plan);
+    if (effectiveDuration && sub.installmentsPaid >= effectiveDuration) {
       sub.status = SubscriptionStatus.COMPLETED;
       sub.endedAt = new Date();
       sub.interestStopped = false;
@@ -1152,7 +1198,7 @@ export class GoldInvestmentService {
     }
 
     const plan = sub.plan as any;
-    const pendingMonths = Math.max(0, (plan?.durationMonths || 0) - (sub.installmentsPaid || 0));
+    const pendingMonths = Math.max(0, (this.effectiveDurationMonths(sub, plan) || 0) - (sub.installmentsPaid || 0));
     const monthlyAmount = this.effectiveMonthlyAmount(sub, plan);
     const pendingAmount = pendingMonths * monthlyAmount;
 
@@ -1227,7 +1273,7 @@ export class GoldInvestmentService {
     let sent = 0;
     for (const sub of subs) {
       const plan = sub.plan as any;
-      if (!plan || sub.installmentsPaid >= (plan.durationMonths || 0)) continue;
+      if (!plan || sub.installmentsPaid >= (this.effectiveDurationMonths(sub, plan) || 0)) continue;
       const result = await this.sendWhatsappReminder(String(sub._id));
       if (result.sent) sent++;
     }
@@ -1486,8 +1532,8 @@ export class GoldInvestmentService {
     if (!this.isPastRedemptionLockIn(sub)) return 0;
 
     const monthlyAmount = this.effectiveMonthlyAmount(sub, plan);
-    const interestPerMonth = monthlyAmount * (plan.interestRate || 0) / 100;
-    const totalMonths = plan.durationMonths || 0;
+    const interestPerMonth = monthlyAmount * this.effectiveInterestRate(sub, plan) / 100;
+    const totalMonths = this.effectiveDurationMonths(sub, plan) || 0;
 
     const paid = sub.installmentsPaid || 0;
     const creditedMonths = paid >= totalMonths ? paid : Math.max(0, paid - 1);
@@ -1528,7 +1574,7 @@ export class GoldInvestmentService {
     const isHoldMyGold = sub.planCategory === PlanCategory.HOLD_MY_GOLD;
     const cashBenefitPercent = isHoldMyGold
       ? await this.getHoldMyGoldDiscountPercent(this.effectiveMonthlyAmount(sub, plan))
-      : (plan?.cashBenefitPercent || 0);
+      : this.effectiveCashBenefitPercent(sub, plan);
     const goldGramsAccumulated = sub.goldGramsAccumulated || 0;
 
     // Option 1 — Cash Benefit: investment amount + cash benefit both reduce the taxable subtotal.
@@ -1551,7 +1597,7 @@ export class GoldInvestmentService {
     // Option 2 — Making Charge Waiver: discounted only on the gold-weight portion the customer's
     // accumulated grams actually cover; investment amount still applies as payment. The discount
     // itself is the plan's own %, not always the full amount.
-    const makingChargeDiscountPercent = plan?.makingChargeDiscountPercent ?? 100;
+    const makingChargeDiscountPercent = this.effectiveMakingChargeDiscountPercent(sub, plan);
     const jewelryGoldWeightGrams = dto.jewelryGoldWeightGrams || 0;
     const makingChargesOnJewelry = dto.makingChargesOnJewelry || 0;
     const eligibleGoldGramsUsed = Math.min(goldGramsAccumulated, jewelryGoldWeightGrams);

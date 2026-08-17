@@ -40,8 +40,8 @@ export class UsersController {
   // ─── Admin: Get all users ───────────────────────────────────────────────────
   @Get()
   @Roles(UserRole.ADMIN)
-  findAll(@Query('page') page?: number, @Query('limit') limit?: number) {
-    return this.usersService.findAll(Number(page) || 1, Number(limit) || 20);
+  findAll(@Query('page') page?: number, @Query('limit') limit?: number, @Query('status') status?: string) {
+    return this.usersService.findAll(Number(page) || 1, Number(limit) || 20, status);
   }
 
   // ─── Admin: Get users by role ───────────────────────────────────────────────
@@ -51,8 +51,9 @@ export class UsersController {
     @Param('role') role: UserRole,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
+    @Query('status') status?: string,
   ) {
-    return this.usersService.findByRole(role, Number(page) || 1, Number(limit) || 20);
+    return this.usersService.findByRole(role, Number(page) || 1, Number(limit) || 20, undefined, status);
   }
 
   // ─── Admin & Manager: Get cashiers only ────────────────────────────────────
@@ -155,5 +156,19 @@ export class UsersController {
       }
     }
     return this.usersService.remove(id);
+  }
+
+  // ─── Admin: Restore any user; Manager: Restore cashiers + workers ─────────
+  @Patch(':id/restore')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  async restore(@Param('id') id: string, @Request() req) {
+    if (req.user.role === UserRole.MANAGER) {
+      const target = await this.usersService.findById(id);
+      const allowed = [UserRole.CASHIER, UserRole.WORKER];
+      if (!allowed.includes(target.role)) {
+        throw new ForbiddenException('Managers can only restore cashiers or workers');
+      }
+    }
+    return this.usersService.restore(id);
   }
 }
