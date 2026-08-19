@@ -190,11 +190,12 @@ export class Settings {
   // ── Security ─────────────────────────────────────────────────────────────────
 
   /**
-   * Session expiry in hours for manager and cashier roles.
-   * After this many hours from login the session is considered expired.
-   * Default: 2 hours. Admin can change this from the Settings panel.
+   * Session expiry in hours — applies to every portal role (admin, manager,
+   * cashier, sales, custom). Controls both the actual JWT expiry issued at
+   * login and the client-side session countdown shown in each app.
+   * Default: 24 hours (1 day). Admin can change this from the Settings panel.
    */
-  @Prop({ type: Number, min: 1, max: 24, default: 2 })
+  @Prop({ type: Number, min: 1, max: 24, default: 24 })
   staff_session_expiry_hours: number;
 
   /**

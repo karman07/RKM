@@ -171,7 +171,7 @@ export class UpdateSettingsDto {
 
   // ── Security ────────────────────────────────────────────────────────────────
 
-  /** Session expiry in hours for manager and cashier roles (1–24) */
+  /** Session expiry in hours, applied to every portal role (1–24) */
   @IsOptional()
   @IsNumber()
   @Min(1)

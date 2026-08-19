@@ -185,7 +185,12 @@ export class AuthService {
       };
     }
 
-    return this.issueToken(user);
+    const settings = await this.getSettings();
+    const expiryHours = settings.staff_session_expiry_hours ?? 2;
+    return {
+      ...this.issueToken(user, undefined, expiryHours),
+      session_expires_at: Date.now() + expiryHours * 60 * 60 * 1000,
+    };
   }
 
   /** Generate WebAuthn registration options and store challenge */
@@ -353,7 +358,7 @@ export class AuthService {
       });
     } catch (e) { this.logger.error('Failed to log login session', e); }
 
-    return { ...this.issueToken(user), session_expires_at: expiresAt.getTime() };
+    return { ...this.issueToken(user, undefined, expiryHours), session_expires_at: expiresAt.getTime() };
   }
 
   private async logBreach(userId: Types.ObjectId, user: any, ipAddress: string, credentialId: string) {
@@ -387,11 +392,12 @@ export class AuthService {
     }
   }
 
-  private issueToken(user: any, customRole?: any) {
+  private issueToken(user: any, customRole?: any, expiresInHours?: number) {
     const payload: Record<string, any> = { email: user.email, sub: user._id, role: user.role };
     if (customRole) payload.permissions = customRole.sidebar_permissions ?? [];
+    const signOptions = expiresInHours ? { expiresIn: expiresInHours * 3600 } : undefined;
     return {
-      access_token: this.jwtService.sign(payload),
+      access_token: this.jwtService.sign(payload, signOptions),
       user: {
         id: user._id,
         email: user.email,
