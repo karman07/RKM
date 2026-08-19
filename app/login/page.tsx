@@ -55,6 +55,15 @@ export default function SalesLogin() {
         id: user._id || user.id,
       }));
 
+      // Record attendance check-in based on login time
+      try {
+        await fetch(`${API_BASE}/attendance/check-in`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${access_token}` },
+          body: JSON.stringify({}),
+        });
+      } catch (_) {}
+
       router.push('/dashboard');
     } catch (err: any) {
       setError(err.message || 'System error');
