@@ -35,7 +35,7 @@ export default function LoginPage() {
       }));
 
       // Record attendance check-in based on login time
-      checkIn().catch(() => {});
+      await checkIn().catch(() => {});
 
       router.push('/dashboard');
     } catch (err: unknown) {
