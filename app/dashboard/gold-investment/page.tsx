@@ -547,23 +547,25 @@ export default function ManagerGoldInvestment() {
                 )}
               </div>
 
-              <div>
-                <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Plan *</label>
-                <select value={enrollPlanId} onChange={e => {
-                  const p = plans.find(pl => pl._id === e.target.value);
-                  setEnrollPlanId(e.target.value);
-                  setEnrollAmount(p?.monthlyAmount || 0);
-                  setEnrollInterestRate(p?.interestRate || 0);
-                  setEnrollDurationMonths(p?.durationMonths || 0);
-                  setEnrollCashBenefitPercent(p?.cashBenefitPercent || 0);
-                  setEnrollMakingChargeDiscountPercent(p?.makingChargeDiscountPercent ?? 100);
-                }} className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all bg-transparent">
-                  <option value="">Select a plan…</option>
-                  {plans.filter(p => p.isActive).map(p => (
-                    <option key={p._id} value={p._id}>{p.name} — {fmt(p.monthlyAmount)}/mo · {p.durationMonths}mo</option>
-                  ))}
-                </select>
-              </div>
+              {!enrollCustomTerms && (
+                <div>
+                  <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Plan *</label>
+                  <select value={enrollPlanId} onChange={e => {
+                    const p = plans.find(pl => pl._id === e.target.value);
+                    setEnrollPlanId(e.target.value);
+                    setEnrollAmount(p?.monthlyAmount || 0);
+                    setEnrollInterestRate(p?.interestRate || 0);
+                    setEnrollDurationMonths(p?.durationMonths || 0);
+                    setEnrollCashBenefitPercent(p?.cashBenefitPercent || 0);
+                    setEnrollMakingChargeDiscountPercent(p?.makingChargeDiscountPercent ?? 100);
+                  }} className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all bg-transparent">
+                    <option value="">Select a plan…</option>
+                    {plans.filter(p => p.isActive).map(p => (
+                      <option key={p._id} value={p._id}>{p.name} — {fmt(p.monthlyAmount)}/mo · {p.durationMonths}mo</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {enrollSelectedPlan && (
                 <div>
@@ -584,6 +586,12 @@ export default function ManagerGoldInvestment() {
                   </button>
                   {!enrollCustomTerms && (
                     <p className="text-[9px] text-slate-400 mt-2">Uses {enrollSelectedPlan.name}&apos;s defaults — {enrollSelectedPlan.interestRate}% p.a. · {enrollSelectedPlan.durationMonths ? `${enrollSelectedPlan.durationMonths}mo` : 'open-ended'} · {enrollSelectedPlan.cashBenefitPercent}% cash benefit · {enrollSelectedPlan.makingChargeDiscountPercent ?? 100}% making charge off.</p>
+                  )}
+                  {enrollCustomTerms && (
+                    <div className="flex items-center justify-between mt-2">
+                      <p className="text-[9px] text-slate-400">Based on {enrollSelectedPlan.name}</p>
+                      <button type="button" onClick={() => setEnrollCustomTerms(false)} className="text-[9px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-800">Change plan</button>
+                    </div>
                   )}
                   {enrollCustomTerms && (
                     <div className="grid grid-cols-2 gap-4 mt-4">
