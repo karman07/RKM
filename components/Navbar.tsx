@@ -6,6 +6,7 @@ import { API_BASE_URL, STATIC_BASE_URL } from "../app/constants";
 import { SearchIcon, BagIcon, HeartIcon } from "./Icons";
 import Link from "next/link";
 import CartDrawer from "./CartDrawer";
+import { DEV_BANNER_HEIGHT, isDevBannerActive } from "./DevBanner";
 import { useAppSelector, useAppDispatch } from "../store/store";
 import { openAuthDialog, logout } from "../store/authSlice";
 import { User as UserIcon, LogOut, Heart, ShoppingBag, ExternalLink, ChevronRight, LayoutDashboard, Settings } from "lucide-react";
@@ -450,8 +451,13 @@ export default function Navbar() {
 
       {/* ── Main Navbar ── */}
       <nav
-        style={{ backgroundColor: bg, borderBottomColor: borderCol, color: textCol }}
-        className={`fixed top-0 left-0 w-full z-50 border-b transition-all duration-700 ease-in-out ${solid ? "shadow-[0_2px_20px_rgba(0,0,0,0.07)] backdrop-blur-xl" : ""
+        style={{
+          backgroundColor: bg,
+          borderBottomColor: borderCol,
+          color: textCol,
+          top: isDevBannerActive ? DEV_BANNER_HEIGHT : 0,
+        }}
+        className={`fixed left-0 w-full z-50 border-b transition-all duration-700 ease-in-out ${solid ? "shadow-[0_2px_20px_rgba(0,0,0,0.07)] backdrop-blur-xl" : ""
           }`}
       >
         <div className="max-w-[1440px] mx-auto px-6 lg:px-12 h-[70px] flex items-center gap-8">
