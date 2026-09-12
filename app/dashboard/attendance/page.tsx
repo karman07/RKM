@@ -430,6 +430,7 @@ export default function AttendancePage() {
                 </div>
 
                 {/* Staff rows */}
+                <div className="overflow-x-auto">
                 <table className="w-full text-left">
                   <thead>
                     <tr className="bg-slate-50/60 border-b border-slate-100">
@@ -585,6 +586,7 @@ export default function AttendancePage() {
                     })}
                   </tbody>
                 </table>
+                </div>
               </div>
             );
           })}
@@ -603,6 +605,7 @@ export default function AttendancePage() {
               <p className="text-xs text-slate-400 font-medium">{onLeaveList.length} approved leave{onLeaveList.length !== 1 ? 's' : ''} overlap this date</p>
             </div>
           </div>
+          <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
               <tr className="bg-blue-50/40 border-b border-blue-50">
@@ -647,6 +650,7 @@ export default function AttendancePage() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -681,7 +685,7 @@ export default function AttendancePage() {
                   <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
                 </div>
               ) : profileStats ? (
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {[
                     { label: 'Present',  value: profileStats.present,  color: 'text-emerald-600' },
                     { label: 'Absent',   value: profileStats.absent,   color: 'text-red-500'     },
@@ -704,6 +708,7 @@ export default function AttendancePage() {
             {/* Attendance Ledger */}
             {!loadingProfile && profileHistory.length > 0 && (
               <div className="mt-6 border border-slate-200 rounded-2xl overflow-hidden">
+                <div className="overflow-x-auto">
                 <table className="w-full text-left">
                   <thead className="bg-slate-50 border-b border-slate-200">
                     <tr>
@@ -749,6 +754,7 @@ export default function AttendancePage() {
                     })}
                   </tbody>
                 </table>
+                </div>
               </div>
             )}
 

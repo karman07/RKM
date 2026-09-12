@@ -926,7 +926,7 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
       </div>
 
       {/* Stats grid */}
-      <div className="grid grid-cols-5 divide-x divide-slate-50 border-b border-slate-50">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 divide-x divide-slate-50 border-b border-slate-50">
         {[
           { label: isOpenEnded ? 'Payments Made' : 'Paid Months', value: isOpenEnded ? `${displayedPaid}` : `${displayedPaid} / ${totalMonths}` },
           { label: 'Principal', value: fmt(principal) },
@@ -1821,7 +1821,7 @@ function EditClientModal({
                 className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
             </div>
           )}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Salutation</label>
               <select value={salutation} onChange={e => setSalutation(e.target.value)}
@@ -1874,7 +1874,7 @@ function EditClientModal({
             <input value={address} onChange={e => setAddress(e.target.value)}
               className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">City</label>
               <input value={city} onChange={e => setCity(e.target.value)}
@@ -1925,7 +1925,7 @@ function EditClientModal({
                 <input value={shipStreet2} onChange={e => setShipStreet2(e.target.value)}
                   className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />
               </div>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div>
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">City</label>
                   <input value={shipCity} onChange={e => setShipCity(e.target.value)}
@@ -2006,7 +2006,7 @@ function EditClientModal({
                 <button type="button" onClick={() => setContactPersons(list => list.filter((_, j) => j !== i))}
                   className="p-1 text-slate-400 hover:text-red-500 transition-colors"><X className="w-3.5 h-3.5" /></button>
               </div>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <input placeholder="First name" value={cp.first_name}
                   onChange={e => setContactPersons(list => list.map((p, j) => j === i ? { ...p, first_name: e.target.value } : p))}
                   className="w-full border border-slate-200 rounded-lg px-2.5 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all" />

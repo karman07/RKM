@@ -313,7 +313,7 @@ function AddClientModal({ onClose, onCreated }: { onClose: () => void; onCreated
                 <input placeholder="Full address…" value={address} onChange={e => setAddress(e.target.value)}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500" />
               </div>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
                   <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">City</label>
                   <input placeholder="City" value={city} onChange={e => setCity(e.target.value)}
@@ -337,7 +337,7 @@ function AddClientModal({ onClose, onCreated }: { onClose: () => void; onCreated
 
               {showMore && (
                 <div className="space-y-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <div>
                       <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Salutation</label>
                       <select value={salutation} onChange={e => setSalutation(e.target.value)}

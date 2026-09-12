@@ -707,7 +707,7 @@ return (
             </div>
             <div className="space-y-3">
               {deliverySettings.zones.map((zone, i) => (
-                <div key={i} className="grid grid-cols-5 gap-3 items-center p-4 rounded-2xl border" style={{ backgroundColor: theme === 'light' ? '#f8fafc' : '#162846', borderColor: colors.border }}>
+                <div key={i} className="grid grid-cols-1 sm:grid-cols-5 gap-3 items-center p-4 rounded-2xl border" style={{ backgroundColor: theme === 'light' ? '#f8fafc' : '#162846', borderColor: colors.border }}>
                   <div>
                     <label className="text-[9px] font-black uppercase block mb-1 opacity-60" style={{ color: colors.textMain }}>Label</label>
                     <input value={zone.label || ''} onChange={e => updateZone(i, 'label', e.target.value)}

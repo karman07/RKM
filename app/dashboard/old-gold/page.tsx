@@ -687,6 +687,7 @@ function TxnDetail({
 
         {/* Items table */}
         <div className="rounded-2xl border border-slate-100 overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
@@ -751,6 +752,7 @@ function TxnDetail({
               ))}
             </tbody>
           </table>
+          </div>
         </div>
 
         <div className="mt-3 flex flex-wrap gap-3">
@@ -1102,6 +1104,7 @@ export default function OldGoldPage() {
         </div>
       ) : (
         <div className="border border-slate-200 rounded-[2rem] shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
               <tr className="bg-slate-50/80 border-b border-slate-100">
@@ -1223,6 +1226,7 @@ export default function OldGoldPage() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>

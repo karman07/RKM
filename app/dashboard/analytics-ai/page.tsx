@@ -238,7 +238,7 @@ function ProfileCard({ cfg }: { cfg: ChartConfig }) {
       </div>
 
       {/* Stats footer */}
-      <div className="grid grid-cols-3 border-t border-slate-100">
+      <div className="grid grid-cols-1 sm:grid-cols-3 border-t border-slate-100">
         {[
           { label: 'Total Sales', value: String(m.total_sales ?? 0) },
           { label: 'Revenue', value: fmtVal(m.total_revenue ?? 0, '₹') },

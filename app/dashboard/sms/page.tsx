@@ -75,14 +75,14 @@ export default function SmsControlPage() {
 
   return (
     <div className="space-y-8 pb-20">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-900 tracking-tight">SMS Control</h1>
           <p className="text-sm text-slate-400 font-medium mt-1">MSG91 delivery stats for purchase confirmations, return notices and manual thank-you messages</p>
         </div>
         <button
           onClick={() => { loadStats(); }}
-          className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 rounded-xl text-slate-500 text-xs font-black uppercase tracking-wider hover:bg-slate-50 transition-colors"
+          className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 rounded-xl text-slate-500 text-xs font-black uppercase tracking-wider hover:bg-slate-50 transition-colors self-start"
         >
           <RefreshCw size={13} /> Refresh
         </button>
@@ -121,6 +121,7 @@ export default function SmsControlPage() {
             {(stats?.recent?.length ?? 0) === 0 ? (
               <p className="px-6 py-10 text-center text-sm text-slate-400 font-medium">No SMS sent yet.</p>
             ) : (
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-100">
@@ -146,6 +147,7 @@ export default function SmsControlPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         </>

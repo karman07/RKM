@@ -600,7 +600,7 @@ export default function GoldInvestmentDashboard() {
                     <p className="text-xs text-slate-400 font-bold">{s.customerPhone} · {s.customerEmail}</p>
                     <p className="text-xs font-bold text-slate-500">{s.plan?.name} · {s.installmentsPaid}{s.plan?.durationMonths ? `/${effectiveDurationMonths(s)}` : ''} payments</p>
                   </div>
-                  <div className="grid grid-cols-4 gap-4 text-center">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
                     <div>
                       <p className="text-[8px] font-black text-slate-300 uppercase mb-1">Accumulated</p>
                       <p className="text-sm font-bold text-slate-900">{fmt(s.amountAccumulated)}</p>

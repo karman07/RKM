@@ -1087,7 +1087,7 @@ export default function ProductsPage() {
           {/* Tab 2: Metal & Weight */}
           {activeTab === 1 && (
             <div className="space-y-4">
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Metal Type</label>
                   <select
@@ -1122,7 +1122,7 @@ export default function ProductsPage() {
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Gross Weight (g)</label>
                   <input type="number" step="0.001" min="0" required
@@ -1197,6 +1197,8 @@ export default function ProductsPage() {
 
               {form.has_stones && (
                 <div className="space-y-3">
+                  <div className="overflow-x-auto">
+                  <div className="min-w-[480px] space-y-3">
                   <div className="grid grid-cols-12 gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400 px-1">
                     <div className="col-span-4">Stone Type</div>
                     <div className="col-span-3">Weight (g/ct)</div>
@@ -1266,6 +1268,8 @@ export default function ProductsPage() {
                       )}
                     </div>
                   ))}
+                  </div>
+                  </div>
 
                   <button
                     type="button"
@@ -1466,6 +1470,8 @@ export default function ProductsPage() {
                         .toFixed(2)}%
                     </span>
                   </div>
+                  <div className="overflow-x-auto">
+                  <div className="min-w-[380px] space-y-3">
                   <div className="grid grid-cols-12 gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1">
                     <div className="col-span-6">Tax Name</div>
                     <div className="col-span-5">Rate (%)</div>
@@ -1513,6 +1519,8 @@ export default function ProductsPage() {
                       </div>
                     </div>
                   ))}
+                  </div>
+                  </div>
                   <div className="flex gap-2 pt-1">
                     <button
                       type="button"
@@ -1535,7 +1543,7 @@ export default function ProductsPage() {
                   </p>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Wastage (%)</label>
                     <input type="number" step="0.1" min="0" max="20" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.wastage_percentage} onChange={(e) => set('wastage_percentage', e.target.value)} placeholder="e.g. 3" />

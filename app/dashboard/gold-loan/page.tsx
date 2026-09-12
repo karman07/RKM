@@ -572,7 +572,7 @@ function CreatePanel({
             )}
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Field label="Loan Amount (₹) *">
               <input type="number" value={loanAmount} onChange={e => setLoanAmount(e.target.value)}
                 className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
@@ -736,6 +736,7 @@ function LoanDetail({
 
         {/* Pledged items table */}
         <div className="rounded-2xl border border-slate-100 overflow-hidden mb-4">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
@@ -793,6 +794,7 @@ function LoanDetail({
               ))}
             </tbody>
           </table>
+          </div>
         </div>
 
         {/* EMI ledger */}
@@ -801,6 +803,7 @@ function LoanDetail({
             <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100">
               <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">EMI Ledger — Interest @ {loan.interest_rate_monthly}%/mo</p>
             </div>
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-50/60 border-b border-slate-100">
@@ -847,6 +850,7 @@ function LoanDetail({
                 })}
               </tbody>
             </table>
+            </div>
           </div>
         )}
 
@@ -1304,6 +1308,7 @@ export default function GoldLoanPage() {
         </div>
       ) : (
         <div className="border border-slate-200 rounded-[2rem] shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
               <tr className="bg-slate-50/80 border-b border-slate-100">
@@ -1407,6 +1412,7 @@ export default function GoldLoanPage() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>

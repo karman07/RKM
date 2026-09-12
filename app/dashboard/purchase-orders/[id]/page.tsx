@@ -676,7 +676,7 @@ function ItemCard({
           <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Inventory Configuration</p>
             <p className="text-xs text-slate-500 mb-3">All product details will be taken from the existing catalog entry. Only specify how many units and at what cost you are purchasing.</p>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label className={LBL}>Cost Price (₹) <span className="text-red-500">*</span></label>
                 <input type="number" min="0" className={isPublished ? INP_DIS : `w-full px-3.5 py-2.5 border border-green-200 rounded-lg text-sm bg-green-50 focus:outline-none focus:ring-2 focus:ring-green-400`}
@@ -815,6 +815,8 @@ function FullProductForm({ item, isPublished, categories, metalTypes, purities, 
         </div>
         {item.has_stones && (
           <div className="space-y-3 pl-1">
+            <div className="overflow-x-auto">
+            <div className="min-w-[480px] space-y-3">
             <div className="grid grid-cols-12 gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400 px-1">
               <div className="col-span-5">Stone Type</div><div className="col-span-3">Weight (g/ct)</div><div className="col-span-3">Price Override (₹)</div><div className="col-span-1"></div>
             </div>
@@ -842,6 +844,8 @@ function FullProductForm({ item, isPublished, categories, metalTypes, purities, 
                 </div>
               </div>
             ))}
+            </div>
+            </div>
             {!dis && <button type="button" onClick={() => onFieldChange('stones', [...(item.stones || []), { stone_type: '', weight: '', price_override: '' }])}
               className="w-full py-3 border-2 border-dashed border-blue-200 rounded-xl text-[11px] font-black text-blue-500 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2">
               <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M12 5v14M5 12h14"/></svg>Add Stone Component
@@ -870,7 +874,7 @@ function FullProductForm({ item, isPublished, categories, metalTypes, purities, 
             )}
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div><label className={LBL}>Wastage (%)</label><input type="number" step="0.1" min="0" max="20" className={dis ? INP_DIS : INP} disabled={dis} value={item.wastage_percentage ?? ''} onChange={e => onFieldChange('wastage_percentage', parseFloat(e.target.value) || 0)} placeholder="e.g. 3" /></div>
           <div><label className={LBL}>Admin Discount (%)</label><input type="number" min="0" max="100" className={dis ? INP_DIS : INP} disabled={dis} value={item.discount_percentage ?? ''} onChange={e => onFieldChange('discount_percentage', parseFloat(e.target.value) || 0)} /></div>
           <div><label className={LBL}>Max Manager Discount (%)</label><input type="number" min="0" max="100" className={dis ? INP_DIS : INP} disabled={dis} value={item.max_manager_discount ?? ''} onChange={e => onFieldChange('max_manager_discount', parseFloat(e.target.value) || 0)} /></div>
@@ -904,6 +908,8 @@ function FullProductForm({ item, isPublished, categories, metalTypes, purities, 
             <label className="text-sm font-bold text-slate-800">Taxes <span className="text-red-500">*</span></label>
             <span className="text-[10px] text-slate-400">Total: {(item.taxes || []).reduce((s: number, t: TaxRow) => s + (Number(t.percentage) || 0), 0).toFixed(2)}%</span>
           </div>
+          <div className="overflow-x-auto">
+          <div className="min-w-[380px] space-y-3">
           <div className="grid grid-cols-12 gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1">
             <div className="col-span-6">Tax Name</div><div className="col-span-5">Rate (%)</div><div className="col-span-1"></div>
           </div>
@@ -924,6 +930,8 @@ function FullProductForm({ item, isPublished, categories, metalTypes, purities, 
               </div>
             </div>
           ))}
+          </div>
+          </div>
           {!dis && (
             <div className="flex gap-2 pt-1">
               <button type="button" onClick={() => onFieldChange('taxes', [...(item.taxes || []), { name: '', percentage: '' }])}

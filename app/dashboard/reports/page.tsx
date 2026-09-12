@@ -113,6 +113,7 @@ export default function ReportsHubPage() {
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Grouped by Category</p>
         </div>
 
+        <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
             <tr className="bg-slate-50/80 border-b border-slate-100">
@@ -172,6 +173,7 @@ export default function ReportsHubPage() {
             })}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );
