@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Cormorant_Garamond, Jost } from "next/font/google";
 import "./globals.css";
 import Navbar from "../components/Navbar";
-import DevBanner, { DEV_BANNER_HEIGHT, isDevBannerActive } from "../components/DevBanner";
+import DevBanner, { DEV_BANNER_HEIGHT, getDevBannerActive } from "../components/DevBanner";
 import Footer from "../components/Footer";
 import BottomNav from "../components/BottomNav";
 import StoreProvider from "../components/StoreProvider";
@@ -43,11 +43,13 @@ import AnalyticsTracker from "../components/AnalyticsTracker";
 import AuthDialog from "../components/AuthDialog";
 import { Toaster } from "sonner";
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const bannerActive = await getDevBannerActive();
+
   return (
     <html
       lang="en"
@@ -104,9 +106,9 @@ export default function RootLayout({
           }}
         />
         <StoreProvider>
-          <DevBanner />
-          {isDevBannerActive && <div style={{ height: DEV_BANNER_HEIGHT }} />}
-          <Navbar />
+          <DevBanner active={bannerActive} />
+          {bannerActive && <div style={{ height: DEV_BANNER_HEIGHT }} />}
+          <Navbar bannerActive={bannerActive} />
           <div className="flex-1 flex flex-col pt-0 pb-bottom-nav">
             {children}
           </div>

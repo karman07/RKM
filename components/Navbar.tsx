@@ -6,7 +6,7 @@ import { API_BASE_URL, STATIC_BASE_URL } from "../app/constants";
 import { SearchIcon, BagIcon, HeartIcon } from "./Icons";
 import Link from "next/link";
 import CartDrawer from "./CartDrawer";
-import { DEV_BANNER_HEIGHT, isDevBannerActive } from "./DevBanner";
+import { DEV_BANNER_HEIGHT } from "./DevBanner";
 import { useAppSelector, useAppDispatch } from "../store/store";
 import { openAuthDialog, logout } from "../store/authSlice";
 import { User as UserIcon, LogOut, Heart, ShoppingBag, ExternalLink, ChevronRight, LayoutDashboard, Settings } from "lucide-react";
@@ -52,7 +52,7 @@ const LOOKUP_LABELS: Record<string, string> = {
 
 const GOLD = "#B8975A";
 
-export default function Navbar() {
+export default function Navbar({ bannerActive }: { bannerActive: boolean }) {
   const pathname = usePathname();
   const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
   const wishlistCount = useAppSelector((state) => state.wishlist.items.length);
@@ -455,7 +455,7 @@ export default function Navbar() {
           backgroundColor: bg,
           borderBottomColor: borderCol,
           color: textCol,
-          top: isDevBannerActive ? DEV_BANNER_HEIGHT : 0,
+          top: bannerActive ? DEV_BANNER_HEIGHT : 0,
         }}
         className={`fixed left-0 w-full z-50 border-b transition-all duration-700 ease-in-out ${solid ? "shadow-[0_2px_20px_rgba(0,0,0,0.07)] backdrop-blur-xl" : ""
           }`}

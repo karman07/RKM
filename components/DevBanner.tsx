@@ -1,9 +1,32 @@
+import { API_BASE_URL } from "../app/constants";
+
 export const DEV_BANNER_HEIGHT = 32;
 
-export const isDevBannerActive = process.env.NODE_ENV === "development";
+/**
+ * Resolves whether the "development build" banner should show, combining:
+ *  - NODE_ENV — always on for a local `next dev` run, so it's visible
+ *    without any admin action.
+ *  - The admin-controlled `dev_banner_enabled` setting (Admin → Settings →
+ *    Storefront) — lets admin flip the banner on for a deployed/staging
+ *    build too, no redeploy needed.
+ * Fetched server-side (in the root layout) so there's no client flash and
+ * the resolved value can be threaded down to Navbar for its layout offset.
+ */
+export async function getDevBannerActive(): Promise<boolean> {
+  if (process.env.NODE_ENV === "development") return true;
 
-export default function DevBanner() {
-  if (!isDevBannerActive) return null;
+  try {
+    const res = await fetch(`${API_BASE_URL}/settings/public`, { cache: "no-store" });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return data?.dev_banner_enabled === true;
+  } catch {
+    return false;
+  }
+}
+
+export default function DevBanner({ active }: { active: boolean }) {
+  if (!active) return null;
 
   return (
     <div
