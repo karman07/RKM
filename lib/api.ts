@@ -1362,6 +1362,8 @@ export interface AppSettings {
   hold_my_gold_threshold?: number;
   /** Discount tiers by invested-amount range, used for the cash-benefit % at redemption for Hold My Gold subscriptions */
   hold_my_gold_tiers?: { minAmount: number; maxAmount: number | null; discountPercent: number }[];
+  /** Shows the "development build" banner on the public storefront (frontend) */
+  dev_banner_enabled?: boolean;
   updatedAt?: string;
 }
 

@@ -4,7 +4,7 @@ import { updateSettings, syncAllInventoryPrices, getLookups, uploadCompanyLogo, 
 import { useSettings } from '@/components/SettingsContext';
 import { useAppTheme } from '@/components/AppThemeContext';
 import { APP_THEME } from '@/lib/theme-constants';
-import { MessageCircle, Mail, Bell, AlertCircle, MessageSquare } from 'lucide-react';
+import { MessageCircle, Mail, Bell, AlertCircle, MessageSquare, Globe } from 'lucide-react';
 
 // ─── Static metadata for each pricing category ────────────────────────────────
 
@@ -83,6 +83,9 @@ export default function SettingsPage() {
   const [waEnabled, setWaEnabled] = useState(true);
   const [emailEnabled, setEmailEnabled] = useState(true);
   const [smsEnabled, setSmsEnabled] = useState(true);
+
+  // Storefront
+  const [devBannerEnabled, setDevBannerEnabled] = useState(false);
 
   // Work schedule
   const [shiftStart, setShiftStart]         = useState('09:00');
@@ -193,6 +196,7 @@ export default function SettingsPage() {
     setWaEnabled((settings as any).whatsapp_notifications_enabled !== false);
     setEmailEnabled((settings as any).email_notifications_enabled !== false);
     setSmsEnabled((settings as any).sms_notifications_enabled !== false);
+    setDevBannerEnabled(settings.dev_banner_enabled === true);
     setShiftStart(settings.shift_start_time ?? '09:00');
     setShiftEnd(settings.shift_end_time ?? '18:00');
     setGraceMinutes(String(settings.late_grace_minutes ?? 5));
@@ -275,6 +279,7 @@ export default function SettingsPage() {
         whatsapp_notifications_enabled: waEnabled,
         email_notifications_enabled: emailEnabled,
         sms_notifications_enabled: smsEnabled,
+        dev_banner_enabled: devBannerEnabled,
         shift_start_time: shiftStart,
         shift_end_time: shiftEnd,
         late_grace_minutes: Number(graceMinutes) || 5,
@@ -1327,6 +1332,43 @@ return (
               if (active.length === 2) return `Customers will receive notifications via ${active[0]} and ${active[1]}`;
               return `Customers will receive notifications via ${active[0]}, ${active[1]} and ${active[2]}`;
             })()}
+          </p>
+        </div>
+      </section>
+
+      {/* ── Storefront ── */}
+      <section className="border rounded-2xl p-6 space-y-5 shadow-sm" style={{ borderColor: colors.border }}>
+        <div>
+          <h2 className="text-[15px] font-bold" style={{ color: colors.textMain }}>Storefront</h2>
+          <p className="text-xs mt-1 opacity-60" style={{ color: colors.textMain }}>
+            Controls shown directly on the public website — no redeploy needed.
+          </p>
+        </div>
+
+        <div className={`rounded-2xl border-2 p-5 transition-all sm:max-w-md ${devBannerEnabled ? 'border-blue-200 bg-blue-50/30' : 'border-slate-100'}`}
+          style={!devBannerEnabled ? { borderColor: colors.border, backgroundColor: theme === 'light' ? '#f8fafc' : '#0c1626' } : {}}>
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${devBannerEnabled ? 'bg-blue-100' : 'bg-slate-100'}`}>
+                <Globe size={20} className={devBannerEnabled ? 'text-blue-600' : 'text-slate-400'} />
+              </div>
+              <div>
+                <p className="text-[13px] font-black" style={{ color: colors.textMain }}>Development Banner</p>
+                <p className={`text-[10px] font-bold uppercase tracking-wider mt-0.5 ${devBannerEnabled ? 'text-blue-600' : 'text-slate-400'}`}>
+                  {devBannerEnabled ? 'Showing' : 'Hidden'}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setDevBannerEnabled(v => !v)}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ${devBannerEnabled ? 'bg-blue-600' : 'bg-slate-200'}`}>
+              <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform duration-200 ${devBannerEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+            </button>
+          </div>
+          <p className="text-[11px] leading-relaxed" style={{ color: colors.textMuted }}>
+            {devBannerEnabled
+              ? 'A banner tells every visitor this is a development build — turn off once the site is ready for customers.'
+              : 'The public site shows no development notice.'}
           </p>
         </div>
       </section>
