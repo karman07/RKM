@@ -59,7 +59,7 @@ export default function ReportsHubPage() {
           title="Revenue (30d)"
           value={loading ? '—' : fmtFull((overview?.revenue ?? 0) + (overview?.onlineRevenue ?? 0))}
           icon={<DollarSign className="w-5 h-5" />}
-          accent="#3b82f6"
+          accent="#4c6291"
           colors={colors}
         />
         <SnapshotCard
@@ -82,7 +82,7 @@ export default function ReportsHubPage() {
           value={loading ? '—' : fmtFull(overview?.inventoryValue?.retailValue ?? 0)}
           sub={loading ? undefined : `${overview?.inventoryValue?.count ?? 0} items in stock`}
           icon={<Layers className="w-5 h-5" />}
-          accent="#8b5cf6"
+          accent="#263a5e"
           colors={colors}
         />
       </div>
@@ -93,7 +93,7 @@ export default function ReportsHubPage() {
         className="flex items-center gap-5 p-7 rounded-[2.5rem] border shadow-xl shadow-slate-200/40 hover:-translate-y-1 transition-all duration-300 group"
         style={{ backgroundColor: colors.bg, borderColor: colors.border }}
       >
-        <div className="p-3.5 rounded-2xl text-white shadow-lg flex-shrink-0" style={{ backgroundColor: '#f97316', boxShadow: '0 8px 20px -6px #f9731655' }}>
+        <div className="p-3.5 rounded-2xl text-white shadow-lg flex-shrink-0" style={{ backgroundColor: '#f59e0b', boxShadow: '0 8px 20px -6px #f59e0b55' }}>
           <Truck className="w-5 h-5" />
         </div>
         <div className="flex-1 min-w-0">

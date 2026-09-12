@@ -70,7 +70,7 @@ export default function SalesTeamPage() {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
         <div>
           <div className="flex items-center gap-3 mb-2">
-            <div className="w-1.5 h-8 bg-[#2563EB] rounded-full" />
+            <div className="w-1.5 h-8 bg-[#263A5E] rounded-full" />
             <h1 className="text-4xl font-bold text-slate-900 tracking-tight">Sales Team</h1>
           </div>
           <p className="text-slate-500 font-medium ml-4 uppercase tracking-[0.2em] text-[10px]">
@@ -79,11 +79,11 @@ export default function SalesTeamPage() {
         </div>
         <div className="flex items-center gap-3">
           <Link href="/dashboard/sales-team/enquiries"
-            className="flex items-center gap-2 px-5 py-3 bg-[#2563EB] text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-[#1D4ED8] shadow-lg shadow-[#2563EB]/20 transition-all">
+            className="flex items-center gap-2 px-5 py-3 bg-[#263A5E] text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-[#1D2C49] shadow-lg shadow-[#263A5E]/20 transition-all">
             <TrendingUp className="w-4 h-4" /> Review Enquiries
           </Link>
           <Link href="/dashboard/settings"
-            className="flex items-center gap-2 px-4 py-3 bg-white border border-slate-200 text-slate-500 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:border-[#2563EB]/30 hover:text-[#2563EB] transition-all">
+            className="flex items-center gap-2 px-4 py-3 bg-white border border-slate-200 text-slate-500 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:border-[#263A5E]/30 hover:text-[#263A5E] transition-all">
             <Settings className="w-4 h-4" /> {ratePct}% / {windowMonths}mo
           </Link>
         </div>
@@ -97,13 +97,13 @@ export default function SalesTeamPage() {
       </div>
 
       <div className="relative group mb-6 max-w-md">
-        <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-[#2563EB] transition-colors" />
+        <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-[#263A5E] transition-colors" />
         <input
           type="text"
           placeholder="Search sales agents..."
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="w-full pl-12 pr-5 py-3.5 bg-white border border-slate-200 rounded-2xl text-sm text-slate-900 focus:outline-none focus:border-[#2563EB] focus:ring-4 focus:ring-[#2563EB]/5 transition-all shadow-sm"
+          className="w-full pl-12 pr-5 py-3.5 bg-white border border-slate-200 rounded-2xl text-sm text-slate-900 focus:outline-none focus:border-[#263A5E] focus:ring-4 focus:ring-[#263A5E]/5 transition-all shadow-sm"
         />
       </div>
 
@@ -135,7 +135,7 @@ export default function SalesTeamPage() {
                     <tr key={r._id} className="group hover:bg-slate-50/50 transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 bg-[#2563EB] rounded-xl flex items-center justify-center text-white shrink-0">
+                          <div className="w-9 h-9 bg-[#263A5E] rounded-xl flex items-center justify-center text-white shrink-0">
                             <Briefcase className="w-4 h-4" />
                           </div>
                           <div>
@@ -155,7 +155,7 @@ export default function SalesTeamPage() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <Link href={`/dashboard/sales-team/enquiries?sales_agent_id=${r._id}`}
-                          className="text-[10px] font-black uppercase tracking-widest text-[#2563EB] hover:underline">
+                          className="text-[10px] font-black uppercase tracking-widest text-[#263A5E] hover:underline">
                           View Enquiries
                         </Link>
                       </td>

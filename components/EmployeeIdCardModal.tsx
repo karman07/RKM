@@ -16,7 +16,7 @@ interface EmployeeIdCardModalProps {
 const PRODUCTS_URL = 'https://rkmjewellers.com/products';
 
 /** Brand accent — matches the maroon used for "Sales" elsewhere in the admin */
-const MAROON = '#5A0F1A';
+const MAROON = '#263a5e';
 
 export default function EmployeeIdCardModal({ user, branches, onClose }: EmployeeIdCardModalProps) {
   const [generatingPdf, setGeneratingPdf] = useState<'download' | 'share' | null>(null);

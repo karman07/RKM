@@ -18,7 +18,7 @@ const fmt = (n: number) =>
 
 const statusColor: Record<string, string> = {
   active: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-  cancelled: 'bg-rose-100 text-rose-700 border-rose-200',
+  cancelled: 'bg-red-100 text-red-700 border-red-200',
   completed: 'bg-blue-100 text-blue-700 border-blue-200',
   halted: 'bg-amber-100 text-amber-700 border-amber-200',
   pending: 'bg-slate-100 text-slate-600 border-slate-200',
@@ -27,9 +27,9 @@ const statusColor: Record<string, string> = {
 const paymentTypeBadge = (type: 'autopay' | 'cash' | 'whatsapp_link' | 'emi' | 'online') => {
   if (type === 'autopay') return 'bg-amber-50 text-amber-700 border-amber-200';
   if (type === 'cash') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-  if (type === 'online') return 'bg-rose-50 text-rose-700 border-rose-200';
-  if (type === 'emi') return 'bg-indigo-50 text-indigo-700 border-indigo-200';
-  return 'bg-sky-50 text-sky-700 border-sky-200';
+  if (type === 'online') return 'bg-red-50 text-red-700 border-red-200';
+  if (type === 'emi') return 'bg-blue-50 text-blue-700 border-blue-200';
+  return 'bg-blue-50 text-blue-700 border-blue-200';
 };
 
 const paymentTypeLabel = (type: 'autopay' | 'cash' | 'whatsapp_link' | 'emi' | 'online') => {
@@ -447,7 +447,7 @@ export default function GoldInvestmentDashboard() {
   const kpiCards = stats ? [
     { label: 'Total Subscribers', value: stats.total, color: 'text-slate-900' },
     { label: 'Active Plans', value: stats.active, color: 'text-emerald-600' },
-    { label: 'Cancelled', value: stats.cancelled, color: 'text-rose-600' },
+    { label: 'Cancelled', value: stats.cancelled, color: 'text-red-600' },
     { label: 'Completed', value: stats.completed, color: 'text-blue-600' },
     { label: 'Manual Pending', value: (stats as any).manualPending || 0, color: 'text-amber-600' },
     { label: 'Total Accumulated', value: fmt(stats.totalAccumulated), color: 'text-slate-900' },
@@ -558,7 +558,7 @@ export default function GoldInvestmentDashboard() {
               </div>
               <div className="mt-6 flex gap-3">
                 <button onClick={() => openEditPlan(p)} className="flex-1 py-3 bg-slate-50 hover:bg-slate-100 text-slate-700 text-[10px] font-black uppercase tracking-wider rounded-xl border border-slate-100 transition-all">Edit</button>
-                <button onClick={() => removePlan(p._id)} className="flex-1 py-3 bg-rose-50 hover:bg-rose-100 text-rose-600 text-[10px] font-black uppercase tracking-wider rounded-xl border border-rose-100 transition-all">Delete</button>
+                <button onClick={() => removePlan(p._id)} className="flex-1 py-3 bg-red-50 hover:bg-red-100 text-red-600 text-[10px] font-black uppercase tracking-wider rounded-xl border border-red-100 transition-all">Delete</button>
               </div>
             </div>
           ))}
@@ -595,7 +595,7 @@ export default function GoldInvestmentDashboard() {
                       {s.redeemed && <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase bg-blue-100 text-blue-700 border border-blue-200">Redeemed</span>}
                       {(s as any).requiresManualPayment && <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase bg-amber-100 text-amber-700 border border-amber-200">Manual Payments</span>}
                       {s.pausedForCashMonth != null && <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase bg-emerald-100 text-emerald-700 border border-emerald-200">Paused (Cash Covered)</span>}
-                      {s.isCustomPlan && <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase bg-purple-100 text-purple-700 border border-purple-200">Custom Plan</span>}
+                      {s.isCustomPlan && <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase bg-blue-100 text-blue-700 border border-blue-200">Custom Plan</span>}
                     </div>
                     <p className="text-xs text-slate-400 font-bold">{s.customerPhone} · {s.customerEmail}</p>
                     <p className="text-xs font-bold text-slate-500">{s.plan?.name} · {s.installmentsPaid}{s.plan?.durationMonths ? `/${effectiveDurationMonths(s)}` : ''} payments</p>
@@ -642,17 +642,17 @@ export default function GoldInvestmentDashboard() {
           </div>
 
           {hmgDuplicates.length > 0 && (
-            <div className="bg-rose-50 border border-rose-200 rounded-2xl p-5 space-y-3">
-              <p className="text-xs font-bold text-rose-800 leading-relaxed">
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-5 space-y-3">
+              <p className="text-xs font-bold text-red-800 leading-relaxed">
                 {hmgDuplicates.length} extra Hold My Gold plan{hmgDuplicates.length > 1 ? 's' : ''} found — customers and
                 staff only ever see one (&quot;{hmgPlan?.name}&quot;), so these are stale and should be deleted to avoid
                 confusion about which rate/threshold is actually live.
               </p>
               <div className="space-y-2">
                 {hmgDuplicates.map(p => (
-                  <div key={p._id} className="flex items-center justify-between bg-white border border-rose-100 rounded-xl px-4 py-2.5">
+                  <div key={p._id} className="flex items-center justify-between bg-white border border-red-100 rounded-xl px-4 py-2.5">
                     <span className="text-xs font-bold text-slate-700">{p.name} · {p.interestRate}% p.a. · min {fmt(p.minMonthlyAmount || 0)}</span>
-                    <button onClick={() => removePlan(p._id)} className="text-[10px] font-black uppercase text-rose-600 hover:underline">Delete</button>
+                    <button onClick={() => removePlan(p._id)} className="text-[10px] font-black uppercase text-red-600 hover:underline">Delete</button>
                   </div>
                 ))}
               </div>
@@ -1005,7 +1005,7 @@ export default function GoldInvestmentDashboard() {
                   {(() => {
                     const available = computeAvailableBalance(selectedSub);
                     return (
-                      <div className="rounded-2xl p-5 text-white" style={{ background: 'linear-gradient(135deg, #1e3a5f 0%, #1d4ed8 100%)' }}>
+                      <div className="rounded-2xl p-5 text-white" style={{ background: 'linear-gradient(135deg, #1e3a5f 0%, #263a5e 100%)' }}>
                         <p className="text-[8px] font-black uppercase tracking-widest text-blue-200 mb-1">Available Balance</p>
                         <p className="text-3xl font-bold">{fmt(available)}</p>
                         <div className="flex gap-4 mt-3">
@@ -1078,14 +1078,14 @@ export default function GoldInvestmentDashboard() {
 
                   {/* Restart Autopay (cancelled/halted mandate) */}
                   {(selectedSub.status === 'cancelled' || selectedSub.status === 'halted') && (
-                    <div className="border border-rose-100 rounded-2xl p-4 bg-rose-50">
-                      <p className="text-[9px] font-black uppercase tracking-widest text-rose-700 mb-1">Autopay Stopped</p>
-                      <p className="text-[10px] text-rose-800 mb-3">
+                    <div className="border border-red-100 rounded-2xl p-4 bg-red-50">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-red-700 mb-1">Autopay Stopped</p>
+                      <p className="text-[10px] text-red-800 mb-3">
                         {selectedSub.status === 'halted'
                           ? 'This mandate is halted. Restarting will try to resume it directly with Razorpay.'
                           : 'This mandate was cancelled by the bank and can\'t be revived — restarting issues a brand-new mandate and sends the customer a fresh authorization link. Their balance and history carry over.'}
                       </p>
-                      <button onClick={handleRestart} disabled={restartLoading} className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-black uppercase rounded-xl transition-all disabled:opacity-50">
+                      <button onClick={handleRestart} disabled={restartLoading} className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white text-[10px] font-black uppercase rounded-xl transition-all disabled:opacity-50">
                         {restartLoading ? 'Restarting…' : 'Restart Autopay'}
                       </button>
                     </div>

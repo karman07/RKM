@@ -15,7 +15,7 @@ import { downloadReportFile } from '@/lib/api';
 import { downloadCsv } from '@/lib/export-utils';
 import { getReportConfig, type ReportConfig, type FieldFormat } from '@/lib/reports-config';
 
-const PALETTE = ['#3b82f6', '#8b5cf6', '#10b981', '#f97316', '#ec4899', '#06b6d4', '#f59e0b', '#84cc16'];
+const PALETTE = ['#4c6291', '#263a5e', '#10b981', '#d97706', '#94a3b8', '#7186b5', '#f59e0b', '#059669'];
 
 function fmtFull(n: number) {
   return `₹${Number(n ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
@@ -340,7 +340,7 @@ function ProfitLossView({ data, colors }: { data: any; colors: any }) {
         <p className="text-[11px] font-semibold text-slate-400 italic px-2">{data.disclaimer}</p>
       </div>
       <div className="space-y-6">
-        <div className="p-8 rounded-[2.5rem] text-white shadow-2xl" style={{ backgroundColor: '#1E3264' }}>
+        <div className="p-8 rounded-[2.5rem] text-white shadow-2xl" style={{ backgroundColor: '#263a5e' }}>
           <p className="text-[10px] font-black uppercase tracking-widest text-blue-200 mb-2">Gross Profit</p>
           <p className="text-3xl font-black leading-none mb-2">{fmtFull(data.grossProfit)}</p>
           <p className="text-xs font-bold text-blue-200">{data.grossMarginPct.toFixed(1)}% margin</p>
@@ -418,13 +418,13 @@ function BalanceSheetView({ data, colors }: { data: any; colors: any }) {
           <StatementRow label="Receivable — Online Orders Pending" amount={data.assets.onlinePending} sub={`${data.assets.breakdown.onlinePendingCount} orders`} />
           <StatementRow label="Receivable — Pre-Booking Dues" amount={data.assets.prebookingDues} sub={`${data.assets.breakdown.prebookingPendingCount} bookings`} />
           <StatementRow label="Total Accounts Receivable" amount={data.assets.accountsReceivable} bold />
-          <StatementRow label="Total Assets" amount={data.totalAssets} bold color="#1E3264" />
+          <StatementRow label="Total Assets" amount={data.totalAssets} bold color="#263a5e" />
         </Panel>
         <Panel colors={colors}>
           <h3 className="text-lg font-black text-slate-900 mb-4">Liabilities</h3>
           <StatementRow label="Gold Investment Payable" amount={data.liabilities.goldInvestmentPayable} sub={`${data.liabilities.breakdown.investmentSubscriptionCount} subscriptions`} />
           <StatementRow label="Old Gold Payable" amount={data.liabilities.oldGoldPayable} sub="Melt authorized, unsettled" />
-          <StatementRow label="Total Liabilities" amount={data.totalLiabilities} bold color="#1E3264" />
+          <StatementRow label="Total Liabilities" amount={data.totalLiabilities} bold color="#263a5e" />
         </Panel>
         <div className="p-8 rounded-[2.5rem] text-white shadow-2xl flex flex-col justify-center" style={{ backgroundColor: data.equity >= 0 ? '#10b981' : '#ef4444' }}>
           <p className="text-[10px] font-black uppercase tracking-widest text-white/70 mb-2">Owner's Equity</p>

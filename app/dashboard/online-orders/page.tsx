@@ -42,8 +42,8 @@ interface OnlineOrder {
 const STATUS_CFG: Record<OrderStatus, { label: string; dot: string; bg: string; text: string; border: string; btn: string }> = {
   pending:    { label: 'Pending',    dot: 'bg-amber-500',   bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200',  btn: 'bg-amber-500 hover:bg-amber-600 text-white' },
   confirmed:  { label: 'Confirmed',  dot: 'bg-blue-500',    bg: 'bg-blue-50',    text: 'text-blue-700',    border: 'border-blue-200',   btn: 'bg-blue-600 hover:bg-blue-700 text-white' },
-  processing: { label: 'Processing', dot: 'bg-violet-500',  bg: 'bg-violet-50',  text: 'text-violet-700',  border: 'border-violet-200', btn: 'bg-violet-600 hover:bg-violet-700 text-white' },
-  shipped:    { label: 'Shipped',    dot: 'bg-indigo-500',  bg: 'bg-indigo-50',  text: 'text-indigo-700',  border: 'border-indigo-200', btn: 'bg-indigo-600 hover:bg-indigo-700 text-white' },
+  processing: { label: 'Processing', dot: 'bg-blue-500',  bg: 'bg-blue-50',  text: 'text-blue-700',  border: 'border-blue-200', btn: 'bg-blue-600 hover:bg-blue-700 text-white' },
+  shipped:    { label: 'Shipped',    dot: 'bg-blue-500',  bg: 'bg-blue-50',  text: 'text-blue-700',  border: 'border-blue-200', btn: 'bg-blue-600 hover:bg-blue-700 text-white' },
   delivered:  { label: 'Delivered',  dot: 'bg-emerald-500', bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200',btn: 'bg-emerald-600 hover:bg-emerald-700 text-white' },
   cancelled:  { label: 'Cancelled',  dot: 'bg-red-500',     bg: 'bg-red-50',     text: 'text-red-700',     border: 'border-red-200',    btn: 'bg-red-600 hover:bg-red-700 text-white' },
   refunded:   { label: 'Refunded',   dot: 'bg-slate-500',   bg: 'bg-slate-50',   text: 'text-slate-600',   border: 'border-slate-200',  btn: 'bg-slate-700 hover:bg-slate-800 text-white' },
@@ -368,10 +368,10 @@ export default function OnlineOrdersPage() {
               )}
 
               {selected.estimated_delivery && (
-                <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 mb-1">Estimated Delivery</p>
-                  <p className="text-sm font-bold text-indigo-900">{new Date(selected.estimated_delivery).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
-                  {selected.admin_delivery_note && <p className="text-xs text-indigo-700 mt-1">{selected.admin_delivery_note}</p>}
+                <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-1">Estimated Delivery</p>
+                  <p className="text-sm font-bold text-blue-900">{new Date(selected.estimated_delivery).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                  {selected.admin_delivery_note && <p className="text-xs text-blue-700 mt-1">{selected.admin_delivery_note}</p>}
                 </div>
               )}
 
@@ -398,7 +398,7 @@ export default function OnlineOrdersPage() {
                           value={etaDate}
                           min={new Date().toISOString().split('T')[0]}
                           onChange={e => setEtaDate(e.target.value)}
-                          className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-indigo-400 text-slate-700"
+                          className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-400 text-slate-700"
                         />
                       </div>
                       <div>
@@ -406,7 +406,7 @@ export default function OnlineOrdersPage() {
                         <select
                           value={etaTime}
                           onChange={e => setEtaTime(e.target.value)}
-                          className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-indigo-400 text-slate-700"
+                          className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-400 text-slate-700"
                         >
                           <option value="10:00">10:00 AM</option>
                           <option value="12:00">12:00 PM</option>
@@ -422,7 +422,7 @@ export default function OnlineOrdersPage() {
                       value={etaNote}
                       onChange={e => setEtaNote(e.target.value)}
                       placeholder="Delivery note for customer (e.g. Out for delivery today)"
-                      className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-indigo-400 text-slate-700"
+                      className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-400 text-slate-700"
                     />
                     <p className="text-[10px] text-slate-400">Tip: set a realistic slot, e.g. 6:00 PM for same-day city delivery.</p>
                   </div>

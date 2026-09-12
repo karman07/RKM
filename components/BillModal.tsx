@@ -166,7 +166,7 @@ function RefundModal({ items, onClose, onSuccess }: { items: InventoryItem[]; on
                       {row.product?.has_stones && row.stoneValue > 0 && (
                         <div className="p-3 rounded-xl bg-white border border-slate-200 text-center">
                           <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Stone Value</div>
-                          <div className="text-sm font-black text-violet-600 mt-0.5">₹{fmt(row.stoneValue)}</div>
+                          <div className="text-sm font-black text-blue-600 mt-0.5">₹{fmt(row.stoneValue)}</div>
                           <div className="text-[9px] text-slate-400 mt-0.5">{stoneRefundPct}% → ₹{fmt(row.stoneRefund)}</div>
                         </div>
                       )}
@@ -764,10 +764,10 @@ ${billEl.outerHTML}
                 totalMgrDis > 0 && { label: 'Additional Discount (Manager)', value: `- ₹${fmt(totalMgrDis)}`, bold: false },
                 { label: 'Taxable Value', value: `₹${fmt(totalTaxable)}`, bold: false },
                 { label: 'Total Tax (GST)', value: `₹${fmt(grandTotalTax)}`, bold: false },
-                totalInvestmentRedeemed > 0 && { label: `Investment Balance Applied${investmentRedemptionLabel ? ` (${investmentRedemptionLabel})` : ''}`, value: `- ₹${fmt(totalInvestmentRedeemed)}`, bold: false, color: '#7A1C2A' },
-                totalMakingDiscount > 0 && { label: 'Making Charges Waived (Investment)', value: `- ₹${fmt(totalMakingDiscount)}`, bold: false, color: '#7A1C2A' },
-                totalAdvanceRedeemed > 0 && { label: 'Advance Payment Applied', value: `- ₹${fmt(totalAdvanceRedeemed)}`, bold: false, color: '#7A1C2A' },
-                totalAdvanceMakingDiscount > 0 && { label: 'Making Charges Discount (Advance)', value: `- ₹${fmt(totalAdvanceMakingDiscount)}`, bold: false, color: '#7A1C2A' },
+                totalInvestmentRedeemed > 0 && { label: `Investment Balance Applied${investmentRedemptionLabel ? ` (${investmentRedemptionLabel})` : ''}`, value: `- ₹${fmt(totalInvestmentRedeemed)}`, bold: false, color: '#263a5e' },
+                totalMakingDiscount > 0 && { label: 'Making Charges Waived (Investment)', value: `- ₹${fmt(totalMakingDiscount)}`, bold: false, color: '#263a5e' },
+                totalAdvanceRedeemed > 0 && { label: 'Advance Payment Applied', value: `- ₹${fmt(totalAdvanceRedeemed)}`, bold: false, color: '#263a5e' },
+                totalAdvanceMakingDiscount > 0 && { label: 'Making Charges Discount (Advance)', value: `- ₹${fmt(totalAdvanceMakingDiscount)}`, bold: false, color: '#263a5e' },
               ].filter(Boolean).map((row: any, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '2.5px 0', borderBottom: '1px solid #eee' }}>
                   <span style={{ color: row.color ?? '#555' }}>{row.label}</span>

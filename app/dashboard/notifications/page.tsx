@@ -26,7 +26,7 @@ const TYPE_CONFIG: Record<string, { label: string; dot: string; bg: string; bord
   item_sold:    { label: 'Sale',   dot: 'bg-emerald-500', bg: 'bg-emerald-50', border: 'border-emerald-200' },
   item_damaged: { label: 'Damage', dot: 'bg-amber-500',   bg: 'bg-amber-50',   border: 'border-amber-200'  },
   item_stolen:  { label: 'Theft',  dot: 'bg-red-500',     bg: 'bg-red-50',     border: 'border-red-200'    },
-  test:         { label: 'Test',   dot: 'bg-purple-500',  bg: 'bg-purple-50',  border: 'border-purple-200' },
+  test:         { label: 'Test',   dot: 'bg-blue-500',  bg: 'bg-blue-50',  border: 'border-blue-200' },
   default:      { label: 'Info',   dot: 'bg-slate-400',   bg: 'bg-slate-50',   border: 'border-slate-200'  },
 };
 
@@ -149,7 +149,7 @@ export default function AdminNotificationsPage() {
       {/* ─── Header ─── */}
       <section className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-600/20">
+          <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-600/20">
             <BellIcon className="w-6 h-6 text-white" />
           </div>
           <div>
@@ -193,7 +193,7 @@ export default function AdminNotificationsPage() {
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             {[
               { key: 'all',         label: 'All Alerts', count: history.length, color: 'text-blue-600', border: 'border-blue-600' },
-              { key: 'stock_added', label: 'Stock',      count: typeCounts.stock_added || 0, color: 'text-indigo-600', border: 'border-indigo-600' },
+              { key: 'stock_added', label: 'Stock',      count: typeCounts.stock_added || 0, color: 'text-blue-600', border: 'border-blue-600' },
               { key: 'item_sold',   label: 'Sales',      count: typeCounts.item_sold || 0, color: 'text-emerald-600', border: 'border-emerald-600' },
               { key: 'item_damaged',label: 'Damage',     count: typeCounts.item_damaged || 0, color: 'text-amber-600', border: 'border-amber-600' },
               { key: 'item_stolen', label: 'Theft',      count: typeCounts.item_stolen || 0, color: 'text-red-600', border: 'border-red-600' },
@@ -293,7 +293,7 @@ export default function AdminNotificationsPage() {
                 {tokens.map(t => {
                   const user = typeof t.user_id === 'object' ? t.user_id : null;
                   const branch = t.branch_id;
-                  const roleColor = t.role === 'admin' ? 'bg-blue-50 text-blue-700 border-blue-200' : t.role === 'manager' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-slate-50 text-slate-600 border-slate-200';
+                  const roleColor = t.role === 'admin' ? 'bg-blue-50 text-blue-700 border-blue-200' : t.role === 'manager' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-slate-50 text-slate-600 border-slate-200';
                   return (
                     <div key={t._id} className="flex items-center gap-5 px-8 py-4 hover:bg-slate-50/30 transition-colors">
                       <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white text-[12px] font-black shrink-0 overflow-hidden">

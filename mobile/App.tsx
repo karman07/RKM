@@ -116,7 +116,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   retryButton: {
-    backgroundColor: '#2563eb',
+    backgroundColor: '#263a5e',
     paddingVertical: 12,
     paddingHorizontal: 28,
     borderRadius: 12,

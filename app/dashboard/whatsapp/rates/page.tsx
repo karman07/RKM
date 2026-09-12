@@ -5,9 +5,9 @@ import { DollarSign, Info, RefreshCw, Activity } from 'lucide-react';
 import { waGetRateCard, type WaRateCard, type WaMessageCategory } from '@/lib/api';
 
 const CATEGORY_META: Record<WaMessageCategory, { label: string; color: string; bg: string; desc: string }> = {
-  marketing:      { label: 'Marketing',      color: '#7c3aed', bg: '#f5f3ff', desc: 'Promotional messages — sale alerts, offers, product launches.' },
-  utility:        { label: 'Utility',        color: '#1f63d8', bg: '#eef5ff', desc: 'Transactional updates — sale confirmations, receipts, order tracking.' },
-  authentication: { label: 'Authentication', color: '#0891b2', bg: '#ecfeff', desc: 'OTP and identity verification messages.' },
+  marketing:      { label: 'Marketing',      color: '#263a5e', bg: '#e3e8f4', desc: 'Promotional messages — sale alerts, offers, product launches.' },
+  utility:        { label: 'Utility',        color: '#4c6291', bg: '#e3e8f4', desc: 'Transactional updates — sale confirmations, receipts, order tracking.' },
+  authentication: { label: 'Authentication', color: '#7186b5', bg: '#f2f4fa', desc: 'OTP and identity verification messages.' },
   service:        { label: 'Service',        color: '#059669', bg: '#ecfdf5', desc: 'Customer-initiated conversations (inbound replies) — free in most regions.' },
 };
 

@@ -173,11 +173,11 @@ export default function LookupsPage() {
     <div className="space-y-8 animate-[fadeRise_300ms_ease-out]">
       {toast && (
         <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] px-10 py-5 rounded-[2.5rem] shadow-2xl backdrop-blur-xl border border-white/20 animate-[fadeRise_450ms_cubic-bezier(0.2,0.8,0.2,1)] flex items-center gap-5 min-w-[380px] transition-all duration-500 ${
-          toast.type === 'success' 
-            ? 'bg-slate-900/95 text-white shadow-slate-900/20' 
+          toast.type === 'success'
+            ? 'bg-emerald-600/95 text-white shadow-emerald-600/20'
             : 'bg-red-600/95 text-white shadow-red-600/20'
         }`}>
-          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${toast.type === 'success' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/20 text-white'}`}>
+          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 bg-white/20 text-white`}>
             {toast.type === 'success' ? (
               <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><polyline points="20 6 9 17 4 12" /></svg>
             ) : (
@@ -363,7 +363,7 @@ export default function LookupsPage() {
               </div>
               <div className="space-y-3">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">System Identifier (Value)</label>
-                <input className="w-full px-6 py-4 bg-slate-900 border border-slate-800 rounded-2xl text-sm font-bold text-blue-400 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all placeholder-blue-900/50" value={form.value} onChange={(e) => set('value', e.target.value)} placeholder="e.g. rose_gold" />
+                <input className="w-full px-6 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-blue-700 outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-300 transition-all placeholder-slate-300" value={form.value} onChange={(e) => set('value', e.target.value)} placeholder="e.g. rose_gold" />
               </div>
             </div>
 
@@ -399,7 +399,7 @@ export default function LookupsPage() {
 
           <div className="flex gap-5 pt-10">
             <button onClick={() => setModalOpen(false)} className="flex-1 px-8 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-900 transition-colors">Abort</button>
-            <button onClick={handleSave} disabled={saving} className="flex-1 bg-slate-900 hover:bg-black disabled:opacity-50 text-white text-[10px] font-black uppercase tracking-[0.2em] py-5 rounded-[1.5rem] shadow-2xl shadow-slate-900/20 transition-all active:scale-95">
+            <button onClick={handleSave} disabled={saving} className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-[10px] font-black uppercase tracking-[0.2em] py-5 rounded-[1.5rem] shadow-2xl shadow-blue-600/20 transition-all active:scale-95">
               {saving ? 'Transmitting...' : editTarget ? 'Sync Shard' : 'Authorize Shard'}
             </button>
           </div>

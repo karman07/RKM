@@ -81,7 +81,7 @@ function EditRecordModal({ item, onClose, onSave }: { item: InventoryItem; onClo
           <button onClick={onClose} className="p-3 rounded-2xl hover:bg-white hover:shadow-md transition-all text-slate-400"><svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M18 6L6 18M6 6l12 12" /></svg></button>
         </div>
         <form onSubmit={handleSubmit} className="p-10 space-y-6">
-          {status && (<div className={`p-4 rounded-2xl text-[11px] font-bold uppercase tracking-widest text-center animate-[fadeRise_300ms_ease-out] ${status.type === 'success' ? 'bg-sky-50 text-sky-600 border border-sky-100' : 'bg-red-50 text-red-600 border border-red-100'}`}>{status.msg}</div>)}
+          {status && (<div className={`p-4 rounded-2xl text-[11px] font-bold uppercase tracking-widest text-center animate-[fadeRise_300ms_ease-out] ${status.type === 'success' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-red-50 text-red-600 border border-red-100'}`}>{status.msg}</div>)}
           <div className="grid grid-cols-2 gap-6">
             <div className="space-y-2"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Client Name</label><input type="text" value={formData.sold_customer_name} onChange={e => setFormData({...formData, sold_customer_name: e.target.value})} className="w-full px-5 py-3 rounded-xl border border-slate-200 outline-none transition-all text-sm font-medium" /></div>
             <div className="space-y-2"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Mobile Number</label><input type="text" value={formData.sold_customer_phone} onChange={e => setFormData({...formData, sold_customer_phone: e.target.value})} className="w-full px-5 py-3 rounded-xl border border-slate-200 outline-none transition-all text-sm font-medium" /></div>
@@ -89,7 +89,7 @@ function EditRecordModal({ item, onClose, onSave }: { item: InventoryItem; onClo
           <div className="space-y-2"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Shipping Destination</label><textarea rows={2} value={formData.shipping_address} onChange={e => setFormData({...formData, shipping_address: e.target.value})} className="w-full px-5 py-3 rounded-xl border border-slate-200 outline-none transition-all text-sm font-medium resize-none" /></div>
           <div className="pt-4 flex gap-4">
             <button type="button" onClick={onClose} className="flex-1 py-4 rounded-2xl border border-slate-200 text-sm font-bold text-slate-400 hover:bg-slate-50 transition-all">Cancel</button>
-            <button type="submit" disabled={loading} className="flex-[2] py-4 rounded-2xl bg-slate-900 text-white text-sm font-bold shadow-lg flex items-center justify-center gap-2 hover:bg-blue-600 transition-all">
+            <button type="submit" disabled={loading} className="flex-[2] py-4 rounded-2xl bg-blue-600 text-white text-sm font-bold shadow-lg flex items-center justify-center gap-2 hover:bg-blue-700 transition-all">
               {loading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Confirm Artisan Record'}
             </button>
           </div>
@@ -257,13 +257,13 @@ export default function SoldInventoryPage() {
         datasets: [{
           label: 'Revenue Trajectory',
           data: revenue,
-          borderColor: '#2563eb',
-          backgroundColor: 'rgba(37, 99, 235, 0.1)',
+          borderColor: '#263a5e',
+          backgroundColor: 'rgba(38, 58, 94, 0.1)',
           fill: true,
           tension: 0.4,
           pointRadius: 4,
           pointBackgroundColor: '#fff',
-          pointBorderColor: '#2563eb',
+          pointBorderColor: '#263a5e',
           pointBorderWidth: 2,
         }]
       },
@@ -376,7 +376,7 @@ export default function SoldInventoryPage() {
         
         const maxCashierRev = Math.max(...cashierList.map(c => c.revenue), 1);
         const maxManagerRev = Math.max(...managerList.map(c => c.revenue), 1);
-        const rankColors = ['#4f46e5','#6366f1','#818cf8','#a5b4fc','#c7d2fe'];
+        const rankColors = ['#263a5e','#4c6291','#7186b5','#a0afd2','#c7d0e7'];
 
         return (
           <div className="mb-10 grid grid-cols-1 xl:grid-cols-2 gap-8">
@@ -402,7 +402,7 @@ export default function SoldInventoryPage() {
                       className="relative flex flex-col gap-2 p-4 rounded-2xl border border-slate-100 bg-white hover:shadow-md hover:border-blue-200 transition-all hover:-translate-y-0.5 text-left w-full"
                     >
                       <div className="flex items-center gap-2.5">
-                        <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-[11px] font-black shadow-sm overflow-hidden" style={{ background: (fullUser as any).avatar ? 'transparent' : (rankColors[i] ?? '#e0e7ff') }}>
+                        <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-[11px] font-black shadow-sm overflow-hidden" style={{ background: (fullUser as any).avatar ? 'transparent' : (rankColors[i] ?? '#e3e8f4') }}>
                           {(fullUser as any).avatar ? (
                             <img src={staticUrl((fullUser as any).avatar)} className="w-full h-full object-cover" />
                           ) : (
@@ -419,7 +419,7 @@ export default function SoldInventoryPage() {
                         <p className="text-[10px] text-slate-400 font-bold">{c.count} sale{c.count !== 1 ? 's' : ''}</p>
                       </div>
                       <div className="h-1 bg-slate-100 rounded-full overflow-hidden mt-1">
-                        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.round((c.revenue / maxCashierRev) * 100)}%`, background: rankColors[i] ?? '#e0e7ff' }} />
+                        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.round((c.revenue / maxCashierRev) * 100)}%`, background: rankColors[i] ?? '#e3e8f4' }} />
                       </div>
                       {i === 0 && (
                         <div className="absolute top-3 right-3 w-5 h-5 bg-amber-400 rounded-full flex items-center justify-center shadow-sm">
@@ -452,7 +452,7 @@ export default function SoldInventoryPage() {
                     <button
                       key={c.name}
                       onClick={() => setHistoryUser(fullUser)}
-                      className="relative flex flex-col gap-2 p-4 rounded-2xl border border-slate-100 bg-white hover:shadow-md hover:border-violet-200 transition-all hover:-translate-y-0.5 text-left w-full"
+                      className="relative flex flex-col gap-2 p-4 rounded-2xl border border-slate-100 bg-white hover:shadow-md hover:border-blue-200 transition-all hover:-translate-y-0.5 text-left w-full"
                     >
                       <div className="flex items-center gap-2.5">
                         <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-[11px] font-black shadow-sm overflow-hidden" style={{ background: (fullUser as any).avatar ? 'transparent' : '#334155' }}>
@@ -518,7 +518,7 @@ export default function SoldInventoryPage() {
                 <h3 className="text-lg font-bold text-slate-900">Strategic Profitability</h3>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Realized Net ROI index</p>
               </div>
-              <div className="w-12 h-12 rounded-2xl bg-sky-50 flex items-center justify-center text-sky-600">
+              <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600">
                 <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
               </div>
             </div>
@@ -572,7 +572,7 @@ export default function SoldInventoryPage() {
                       <td className="px-8 py-6">
                         <div className="flex items-center gap-5">
                           <div className="relative group/img">
-                            <div className="absolute -inset-1 bg-gradient-to-tr from-blue-500 to-indigo-500 rounded-xl blur opacity-20 group-hover/img:opacity-40 transition-opacity" />
+                            <div className="absolute -inset-1 bg-gradient-to-tr from-blue-500 to-blue-700 rounded-xl blur opacity-20 group-hover/img:opacity-40 transition-opacity" />
                             <div className="relative w-14 h-14 rounded-xl bg-slate-100 overflow-hidden border border-slate-200 shadow-sm flex-shrink-0">
                               {product?.images?.[0] ? (
                                 <img src={staticUrl(product.images[0])} alt="" className="w-full h-full object-cover group-hover/img:scale-110 transition-transform duration-500" />
@@ -623,7 +623,7 @@ export default function SoldInventoryPage() {
                         <div className="space-y-4">
                           {/* Branch / Channel Badge */}
                           <div className="flex items-center gap-2.5">
-                            <div className={`w-2 h-2 rounded-full ${(item.sold_at_branch_id as any)?.name ? 'bg-blue-600 shadow-[0_0_8px_rgba(37,99,235,0.4)]' : 'bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.4)]'}`} />
+                            <div className={`w-2 h-2 rounded-full ${(item.sold_at_branch_id as any)?.name ? 'bg-blue-600 shadow-[0_0_8px_rgba(37,99,235,0.4)]' : 'bg-blue-400 shadow-[0_0_8px_rgba(113,134,181,0.4)]'}`} />
                             <span className="text-[10px] font-black text-slate-900 uppercase tracking-[0.15em] antialiased">
                               {(item.sold_at_branch_id as any)?.name || 'Direct Sale'}
                             </span>

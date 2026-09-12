@@ -12,14 +12,14 @@ import {
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string; icon: React.ElementType }> = {
   queued:    { label: 'Queued',    color: '#64748b', bg: '#f8fafc', icon: Clock },
-  sent:      { label: 'Sent',     color: '#1f63d8', bg: '#eef5ff', icon: Send },
+  sent:      { label: 'Sent',     color: '#263a5e', bg: '#e3e8f4', icon: Send },
   delivered: { label: 'Delivered',color: '#059669', bg: '#ecfdf5', icon: CheckCircle2 },
-  read:      { label: 'Read',     color: '#7c3aed', bg: '#f5f3ff', icon: Eye },
+  read:      { label: 'Read',     color: '#4c6291', bg: '#f2f4fa', icon: Eye },
   failed:    { label: 'Failed',   color: '#dc2626', bg: '#fef2f2', icon: XCircle },
 };
 
 const CAT_COLOR: Record<string, string> = {
-  marketing: '#7c3aed', utility: '#1f63d8', authentication: '#0891b2', service: '#059669',
+  marketing: '#263a5e', utility: '#4c6291', authentication: '#7186b5', service: '#059669',
 };
 
 function StatusBadge({ status }: { status: string }) {

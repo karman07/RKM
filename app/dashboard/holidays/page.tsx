@@ -9,11 +9,11 @@ import {
 
 const COLOR_OPTIONS = [
   { value: 'blue',    dot: 'bg-blue-500',    bg: 'bg-blue-50',    text: 'text-blue-700',    border: 'border-blue-200'    },
-  { value: 'violet',  dot: 'bg-violet-500',  bg: 'bg-violet-50',  text: 'text-violet-700',  border: 'border-violet-200'  },
-  { value: 'rose',    dot: 'bg-rose-500',    bg: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200'    },
+  { value: 'violet',  dot: 'bg-blue-500',    bg: 'bg-blue-50',    text: 'text-blue-700',    border: 'border-blue-200'    },
+  { value: 'rose',    dot: 'bg-red-500',     bg: 'bg-red-50',     text: 'text-red-700',     border: 'border-red-200'     },
   { value: 'amber',   dot: 'bg-amber-500',   bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200'   },
   { value: 'emerald', dot: 'bg-emerald-500', bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
-  { value: 'orange',  dot: 'bg-orange-500',  bg: 'bg-orange-50',  text: 'text-orange-700',  border: 'border-orange-200'  },
+  { value: 'orange',  dot: 'bg-amber-500',   bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200'   },
 ];
 
 function getColor(color?: string) {
@@ -156,7 +156,7 @@ export default function HolidaysPage() {
         {[
           { label: 'Total Holidays',    value: holidays.length,  color: 'text-slate-900'    },
           { label: 'Upcoming',          value: upcomingCount,    color: 'text-blue-600'     },
-          { label: 'Yearly Recurring',  value: yearlyCount,      color: 'text-violet-600'   },
+          { label: 'Yearly Recurring',  value: yearlyCount,      color: 'text-blue-600'   },
           { label: 'One-Time',          value: holidays.length - yearlyCount, color: 'text-amber-600' },
         ].map(s => (
           <div key={s.label} className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow">
@@ -236,7 +236,7 @@ export default function HolidaysPage() {
                         <div>
                           <p className="text-sm font-black text-slate-900">{formatDate(holiday)}</p>
                           {holiday.is_yearly && (
-                            <p className="text-[10px] text-violet-600 font-bold mt-0.5 flex items-center gap-1">
+                            <p className="text-[10px] text-blue-600 font-bold mt-0.5 flex items-center gap-1">
                               <RefreshCw className="w-2.5 h-2.5" />
                               Recurs every year
                             </p>
@@ -247,7 +247,7 @@ export default function HolidaysPage() {
                       {/* Type badge */}
                       <td className="px-6 py-5">
                         {holiday.is_yearly ? (
-                          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider bg-violet-50 text-violet-700 border-violet-200`}>
+                          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-700 border-blue-200`}>
                             <RefreshCw className="w-3 h-3" />
                             Yearly
                           </span>
@@ -339,7 +339,7 @@ export default function HolidaysPage() {
                   <button
                     type="button"
                     onClick={() => setForm(f => ({ ...f, is_yearly: !f.is_yearly }))}
-                    className={`w-full px-4 py-3 rounded-xl border text-sm font-black transition-all flex items-center justify-center gap-2 ${form.is_yearly ? 'bg-violet-50 border-violet-200 text-violet-700' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'}`}
+                    className={`w-full px-4 py-3 rounded-xl border text-sm font-black transition-all flex items-center justify-center gap-2 ${form.is_yearly ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'}`}
                   >
                     <RefreshCw className="w-4 h-4" />
                     {form.is_yearly ? 'Yearly' : 'One-Time'}

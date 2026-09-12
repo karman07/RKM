@@ -250,7 +250,7 @@ export default function AdminHome() {
             <StatPill label="Total Staff" value={stats?.totalUsers ?? 0} sub="System users" color="text-blue-600" />
             <StatPill label="Items in Vault" value={stats?.totalInventory ?? 0} sub="Total inventory" color="text-slate-900" />
             <StatPill label="Available" value={stats?.available ?? 0} sub="Ready for sale" color="text-emerald-600" />
-            <StatPill label="Sold Items" value={stats?.sold ?? 0} sub="All time" color="text-violet-600" />
+            <StatPill label="Sold Items" value={stats?.sold ?? 0} sub="All time" color="text-blue-600" />
             <StatPill label="Portfolio Value" value={fmtINR(stats?.totalValue ?? 0)} sub="Purchase value" color="text-blue-600" />
             <StatPill label="Net Profit" value={fmtINR(stats?.totalProfit ?? 0)} sub="Realized" color={(stats?.totalProfit ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600'} />
           </div>
@@ -265,19 +265,19 @@ export default function AdminHome() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
           {can('users') && <NavTile href="/dashboard/users" icon={Users} label="Staff Registry" sub="Managers & Cashiers" color="bg-blue-50 text-blue-600" />}
           {can('attendance') && <NavTile href="/dashboard/attendance" icon={Calendar} label="Attendance" sub="Daily log & history" color="bg-emerald-50 text-emerald-600" />}
-          {can('inventory') && <NavTile href="/dashboard/inventory" icon={Package} label="Inventory" sub="Stock management" color="bg-violet-50 text-violet-600" />}
-          {can('inventory.sold') && <NavTile href="/dashboard/inventory/sold" icon={ShoppingBag} label="Sales Ledger" sub="All transactions" color="bg-indigo-50 text-indigo-600" />}
+          {can('inventory') && <NavTile href="/dashboard/inventory" icon={Package} label="Inventory" sub="Stock management" color="bg-blue-50 text-blue-600" />}
+          {can('inventory.sold') && <NavTile href="/dashboard/inventory/sold" icon={ShoppingBag} label="Sales Ledger" sub="All transactions" color="bg-blue-50 text-blue-600" />}
           {can('leaves') && <NavTile href="/dashboard/leaves" icon={FileText} label="Leave Requests" sub={isAdmin ? 'Review & approve' : 'Apply & track'} badge={isAdmin ? stats?.pendingLeaves : undefined} color="bg-amber-50 text-amber-600" />}
-          {can('reimbursements') && <NavTile href="/dashboard/reimbursements" icon={CreditCard} label="Reimbursements" sub={isAdmin ? 'Expense claims' : 'Submit & track'} badge={isAdmin ? stats?.pendingReimbs : undefined} color="bg-rose-50 text-rose-600" />}
-          {can('branches') && <NavTile href="/dashboard/branches" icon={Building2} label="Branches" sub="Location management" color="bg-sky-50 text-sky-600" />}
-          {can('products') && <NavTile href="/dashboard/products" icon={Layers} label="Products" sub="Product catalog" color="bg-teal-50 text-teal-600" />}
-          {can('analytics') && <NavTile href="/dashboard/analytics" icon={BarChart3} label="Analytics" sub="Sales & performance" color="bg-purple-50 text-purple-600" />}
-          {can('purchase-orders') && <NavTile href="/dashboard/purchase-orders" icon={TrendingUp} label="Purchase Orders" sub="PO management" color="bg-orange-50 text-orange-600" />}
-          {can('customers') && <NavTile href="/dashboard/customers" icon={Star} label="Customers" sub="Customer CRM" color="bg-pink-50 text-pink-600" />}
-          {can('notifications') && <NavTile href="/dashboard/notifications" icon={Bell} label="Notifications" sub="System alerts" color="bg-yellow-50 text-yellow-600" />}
-          {can('item-attendance') && <NavTile href="/dashboard/item-attendance" icon={Activity} label="Item Attendance" sub="Stock scanning" color="bg-cyan-50 text-cyan-600" />}
+          {can('reimbursements') && <NavTile href="/dashboard/reimbursements" icon={CreditCard} label="Reimbursements" sub={isAdmin ? 'Expense claims' : 'Submit & track'} badge={isAdmin ? stats?.pendingReimbs : undefined} color="bg-amber-50 text-amber-600" />}
+          {can('branches') && <NavTile href="/dashboard/branches" icon={Building2} label="Branches" sub="Location management" color="bg-blue-50 text-blue-600" />}
+          {can('products') && <NavTile href="/dashboard/products" icon={Layers} label="Products" sub="Product catalog" color="bg-blue-50 text-blue-600" />}
+          {can('analytics') && <NavTile href="/dashboard/analytics" icon={BarChart3} label="Analytics" sub="Sales & performance" color="bg-blue-50 text-blue-600" />}
+          {can('purchase-orders') && <NavTile href="/dashboard/purchase-orders" icon={TrendingUp} label="Purchase Orders" sub="PO management" color="bg-amber-50 text-amber-600" />}
+          {can('customers') && <NavTile href="/dashboard/customers" icon={Star} label="Customers" sub="Customer CRM" color="bg-blue-50 text-blue-600" />}
+          {can('notifications') && <NavTile href="/dashboard/notifications" icon={Bell} label="Notifications" sub="System alerts" color="bg-amber-50 text-amber-600" />}
+          {can('item-attendance') && <NavTile href="/dashboard/item-attendance" icon={Activity} label="Item Attendance" sub="Stock scanning" color="bg-blue-50 text-blue-600" />}
           {can('settings') && <NavTile href="/dashboard/settings" icon={Settings} label="Settings" sub="Rates & config" color="bg-slate-100 text-slate-600" />}
-          {can('gold-investment') && <NavTile href="/dashboard/gold-investment" icon={Clock} label="Gold Investment" sub="Savings plans" color="bg-yellow-50 text-yellow-700" />}
+          {can('gold-investment') && <NavTile href="/dashboard/gold-investment" icon={Clock} label="Gold Investment" sub="Savings plans" color="bg-amber-50 text-amber-700" />}
         </div>
       </div>
 
@@ -302,7 +302,7 @@ export default function AdminHome() {
               const total = stats?.totalInventory || 1;
               const rows = [
                 { label: 'Available', value: stats?.available ?? 0, color: 'bg-blue-500', text: 'text-blue-700' },
-                { label: 'Sold', value: stats?.sold ?? 0, color: 'bg-violet-500', text: 'text-violet-700' },
+                { label: 'Sold', value: stats?.sold ?? 0, color: 'bg-blue-500', text: 'text-blue-700' },
                 { label: 'Reserved', value: stats?.reserved ?? 0, color: 'bg-amber-400', text: 'text-amber-700' },
                 { label: 'Damaged', value: stats?.damaged ?? 0, color: 'bg-red-400', text: 'text-red-600' },
               ];
@@ -393,7 +393,7 @@ export default function AdminHome() {
                     ) : (
                       <>
                         {arc(0, pF, '#10b981')}
-                        {arc(pF, pF + lF, '#3b82f6')}
+                        {arc(pF, pF + lF, '#4c6291')}
                         {arc(pF + lF, 1, absent > 0 ? '#ef4444' : '#f1f5f9')}
                       </>
                     )}

@@ -48,7 +48,7 @@ function OtpInput({ onComplete }: { onComplete: (otp: string) => void }) {
           onChange={e => handleChange(i, e.target.value)}
           onKeyDown={e => handleKeyDown(i, e)}
           className="w-10 h-11 text-center text-lg font-black border-2 rounded-xl focus:outline-none transition-colors"
-          style={{ borderColor: d ? '#2563eb' : '#e2e8f0', color: '#1d4ed8' }} />
+          style={{ borderColor: d ? '#263a5e' : '#e2e8f0', color: '#263a5e' }} />
       ))}
     </div>
   );

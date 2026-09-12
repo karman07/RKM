@@ -58,9 +58,9 @@ const STATUS_CFG: Record<OGStatus, { label: string; dot: string; text: string; b
   submitted:          { label: 'Submitted',       dot: 'bg-blue-500',    text: 'text-blue-600',    border: 'border-blue-200',    bg: 'bg-blue-50'    },
   approved:           { label: 'Approved',        dot: 'bg-emerald-500', text: 'text-emerald-700', border: 'border-emerald-200', bg: 'bg-emerald-50' },
   rejected:           { label: 'Rejected',        dot: 'bg-red-500',     text: 'text-red-600',     border: 'border-red-200',     bg: 'bg-red-50'     },
-  melting_authorized: { label: 'Melt Auth.',      dot: 'bg-orange-500',  text: 'text-orange-700',  border: 'border-orange-200',  bg: 'bg-orange-50'  },
-  settled:            { label: 'Settled',         dot: 'bg-violet-500',  text: 'text-violet-700',  border: 'border-violet-200',  bg: 'bg-violet-50'  },
-  reversed:           { label: 'Reversed',        dot: 'bg-rose-400',    text: 'text-rose-600',    border: 'border-rose-200',    bg: 'bg-rose-50'    },
+  melting_authorized: { label: 'Melt Auth.',      dot: 'bg-amber-500',  text: 'text-amber-700',  border: 'border-amber-200',  bg: 'bg-amber-50'  },
+  settled:            { label: 'Settled',         dot: 'bg-blue-500',  text: 'text-blue-700',  border: 'border-blue-200',  bg: 'bg-blue-50'  },
+  reversed:           { label: 'Reversed',        dot: 'bg-red-400',    text: 'text-red-600',    border: 'border-red-200',    bg: 'bg-red-50'    },
 };
 
 const STATUS_TABS: Array<{ key: OGStatus | 'all'; label: string }> = [
@@ -127,11 +127,11 @@ function SettleModal({ txn, onConfirm, onClose }: { txn: OldGoldTransaction; onC
         <div className="space-y-4">
           <Field label="Amount Paid (₹)">
             <input type="number" value={amount} onChange={e => setAmount(e.target.value)}
-              className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-200" />
+              className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
           </Field>
           <Field label="Payment Method">
             <select value={method} onChange={e => setMethod(e.target.value)}
-              className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-200">
+              className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200">
               {['cash', 'bank_transfer', 'upi', 'cheque'].map(m => (
                 <option key={m} value={m}>{m.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>
               ))}
@@ -139,7 +139,7 @@ function SettleModal({ txn, onConfirm, onClose }: { txn: OldGoldTransaction; onC
           </Field>
         </div>
         <ModalActions
-          confirm={{ label: 'Confirm Settlement', color: 'bg-violet-600 hover:bg-violet-700', disabled: !amount || Number(amount) <= 0, onClick: () => onConfirm(Number(amount), method) }}
+          confirm={{ label: 'Confirm Settlement', color: 'bg-blue-600 hover:bg-blue-700', disabled: !amount || Number(amount) <= 0, onClick: () => onConfirm(Number(amount), method) }}
           onCancel={onClose}
         />
       </ModalCard>
@@ -354,7 +354,7 @@ function CreatePanel({
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
                       Item {i + 1}
                       {item.stones.length > 0 && (
-                        <span className="ml-2 font-black text-purple-600">· {item.stones.length} stone{item.stones.length !== 1 ? 's' : ''}</span>
+                        <span className="ml-2 font-black text-blue-600">· {item.stones.length} stone{item.stones.length !== 1 ? 's' : ''}</span>
                       )}
                     </p>
                     {items.length > 1 && (
@@ -396,7 +396,7 @@ function CreatePanel({
                       <div className="flex items-center justify-between mb-2">
                         <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Stones / Gems</label>
                         <button onClick={() => addStone(i)}
-                          className="flex items-center gap-1 text-[10px] font-black text-purple-700 hover:text-purple-800 transition-colors">
+                          className="flex items-center gap-1 text-[10px] font-black text-blue-700 hover:text-blue-800 transition-colors">
                           <Plus className="w-3 h-3" /> Add Stone
                         </button>
                       </div>
@@ -405,9 +405,9 @@ function CreatePanel({
                       )}
                       <div className="space-y-2">
                         {item.stones.map((stone, si) => (
-                          <div key={si} className="border border-purple-100 rounded-xl p-3 bg-purple-50/30">
+                          <div key={si} className="border border-blue-100 rounded-xl p-3 bg-blue-50/30">
                             <div className="flex items-center justify-between mb-2">
-                              <span className="text-[9px] font-black uppercase tracking-widest text-purple-500">Stone {si + 1}</span>
+                              <span className="text-[9px] font-black uppercase tracking-widest text-blue-500">Stone {si + 1}</span>
                               <button onClick={() => removeStone(i, si)} className="p-0.5 rounded hover:bg-red-50 text-slate-300 hover:text-red-500 transition-colors">
                                 <Trash2 className="w-3 h-3" />
                               </button>
@@ -416,7 +416,7 @@ function CreatePanel({
                               <div>
                                 <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 block mb-0.5">Type</label>
                                 <select value={stone.stone_type} onChange={e => updateStone(i, si, 'stone_type', e.target.value)}
-                                  className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-purple-200 bg-white">
+                                  className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-200 bg-white">
                                   {stoneTypes.map(l => <option key={l._id} value={l.value}>{l.label}</option>)}
                                 </select>
                               </div>
@@ -424,24 +424,24 @@ function CreatePanel({
                                 <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 block mb-0.5">Count</label>
                                 <input type="number" placeholder="1" min="1"
                                   value={stone.count} onChange={e => updateStone(i, si, 'count', e.target.value)}
-                                  className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-purple-200" />
+                                  className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-200" />
                               </div>
                               <div className="col-span-2">
                                 <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 block mb-0.5">Description (optional)</label>
                                 <input placeholder="e.g. Round brilliant, VS1 clarity"
                                   value={stone.description} onChange={e => updateStone(i, si, 'description', e.target.value)}
-                                  className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-purple-200" />
+                                  className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-200" />
                               </div>
                               <div>
                                 <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 block mb-0.5">Weight</label>
                                 <input type="number" placeholder="0.00"
                                   value={stone.weight} onChange={e => updateStone(i, si, 'weight', e.target.value)}
-                                  className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-purple-200" />
+                                  className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-200" />
                               </div>
                               <div>
                                 <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 block mb-0.5">Unit</label>
                                 <select value={stone.weight_unit} onChange={e => updateStone(i, si, 'weight_unit', e.target.value)}
-                                  className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-purple-200 bg-white">
+                                  className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-200 bg-white">
                                   <option value="ct">ct (carats)</option>
                                   <option value="g">g (grams)</option>
                                 </select>
@@ -450,7 +450,7 @@ function CreatePanel({
                                 <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 block mb-0.5">Quality</label>
                                 <input placeholder="e.g. VS1, SI2"
                                   value={stone.quality} onChange={e => updateStone(i, si, 'quality', e.target.value)}
-                                  className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-purple-200" />
+                                  className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-200" />
                               </div>
                               <div>
                                 <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 block mb-0.5">
@@ -461,7 +461,7 @@ function CreatePanel({
                                 </label>
                                 <input type="number" placeholder="0"
                                   value={stone.estimated_value} onChange={e => updateStone(i, si, 'estimated_value', e.target.value)}
-                                  className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-purple-200" />
+                                  className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-200" />
                               </div>
                             </div>
                           </div>
@@ -490,7 +490,7 @@ function CreatePanel({
                     <>
                       <div className="w-px bg-blue-200" />
                       <div>
-                        <p className="text-[9px] font-black uppercase tracking-widest text-purple-600">Stones Value</p>
+                        <p className="text-[9px] font-black uppercase tracking-widest text-blue-600">Stones Value</p>
                         <p className="text-base font-black text-slate-900">{fmt(totalStonesValue)}</p>
                         <p className="text-[8px] text-slate-400">at {stoneRefundPct}% refund</p>
                       </div>
@@ -708,7 +708,7 @@ function TxnDetail({
                       <div className="flex flex-wrap gap-1">
                         <span className="text-[10px] font-black bg-amber-50 text-amber-700 border border-amber-100 px-2 py-0.5 rounded-full">Gold</span>
                         {(item.stones ?? []).map((st, si) => (
-                          <span key={si} className="text-[10px] font-black bg-purple-50 text-purple-700 border border-purple-100 px-2 py-0.5 rounded-full capitalize">
+                          <span key={si} className="text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full capitalize">
                             {st.count > 1 ? `${st.count}× ` : ''}{st.stone_type}
                           </span>
                         ))}
@@ -717,12 +717,12 @@ function TxnDetail({
                     <td className="px-4 py-3 text-slate-600">{fmt(item.estimated_value)}</td>
                     <td className="px-4 py-3">
                       {(item.stones_value ?? 0) > 0
-                        ? <span className="font-medium text-purple-700">{fmt(item.stones_value)}</span>
+                        ? <span className="font-medium text-blue-700">{fmt(item.stones_value)}</span>
                         : <span className="text-slate-300 text-xs">—</span>}
                     </td>
                     <td className="px-4 py-3">
                       {item.override_value != null
-                        ? <span className="font-black text-orange-700">{fmt(item.override_value)}</span>
+                        ? <span className="font-black text-amber-700">{fmt(item.override_value)}</span>
                         : <span className="text-slate-300 text-xs">—</span>}
                     </td>
                     <td className="px-4 py-3 font-black text-slate-900">
@@ -730,20 +730,20 @@ function TxnDetail({
                     </td>
                   </tr>
                   {(item.stones ?? []).map((st, si) => (
-                    <tr key={`st-${i}-${si}`} className="bg-purple-50/40 border-b border-purple-50">
-                      <td className="pl-10 pr-4 py-1.5 text-xs text-purple-700 font-medium capitalize">
+                    <tr key={`st-${i}-${si}`} className="bg-blue-50/40 border-b border-blue-50">
+                      <td className="pl-10 pr-4 py-1.5 text-xs text-blue-700 font-medium capitalize">
                         {st.stone_type}{st.description ? ` — ${st.description}` : ''}
                       </td>
                       <td className="px-4 py-1.5 text-xs text-slate-500">{st.weight}{st.weight_unit}</td>
                       <td className="px-4 py-1.5">
                         {st.quality && (
-                          <span className="text-[9px] font-black bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">{st.quality}</span>
+                          <span className="text-[9px] font-black bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">{st.quality}</span>
                         )}
                       </td>
                       <td className="px-4 py-1.5 text-xs text-slate-500">×{st.count}</td>
-                      <td colSpan={4} className="px-4 py-1.5 text-xs text-purple-700 font-medium">
+                      <td colSpan={4} className="px-4 py-1.5 text-xs text-blue-700 font-medium">
                         Est. {fmt(st.estimated_value)}
-                        {st.override_value != null && <span className="ml-2 text-orange-600 font-black">Override: {fmt(st.override_value)}</span>}
+                        {st.override_value != null && <span className="ml-2 text-amber-600 font-black">Override: {fmt(st.override_value)}</span>}
                       </td>
                     </tr>
                   ))}
@@ -761,7 +761,7 @@ function TxnDetail({
             </div>
           )}
           {txn.settlement_amount != null && (
-            <div className="flex items-center gap-2 px-4 py-2 bg-violet-50 border border-violet-100 rounded-xl text-xs text-violet-700 font-bold">
+            <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700 font-bold">
               <Banknote className="w-3.5 h-3.5 flex-shrink-0" />
               Settled {fmt(txn.settlement_amount)} via {txn.settlement_method}
             </div>
@@ -780,7 +780,7 @@ function TxnDetail({
             <div className="flex items-stretch gap-0 bg-white border border-slate-200 rounded-2xl overflow-hidden hover:border-slate-300 hover:shadow-sm transition-all">
               <div className="w-1 flex-shrink-0 bg-blue-600" />
               <div className="flex items-center gap-4 px-5 py-4 flex-1 min-w-0">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#eff6ff' }}>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#f2f4fa' }}>
                   <FileText className="w-4.5 h-4.5 text-blue-600" style={{ width: 18, height: 18 }} />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -821,10 +821,10 @@ function TxnDetail({
 
             {/* Signed copy */}
             <div className="flex items-stretch gap-0 bg-white border border-slate-200 rounded-2xl overflow-hidden hover:border-slate-300 hover:shadow-sm transition-all">
-              <div className="w-1 flex-shrink-0 bg-violet-600" />
+              <div className="w-1 flex-shrink-0 bg-blue-600" />
               <div className="flex items-center gap-4 px-5 py-4 flex-1 min-w-0">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#f5f3ff' }}>
-                  <ShieldCheck className="w-4.5 h-4.5 text-violet-600" style={{ width: 18, height: 18 }} />
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#f2f4fa' }}>
+                  <ShieldCheck className="w-4.5 h-4.5 text-blue-600" style={{ width: 18, height: 18 }} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
@@ -850,7 +850,7 @@ function TxnDetail({
                     <Download className="w-3.5 h-3.5" /> View
                   </a>
                 )}
-                <label className={`inline-flex items-center gap-1.5 px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white text-[11px] font-bold rounded-xl shadow-sm shadow-violet-600/20 transition-all cursor-pointer ${uploading ? 'opacity-60 pointer-events-none' : ''}`}>
+                <label className={`inline-flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-xl shadow-sm shadow-blue-600/20 transition-all cursor-pointer ${uploading ? 'opacity-60 pointer-events-none' : ''}`}>
                   {uploading
                     ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Wait…</>
                     : <><UploadCloud className="w-3.5 h-3.5" /> {txn.signed_form_url ? 'Replace' : 'Upload'}</>}
@@ -1031,8 +1031,8 @@ export default function OldGoldPage() {
           { label: 'Total',          value: stats.total,     icon: <Layers className="w-5 h-5" />,      color: 'text-slate-900',    iconBg: 'bg-slate-100 text-slate-600' },
           { label: 'Draft',          value: stats.draft,     icon: <Clock className="w-5 h-5" />,       color: 'text-slate-600',    iconBg: 'bg-slate-100 text-slate-500' },
           { label: 'Awaiting Approval', value: stats.submitted, icon: <Send className="w-5 h-5" />,   color: 'text-blue-700',     iconBg: 'bg-blue-50 text-blue-600' },
-          { label: 'Melt Auth.',     value: stats.melting,   icon: <Flame className="w-5 h-5" />,      color: 'text-orange-700',   iconBg: 'bg-orange-50 text-orange-600' },
-          { label: 'Settled',        value: stats.settled,   icon: <CheckCircle2 className="w-5 h-5" />, color: 'text-violet-700', iconBg: 'bg-violet-50 text-violet-600' },
+          { label: 'Melt Auth.',     value: stats.melting,   icon: <Flame className="w-5 h-5" />,      color: 'text-amber-700',   iconBg: 'bg-amber-50 text-amber-600' },
+          { label: 'Settled',        value: stats.settled,   icon: <CheckCircle2 className="w-5 h-5" />, color: 'text-blue-700', iconBg: 'bg-blue-50 text-blue-600' },
           { label: 'Total Value',    value: fmt(stats.totalValue), icon: <TrendingUp className="w-5 h-5" />, color: 'text-blue-700', iconBg: 'bg-blue-50 text-blue-600' },
         ].map(s => (
           <div key={s.label} className="border border-slate-100 rounded-2xl p-4">
@@ -1059,7 +1059,7 @@ export default function OldGoldPage() {
               onClick={() => setStatusFilter(tab.key)}
               className={`flex items-center gap-2 px-4 py-2 rounded-2xl text-[11px] font-black uppercase tracking-widest border transition-all ${
                 active
-                  ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
                   : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300 hover:text-slate-700'
               }`}
             >
@@ -1194,15 +1194,15 @@ export default function OldGoldPage() {
                               busy={false} onClick={() => setRejectTarget(txn._id)} />
                           )}
                           {can('old-gold.melt') && txn.status === 'approved' && (
-                            <Btn label="Auth. Melt" icon={<Flame className="w-3 h-3" />} color="text-orange-700 bg-orange-50 border-orange-200 hover:bg-orange-100"
+                            <Btn label="Auth. Melt" icon={<Flame className="w-3 h-3" />} color="text-amber-700 bg-amber-50 border-amber-200 hover:bg-amber-100"
                               busy={isBusy('melt')} onClick={() => act(txn._id, `melt-${txn._id}`, () => authorizeMeltOldGold(txn._id))} />
                           )}
                           {can('old-gold.settle') && txn.status === 'melting_authorized' && (
-                            <Btn label="Settle" icon={<Banknote className="w-3 h-3" />} color="text-violet-700 bg-violet-50 border-violet-200 hover:bg-violet-100"
+                            <Btn label="Settle" icon={<Banknote className="w-3 h-3" />} color="text-blue-700 bg-blue-50 border-blue-200 hover:bg-blue-100"
                               busy={false} onClick={() => setSettleTarget(txn)} />
                           )}
                           {can('old-gold.reverse-settlement') && txn.status === 'settled' && (
-                            <Btn label="Reverse" icon={<RotateCcw className="w-3 h-3" />} color="text-rose-700 bg-rose-50 border-rose-200 hover:bg-rose-100"
+                            <Btn label="Reverse" icon={<RotateCcw className="w-3 h-3" />} color="text-red-700 bg-red-50 border-red-200 hover:bg-red-100"
                               busy={isBusy('reverse')} onClick={() => act(txn._id, `reverse-${txn._id}`, () => reverseOldGoldTransaction(txn._id))} />
                           )}
                         </div>

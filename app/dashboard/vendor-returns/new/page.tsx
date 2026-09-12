@@ -271,7 +271,7 @@ export default function NewVendorReturnPage() {
             <button
               onClick={() => handleSubmit('raise')}
               disabled={!!saving || selectedCount === 0 || !supplierId}
-              className="px-6 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-black uppercase tracking-widest hover:bg-blue-600 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              className="px-6 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black uppercase tracking-widest hover:bg-blue-700 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {saving === 'raise' ? 'Raising...' : `Raise Return Order ${selectedCount > 0 ? `(${selectedCount})` : ''}`}
             </button>

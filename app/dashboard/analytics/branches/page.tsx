@@ -17,6 +17,7 @@ import {
   type Attendance,
   type Holiday,
 } from '@/lib/api';
+import KpiCard from '@/components/KpiCard';
 
 const Bar      = dynamic(() => import('react-chartjs-2').then(m => m.Bar),      { ssr: false });
 const Line     = dynamic(() => import('react-chartjs-2').then(m => m.Line),     { ssr: false });
@@ -29,7 +30,7 @@ import {
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, ArcElement, Title, Tooltip, Legend, Filler);
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
-const COLORS = ['#2563eb','#0ea5e9','#6366f1','#8b5cf6','#06b6d4','#3b82f6','#a78bfa','#38bdf8'];
+const COLORS = ['#263a5e','#10b981','#f59e0b','#94a3b8','#4c6291','#dc2626','#7186b5','#64748b'];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function fmtCr(n: number) {
@@ -49,32 +50,7 @@ function isHolidayToday(holiday: Holiday, todayStr: string): boolean {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function KpiCard({
-  label, value, sub, icon, accent = '#2563eb', trend,
-}: {
-  label: string; value: string | number; sub?: string;
-  icon: React.ReactNode; accent?: string; trend?: { dir: 'up' | 'down' | 'neutral'; label: string };
-}) {
-  return (
-    <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm hover:shadow-md hover:-translate-y-px transition-all duration-200 group">
-      <div className="flex items-start justify-between mb-4">
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: accent + '15' }}>
-          <span style={{ color: accent }}>{icon}</span>
-        </div>
-        {trend && (
-          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-            trend.dir === 'up' ? 'bg-emerald-50 text-emerald-600' :
-            trend.dir === 'down' ? 'bg-red-50 text-red-500' : 'bg-slate-50 text-slate-400'
-          }`}>{trend.label}</span>
-        )}
-      </div>
-      <p className="text-2xl font-black text-slate-900 tracking-tight leading-none">{value}</p>
-      <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400 mt-2">{label}</p>
-      {sub && <p className="text-[11px] text-slate-400 mt-0.5">{sub}</p>}
-      <div className="absolute bottom-0 left-6 right-6 h-[2px] rounded-full opacity-0 group-hover:opacity-100 transition-opacity" style={{ backgroundColor: accent }} />
-    </div>
-  );
-}
+// KpiCard now lives in components/KpiCard.tsx — shared across every page for a consistent look.
 
 function ChartCard({ title, subtitle, children, span2 }: { title: string; subtitle?: string; children: React.ReactNode; span2?: boolean }) {
   return (
@@ -189,7 +165,7 @@ export default function BranchAnalyticsPage() {
     labels: stockPerBranch.map(b => b.branch_name),
     datasets: [{
       label: 'Stock', data: stockPerBranch.map(b => b.count),
-      backgroundColor: '#2563eb20', borderColor: '#2563eb', borderWidth: 2, borderRadius: 6,
+      backgroundColor: '#263a5e20', borderColor: '#263a5e', borderWidth: 2, borderRadius: 6,
     }],
   };
 
@@ -197,7 +173,7 @@ export default function BranchAnalyticsPage() {
     labels: salesTodayPerBranch.map(b => b.branch_name),
     datasets: [{
       label: 'Revenue', data: salesTodayPerBranch.map(b => b.revenue),
-      backgroundColor: '#0ea5e920', borderColor: '#0ea5e9', borderWidth: 2, borderRadius: 6,
+      backgroundColor: '#4c629120', borderColor: '#4c6291', borderWidth: 2, borderRadius: 6,
     }],
   };
 
@@ -222,7 +198,7 @@ export default function BranchAnalyticsPage() {
     labels: damagedPerBranch.map(b => b.branch_name),
     datasets: [{
       data: damagedPerBranch.map(b => b.count),
-      backgroundColor: ['#ef4444','#f97316','#f59e0b','#84cc16'].slice(0, damagedPerBranch.length),
+      backgroundColor: ['#ef4444','#f59e0b','#263a5e','#94a3b8'].slice(0, damagedPerBranch.length),
       borderWidth: 0, hoverOffset: 10,
     }],
   };
@@ -270,14 +246,14 @@ export default function BranchAnalyticsPage() {
           label="Branch Stock"
           value={totalStock}
           sub={fmtCr(totalStockValue) + ' valuation'}
-          accent="#2563eb"
+          accent="#263a5e"
           icon={<svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10" /></svg>}
         />
         <KpiCard
           label="Sales Today"
           value={totalSalesToday}
           sub={fmtCr(totalRevenueToday) + ' revenue'}
-          accent="#0ea5e9"
+          accent="#4c6291"
           icon={<svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>}
         />
         <KpiCard
@@ -303,7 +279,7 @@ export default function BranchAnalyticsPage() {
             label="Total Inventory"
             value={globalStats.totalCount}
             sub="All statuses"
-            accent="#6366f1"
+            accent="#263a5e"
             icon={<svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>}
           />
           <KpiCard
@@ -317,7 +293,7 @@ export default function BranchAnalyticsPage() {
             label="Sold All Time"
             value={globalStats.byStatus?.sold?.count || 0}
             sub={fmtCr(globalStats.totalProfit || 0) + ' profit'}
-            accent="#3b82f6"
+            accent="#4c6291"
             icon={<svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" /></svg>}
           />
           <KpiCard
@@ -502,7 +478,7 @@ export default function BranchAnalyticsPage() {
                 {damagedPerBranch.map((b, i) => (
                   <div key={i} className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: ['#ef4444','#f97316','#f59e0b','#84cc16'][i % 4] }} />
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: ['#ef4444','#f59e0b','#263a5e','#94a3b8'][i % 4] }} />
                       <span className="text-[11px] font-medium text-slate-600 truncate">{b.branch_name}</span>
                     </div>
                     <span className="text-[11px] font-black text-slate-800">{b.count}</span>

@@ -110,7 +110,7 @@ export default function SmsControlPage() {
               label="MSG91 Balance"
               value={loadingBalance ? '…' : balanceError ? '—' : (balance?.balance ?? balance?.data ?? JSON.stringify(balance ?? {})) as string}
               sub={balanceError || undefined}
-              color="#1f63d8"
+              color="#263a5e"
             />
           </div>
 

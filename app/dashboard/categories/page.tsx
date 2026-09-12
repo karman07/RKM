@@ -5,7 +5,7 @@ import Modal from '@/components/Modal';
 
 const statusBadge = {
   active:   { wrap: 'bg-emerald-50 text-emerald-700 border-emerald-100', dot: 'bg-emerald-500' },
-  inactive: { wrap: 'bg-rose-50 text-rose-700 border-rose-100', dot: 'bg-rose-400' },
+  inactive: { wrap: 'bg-red-50 text-red-700 border-red-100', dot: 'bg-red-400' },
 };
 
 interface CatForm {
@@ -163,7 +163,7 @@ export default function CategoriesPage() {
           </div>
           <button 
             onClick={openCreate}
-            className="px-6 py-3.5 rounded-2xl bg-slate-900 text-white text-xs font-black uppercase tracking-widest shadow-xl hover:bg-blue-600 hover:-translate-y-0.5 transition-all active:scale-95 flex items-center gap-2"
+            className="px-6 py-3.5 rounded-2xl bg-blue-600 text-white text-xs font-black uppercase tracking-widest shadow-xl hover:bg-blue-700 hover:-translate-y-0.5 transition-all active:scale-95 flex items-center gap-2"
           >
             <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M12 5v14M5 12h14" /></svg>
             Create Category
@@ -332,7 +332,7 @@ export default function CategoriesPage() {
               <button 
                 onClick={handleSave} 
                 disabled={saving || !form.name} 
-                className="flex-[2] py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-blue-600 disabled:opacity-30 disabled:hover:bg-slate-900 transition-all flex items-center justify-center gap-2"
+                className="flex-[2] py-4 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-blue-700 disabled:opacity-30 disabled:hover:bg-blue-600 transition-all flex items-center justify-center gap-2"
               >
                 {saving ? 'Synchronizing...' : editTarget ? 'Commit Changes' : 'Initialize Protocol'}
                 {!saving && <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M5 13l4 4L19 7" /></svg>}
@@ -346,7 +346,7 @@ export default function CategoriesPage() {
       {deleteTarget && (
         <Modal open={true} onClose={() => setDeleteTarget(null)} title="Destructive Action Required" width="max-w-md">
           <div className="space-y-6 pt-2">
-            <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-3xl flex items-center justify-center mx-auto mb-4">
+            <div className="w-16 h-16 bg-red-50 text-red-500 rounded-3xl flex items-center justify-center mx-auto mb-4">
                <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
             </div>
             <div className="text-center">
@@ -356,7 +356,7 @@ export default function CategoriesPage() {
             
             <div className="flex gap-4">
               <button onClick={() => setDeleteTarget(null)} className="flex-1 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:bg-slate-50 rounded-2xl border transition-colors">Maintain</button>
-              <button onClick={handleDelete} className="flex-1 py-4 bg-rose-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-rose-600/20 hover:bg-rose-700 transition-all">Proceed to Deactivation</button>
+              <button onClick={handleDelete} className="flex-1 py-4 bg-red-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-red-600/20 hover:bg-red-700 transition-all">Proceed to Deactivation</button>
             </div>
           </div>
         </Modal>

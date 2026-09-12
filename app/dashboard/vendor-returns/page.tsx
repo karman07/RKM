@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Plus, Search, Undo2, FileClock, CheckCircle2, XCircle } from 'lucide-react';
 import { getVendorReturnOrders, fetchAllPages, type VendorReturnOrder } from '@/lib/api';
+import KpiCard from '@/components/KpiCard';
 
 function fmt(n: number) {
   return `₹${Number(n ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
@@ -22,20 +23,6 @@ function StatusBadge({ status }: { status: string }) {
       <span className="w-1.5 h-1.5 rounded-full bg-current opacity-60" />
       {status}
     </span>
-  );
-}
-
-function KpiCard({ title, value, icon }: { title: string; value: string | number; icon: React.ReactNode }) {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex items-center gap-4">
-      <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center shrink-0">
-        {icon}
-      </div>
-      <div>
-        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{title}</p>
-        <p className="text-xl font-black text-slate-900 leading-tight">{value}</p>
-      </div>
-    </div>
   );
 }
 
@@ -84,7 +71,7 @@ export default function VendorReturnsPage() {
         </div>
         <Link
           href="/dashboard/vendor-returns/new"
-          className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-slate-900 text-white text-xs font-black uppercase tracking-widest hover:bg-blue-600 transition-all"
+          className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-blue-600 text-white text-xs font-black uppercase tracking-widest hover:bg-blue-700 transition-all"
         >
           <Plus className="w-4 h-4" /> New Return Order
         </Link>
@@ -92,10 +79,10 @@ export default function VendorReturnsPage() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <KpiCard title="Total Orders" value={kpis.total} icon={<Undo2 className="w-4.5 h-4.5" />} />
-        <KpiCard title="Draft" value={kpis.draftCount} icon={<FileClock className="w-4.5 h-4.5" />} />
-        <KpiCard title="Raised" value={kpis.raisedCount} icon={<CheckCircle2 className="w-4.5 h-4.5" />} />
-        <KpiCard title="Returned Value" value={fmt(kpis.totalValue)} icon={<XCircle className="w-4.5 h-4.5" />} />
+        <KpiCard label="Total Orders" value={kpis.total} icon={<Undo2 className="w-4.5 h-4.5" />} accent="#263a5e" />
+        <KpiCard label="Draft" value={kpis.draftCount} icon={<FileClock className="w-4.5 h-4.5" />} accent="#d97706" />
+        <KpiCard label="Raised" value={kpis.raisedCount} icon={<CheckCircle2 className="w-4.5 h-4.5" />} accent="#059669" />
+        <KpiCard label="Returned Value" value={fmt(kpis.totalValue)} icon={<XCircle className="w-4.5 h-4.5" />} accent="#4c6291" />
       </div>
 
       {/* Filters */}

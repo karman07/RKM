@@ -115,7 +115,7 @@ export default function RecordInvestmentPaymentModal({ onClose, onRecorded }: Pr
                   />
                 </div>
                 <button type="button" onClick={handleSearch} disabled={searching}
-                  className="px-5 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black uppercase tracking-widest transition-all disabled:opacity-40 whitespace-nowrap">
+                  className="px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase tracking-widest transition-all disabled:opacity-40 whitespace-nowrap">
                   {searching ? 'Searching…' : 'Search'}
                 </button>
               </div>

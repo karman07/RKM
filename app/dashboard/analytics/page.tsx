@@ -15,7 +15,7 @@ import {
 import { useAppTheme } from '@/components/AppThemeContext';
 import { APP_THEME } from '@/lib/theme-constants';
 import { API_BASE } from '@/lib/api';
-const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f97316', '#10b981', '#06b6d4'];
+const COLORS = ['#4c6291', '#263a5e', '#64748b', '#f59e0b', '#10b981', '#7186b5'];
 
 export default function AnalyticsPage() {
   const { theme } = useAppTheme();
@@ -107,7 +107,7 @@ export default function AnalyticsPage() {
               <AreaChart data={data?.pageViews || []}>
                 <defs>
                   <linearGradient id="colorViews" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15}/><stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#263a5e" stopOpacity={0.15}/><stop offset="95%" stopColor="#263a5e" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="4 4" vertical={false} stroke={colors.border} />
@@ -123,10 +123,10 @@ export default function AnalyticsPage() {
                     padding: '20px',
                     color: '#1e293b'
                   }}
-                  itemStyle={{ color: '#3b82f6', fontWeight: 800 }} 
+                  itemStyle={{ color: '#263a5e', fontWeight: 800 }}
                   labelStyle={{ color: '#94a3b8', marginBottom: '8px', fontSize: '10px', textTransform: 'uppercase' }}
                 />
-                <Area type="monotone" dataKey="views" stroke="#3b82f6" strokeWidth={4} fill="url(#colorViews)" animationDuration={1500} />
+                <Area type="monotone" dataKey="views" stroke="#263a5e" strokeWidth={4} fill="url(#colorViews)" animationDuration={1500} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -146,7 +146,7 @@ export default function AnalyticsPage() {
               <AreaChart data={data?.cartOverTime || []}>
                 <defs>
                   <linearGradient id="colorAdds" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.15}/><stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#4c6291" stopOpacity={0.15}/><stop offset="95%" stopColor="#4c6291" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="4 4" vertical={false} stroke={colors.border} />
@@ -162,10 +162,10 @@ export default function AnalyticsPage() {
                     padding: '20px',
                     color: '#1e293b'
                   }}
-                  itemStyle={{ color: '#8b5cf6', fontWeight: 800 }} 
+                  itemStyle={{ color: '#4c6291', fontWeight: 800 }}
                   labelStyle={{ color: '#94a3b8', marginBottom: '8px', fontSize: '10px', textTransform: 'uppercase' }}
                 />
-                <Area type="monotone" dataKey="adds" stroke="#8b5cf6" strokeWidth={4} fill="url(#colorAdds)" animationDuration={1800} />
+                <Area type="monotone" dataKey="adds" stroke="#4c6291" strokeWidth={4} fill="url(#colorAdds)" animationDuration={1800} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -225,7 +225,7 @@ export default function AnalyticsPage() {
                    <span className="text-[11px] font-black text-slate-400">{item.count} sessions</span>
                  </div>
                  <div className="w-full h-2.5 bg-slate-50 rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full" style={{ width: `${(item.count / data.sourceStats[0].count) * 100}%` }}></div>
+                    <div className="h-full bg-gradient-to-r from-blue-500 to-blue-700 rounded-full" style={{ width: `${(item.count / data.sourceStats[0].count) * 100}%` }}></div>
                  </div>
                </div>
              ))}

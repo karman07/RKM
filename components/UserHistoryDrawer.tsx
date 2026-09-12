@@ -23,7 +23,7 @@ const STATUS_CFG: Record<string, { dot: string; text: string; bg: string; border
 
 const ROLE_CFG: Record<string, { color: string; bg: string; border: string }> = {
   admin:   { color: 'text-blue-700',   bg: 'bg-blue-50',   border: 'border-blue-100'   },
-  manager: { color: 'text-violet-700', bg: 'bg-violet-50', border: 'border-violet-100' },
+  manager: { color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-100' },
   cashier: { color: 'text-slate-600',  bg: 'bg-slate-50',  border: 'border-slate-100'  },
   worker:  { color: 'text-amber-700',  bg: 'bg-amber-50',  border: 'border-amber-100'  },
   custom:  { color: 'text-emerald-700',bg: 'bg-emerald-50',border: 'border-emerald-100'},
@@ -46,7 +46,7 @@ function fmtCurrency(n?: number | string) {
 // ── Avatar ────────────────────────────────────────────────────────────────────
 
 const ROLE_COLOR: Record<string, string> = {
-  admin: '#1f63d8', manager: '#7c3aed', cashier: '#475569', worker: '#d97706', custom: '#059669',
+  admin: '#4c6291', manager: '#263a5e', cashier: '#475569', worker: '#d97706', custom: '#059669',
 };
 
 function Avatar({ user, size = 'lg' }: { user: User; size?: 'sm' | 'md' | 'lg' }) {

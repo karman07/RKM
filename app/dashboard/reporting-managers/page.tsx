@@ -51,8 +51,8 @@ const PAD = 72;
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ROLE: Record<string, { color: string; soft: string; label: string }> = {
-  admin:   { color: '#1f63d8', soft: '#eef5ff', label: 'Admin'   },
-  manager: { color: '#7c3aed', soft: '#f5f3ff', label: 'Manager' },
+  admin:   { color: '#263a5e', soft: '#eef5ff', label: 'Admin'   },
+  manager: { color: '#4c6291', soft: '#f5f3ff', label: 'Manager' },
   cashier: { color: '#475569', soft: '#f8fafc', label: 'Cashier' },
   worker:  { color: '#d97706', soft: '#fffbeb', label: 'Worker'  },
   custom:  { color: '#059669', soft: '#f0fdf4', label: 'Custom'  },
@@ -438,7 +438,7 @@ function ManagerDropdown({
       <div className="relative flex items-center">
         <input
           className="w-full px-3.5 py-2.5 rounded-xl border text-sm font-semibold text-slate-800 bg-white focus:outline-none transition-all pr-10"
-          style={{ borderColor: open ? '#1f63d8' : '#e2e8f0' }}
+          style={{ borderColor: open ? '#263a5e' : '#e2e8f0' }}
           value={query}
           placeholder="Search or type manager name…"
           disabled={disabled}
@@ -615,7 +615,7 @@ function EditPanel({
             {(node.user as any).employee_id && (
               <div className="flex items-center gap-2">
                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 w-14 flex-shrink-0">Emp ID</span>
-                <span className="font-black text-[#1f63d8]">{(node.user as any).employee_id}</span>
+                <span className="font-black text-[#263a5e]">{(node.user as any).employee_id}</span>
               </div>
             )}
             {(node.user as any).joining_date && (
@@ -650,7 +650,7 @@ function EditPanel({
             <button
               onClick={save}
               className="flex items-center gap-1 px-3 py-1.5 text-white rounded-xl text-[9px] font-black uppercase tracking-wider transition-all hover:opacity-90 active:scale-95"
-              style={{ backgroundColor: '#1f63d8' }}
+              style={{ backgroundColor: '#263a5e' }}
             >
               <Check className="w-3 h-3" />Save
             </button>
@@ -666,7 +666,7 @@ function EditPanel({
         </div>
 
         <p className="mt-2 text-[9px] text-slate-400 font-medium leading-relaxed flex items-start gap-1">
-          <Sparkles className="w-2.5 h-2.5 mt-0.5 flex-shrink-0 text-[#1f63d8]" />
+          <Sparkles className="w-2.5 h-2.5 mt-0.5 flex-shrink-0 text-[#263a5e]" />
           Select from dropdown or type any name. You can also drag a card onto another to assign.
         </p>
 
@@ -716,7 +716,7 @@ function EditPanel({
           <button
             onClick={onViewHistory}
             className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-white text-[11px] font-black uppercase tracking-widest transition-all hover:opacity-90 active:scale-95"
-            style={{ backgroundColor: '#1f63d8' }}
+            style={{ backgroundColor: '#263a5e' }}
           >
             <ExternalLink className="w-3.5 h-3.5" />
             View Full Profile
@@ -770,7 +770,7 @@ function EmptyChart() {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center p-12">
       <div className="w-24 h-24 rounded-3xl bg-[#eef5ff] border border-[#cfe0ff] flex items-center justify-center mb-6">
-        <GitBranch className="w-12 h-12 text-[#1f63d8]" />
+        <GitBranch className="w-12 h-12 text-[#263a5e]" />
       </div>
       <h3 className="text-xl font-black text-slate-800 mb-2">No Hierarchy Yet</h3>
       <p className="text-sm text-slate-400 font-medium max-w-sm leading-relaxed">
@@ -939,7 +939,7 @@ export default function ReportingManagersPage() {
       {/* Top bar */}
       <div className="flex items-center gap-4 px-8 py-4 border-b border-slate-100 bg-white flex-shrink-0 shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="w-1 h-7 bg-[#1f63d8] rounded-full" />
+          <div className="w-1 h-7 bg-[#263a5e] rounded-full" />
           <div>
             <h1 className="text-lg font-black text-slate-900 tracking-tight leading-none">Org Chart</h1>
             <p className="text-[8px] font-black uppercase tracking-widest text-slate-400 mt-0.5">Reporting Structure</p>
@@ -951,9 +951,9 @@ export default function ReportingManagersPage() {
             <span className="text-sm font-black text-slate-800">{total}</span>
             <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">People</span>
           </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 border rounded-xl bg-white" style={{ borderColor: '#1f63d8' }}>
-            <span className="text-sm font-black" style={{ color: '#1f63d8' }}>{assigned}</span>
-            <span className="text-[8px] font-black uppercase tracking-widest" style={{ color: '#1f63d8' }}>Assigned</span>
+          <div className="flex items-center gap-2 px-3 py-1.5 border rounded-xl bg-white" style={{ borderColor: '#263a5e' }}>
+            <span className="text-sm font-black" style={{ color: '#263a5e' }}>{assigned}</span>
+            <span className="text-[8px] font-black uppercase tracking-widest" style={{ color: '#263a5e' }}>Assigned</span>
           </div>
           {total - assigned > 0 && (
             <div className="flex items-center gap-2 px-3 py-1.5 border border-amber-300 rounded-xl bg-white">
@@ -969,7 +969,7 @@ export default function ReportingManagersPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
           <input
             className="w-52 pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none transition-all"
-            onFocus={e => { e.target.style.borderColor = '#1f63d8'; e.target.style.background = '#fff'; }}
+            onFocus={e => { e.target.style.borderColor = '#263a5e'; e.target.style.background = '#fff'; }}
             onBlur={e => { e.target.style.borderColor = '#e2e8f0'; e.target.style.background = '#f8fafc'; }}
             placeholder="Find employee…"
             value={search}
@@ -999,7 +999,7 @@ export default function ReportingManagersPage() {
 
         <button
           onClick={load}
-          className="p-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-500 hover:text-[#1f63d8] hover:border-[#1f63d8] transition-all"
+          className="p-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-500 hover:text-[#263a5e] hover:border-[#263a5e] transition-all"
         ><RefreshCw className="w-4 h-4" /></button>
       </div>
 
@@ -1027,7 +1027,7 @@ export default function ReportingManagersPage() {
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="flex flex-col items-center gap-3">
                 <div className="w-14 h-14 rounded-2xl bg-[#eef5ff] border border-[#cfe0ff] flex items-center justify-center">
-                  <Loader2 className="w-7 h-7 text-[#1f63d8] animate-spin" />
+                  <Loader2 className="w-7 h-7 text-[#263a5e] animate-spin" />
                 </div>
                 <p className="text-sm font-bold text-slate-400">Building org chart…</p>
               </div>
@@ -1063,7 +1063,7 @@ export default function ReportingManagersPage() {
           )}
 
           {search && highlightedIds.size > 0 && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-[#1f63d8] text-white rounded-full text-xs font-black shadow-lg">
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-[#263a5e] text-white rounded-full text-xs font-black shadow-lg">
               {highlightedIds.size} match{highlightedIds.size !== 1 ? 'es' : ''} for "{search}"
             </div>
           )}

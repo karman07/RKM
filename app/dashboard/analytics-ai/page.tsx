@@ -39,7 +39,7 @@ function Markdown({ text }: { text: string }) {
 
 // ── Chart components ─────────────────────────────────────────────────────────
 
-const CHART_COLORS = ['#2563eb','#16a34a','#d97706','#7c3aed','#dc2626','#0891b2','#059669','#9333ea'];
+const CHART_COLORS = ['#263a5e','#16a34a','#d97706','#4c6291','#dc2626','#7186b5','#059669','#a0afd2'];
 
 function fmtVal(v: number, prefix?: string) {
   if (!prefix) return v.toLocaleString('en-IN');
@@ -93,15 +93,15 @@ function LineChart({ cfg }: { cfg: ChartConfig }) {
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 110 }}>
         <defs>
           <linearGradient id="lg" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#2563eb" stopOpacity="0.15" />
-            <stop offset="100%" stopColor="#2563eb" stopOpacity="0" />
+            <stop offset="0%" stopColor="#263a5e" stopOpacity="0.15" />
+            <stop offset="100%" stopColor="#263a5e" stopOpacity="0" />
           </linearGradient>
         </defs>
         <path d={area} fill="url(#lg)" />
-        <path d={path} fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <path d={path} fill="none" stroke="#263a5e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         {points.map((p, i) => (
           <g key={i}>
-            <circle cx={p.x} cy={p.y} r="3" fill="#2563eb" />
+            <circle cx={p.x} cy={p.y} r="3" fill="#263a5e" />
             {i % Math.max(1, Math.floor(points.length / 6)) === 0 && (
               <text x={p.x} y={H - 1} textAnchor="middle" fontSize="7" fill="#94a3b8">{p.d.label}</text>
             )}
@@ -175,7 +175,7 @@ function ProfileCard({ cfg }: { cfg: ChartConfig }) {
   const m = (d as any).meta ?? {};
   const avatarUrl = m.avatar_url ? staticUrl(m.avatar_url) : null;
   const roleColor: Record<string, string> = {
-    cashier: 'text-blue-600 bg-blue-50', manager: 'text-violet-600 bg-violet-50',
+    cashier: 'text-blue-600 bg-blue-50', manager: 'text-blue-600 bg-blue-50',
     admin: 'text-slate-600 bg-slate-100', custom: 'text-amber-600 bg-amber-50',
   };
   const rc = roleColor[m.role] ?? 'text-slate-600 bg-slate-100';
@@ -520,7 +520,7 @@ export default function AnalyticsAIPage() {
               <div key={s._id} onClick={() => openSession(s._id)}
                 className={`w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-slate-50 transition-colors group relative cursor-pointer ${activeId === s._id ? 'bg-blue-50 border-r-2 border-blue-600' : ''}`}>
                 <div className={`w-7 h-7 rounded-xl flex-shrink-0 flex items-center justify-center mt-0.5 ${activeId === s._id ? 'bg-blue-100' : 'bg-slate-100'}`}>
-                  <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke={activeId === s._id ? '#2563eb' : '#94a3b8'} strokeWidth={2}>
+                  <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke={activeId === s._id ? '#263a5e' : '#94a3b8'} strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
                   </svg>
                 </div>

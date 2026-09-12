@@ -66,7 +66,7 @@ const STATUS_BADGE: Record<string, { wrap: string; dot: string }> = {
   damaged:   { wrap: 'inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-red-600 border border-red-100', dot: 'bg-red-500' },
   returned:  { wrap: 'inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-600 border border-slate-100', dot: 'bg-slate-500' },
   stolen:    { wrap: 'inline-flex items-center gap-1.5 rounded-full bg-stone-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-stone-600 border border-stone-200', dot: 'bg-stone-500' },
-  returned_to_vendor: { wrap: 'inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-violet-600 border border-violet-100', dot: 'bg-violet-500' },
+  returned_to_vendor: { wrap: 'inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-blue-600 border border-blue-100', dot: 'bg-blue-500' },
 };
 
 const STATUS_TRANSITIONS: Record<string, string[]> = {
@@ -272,7 +272,7 @@ export default function InventoryPage() {
     const statusLabels = Object.keys(dbStats.byStatus);
     if (!statusLabels.length) return null;
     const colorMap: Record<string, string> = {
-      available: '#10b981', sold: '#3b82f6', reserved: '#f59e0b',
+      available: '#10b981', sold: '#4c6291', reserved: '#f59e0b',
       damaged: '#ef4444', returned: '#64748b', stolen: '#78716c',
     };
     return {
@@ -652,7 +652,7 @@ export default function InventoryPage() {
             <div className="p-4 border-t border-slate-100">
               <button
                 onClick={openCartCheckout}
-                className="w-full py-3.5 rounded-2xl bg-slate-900 text-white text-[11px] font-bold uppercase tracking-widest hover:bg-blue-600 transition-all shadow-xl active:scale-[0.98]"
+                className="w-full py-3.5 rounded-2xl bg-blue-600 text-white text-[11px] font-bold uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl active:scale-[0.98]"
               >
                 Checkout ({cart.length}) — ₹{fmt(cartTotal)}
               </button>
@@ -692,7 +692,7 @@ export default function InventoryPage() {
           </Link>
           <button
             onClick={() => { setAddModal(true); setAddForm(emptyAddForm); setSelectedProduct(null); setAddError(''); }}
-            className="px-6 py-3.5 rounded-2xl bg-slate-900 text-white text-xs font-bold uppercase tracking-widest shadow-lg hover:bg-blue-600 transition-all active:scale-95 flex items-center gap-2"
+            className="px-6 py-3.5 rounded-2xl bg-blue-600 text-white text-xs font-bold uppercase tracking-widest shadow-lg hover:bg-blue-700 transition-all active:scale-95 flex items-center gap-2"
           >
             <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M12 5v14M5 12h14" /></svg>
             Add to Inventory
@@ -771,7 +771,7 @@ export default function InventoryPage() {
                 }
                 router.push('/dashboard/vendor-returns/new');
               }}
-              className="px-6 py-3 rounded-xl bg-violet-50 text-violet-600 text-xs font-black uppercase tracking-[0.1em] border border-violet-100 hover:bg-violet-600 hover:text-white transition-all shadow-sm flex items-center gap-2"
+              className="px-6 py-3 rounded-xl bg-blue-50 text-blue-600 text-xs font-black uppercase tracking-[0.1em] border border-blue-100 hover:bg-blue-600 hover:text-white transition-all shadow-sm flex items-center gap-2"
             >
               <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M3 7v6h6" /><path d="M3 13a9 9 0 1 0 2.6-6.4L3 9" /></svg>
               Return to Vendor ({selectedIds.length})
@@ -877,7 +877,7 @@ export default function InventoryPage() {
                       <td className="px-4 py-3">
                         {dims ? (
                           <div className="flex flex-col gap-0.5">
-                            <span className="px-2 py-1 rounded-lg bg-violet-50 text-violet-700 text-[10px] font-bold inline-flex items-center gap-1">
+                            <span className="px-2 py-1 rounded-lg bg-blue-50 text-blue-700 text-[10px] font-bold inline-flex items-center gap-1">
                               <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5-5-5m5 5v-4m0 4h-4" /></svg>
                               {dims}
                             </span>
@@ -1050,7 +1050,7 @@ export default function InventoryPage() {
                           <button
                             onClick={() => { setHallmarkModal(item); setHallmarkValue(item.hallmark || ''); }}
                             title={item.hallmark ? `Hallmark: ${item.hallmark}` : 'Set Hallmark'}
-                            className={`p-1.5 rounded-lg transition-all active:scale-90 shadow-sm ${item.hallmark ? 'bg-violet-100 text-violet-700 hover:bg-violet-600 hover:text-white' : 'bg-slate-50 text-slate-500 hover:bg-slate-600 hover:text-white'}`}
+                            className={`p-1.5 rounded-lg transition-all active:scale-90 shadow-sm ${item.hallmark ? 'bg-blue-100 text-blue-700 hover:bg-blue-600 hover:text-white' : 'bg-slate-50 text-slate-500 hover:bg-slate-600 hover:text-white'}`}
                           >
                             <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5.586a1 1 0 01.707.293l7.414 7.414a1 1 0 010 1.414l-7.586 7.586a1 1 0 01-1.414 0L3.293 12.293A1 1 0 013 11.586V6a3 3 0 013-3z" /></svg>
                           </button>
@@ -1120,11 +1120,11 @@ export default function InventoryPage() {
               </div>
               <div>
                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Dimensions</p>
-                <p className="text-sm font-bold text-violet-700">{selectedProduct.dimensions || 'Not set'}</p>
+                <p className="text-sm font-bold text-blue-700">{selectedProduct.dimensions || 'Not set'}</p>
               </div>
               <div>
                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Max Mgr Discount</p>
-                <p className="text-sm font-bold text-rose-600">{selectedProduct.max_manager_discount ?? 0}%</p>
+                <p className="text-sm font-bold text-red-600">{selectedProduct.max_manager_discount ?? 0}%</p>
               </div>
             </div>
           )}
@@ -1288,7 +1288,7 @@ export default function InventoryPage() {
 
           <div className="pt-2 flex gap-4">
             <button onClick={() => { setAddModal(false); setSelectedProduct(null); }} className="flex-1 py-4 rounded-2xl border border-slate-200 text-[11px] font-bold uppercase tracking-widest text-slate-400 hover:bg-slate-50 transition-all">Cancel</button>
-            <button onClick={handleAdd} disabled={saving} className="flex-[2] py-4 rounded-2xl bg-slate-900 text-white text-[11px] font-bold uppercase tracking-widest hover:bg-blue-600 transition-all shadow-xl disabled:opacity-60">
+            <button onClick={handleAdd} disabled={saving} className="flex-[2] py-4 rounded-2xl bg-blue-600 text-white text-[11px] font-bold uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl disabled:opacity-60">
               {saving ? 'Adding...' : 'Add to Inventory'}
             </button>
           </div>
@@ -1362,16 +1362,16 @@ export default function InventoryPage() {
       {hallmarkModal && (
         <Modal open onClose={() => setHallmarkModal(null)} title="BIS Hallmark (HUID)" width="max-w-lg">
           <div className="p-2 space-y-5">
-            <div className="p-5 rounded-2xl bg-white border border-violet-50 space-y-2 shadow-sm">
-              <div className="flex justify-between text-[11px] font-bold uppercase tracking-widest text-violet-600"><span>Item Code</span><span>{hallmarkModal.unique_item_code}</span></div>
-              <div className="flex justify-between text-[11px] font-black text-violet-800 tracking-tight"><span>Product</span><span>{typeof hallmarkModal.product_id === 'object' ? hallmarkModal.product_id.name : 'Unknown'}</span></div>
+            <div className="p-5 rounded-2xl bg-white border border-blue-50 space-y-2 shadow-sm">
+              <div className="flex justify-between text-[11px] font-bold uppercase tracking-widest text-blue-600"><span>Item Code</span><span>{hallmarkModal.unique_item_code}</span></div>
+              <div className="flex justify-between text-[11px] font-black text-blue-800 tracking-tight"><span>Product</span><span>{typeof hallmarkModal.product_id === 'object' ? hallmarkModal.product_id.name : 'Unknown'}</span></div>
             </div>
             <div className="space-y-1.5">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Hallmark (HUID)</label>
               <input
                 type="text"
                 autoFocus
-                className="w-full px-5 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-medium focus:ring-2 focus:ring-violet-500"
+                className="w-full px-5 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-medium focus:ring-2 focus:ring-blue-500"
                 value={hallmarkValue}
                 onChange={e => setHallmarkValue(e.target.value)}
                 placeholder="e.g. AZ1234567"
@@ -1380,7 +1380,7 @@ export default function InventoryPage() {
             </div>
             <div className="pt-2 flex gap-4">
               <button onClick={() => setHallmarkModal(null)} className="flex-1 py-4 rounded-2xl border border-slate-200 text-[11px] font-bold uppercase tracking-widest text-slate-400">Cancel</button>
-              <button onClick={handleSaveHallmark} disabled={savingHallmark} className="flex-[2] py-4 rounded-2xl bg-violet-600 text-white text-[11px] font-bold uppercase tracking-widest shadow-xl disabled:opacity-60">
+              <button onClick={handleSaveHallmark} disabled={savingHallmark} className="flex-[2] py-4 rounded-2xl bg-blue-600 text-white text-[11px] font-bold uppercase tracking-widest shadow-xl disabled:opacity-60">
                 {savingHallmark ? 'Saving...' : 'Save Hallmark'}
               </button>
             </div>
@@ -1454,7 +1454,7 @@ export default function InventoryPage() {
               />
 
               {/* Cashier attribution */}
-              <div className="p-4 rounded-2xl border-2 border-blue-100 bg-gradient-to-r from-blue-50/60 to-purple-50/40 space-y-2.5">
+              <div className="p-4 rounded-2xl border-2 border-blue-100 bg-gradient-to-r from-blue-50/60 to-blue-100/40 space-y-2.5">
                 <label className="text-[10px] font-black text-blue-700 uppercase tracking-widest flex items-center gap-2">
                   <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                   Cashier Attribution
@@ -1554,7 +1554,7 @@ export default function InventoryPage() {
                 });
                 setStatusModal(null); showToast('Status updated', 'success'); load();
               } catch (e: any) { showToast(e.message, 'danger'); }
-            }} className="flex-[2] py-4 rounded-2xl bg-slate-900 text-white text-[11px] font-bold uppercase tracking-widest shadow-xl hover:bg-blue-600 transition-all">
+            }} className="flex-[2] py-4 rounded-2xl bg-blue-600 text-white text-[11px] font-bold uppercase tracking-widest shadow-xl hover:bg-blue-700 transition-all">
               Confirm Status Change
             </button>
           </div>
@@ -1624,7 +1624,7 @@ export default function InventoryPage() {
             <button
               onClick={handleCartCheckout}
               disabled={cartSubmitting || cart.length === 0}
-              className="flex-[2] py-4 rounded-2xl bg-slate-900 text-white text-[11px] font-bold uppercase tracking-widest shadow-xl hover:bg-blue-600 transition-all disabled:opacity-60"
+              className="flex-[2] py-4 rounded-2xl bg-blue-600 text-white text-[11px] font-bold uppercase tracking-widest shadow-xl hover:bg-blue-700 transition-all disabled:opacity-60"
             >
               {cartSubmitting ? 'Processing...' : `Confirm Sale (${cart.length} Item${cart.length !== 1 ? 's' : ''})`}
             </button>

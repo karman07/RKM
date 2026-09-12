@@ -21,8 +21,8 @@ const STATUS = {
   absent:            { label: 'Absent',            dot: 'bg-red-500',     text: 'text-red-600',     border: 'border-red-200'     },
   'half-day':        { label: 'Half Day',          dot: 'bg-amber-400',   text: 'text-amber-600',   border: 'border-amber-200'   },
   'on-leave':        { label: 'Paid Time Off',     dot: 'bg-blue-500',    text: 'text-blue-600',    border: 'border-blue-200'    },
-  'holiday':         { label: 'Holiday',           dot: 'bg-violet-500',  text: 'text-violet-600',  border: 'border-violet-200'  },
-  'yet-to-check-in': { label: 'Yet to Check In',  dot: 'bg-orange-400',  text: 'text-orange-600',  border: 'border-orange-200'  },
+  'holiday':         { label: 'Holiday',           dot: 'bg-blue-500',  text: 'text-blue-600',  border: 'border-blue-200'  },
+  'yet-to-check-in': { label: 'Yet to Check In',  dot: 'bg-amber-400',  text: 'text-amber-600',  border: 'border-amber-200'  },
 } as const;
 type StatusKey = keyof typeof STATUS;
 
@@ -201,7 +201,7 @@ export default function AttendancePage() {
             onClick={handleAutoCheckout}
             disabled={autoCheckoutLoading}
             title="Check out all staff who are still logged in — sets their checkout to the shift end time and flags them for admin review"
-            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl border border-orange-200 bg-orange-50 text-orange-700 text-[11px] font-black uppercase tracking-widest hover:bg-orange-100 hover:border-orange-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl border border-amber-200 bg-amber-50 text-amber-700 text-[11px] font-black uppercase tracking-widest hover:bg-amber-100 hover:border-amber-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
           >
             {autoCheckoutLoading ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -252,7 +252,7 @@ export default function AttendancePage() {
             onClick={() => setShowShiftPanel(s => !s)}
           >
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-slate-900 flex items-center justify-center flex-shrink-0">
+              <div className="w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center flex-shrink-0">
                 <Timer className="w-5 h-5 text-white" />
               </div>
               <div>
@@ -556,7 +556,7 @@ export default function AttendancePage() {
                                   {new Date(rec.check_out).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                                 </p>
                                 {rec.auto_checked_out ? (
-                                  <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wide text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full" title="System auto-checked out at shift end — user never signed out">
+                                  <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wide text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full" title="System auto-checked out at shift end — user never signed out">
                                     <Clock className="w-2.5 h-2.5" />
                                     Auto — never signed out
                                   </span>

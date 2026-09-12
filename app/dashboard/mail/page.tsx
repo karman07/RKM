@@ -17,8 +17,8 @@ import EmailTemplateEditor from '@/components/EmailTemplateEditor';
 
 const TRIGGER_META: Record<string, { label: string; color: string; bg: string; border: string; dot: string }> = {
   sale_completed: { label: 'Purchase', color: 'text-blue-700',   bg: 'bg-blue-50',   border: 'border-blue-100',   dot: 'bg-blue-500'   },
-  sale_returned:  { label: 'Return',   color: 'text-orange-700', bg: 'bg-orange-50', border: 'border-orange-100', dot: 'bg-orange-500' },
-  sale_reserved:  { label: 'Reserved', color: 'text-violet-700', bg: 'bg-violet-50', border: 'border-violet-100', dot: 'bg-violet-500' },
+  sale_returned:  { label: 'Return',   color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-100', dot: 'bg-amber-500' },
+  sale_reserved:  { label: 'Reserved', color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-100', dot: 'bg-blue-500' },
   feedback:       { label: 'Feedback', color: 'text-green-700',  bg: 'bg-green-50',  border: 'border-green-100',  dot: 'bg-green-500'  },
   manual:         { label: 'Manual',   color: 'text-slate-600',  bg: 'bg-slate-50',  border: 'border-slate-200',  dot: 'bg-slate-400'  },
 };

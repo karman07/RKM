@@ -115,7 +115,7 @@ function buildMonthLedgerRows(sub: GoldSubscription): MonthLedgerRow[] {
 const statusColors: Record<string, string> = {
   active: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   completed: 'bg-blue-50 text-blue-700 border-blue-200',
-  cancelled: 'bg-rose-50 text-rose-600 border-rose-200',
+  cancelled: 'bg-red-50 text-red-600 border-red-200',
   halted: 'bg-amber-50 text-amber-700 border-amber-200',
   pending: 'bg-slate-50 text-slate-500 border-slate-200',
 };
@@ -124,9 +124,9 @@ const glStatusColors: Record<string, string> = {
   draft: 'bg-slate-50 text-slate-500 border-slate-200',
   submitted: 'bg-blue-50 text-blue-700 border-blue-200',
   active: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  overdue: 'bg-orange-50 text-orange-700 border-orange-200',
-  closed: 'bg-violet-50 text-violet-700 border-violet-200',
-  rejected: 'bg-rose-50 text-rose-600 border-rose-200',
+  overdue: 'bg-amber-50 text-amber-700 border-amber-200',
+  closed: 'bg-blue-50 text-blue-700 border-blue-200',
+  rejected: 'bg-red-50 text-red-600 border-red-200',
 };
 
 function glComputedStatus(loan: GoldLoan): string {
@@ -347,7 +347,7 @@ function GoldLoanCard({ loan }: { loan: GoldLoan }) {
           </div>
         )}
         {loan.status === 'closed' && (
-          <p className="text-[10px] font-bold text-violet-600">Closed {fmt(loan.principal_repaid_amount ?? 0)} repaid</p>
+          <p className="text-[10px] font-bold text-blue-600">Closed {fmt(loan.principal_repaid_amount ?? 0)} repaid</p>
         )}
       </div>
       {audit.length > 0 && (
@@ -884,7 +884,7 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
     <div className="border border-slate-100 rounded-[24px] overflow-hidden bg-white shadow-sm">
 
       {/* Header — blue admin theme with amber gold accent */}
-      <div className="relative px-8 py-6 overflow-hidden" style={{ background: 'linear-gradient(135deg, #0f2d5c 0%, #1f63d8 60%, #2563eb 100%)' }}>
+      <div className="relative px-8 py-6 overflow-hidden" style={{ background: 'linear-gradient(135deg, #0f2d5c 0%, #1d2c49 60%, #263a5e 100%)' }}>
         <div className="absolute -top-8 -right-8 w-36 h-36 rounded-full bg-white/5" />
         <div className="absolute top-0 right-0 h-full w-40 opacity-10"
           style={{ background: 'radial-gradient(circle at 80% 50%, #fbbf24, transparent 70%)' }} />
@@ -952,7 +952,7 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
           <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
             <div
               className="h-full rounded-full transition-all duration-700"
-              style={{ width: `${progressPct}%`, background: 'linear-gradient(90deg, #1f63d8, #3b82f6, #fbbf24)' }}
+              style={{ width: `${progressPct}%`, background: 'linear-gradient(90deg, #263a5e, #4c6291, #fbbf24)' }}
             />
           </div>
           <div className="flex justify-between mt-1.5">
@@ -1082,7 +1082,7 @@ function GoldInvestmentCard({ sub, orders, onRedeemed, isAdmin }: { sub: GoldSub
                   className="flex items-center justify-between rounded-xl px-4 py-3 border"
                   style={{ background: row.isNext ? '#F8FAFC' : '#FBFCFD', borderColor: row.isNext ? '#DBEAFE' : '#F1F5F9', opacity: row.isNext ? 1 : 0.55 }}>
                   <div className="flex items-center gap-3">
-                    <div className="w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0" style={{ borderColor: row.isNext ? '#3b82f6' : '#E2E8F0' }}>
+                    <div className="w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0" style={{ borderColor: row.isNext ? '#4c6291' : '#E2E8F0' }}>
                       {row.isNext && <div className="w-2 h-2 rounded-full bg-blue-500" />}
                     </div>
                     <div>
@@ -2722,8 +2722,8 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
                   <p className="text-base font-black text-emerald-600">{fmt(totalCredit)}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-[9px] font-black text-rose-500 uppercase tracking-widest mb-0.5">Total Debit</p>
-                  <p className="text-base font-black text-rose-600">{fmt(totalDebit)}</p>
+                  <p className="text-[9px] font-black text-red-500 uppercase tracking-widest mb-0.5">Total Debit</p>
+                  <p className="text-base font-black text-red-600">{fmt(totalDebit)}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Net Balance</p>
@@ -2777,7 +2777,7 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
                           {r.reference && <span className="block text-[9px] text-slate-300 mt-0.5">Ref: {r.reference}</span>}
                         </td>
                         <td className="px-3 py-3.5 text-xs font-black text-emerald-600 text-right whitespace-nowrap">{r.direction === 'credit' ? fmt(r.amount) : '—'}</td>
-                        <td className="px-3 py-3.5 text-xs font-black text-rose-600 text-right whitespace-nowrap">{r.direction === 'debit' ? fmt(r.amount) : '—'}</td>
+                        <td className="px-3 py-3.5 text-xs font-black text-red-600 text-right whitespace-nowrap">{r.direction === 'debit' ? fmt(r.amount) : '—'}</td>
                         <td className="px-10 py-3.5 text-xs font-black text-slate-900 text-right whitespace-nowrap">{fmt(r.balance)}</td>
                       </tr>
                     ))}
@@ -2804,9 +2804,9 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
           {advances.length > 0 && (
             <div>
               <div className="flex items-center gap-3 mb-5">
-                <Wallet size={18} style={{ color: '#7A1238' }} />
+                <Wallet size={18} style={{ color: '#dc2626' }} />
                 <h3 className="text-xl font-serif font-bold text-slate-900">Advances</h3>
-                <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-[#FDF3E7] text-[#5C0828] border border-[#EEE0C8]">
+                <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-red-50 text-red-700 border border-red-200">
                   {advances.length} Record{advances.length > 1 ? 's' : ''}
                 </span>
               </div>
@@ -2822,9 +2822,9 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
           {prebookedItems.length > 0 && (
             <div>
               <div className="flex items-center gap-3 mb-5">
-                <Bookmark size={18} style={{ color: '#7A1238' }} />
+                <Bookmark size={18} style={{ color: '#dc2626' }} />
                 <h3 className="text-xl font-serif font-bold text-slate-900">Pre-Booked Items</h3>
-                <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-[#FDF3E7] text-[#5C0828] border border-[#EEE0C8]">
+                <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-red-50 text-red-700 border border-red-200">
                   {prebookedItems.length} Reserved
                 </span>
               </div>
@@ -2914,9 +2914,9 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
           {goldSubs.length > 0 && (
             <div>
               <div className="flex items-center gap-3 mb-5">
-                <Gem size={18} style={{ color: '#7A1238' }} />
+                <Gem size={18} style={{ color: '#dc2626' }} />
                 <h3 className="text-xl font-serif font-bold text-slate-900">Gold Investment Plans</h3>
-                <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-[#FDF3E7] text-[#5C0828] border border-[#EEE0C8]">
+                <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-red-50 text-red-700 border border-red-200">
                   {goldSubs.length} Plan{goldSubs.length > 1 ? 's' : ''}
                 </span>
               </div>
@@ -2932,9 +2932,9 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
           {goldLoans.length > 0 && (
             <div>
               <div className="flex items-center gap-3 mb-5">
-                <ShieldCheck size={18} style={{ color: '#7A1238' }} />
+                <ShieldCheck size={18} style={{ color: '#dc2626' }} />
                 <h3 className="text-xl font-serif font-bold text-slate-900">Gold Loans</h3>
-                <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-[#FDF3E7] text-[#5C0828] border border-[#EEE0C8]">
+                <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-red-50 text-red-700 border border-red-200">
                   {goldLoans.length} Loan{goldLoans.length > 1 ? 's' : ''}
                 </span>
               </div>
@@ -2994,7 +2994,7 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
                               <CreditCard size={10} /> {item.payment_mode || 'Cash'}
                             </span>
                             {(item as any).payment_splits?.some((s: any) => s.mode === 'investment_balance') && (
-                              <span className="text-[9px] font-black text-[#5C0828] bg-[#FDF3E7] border border-[#EEE0C8] px-2 py-0.5 rounded-lg uppercase tracking-wider">
+                              <span className="text-[9px] font-black text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded-lg uppercase tracking-wider">
                                 Investment Redeemed
                               </span>
                             )}

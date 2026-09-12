@@ -86,7 +86,7 @@ export default function SuppliersDashboard() {
 
     const labels = [];
     const counts = [];
-    const colors = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#ec4899', '#14b8a6'];
+    const colors = ['#4c6291', '#10b981', '#f59e0b', '#263a5e', '#ef4444', '#64748b', '#a0afd2'];
     const bgColors = [];
 
     let i = 0;
@@ -126,7 +126,7 @@ export default function SuppliersDashboard() {
         </div>
         <button
           onClick={() => { setForm({ name: '', contact_person: '', phone: '', email: '', gst_number: '', place: '', address: '' }); setEditingId(null); setModalOpen(true); }}
-          className="px-6 py-3.5 rounded-2xl bg-slate-900 text-white text-xs font-bold uppercase tracking-widest shadow-lg hover:bg-slate-800 transition-all active:scale-95 flex items-center gap-2"
+          className="px-6 py-3.5 rounded-2xl bg-blue-600 text-white text-xs font-bold uppercase tracking-widest shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-all active:scale-95 flex items-center gap-2"
         >
           <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M12 5v14M5 12h14" /></svg>
           Add Supplier
@@ -238,7 +238,7 @@ export default function SuppliersDashboard() {
              </div>
              <div className="pt-4 flex gap-4">
                <button type="button" onClick={() => setModalOpen(false)} className="flex-1 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400 hover:bg-slate-50 rounded-xl">Cancel</button>
-               <button type="submit" className="flex-[2] py-4 bg-slate-900 text-white rounded-xl text-[11px] font-bold uppercase tracking-widest shadow-lg hover:bg-blue-600 transition-colors">
+               <button type="submit" className="flex-[2] py-4 bg-blue-600 text-white rounded-xl text-[11px] font-bold uppercase tracking-widest shadow-lg hover:bg-blue-700 transition-colors">
                  {editingId ? 'Save Changes' : 'Create Supplier'}
                </button>
              </div>

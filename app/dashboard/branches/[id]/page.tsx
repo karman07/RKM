@@ -24,7 +24,7 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineEleme
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-const PRIMARY = '#1f63d8';
+const PRIMARY = '#263a5e';
 
 function fmt(n: number) {
   return `₹${Math.round(n).toLocaleString('en-IN')}`;
@@ -142,7 +142,7 @@ const chartOpts = {
   },
 };
 
-const PALETTE = ['#1f63d8', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444'];
+const PALETTE = ['#263a5e', '#10b981', '#f59e0b', '#7186b5', '#ef4444'];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Page
@@ -187,7 +187,7 @@ export default function BranchDetailPage({ params }: { params: Promise<{ id: str
     return (
       <div className="flex items-center justify-center h-[70vh]">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 border-3 border-slate-100 border-t-[#1f63d8] rounded-full animate-spin" style={{ borderWidth: 3 }} />
+          <div className="w-10 h-10 border-3 border-slate-100 border-t-[#263a5e] rounded-full animate-spin" style={{ borderWidth: 3 }} />
           <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">Loading branch data…</p>
         </div>
       </div>
@@ -198,7 +198,7 @@ export default function BranchDetailPage({ params }: { params: Promise<{ id: str
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
         <p className="text-2xl font-black text-slate-300">Branch Not Found</p>
-        <Link href="/dashboard/analytics/branches" className="text-[#1f63d8] font-bold text-sm hover:underline">← Back to Branches</Link>
+        <Link href="/dashboard/analytics/branches" className="text-[#263a5e] font-bold text-sm hover:underline">← Back to Branches</Link>
       </div>
     );
   }
@@ -258,7 +258,7 @@ export default function BranchDetailPage({ params }: { params: Promise<{ id: str
       <div className="flex items-start justify-between gap-4">
         <div>
           <Link href="/dashboard/analytics/branches"
-            className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-[#1f63d8] hover:underline mb-3">
+            className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-[#263a5e] hover:underline mb-3">
             <ArrowLeft className="w-3 h-3" /> All Branches
           </Link>
           <h1 className="text-2xl font-black text-slate-900 tracking-tight leading-none">{branch.name}</h1>
@@ -289,7 +289,7 @@ export default function BranchDetailPage({ params }: { params: Promise<{ id: str
           <button
             onClick={() => load(true)}
             disabled={refreshing}
-            className="p-2 rounded-xl bg-white border border-slate-200 text-slate-400 hover:text-[#1f63d8] hover:border-[#1f63d8] transition-all disabled:opacity-50"
+            className="p-2 rounded-xl bg-white border border-slate-200 text-slate-400 hover:text-[#263a5e] hover:border-[#263a5e] transition-all disabled:opacity-50"
           >
             <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
           </button>
@@ -300,7 +300,7 @@ export default function BranchDetailPage({ params }: { params: Promise<{ id: str
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard label="Total Stock"   value={stock.total}          sub={fmt(stock.totalValue) + ' value'} icon={Package}       color={PRIMARY} />
         <KpiCard label="Sales Today"   value={salesToday.count}      sub={fmt(salesToday.revenue) + ' revenue'} icon={ShoppingBag}  color="#10b981" />
-        <KpiCard label="Profit Today"  value={fmt(salesToday.profit)}                                          icon={TrendingUp}   color="#7c3aed" />
+        <KpiCard label="Profit Today"  value={fmt(salesToday.profit)}                                          icon={TrendingUp}   color="#4c6291" />
         <KpiCard label="Damaged Items" value={damagedItems.length}                                             icon={AlertTriangle} color="#ef4444" />
       </div>
 
@@ -311,7 +311,7 @@ export default function BranchDetailPage({ params }: { params: Promise<{ id: str
             { label: 'Available', count: available, value: stock.byStatus?.available?.value ?? 0, color: '#10b981' },
             { label: 'Reserved',  count: reserved,  value: stock.byStatus?.reserved?.value  ?? 0, color: '#f59e0b' },
             { label: 'Damaged',   count: damaged,   value: stock.byStatus?.damaged?.value   ?? 0, color: '#ef4444' },
-            { label: 'Returned',  count: returned,  value: stock.byStatus?.returned?.value  ?? 0, color: '#7c3aed' },
+            { label: 'Returned',  count: returned,  value: stock.byStatus?.returned?.value  ?? 0, color: '#4c6291' },
           ].map(({ label, count, value, color }) => (
             <div key={label} className="border border-slate-100 rounded-xl p-4 bg-white">
               <div className="flex items-center justify-between mb-2">
@@ -483,7 +483,7 @@ export default function BranchDetailPage({ params }: { params: Promise<{ id: str
                 .slice(0, 6)
                 .map((s: any, i: number) => (
                   <StaffRow key={i} rank={i + 1} name={s.user_name} role="Manager"
-                    sales={s.sales_count} revenue={s.total_revenue} color="#7c3aed" />
+                    sales={s.sales_count} revenue={s.total_revenue} color="#4c6291" />
                 ))}
             </div>
           )}

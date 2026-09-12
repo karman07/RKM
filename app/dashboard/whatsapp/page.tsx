@@ -15,9 +15,9 @@ import {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const CATEGORY_META: Record<WaMessageCategory, { label: string; color: string; bg: string }> = {
-  marketing:      { label: 'Marketing',      color: '#7c3aed', bg: '#f5f3ff' },
-  utility:        { label: 'Utility',        color: '#1f63d8', bg: '#eef5ff' },
-  authentication: { label: 'Authentication', color: '#0891b2', bg: '#ecfeff' },
+  marketing:      { label: 'Marketing',      color: '#263a5e', bg: '#e3e8f4' },
+  utility:        { label: 'Utility',        color: '#4c6291', bg: '#e3e8f4' },
+  authentication: { label: 'Authentication', color: '#7186b5', bg: '#f2f4fa' },
   service:        { label: 'Service',        color: '#059669', bg: '#ecfdf5' },
 };
 
@@ -133,7 +133,7 @@ export default function WhatsAppAnalyticsPage() {
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
             <StatCard icon={MessageCircle} label="Total Messages"
-              value={summary.totalMessages.toLocaleString()} color="#1f63d8" />
+              value={summary.totalMessages.toLocaleString()} color="#263a5e" />
             <StatCard icon={CheckCircle2} label="Delivered"
               value={summary.totalDelivered.toLocaleString()}
               sub={`${pct(summary.deliveryRate)} delivery rate`} color="#059669" />
@@ -143,7 +143,7 @@ export default function WhatsAppAnalyticsPage() {
               color="#dc2626" />
             <StatCard icon={DollarSign} label="Total Spend"
               value={fmt(summary.totalCostUsd)}
-              sub={`$${summary.totalCostUsd.toFixed(4)} USD`} color="#7c3aed" />
+              sub={`$${summary.totalCostUsd.toFixed(4)} USD`} color="#4c6291" />
           </div>
 
           {/* Daily trend chart */}
@@ -171,7 +171,7 @@ export default function WhatsAppAnalyticsPage() {
                         height: `${Math.max(4, (d.costUsd / maxCost) * 120)}px`,
                         background: d.failed > 0
                           ? 'linear-gradient(to top, #fca5a5, #ef4444)'
-                          : 'linear-gradient(to top, #93c5fd, #1f63d8)',
+                          : 'linear-gradient(to top, #a0afd2, #263a5e)',
                       }} />
                     </div>
                     <span className="text-[8px] text-slate-300 font-bold hidden sm:block">{d.date.slice(5)}</span>

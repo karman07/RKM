@@ -8,6 +8,7 @@ import { downloadCsv } from '@/lib/export-utils';
 import { useAppTheme } from '@/components/AppThemeContext';
 import { APP_THEME } from '@/lib/theme-constants';
 import DatePicker from '@/components/DatePicker';
+import KpiCard from '@/components/KpiCard';
 
 function fmtFull(n: number) {
   return `₹${Number(n ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
@@ -15,25 +16,6 @@ function fmtFull(n: number) {
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
-}
-
-function KpiCard({ title, value, sub, icon, accent, colors }: any) {
-  return (
-    <div
-      className="p-7 rounded-[2.5rem] border shadow-xl shadow-slate-200/40 hover:-translate-y-1 transition-all duration-300"
-      style={{ backgroundColor: colors.bg, borderColor: colors.border }}
-    >
-      <div
-        className="p-3.5 rounded-2xl text-white shadow-lg inline-flex mb-5"
-        style={{ backgroundColor: accent, boxShadow: `0 8px 20px -6px ${accent}55` }}
-      >
-        {icon}
-      </div>
-      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 mb-1.5">{title}</p>
-      <p className="text-2xl font-black tracking-tight text-slate-900 leading-none">{value}</p>
-      {sub && <p className="text-[11px] font-bold text-slate-400 mt-2">{sub}</p>}
-    </div>
-  );
 }
 
 export default function PurchaseOrdersPage() {
@@ -134,10 +116,10 @@ export default function PurchaseOrdersPage() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
-        <KpiCard title="Total Spend" value={fmtFull(kpis.totalSpend)} sub="Published orders" icon={<Truck className="w-5 h-5" />} accent="#3b82f6" colors={colors} />
-        <KpiCard title="Total Orders" value={kpis.totalOrders} sub="Matching current filters" icon={<Receipt className="w-5 h-5" />} accent="#8b5cf6" colors={colors} />
-        <KpiCard title="Published" value={kpis.publishedCount} sub="Received into inventory" icon={<CheckCircle2 className="w-5 h-5" />} accent="#10b981" colors={colors} />
-        <KpiCard title="Draft" value={kpis.draftCount} sub="Awaiting publish" icon={<FileClock className="w-5 h-5" />} accent="#f97316" colors={colors} />
+        <KpiCard label="Total Spend" value={fmtFull(kpis.totalSpend)} sub="Published orders" icon={<Truck className="w-5 h-5" />} accent="#4c6291" />
+        <KpiCard label="Total Orders" value={kpis.totalOrders} sub="Matching current filters" icon={<Receipt className="w-5 h-5" />} accent="#263a5e" />
+        <KpiCard label="Published" value={kpis.publishedCount} sub="Received into inventory" icon={<CheckCircle2 className="w-5 h-5" />} accent="#059669" />
+        <KpiCard label="Draft" value={kpis.draftCount} sub="Awaiting publish" icon={<FileClock className="w-5 h-5" />} accent="#d97706" />
       </div>
 
       {/* Filters */}

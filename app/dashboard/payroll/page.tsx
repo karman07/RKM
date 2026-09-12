@@ -11,9 +11,9 @@ const DAY_STATUS: Record<string, { bg: string; text: string; label: string; dot:
   'half-day':        { bg: 'bg-amber-50/60',   border: 'border-amber-100',   text: 'text-amber-700',   label: 'Half Day',        dot: 'bg-amber-400'   },
   'paid-time-off':   { bg: 'bg-blue-50/60',    border: 'border-blue-100',    text: 'text-blue-700',    label: 'Paid Time Off',   dot: 'bg-blue-500'    },
   'on-leave':        { bg: 'bg-blue-50/60',    border: 'border-blue-100',    text: 'text-blue-700',    label: 'Paid Time Off',   dot: 'bg-blue-500'    },
-  holiday:           { bg: 'bg-violet-50/60',  border: 'border-violet-100',  text: 'text-violet-700',  label: 'Holiday',         dot: 'bg-violet-500'  },
+  holiday:           { bg: 'bg-blue-50/60',  border: 'border-blue-100',  text: 'text-blue-700',  label: 'Holiday',         dot: 'bg-blue-500'  },
   weekend:           { bg: '',                 border: 'border-slate-100',   text: 'text-slate-300',   label: 'Sunday',          dot: 'bg-slate-200'   },
-  'yet-to-check-in': { bg: 'bg-orange-50/60',  border: 'border-orange-100',  text: 'text-orange-700',  label: 'Yet to Check In', dot: 'bg-orange-400'  },
+  'yet-to-check-in': { bg: 'bg-amber-50/60',  border: 'border-amber-100',  text: 'text-amber-700',  label: 'Yet to Check In', dot: 'bg-amber-400'  },
   upcoming:          { bg: '',                 border: 'border-slate-100',   text: 'text-slate-300',   label: '-',               dot: 'bg-slate-200'   },
 };
 
@@ -691,7 +691,7 @@ function EmployeePayrollCard({
           className="w-full px-6 py-5 flex items-center justify-between hover:bg-slate-50/40 transition-colors"
         >
           <div className="flex items-center gap-4">
-            <div className="relative w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center text-white text-sm font-bold flex-shrink-0 overflow-hidden">
+            <div className="relative w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white text-sm font-bold flex-shrink-0 overflow-hidden">
               {u.avatar ? <img src={u.avatar} alt={u.name} className="w-full h-full object-cover" /> : initials}
             </div>
             <div className="text-left">
@@ -1005,7 +1005,7 @@ function MyPayrollView({ month, year }: { month: number; year: number }) {
               { label: 'Present',     value: data.summary.present,  color: 'text-emerald-600' },
               { label: 'Absent',      value: data.summary.absent,   color: 'text-red-500'     },
               { label: 'Paid Time Off', value: data.summary.on_leave, color: 'text-blue-600'  },
-              { label: 'Holidays',    value: data.summary.holiday,  color: 'text-violet-600'  },
+              { label: 'Holidays',    value: data.summary.holiday,  color: 'text-blue-600'  },
             ].map(s => (
               <div key={s.label} className="border border-slate-100 rounded-xl p-3.5 text-center min-w-[90px]">
                 <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>

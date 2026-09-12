@@ -43,8 +43,8 @@ const STATUS_META: Record<string, { label: string; color: string; bg: string; bo
   PENDING:   { label: 'Pending',   color: '#d97706', bg: '#fffbeb', border: '#fde68a', icon: Clock },
   REJECTED:  { label: 'Rejected',  color: '#dc2626', bg: '#fef2f2', border: '#fca5a5', icon: XCircle },
   DISABLED:  { label: 'Disabled',  color: '#64748b', bg: '#f8fafc', border: '#cbd5e1', icon: AlertCircle },
-  PAUSED:    { label: 'Paused',    color: '#7c3aed', bg: '#f5f3ff', border: '#c4b5fd', icon: AlertCircle },
-  IN_APPEAL: { label: 'In Appeal', color: '#0891b2', bg: '#ecfeff', border: '#67e8f9', icon: Zap },
+  PAUSED:    { label: 'Paused',    color: '#263a5e', bg: '#f2f4fa', border: '#a0afd2', icon: AlertCircle },
+  IN_APPEAL: { label: 'In Appeal', color: '#263a5e', bg: '#f2f4fa', border: '#a0afd2', icon: Zap },
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -127,7 +127,7 @@ function PhonePreview({
   }
 
   const headerBg: Record<string, string> = {
-    IMAGE: '#dbeafe', VIDEO: '#ede9fe', DOCUMENT: '#fef9c3', LOCATION: '#d1fae5',
+    IMAGE: '#c7d0e7', VIDEO: '#e3e8f4', DOCUMENT: '#fef3c7', LOCATION: '#d1fae5',
   };
 
   return (
@@ -171,7 +171,7 @@ function PhonePreview({
                     ) : (
                       <div className="h-24 flex flex-col items-center justify-center gap-1">
                         {header.format === 'IMAGE'    && <Image size={24} className="text-blue-400" />}
-                        {header.format === 'VIDEO'    && <Video size={24} className="text-purple-400" />}
+                        {header.format === 'VIDEO'    && <Video size={24} className="text-blue-400" />}
                         {header.format === 'DOCUMENT' && <FileText size={24} className="text-amber-400" />}
                         {header.format === 'LOCATION' && <MapPin size={24} className="text-green-400" />}
                         <p className="text-[8px] font-bold text-slate-400">
@@ -287,9 +287,9 @@ const BUTTON_TYPES = [
 ] as const;
 
 const CATEGORIES_LIST = [
-  { value: 'MARKETING',      label: 'Marketing',      color: '#7c3aed' },
-  { value: 'UTILITY',        label: 'Utility',        color: '#1f63d8' },
-  { value: 'AUTHENTICATION', label: 'Authentication', color: '#0891b2' },
+  { value: 'MARKETING',      label: 'Marketing',      color: '#263a5e' },
+  { value: 'UTILITY',        label: 'Utility',        color: '#4c6291' },
+  { value: 'AUTHENTICATION', label: 'Authentication', color: '#263a5e' },
 ] as const;
 
 const LANGUAGES = [
@@ -851,7 +851,7 @@ function TemplateList({ refresh }: { refresh: number }) {
           </button>
         ))}
         <button onClick={handleSyncAll} disabled={syncing === 'all'}
-          className="ml-auto flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50 transition-all">
+          className="ml-auto flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 disabled:opacity-50 transition-all">
           {syncing === 'all' ? <Spinner /> : <RefreshCw size={10} />} Sync All from Meta
         </button>
       </div>

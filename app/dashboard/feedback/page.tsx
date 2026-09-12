@@ -8,7 +8,7 @@ export default function FeedbackDashboard() {
   const [loading, setLoading] = useState(true);
 
   // Base Color - Now BLUE
-  const baseBlue = '#2563EB';
+  const baseBlue = '#263A5E';
 
   useEffect(() => {
     getFeedbacks().then(res => {
@@ -76,8 +76,8 @@ export default function FeedbackDashboard() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-12">
           {[
             { label: 'Total Registries', value: total, color: '#0F172A' },
-            { label: 'Conversion Rate', value: `${conversionRate}%`, color: '#2563EB' },
-            { label: 'Experience Score', value: `${wowScore}%`, color: '#2563EB' },
+            { label: 'Conversion Rate', value: `${conversionRate}%`, color: '#263A5E' },
+            { label: 'Experience Score', value: `${wowScore}%`, color: '#263A5E' },
             { label: 'Top Logic Gap', value: topReason, color: '#64748B', isText: true },
           ].map((kpi, idx) => (
             <div key={idx} className="bg-white/40 backdrop-blur-sm border border-slate-100 p-6 rounded-[2rem] transition-all hover:shadow-xl hover:border-slate-200">

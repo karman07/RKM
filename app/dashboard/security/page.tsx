@@ -26,7 +26,7 @@ function formatDate(d: string) {
 function RoleBadge({ role }: { role: string }) {
   const colors: Record<string, string> = {
     manager: 'bg-blue-50 text-blue-700 border border-blue-100',
-    cashier: 'bg-purple-50 text-purple-700 border border-purple-100',
+    cashier: 'bg-blue-50 text-blue-700 border border-blue-100',
     admin: 'bg-amber-50 text-amber-700 border border-amber-100',
   };
   return <Badge color={colors[role] ?? 'bg-slate-100 text-slate-600'}>{role}</Badge>;
@@ -60,7 +60,7 @@ function SessionsTab() {
         <select
           value={role}
           onChange={e => { setRole(e.target.value); setPage(1); }}
-          className="h-9 px-3 rounded-xl border border-slate-200 bg-white text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/20"
+          className="h-9 px-3 rounded-xl border border-slate-200 bg-white text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#263a5e]/20"
         >
           <option value="">All Roles</option>
           <option value="manager">Manager</option>
@@ -171,7 +171,7 @@ function BreachesTab() {
           <input
             type="checkbox" checked={unreviewedOnly}
             onChange={e => { setUnreviewedOnly(e.target.checked); setPage(1); }}
-            className="w-4 h-4 rounded accent-[#5A0F1A]"
+            className="w-4 h-4 rounded accent-[#263a5e]"
           />
           <span className="text-xs font-bold text-slate-700">Unreviewed only</span>
         </label>
@@ -235,7 +235,7 @@ function BreachesTab() {
                       <button
                         onClick={() => handleReview(b._id)}
                         disabled={reviewingId === b._id}
-                        className="px-3 py-1.5 rounded-xl bg-[#5A0F1A] hover:bg-[#7A1C2A] text-white text-[10px] font-black uppercase tracking-wider transition-colors disabled:opacity-50"
+                        className="px-3 py-1.5 rounded-xl bg-[#263a5e] hover:bg-[#1d2c49] text-white text-[10px] font-black uppercase tracking-wider transition-colors disabled:opacity-50"
                       >
                         {reviewingId === b._id ? '...' : 'Mark Reviewed'}
                       </button>
@@ -281,7 +281,7 @@ export default function SecurityPage() {
             onClick={() => setTab(t)}
             className={`px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
               tab === t
-                ? 'bg-white text-[#5A0F1A] shadow-sm'
+                ? 'bg-white text-[#263a5e] shadow-sm'
                 : 'text-slate-500 hover:text-slate-700'
             }`}
           >

@@ -1,23 +1,43 @@
 @import "tailwindcss";
 
+/*
+ * Studio Navy theme — replaces the default Tailwind "blue" scale app-wide.
+ * Every bg-blue, text-blue, border-blue and ring-blue utility used anywhere
+ * in the app (all pages and components) now renders from this scale, so the
+ * whole product stays on one accent color without touching each file.
+ */
+@theme {
+  --color-blue-50: #f2f4fa;
+  --color-blue-100: #e3e8f4;
+  --color-blue-200: #c7d0e7;
+  --color-blue-300: #a0afd2;
+  --color-blue-400: #7186b5;
+  --color-blue-500: #4c6291;
+  --color-blue-600: #263a5e;
+  --color-blue-700: #1d2c49;
+  --color-blue-800: #172236;
+  --color-blue-900: #10192a;
+  --color-blue-950: #090f1c;
+}
+
 :root {
-  --color-blue: #1f63d8;
-  --color-blue-soft: #eef5ff;
-  --color-blue-border: #cfe0ff;
-  --bg-app: #ffffff;
-  --bg-surface: #ffffff;
-  --text-main: #0f172a;
+  --color-blue: #263a5e;
+  --color-blue-soft: #edf0f8;
+  --color-blue-border: #c7d0e7;
+  --bg-app: #f7f3ea;
+  --bg-surface: #f7f3ea;
+  --text-main: #1d2c49;
   --text-muted: #64748b;
 
-  --color-brand-50: #eef5ff;
-  --color-brand-100: #d6e6ff;
-  --color-brand-300: #8eb6ff;
-  --color-brand-500: #2f79f7;
-  --color-brand-600: #1d4fae;
-  --color-brand-700: #1e3a8a;
+  --color-brand-50: #f2f4fa;
+  --color-brand-100: #e3e8f4;
+  --color-brand-300: #a0afd2;
+  --color-brand-500: #4c6291;
+  --color-brand-600: #263a5e;
+  --color-brand-700: #1d2c49;
 
-  --selection-bg: #cfe0ff;
-  --selection-text: #174fae;
+  --selection-bg: #c7d0e7;
+  --selection-text: #1d2c49;
 }
 
 ::selection {
@@ -255,12 +275,12 @@ input, select, textarea {
   padding: 1.5rem 2rem;
   font-size: 0.95rem;
   font-weight: 800;
-  box-shadow: 0 25px 50px -12px rgba(30, 58, 138, 0.15); /* Soft Blue Shadow */
+  box-shadow: 0 25px 50px -12px rgba(29, 44, 73, 0.18); /* Soft Navy Shadow */
   animation: toastPop 450ms cubic-bezier(0.2, 0.8, 0.2, 1);
   background: #ffffff; /* Studio White */
-  color: #1e3a8a; /* Deep Blue Text */
-  border: 1px solid #e0e7ff;
-  border-left: 8px solid #3b82f6; /* Azure Accent */
+  color: #1d2c49; /* Deep Navy Text */
+  border: 1px solid #e3e8f4;
+  border-left: 8px solid #263a5e; /* Navy Accent */
 }
 
 @keyframes toastPop {
@@ -279,8 +299,8 @@ input, select, textarea {
 }
 
 .app-toast-info {
-  border-left-color: #3b82f6;
-  color: #1e3a8a;
+  border-left-color: #263a5e;
+  color: #1d2c49;
 }
 
 .app-toast-close {
@@ -313,7 +333,7 @@ input, select, textarea {
   --bg-surface: #111a2e;
   --text-main: #e5edf9;
   --text-muted: #9eb0cb;
-  --selection-bg: #1f63d8;
+  --selection-bg: #263a5e;
   --selection-text: #ffffff;
 }
 
@@ -371,9 +391,9 @@ body[data-theme='dark'] .app-toast {
 }
 
 [data-theme='dark'] .app-toast-info {
-  background: #1e3a8a;
-  color: #eff6ff;
-  border-color: #2563eb;
+  background: #1d2c49;
+  color: #eef0f7;
+  border-color: #4c6291;
 }
 
 [data-theme='dark'] .admin-shell .text-slate-400,
@@ -428,9 +448,9 @@ body[data-theme='dark'] .admin-shell span.inline-block.rounded-full.text-xs.font
 
 [data-theme='dark'] .admin-shell span.inline-block.rounded-full.text-xs.font-medium.bg-blue-50,
 body[data-theme='dark'] .admin-shell span.inline-block.rounded-full.text-xs.font-medium.bg-blue-50 {
-  background: #152d4d !important;
-  border-color: #35598c !important;
-  color: #9ac5ff !important;
+  background: #1b2942 !important;
+  border-color: #34486e !important;
+  color: #b9c6e6 !important;
 }
 
 [data-theme='dark'] .admin-shell span.inline-block.rounded-full.text-xs.font-medium.bg-violet-50,
@@ -462,29 +482,29 @@ body[data-theme='dark'] .pro-scrollbar::-webkit-scrollbar-thumb {
 
 [data-theme='dark'] .bg-blue-50,
 body[data-theme='dark'] .bg-blue-50 {
-  background-color: #162846 !important;
+  background-color: #1b2942 !important;
 }
 
 [data-theme='dark'] .bg-blue-100,
 body[data-theme='dark'] .bg-blue-100 {
-  background-color: #1c3357 !important;
+  background-color: #22314f !important;
 }
 
 [data-theme='dark'] .border-blue-200,
 body[data-theme='dark'] .border-blue-200 {
-  border-color: #2d4c78 !important;
+  border-color: #34486e !important;
 }
 
 [data-theme='dark'] .text-blue-700,
 body[data-theme='dark'] .text-blue-700 {
-  color: #93c5fd !important;
+  color: #b9c6e6 !important;
 }
 
 [data-theme='dark'] .hover\:bg-blue-100:hover,
 [data-theme='dark'] .hover\:bg-blue-50:hover,
 body[data-theme='dark'] .hover\:bg-blue-100:hover,
 body[data-theme='dark'] .hover\:bg-blue-50:hover {
-  background-color: #1d3a62 !important;
+  background-color: #263a5e !important;
 }
 
 [data-theme='dark'] .bg-amber-50,
@@ -521,23 +541,23 @@ body[data-theme='dark'] .text-emerald-700 {
 
 [data-theme='dark'] .sidebar-link-active,
 body[data-theme='dark'] .sidebar-link-active {
-  background: #162846 !important;
-  color: #dbeafe !important;
-  box-shadow: inset 0 0 0 1px #27446f;
+  background: #1b2942 !important;
+  color: #dbe2f2 !important;
+  box-shadow: inset 0 0 0 1px #34486e;
 }
 
 [data-theme='dark'] .sidebar-link-active span,
 [data-theme='dark'] .sidebar-link-active svg,
 body[data-theme='dark'] .sidebar-link-active span,
 body[data-theme='dark'] .sidebar-link-active svg {
-  color: #93c5fd !important;
+  color: #b9c6e6 !important;
 }
 
 [data-theme='dark'] .sidebar-subitem-active,
 body[data-theme='dark'] .sidebar-subitem-active {
-  background: #14233f !important;
-  color: #dbeafe !important;
-  box-shadow: inset 3px 0 0 0 #60a5fa;
+  background: #182338 !important;
+  color: #dbe2f2 !important;
+  box-shadow: inset 3px 0 0 0 #7186b5;
 }
 
 /* ── Print Optimization Engine ───────────────── */

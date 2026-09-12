@@ -255,10 +255,10 @@ function RefundsPageContent() {
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {[
-          { label: 'Total Returns', value: stats.total, sub: 'all returned items', color: '#f97316', icon: <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M9 14l-4-4 4-4M5 10h11a4 4 0 1 1 0 8h-1" /></svg> },
+          { label: 'Total Returns', value: stats.total, sub: 'all returned items', color: '#f59e0b', icon: <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M9 14l-4-4 4-4M5 10h11a4 4 0 1 1 0 8h-1" /></svg> },
           { label: 'Awaiting Review', value: stats.pending + stats.proposed, sub: `${stats.pending} pending · ${stats.proposed} proposed`, color: '#f59e0b', icon: <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
           { label: 'Approved Refunds', value: stats.approved, sub: `₹${fmt(stats.totalAdminApproved)} committed`, color: '#10b981', icon: <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
-          { label: 'System Calculated', value: `₹${fmt(stats.totalSystemRefund)}`, sub: 'formula-based total', color: '#6366f1', icon: <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M9 7H6a2 2 0 00-2 2v9a2 2 0 002 2h9a2 2 0 002-2v-3m-3-12h3m0 0v3m0-3l-9 9" /></svg> },
+          { label: 'System Calculated', value: `₹${fmt(stats.totalSystemRefund)}`, sub: 'formula-based total', color: '#4c6291', icon: <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M9 7H6a2 2 0 00-2 2v9a2 2 0 002 2h9a2 2 0 002-2v-3m-3-12h3m0 0v3m0-3l-9 9" /></svg> },
         ].map((s, i) => (
           <div key={i} className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 flex items-center gap-4 hover:shadow-md transition-all">
             <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ backgroundColor: s.color + '18', color: s.color }}>
@@ -275,11 +275,11 @@ function RefundsPageContent() {
 
       {loading ? (
         <div className="flex items-center justify-center h-64">
-          <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-10 h-10 border-4 border-amber-500 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 bg-white rounded-3xl border border-slate-100">
-          <div className="w-16 h-16 rounded-2xl bg-orange-50 flex items-center justify-center text-orange-300 mb-4">
+          <div className="w-16 h-16 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-300 mb-4">
             <svg width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path d="M9 14l-4-4 4-4M5 10h11a4 4 0 1 1 0 8h-1" /></svg>
           </div>
           <p className="font-black text-slate-400 uppercase tracking-widest text-sm">No Returned Items</p>
@@ -347,7 +347,7 @@ function RefundsPageContent() {
                       {/* System Calculated Refund */}
                       <td className="px-5 py-5">
                         <div className="space-y-1">
-                          <p className="text-sm font-black text-indigo-700">₹{fmt(breakdown.systemRefund)}</p>
+                          <p className="text-sm font-black text-blue-700">₹{fmt(breakdown.systemRefund)}</p>
                           <div className="text-[9px] text-slate-400 space-y-0.5">
                             <div className="flex justify-between gap-3">
                               <span>Metal ({breakdown.goldDeductionPct}% off)</span>
@@ -364,7 +364,7 @@ function RefundsPageContent() {
                             {breakdown.isStoneItem && (
                               <div className="flex justify-between gap-3">
                                 <span>Stone ({breakdown.stoneRefundPct}%)</span>
-                                <span className="text-violet-600 font-bold">₹{fmt(breakdown.stoneRefund)}</span>
+                                <span className="text-blue-600 font-bold">₹{fmt(breakdown.stoneRefund)}</span>
                               </div>
                             )}
                           </div>
@@ -464,7 +464,7 @@ function RefundsPageContent() {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
             <div className="bg-white rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden">
               {/* Modal Header */}
-              <div className="px-8 py-6 bg-slate-900 text-white flex items-center justify-between">
+              <div className="px-8 py-6 bg-blue-700 text-white flex items-center justify-between">
                 <div>
                   <p className="text-xs font-black text-white/50 uppercase tracking-widest mb-1">Admin Refund Approval</p>
                   <p className="text-lg font-black">{product?.name ?? 'Jewellery Item'}</p>
@@ -477,13 +477,13 @@ function RefundsPageContent() {
 
               <div className="p-8 space-y-6">
                 {/* System Calculation Breakdown */}
-                <div className="bg-indigo-50 rounded-2xl p-5 border border-indigo-100 space-y-2.5">
-                  <div className="text-[10px] font-black text-indigo-900 uppercase tracking-widest mb-3">System Calculated Refund Breakdown</div>
+                <div className="bg-blue-50 rounded-2xl p-5 border border-blue-100 space-y-2.5">
+                  <div className="text-[10px] font-black text-blue-900 uppercase tracking-widest mb-3">System Calculated Refund Breakdown</div>
                   <div className="flex justify-between text-xs">
                     <span className="text-slate-500">Original Sale Price</span>
                     <span className="font-black text-slate-900">₹{fmt(breakdown.salePrice)}</span>
                   </div>
-                  <div className="w-full h-px bg-indigo-100" />
+                  <div className="w-full h-px bg-blue-100" />
                   <div className="flex justify-between text-xs">
                     <span className="text-slate-500">Metal Value ({breakdown.goldDeductionPct}% gold fee deducted)</span>
                     <span className="font-bold text-emerald-700">+₹{fmt(breakdown.metalRefund)}</span>
@@ -499,13 +499,13 @@ function RefundsPageContent() {
                   {breakdown.isStoneItem && (
                     <div className="flex justify-between text-xs">
                       <span className="text-slate-500">Stone Refund ({breakdown.stoneRefundPct}%)</span>
-                      <span className="font-bold text-violet-700">+₹{fmt(breakdown.stoneRefund)}</span>
+                      <span className="font-bold text-blue-700">+₹{fmt(breakdown.stoneRefund)}</span>
                     </div>
                   )}
-                  <div className="w-full h-px bg-indigo-200" />
+                  <div className="w-full h-px bg-blue-200" />
                   <div className="flex justify-between">
-                    <span className="text-sm font-black text-indigo-900">System Suggested Refund</span>
-                    <span className="text-lg font-black text-indigo-700">₹{fmt(breakdown.systemRefund)}</span>
+                    <span className="text-sm font-black text-blue-900">System Suggested Refund</span>
+                    <span className="text-lg font-black text-blue-700">₹{fmt(breakdown.systemRefund)}</span>
                   </div>
                 </div>
 
@@ -539,7 +539,7 @@ function RefundsPageContent() {
                       min="0"
                       value={approvedValue}
                       onChange={e => setApprovedValue(e.target.value)}
-                      className="w-full px-4 py-3.5 rounded-xl border border-slate-200 text-lg font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-400 transition-all bg-slate-50"
+                      className="w-full px-4 py-3.5 rounded-xl border border-slate-200 text-lg font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400 transition-all bg-slate-50"
                       placeholder="Enter final refund amount..."
                     />
                   </div>
@@ -549,7 +549,7 @@ function RefundsPageContent() {
                       value={approvedNotes}
                       onChange={e => setApprovedNotes(e.target.value)}
                       rows={2}
-                      className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-orange-400 transition-all resize-none"
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-400 transition-all resize-none"
                       placeholder="Reason for this refund value..."
                     />
                   </div>
@@ -599,7 +599,7 @@ export default function RefundsPage() {
   return (
     <Suspense fallback={
       <div className="flex bg-[#FAFAFA] min-h-screen items-center justify-center">
-        <div className="w-12 h-12 border-4 border-[#7A1C2A]/20 border-t-[#7A1C2A] rounded-full animate-spin" />
+        <div className="w-12 h-12 border-4 border-[#263a5e]/20 border-t-[#263a5e] rounded-full animate-spin" />
       </div>
     }>
       <RefundsPageContent />

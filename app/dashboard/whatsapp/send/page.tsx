@@ -11,9 +11,9 @@ import {
 } from '@/lib/api';
 
 const CATEGORY_META: Record<WaMessageCategory, { label: string; color: string; bg: string }> = {
-  marketing:      { label: 'Marketing',      color: '#7c3aed', bg: '#f5f3ff' },
-  utility:        { label: 'Utility',        color: '#1f63d8', bg: '#eef5ff' },
-  authentication: { label: 'Authentication', color: '#0891b2', bg: '#ecfeff' },
+  marketing:      { label: 'Marketing',      color: '#263a5e', bg: '#e3e8f4' },
+  utility:        { label: 'Utility',        color: '#4c6291', bg: '#e3e8f4' },
+  authentication: { label: 'Authentication', color: '#7186b5', bg: '#f2f4fa' },
   service:        { label: 'Service',        color: '#059669', bg: '#ecfdf5' },
 };
 

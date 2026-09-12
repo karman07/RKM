@@ -18,19 +18,20 @@ import AdvanceReceiptModal from '@/components/AdvanceReceiptModal';
 import CreateInvoiceModal from '@/components/CreateInvoiceModal';
 import RecordInvestmentPaymentModal from '@/components/RecordInvestmentPaymentModal';
 import BillModal from '@/components/BillModal';
+import KpiCard from '@/components/KpiCard';
 import { toast } from 'sonner';
 
 const PAYMENT_COLORS: Record<string, string> = {
   cash: '#10b981',
-  card: '#3b82f6',
-  upi: '#8b5cf6',
-  emi: '#f97316',
-  online: '#06b6d4',
-  cheque: '#ec4899',
+  card: '#263a5e',
+  upi: '#4c6291',
+  emi: '#d97706',
+  online: '#7186b5',
+  cheque: '#1d2c49',
   neft: '#f59e0b',
-  rtgs: '#84cc16',
-  investment_balance: '#a855f7',
-  advance_balance: '#0ea5e9',
+  rtgs: '#64748b',
+  investment_balance: '#059669',
+  advance_balance: '#a0afd2',
   unknown: '#94a3b8',
 };
 
@@ -54,7 +55,7 @@ function advanceModeSummary(a: CustomerAdvance) {
   return modeLabel(a.mode);
 }
 
-const PALETTE = ['#3b82f6', '#8b5cf6', '#10b981', '#f97316', '#ec4899', '#06b6d4', '#f59e0b', '#84cc16'];
+const PALETTE = ['#263a5e', '#4c6291', '#10b981', '#d97706', '#dc2626', '#64748b', '#f59e0b', '#1d2c49'];
 
 function fmt(n: number) {
   if (n >= 10_000_000) return `₹${(n / 10_000_000).toFixed(1)}Cr`;
@@ -231,19 +232,19 @@ export default function PaymentsPage() {
           </div>
           <button
             onClick={() => setShowAddPayment(true)}
-            className="inline-flex items-center gap-2 px-5 py-3 bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-slate-500/20 transition-all"
+            className="inline-flex items-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-blue-600/20 transition-all"
           >
             <Plus className="w-3.5 h-3.5" /> Add Payment
           </button>
           <button
             onClick={() => setShowCreateInvoice(true)}
-            className="inline-flex items-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-emerald-500/20 transition-all"
+            className="inline-flex items-center gap-2 px-5 py-3 bg-white border border-slate-200 hover:border-blue-300 hover:text-blue-600 text-slate-600 text-[11px] font-black uppercase tracking-widest rounded-2xl shadow-sm transition-all"
           >
             <Receipt className="w-3.5 h-3.5" /> Create Invoice
           </button>
           <button
             onClick={() => setShowRecordInvestmentPayment(true)}
-            className="inline-flex items-center gap-2 px-5 py-3 bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-amber-500/20 transition-all"
+            className="inline-flex items-center gap-2 px-5 py-3 bg-white border border-slate-200 hover:border-blue-300 hover:text-blue-600 text-slate-600 text-[11px] font-black uppercase tracking-widest rounded-2xl shadow-sm transition-all"
           >
             <Wallet className="w-3.5 h-3.5" /> Record Investment Payment
           </button>
@@ -284,36 +285,32 @@ export default function PaymentsPage() {
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
         <KpiCard
-          title="Total Revenue"
+          label="Total Revenue"
           value={fmtFull(summary.totalRevenue)}
           sub={`${summary.totalTransactions ?? 0} transactions`}
           icon={<DollarSign className="w-5 h-5" />}
-          accent="#3b82f6"
-          colors={colors}
+          accent="#263a5e"
         />
         <KpiCard
-          title="Avg. Transaction"
+          label="Avg. Transaction"
           value={fmtFull(summary.avgTransactionValue)}
           sub={`Max ${fmt(summary.maxSale)}`}
           icon={<CreditCard className="w-5 h-5" />}
-          accent="#8b5cf6"
-          colors={colors}
+          accent="#4c6291"
         />
         <KpiCard
-          title="Gross Profit"
+          label="Gross Profit"
           value={fmtFull(summary.totalProfit)}
           sub={`Margin ${summary.totalRevenue ? ((summary.totalProfit / summary.totalRevenue) * 100).toFixed(1) : 0}%`}
           icon={<TrendingUp className="w-5 h-5" />}
-          accent="#10b981"
-          colors={colors}
+          accent="#059669"
         />
         <KpiCard
-          title="Top Mode"
+          label="Top Mode"
           value={paymentModes[0] ? modeLabel(paymentModes[0]._id) : '—'}
           sub={paymentModes[0] ? fmtFull(paymentModes[0].total) : ''}
           icon={<Banknote className="w-5 h-5" />}
-          accent="#f97316"
-          colors={colors}
+          accent="#7186b5"
         />
       </div>
 
@@ -408,8 +405,8 @@ export default function PaymentsPage() {
               <AreaChart data={revenueOverTime}>
                 <defs>
                   <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.18} />
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                    <stop offset="5%" stopColor="#263a5e" stopOpacity={0.18} />
+                    <stop offset="95%" stopColor="#263a5e" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="4 4" vertical={false} stroke={colors.border} />
@@ -425,14 +422,14 @@ export default function PaymentsPage() {
                 <YAxis hide />
                 <Tooltip
                   contentStyle={tooltipStyle}
-                  itemStyle={{ color: '#3b82f6', fontWeight: 800 }}
+                  itemStyle={{ color: '#263a5e', fontWeight: 800 }}
                   labelStyle={{ color: '#94a3b8', fontSize: '10px', textTransform: 'uppercase', marginBottom: 6 }}
                   formatter={(val: any) => [fmtFull(val), 'Revenue']}
                 />
                 <Area
                   type="monotone"
                   dataKey="revenue"
-                  stroke="#3b82f6"
+                  stroke="#263a5e"
                   strokeWidth={3}
                   fill="url(#revGrad)"
                   animationDuration={1400}
@@ -447,10 +444,10 @@ export default function PaymentsPage() {
             <div className="h-[80px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={revenueOverTime} barSize={6}>
-                  <Bar dataKey="count" fill="#c7d2fe" radius={[3, 3, 0, 0]} animationDuration={1600} />
+                  <Bar dataKey="count" fill="#c7d0e7" radius={[3, 3, 0, 0]} animationDuration={1600} />
                   <Tooltip
                     contentStyle={{ ...tooltipStyle, padding: '10px' }}
-                    itemStyle={{ color: '#6366f1', fontWeight: 800, fontSize: 11 }}
+                    itemStyle={{ color: '#263a5e', fontWeight: 800, fontSize: 11 }}
                     labelStyle={{ color: '#94a3b8', fontSize: '10px', textTransform: 'uppercase' }}
                     formatter={(val: any) => [val, 'Transactions']}
                     labelFormatter={(label: any) => fmtDate(String(label))}
@@ -552,7 +549,7 @@ export default function PaymentsPage() {
                 />
                 <Tooltip
                   contentStyle={tooltipStyle}
-                  itemStyle={{ color: '#8b5cf6', fontWeight: 800 }}
+                  itemStyle={{ color: '#4c6291', fontWeight: 800 }}
                   formatter={(val: any) => [fmtFull(val), 'Revenue']}
                 />
                 <Bar dataKey="revenue" radius={[0, 6, 6, 0]} animationDuration={1400}>
@@ -596,7 +593,7 @@ export default function PaymentsPage() {
                 />
                 <Bar dataKey="revenue" radius={[6, 6, 0, 0]} animationDuration={1600}>
                   {revenueByDay.map((_: any, i: number) => (
-                    <Cell key={i} fill={i === peakDayIndex(revenueByDay) ? '#3b82f6' : '#c7d2fe'} />
+                    <Cell key={i} fill={i === peakDayIndex(revenueByDay) ? '#263a5e' : '#c7d0e7'} />
                   ))}
                 </Bar>
               </BarChart>
@@ -695,23 +692,4 @@ function peakDayIndex(days: any[]) {
   return idx;
 }
 
-function KpiCard({ title, value, sub, icon, accent, colors }: any) {
-  return (
-    <div
-      className="p-7 rounded-[2.5rem] border shadow-xl shadow-slate-200/40 hover:-translate-y-1 transition-all duration-300 group"
-      style={{ backgroundColor: colors.bg, borderColor: colors.border }}
-    >
-      <div className="flex items-start justify-between mb-5">
-        <div
-          className="p-3.5 rounded-2xl text-white shadow-lg"
-          style={{ backgroundColor: accent, boxShadow: `0 8px 20px -6px ${accent}55` }}
-        >
-          {icon}
-        </div>
-      </div>
-      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 mb-1.5">{title}</p>
-      <p className="text-2xl font-black tracking-tight text-slate-900 leading-none">{value}</p>
-      {sub && <p className="text-[11px] font-bold text-slate-400 mt-2">{sub}</p>}
-    </div>
-  );
-}
+// KpiCard now lives in components/KpiCard.tsx — shared across every page for a consistent look.

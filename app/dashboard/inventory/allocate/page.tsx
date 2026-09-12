@@ -221,7 +221,7 @@ export default function BranchAllocationPage() {
             <button
               onClick={handleAssign}
               disabled={saving || selectedCount === 0}
-              className="px-6 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-black uppercase tracking-widest hover:bg-blue-600 transition-all disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+              className="px-6 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black uppercase tracking-widest hover:bg-blue-700 transition-all disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
             >
               {saving
                 ? 'Saving...'

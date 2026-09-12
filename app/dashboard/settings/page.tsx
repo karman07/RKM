@@ -416,8 +416,8 @@ return (
         style={{ backgroundColor: colors.bg, borderColor: colors.border }}
       >
         <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-orange-50 flex items-center justify-center shrink-0 shadow-sm border border-orange-100/50 transition-transform hover:scale-105 duration-300">
-            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} className="text-orange-600">
+          <div className="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center shrink-0 shadow-sm border border-amber-100/50 transition-transform hover:scale-105 duration-300">
+            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} className="text-amber-600">
               <circle cx="12" cy="12" r="9" /><path d="M12 3v18M3 12h18" />
             </svg>
           </div>
@@ -479,8 +479,8 @@ return (
         style={{ backgroundColor: colors.bg, borderColor: colors.border }}
       >
         <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-violet-50 flex items-center justify-center shrink-0 shadow-sm border border-violet-100/50 transition-transform hover:scale-105 duration-300">
-            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} className="text-violet-600">
+          <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center shrink-0 shadow-sm border border-blue-100/50 transition-transform hover:scale-105 duration-300">
+            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} className="text-blue-600">
               <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
             </svg>
           </div>
@@ -615,8 +615,8 @@ return (
         style={{ backgroundColor: colors.bg, borderColor: colors.border }}
       >
         <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-teal-50 flex items-center justify-center shrink-0 shadow-sm border border-teal-100/50 transition-transform hover:scale-105 duration-300">
-            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} className="text-teal-600">
+          <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center shrink-0 shadow-sm border border-blue-100/50 transition-transform hover:scale-105 duration-300">
+            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} className="text-blue-600">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" /><path d="M9 12l2 2 4-4" />
             </svg>
           </div>
@@ -636,7 +636,7 @@ return (
               <p className="text-xs mt-0.5 opacity-60" style={{ color: colors.textMain }}>Allow customers to place delivery orders</p>
             </div>
             <button onClick={() => setDeliverySettings(s => ({ ...s, is_delivery_enabled: !s.is_delivery_enabled }))}
-              className={`relative w-12 h-6 rounded-full transition-all duration-300 ${deliverySettings.is_delivery_enabled ? 'bg-teal-600' : 'bg-slate-200 dark:bg-slate-700'}`}>
+              className={`relative w-12 h-6 rounded-full transition-all duration-300 ${deliverySettings.is_delivery_enabled ? 'bg-blue-600' : 'bg-slate-200 dark:bg-slate-700'}`}>
               <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all ${deliverySettings.is_delivery_enabled ? 'left-7' : 'left-1'}`} />
             </button>
           </div>
@@ -746,7 +746,7 @@ return (
       {/* ── Company & HR Settings ── */}
       <section className="rounded-[2rem] border overflow-hidden shadow-sm" style={{ backgroundColor: colors.bg, borderColor: colors.border }}>
         <div className="px-8 py-6 border-b flex items-center gap-3" style={{ borderColor: colors.border }}>
-          <div className="w-1.5 h-7 rounded-full" style={{ backgroundColor: '#7B1818' }} />
+          <div className="w-1.5 h-7 rounded-full" style={{ backgroundColor: '#263a5e' }} />
           <div>
             <h2 className="text-[15px] font-bold" style={{ color: colors.textMain }}>Company &amp; HR Settings</h2>
             <p className="text-[11px] mt-0.5" style={{ color: colors.textMuted }}>Used in generated PDF documents — offer, appointment &amp; welcome letters.</p>
@@ -766,7 +766,7 @@ return (
               <div>
                 <p className="text-xs font-bold mb-1" style={{ color: colors.textMain }}>Upload company logo</p>
                 <p className="text-[10px] mb-2" style={{ color: colors.textMuted }}>PNG or JPG · Transparent background recommended · max 2 MB</p>
-                <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 border rounded-xl text-[11px] font-bold transition-all hover:border-[#7B1818] hover:text-[#7B1818]"
+                <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 border rounded-xl text-[11px] font-bold transition-all hover:border-[#263a5e] hover:text-[#263a5e]"
                   style={{ borderColor: colors.border, color: colors.textMuted }}>
                   {uploadingLogo ? 'Uploading…' : companyLogoUrl ? 'Change Logo' : 'Upload Logo'}
                   <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
@@ -808,7 +808,7 @@ return (
                   <label className="block text-[10px] font-black uppercase tracking-widest mb-1.5" style={{ color: colors.textMuted }}>{f.label}</label>
                   <input
                     value={f.val} onChange={e => f.set(e.target.value)} placeholder={f.ph}
-                    className="w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#7B1818]/20 focus:border-[#7B1818] transition-all"
+                    className="w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#263a5e]/20 focus:border-[#263a5e] transition-all"
                     style={{ backgroundColor: colors.bg, borderColor: colors.border, color: colors.textMain }}
                   />
                 </div>
@@ -830,7 +830,7 @@ return (
                   <label className="block text-[10px] font-black uppercase tracking-widest mb-1.5" style={{ color: colors.textMuted }}>{f.label}</label>
                   <div className="relative">
                     <input type="number" min={f.min} value={f.val} onChange={e => f.set(e.target.value)}
-                      className="w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E3264]/20 focus:border-[#1E3264] transition-all"
+                      className="w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#263a5e]/20 focus:border-[#263a5e] transition-all"
                       style={{ backgroundColor: colors.bg, borderColor: colors.border, color: colors.textMain }} />
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold pointer-events-none" style={{ color: colors.textMuted }}>{f.unit}</span>
                   </div>
@@ -855,14 +855,14 @@ return (
               return (
                 <div className="mb-4">
                   <div className="flex h-5 rounded-lg overflow-hidden gap-0.5 mb-1">
-                    <div style={{ width: `${b}%`, backgroundColor: '#1E3264' }} title={`Basic ${b}%`} />
-                    <div style={{ width: `${h}%`, backgroundColor: '#A07820' }} title={`HRA ${h}%`} />
+                    <div style={{ width: `${b}%`, backgroundColor: '#263a5e' }} title={`Basic ${b}%`} />
+                    <div style={{ width: `${h}%`, backgroundColor: '#d97706' }} title={`HRA ${h}%`} />
                     <div style={{ width: `${t}%`, backgroundColor: '#2D6A4F' }} title={`Transport ${t}%`} />
                     <div style={{ width: `${s}%`, backgroundColor: '#555555' }} title={`Special ${s}%`} />
                   </div>
                   <div className="flex gap-4 text-[9px] font-bold">
-                    <span style={{ color: '#1E3264' }}>■ Basic {b}%</span>
-                    <span style={{ color: '#A07820' }}>■ HRA {h}%</span>
+                    <span style={{ color: '#263a5e' }}>■ Basic {b}%</span>
+                    <span style={{ color: '#d97706' }}>■ HRA {h}%</span>
                     <span style={{ color: '#2D6A4F' }}>■ Transport {t}%</span>
                     <span style={{ color: '#555555' }}>■ Special {s}%</span>
                     {warn && <span className="text-red-500 ml-auto">⚠ Total exceeds 100%</span>}
@@ -873,8 +873,8 @@ return (
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {([
-                { label: 'Basic Salary %',       val: hrBasicPct,     set: setHrBasicPct,     color: '#1E3264' },
-                { label: 'HRA %',                val: hrHraPct,       set: setHrHraPct,       color: '#A07820' },
+                { label: 'Basic Salary %',       val: hrBasicPct,     set: setHrBasicPct,     color: '#263a5e' },
+                { label: 'HRA %',                val: hrHraPct,       set: setHrHraPct,       color: '#d97706' },
                 { label: 'Transport Allowance %',val: hrTransportPct, set: setHrTransportPct, color: '#2D6A4F' },
                 { label: 'Special Allowance %',  val: hrSpecialPct,   set: setHrSpecialPct,   color: '#555555' },
               ] as { label: string; val: string; set: (v: string) => void; color: string }[]).map(f => (
@@ -907,7 +907,7 @@ return (
                   <label className="block text-[10px] font-black uppercase tracking-widest mb-1.5" style={{ color: colors.textMuted }}>{f.label}</label>
                   <div className="relative">
                     <input type="number" min={f.min} value={f.val} onChange={e => f.set(e.target.value)}
-                      className="w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E3264]/20 focus:border-[#1E3264] transition-all"
+                      className="w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#263a5e]/20 focus:border-[#263a5e] transition-all"
                       style={{ backgroundColor: colors.bg, borderColor: colors.border, color: colors.textMain }} />
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold pointer-events-none" style={{ color: colors.textMuted }}>{f.unit}</span>
                   </div>
@@ -916,7 +916,7 @@ return (
             </div>
           </div>
 
-          <div className="p-3 rounded-xl text-[10px] font-medium" style={{ backgroundColor: theme === 'light' ? '#eff6ff' : '#1e2d45', color: theme === 'light' ? '#1d4ed8' : '#93c5fd' }}>
+          <div className="p-3 rounded-xl text-[10px] font-medium" style={{ backgroundColor: theme === 'light' ? '#eff6ff' : '#1e2d45', color: theme === 'light' ? '#263a5e' : '#a0afd2' }}>
             All values above are automatically inserted into generated PDF letters (Offer · Appointment · Welcome). Save once here — all future documents use the updated values.
           </div>
 
@@ -927,8 +927,8 @@ return (
       <section className="border rounded-2xl p-6 space-y-5 shadow-sm" style={{ borderColor: colors.border }}>
         <div>
           <div className="flex items-center gap-3 mb-1">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: '#0ea5e910' }}>
-              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#0ea5e9" strokeWidth={2}>
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: '#263a5e10' }}>
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#263a5e" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
@@ -1009,18 +1009,18 @@ return (
         </div>
 
         {/* Preview */}
-        <div className="space-y-2 p-4 rounded-xl" style={{ background: '#0ea5e908', border: '1px solid #0ea5e920' }}>
+        <div className="space-y-2 p-4 rounded-xl" style={{ background: '#263a5e08', border: '1px solid #263a5e20' }}>
           <div className="flex items-center gap-2">
-            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#0ea5e9" strokeWidth={2}>
+            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#263a5e" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <p className="text-[11px] font-bold" style={{ color: '#0369a1' }}>
+            <p className="text-[11px] font-bold" style={{ color: '#1d2c49' }}>
               Attendance Rules Preview
             </p>
           </div>
-          <ul className="text-[11px] space-y-1 pl-5 list-disc" style={{ color: '#0369a1' }}>
+          <ul className="text-[11px] space-y-1 pl-5 list-disc" style={{ color: '#1d2c49' }}>
             <li>Sign in before <strong>{shiftStart}</strong> + {graceMinutes} min → <span className="text-emerald-600">Present (on time)</span></li>
-            <li>Sign in after <strong>{shiftStart}</strong> + {graceMinutes} min, before <strong>{halfDayThreshold}</strong> → <span className="text-orange-500">Present (Late)</span></li>
+            <li>Sign in after <strong>{shiftStart}</strong> + {graceMinutes} min, before <strong>{halfDayThreshold}</strong> → <span className="text-amber-500">Present (Late)</span></li>
             <li>Sign in at <strong>{halfDayThreshold}</strong> or later → <span className="text-amber-600">Half Day</span></li>
             <li>Sign out before <strong>{shiftEnd}</strong> → <span className="text-red-500">Early Departure</span> flag</li>
             <li>Multiple sign-ins: <strong>first check-in</strong> is recorded; <strong>last sign-out</strong> is recorded</li>
@@ -1100,8 +1100,8 @@ return (
       <section className="border rounded-2xl p-6 space-y-5 shadow-sm" style={{ borderColor: colors.border }}>
         <div>
           <div className="flex items-center gap-3 mb-1">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: '#5A0F1A10' }}>
-              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#5A0F1A" strokeWidth={2}>
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: '#05966910' }}>
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#059669" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V6m0 12v-2m9-4a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
@@ -1124,7 +1124,7 @@ return (
                 max={120}
                 value={salesCommissionWindow}
                 onChange={e => setSalesCommissionWindow(e.target.value)}
-                className="w-full px-4 py-3 pr-20 rounded-xl border text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/20 focus:border-[#5A0F1A] transition-all"
+                className="w-full px-4 py-3 pr-20 rounded-xl border text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#059669]/20 focus:border-[#059669] transition-all"
                 style={{ borderColor: colors.border, background: theme === 'dark' ? '#1e293b' : '#f8fafc', color: colors.textMain }}
               />
               <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[11px] font-bold opacity-40" style={{ color: colors.textMain }}>months</span>
@@ -1146,7 +1146,7 @@ return (
                 step={0.5}
                 value={salesCommissionRate}
                 onChange={e => setSalesCommissionRate(e.target.value)}
-                className="w-full px-4 py-3 pr-12 rounded-xl border text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/20 focus:border-[#5A0F1A] transition-all"
+                className="w-full px-4 py-3 pr-12 rounded-xl border text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#059669]/20 focus:border-[#059669] transition-all"
                 style={{ borderColor: colors.border, background: theme === 'dark' ? '#1e293b' : '#f8fafc', color: colors.textMain }}
               />
               <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[11px] font-bold opacity-40" style={{ color: colors.textMain }}>%</span>
@@ -1157,7 +1157,7 @@ return (
           </div>
         </div>
 
-        <div className="p-3 rounded-xl text-[10px] font-medium flex items-start gap-2" style={{ backgroundColor: '#5A0F1A0d', color: '#5A0F1A' }}>
+        <div className="p-3 rounded-xl text-[10px] font-medium flex items-start gap-2" style={{ backgroundColor: '#0596690d', color: '#059669' }}>
           <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} className="flex-shrink-0 mt-px">
             <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
@@ -1169,8 +1169,8 @@ return (
       <section className="border rounded-2xl p-6 space-y-5 shadow-sm" style={{ borderColor: colors.border }}>
         <div>
           <div className="flex items-center gap-3 mb-1">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: '#5A0F1A10' }}>
-              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#5A0F1A" strokeWidth={2}>
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: '#05966910' }}>
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#059669" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </div>
@@ -1193,7 +1193,7 @@ return (
               step={0.5}
               value={prebookingDeductionPct}
               onChange={e => setPrebookingDeductionPct(e.target.value)}
-              className="w-full px-4 py-3 pr-12 rounded-xl border text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/20 focus:border-[#5A0F1A] transition-all"
+              className="w-full px-4 py-3 pr-12 rounded-xl border text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#059669]/20 focus:border-[#059669] transition-all"
               style={{ borderColor: colors.border, background: theme === 'dark' ? '#1e293b' : '#f8fafc', color: colors.textMain }}
             />
             <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[11px] font-bold opacity-40" style={{ color: colors.textMain }}>%</span>
@@ -1203,7 +1203,7 @@ return (
           </p>
         </div>
 
-        <div className="p-3 rounded-xl text-[10px] font-medium flex items-start gap-2" style={{ backgroundColor: '#5A0F1A0d', color: '#5A0F1A' }}>
+        <div className="p-3 rounded-xl text-[10px] font-medium flex items-start gap-2" style={{ backgroundColor: '#0596690d', color: '#059669' }}>
           <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} className="flex-shrink-0 mt-px">
             <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>

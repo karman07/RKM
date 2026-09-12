@@ -280,7 +280,7 @@ export default function ProductsPage() {
             labels: Object.keys(catCounts),
             datasets: [{
               data: Object.values(catCounts),
-              backgroundColor: ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#64748b'],
+              backgroundColor: ['#263a5e', '#4c6291', '#7186b5', '#a0afd2', '#94a3b8'],
               borderWidth: 0,
             }]
           },
@@ -289,7 +289,7 @@ export default function ProductsPage() {
             datasets: [{
               label: 'Composition',
               data: Object.values(metalCounts),
-              backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444'],
+              backgroundColor: ['#263a5e', '#4c6291', '#7186b5', '#a0afd2'],
               borderRadius: 8,
             }]
           }
@@ -1328,7 +1328,7 @@ export default function ProductsPage() {
             return (
               <div className="space-y-4">
                 {/* Live Price Card */}
-                <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 rounded-2xl space-y-3">
+                <div className="p-4 bg-gradient-to-br from-blue-50 to-blue-50 border border-blue-100 rounded-2xl space-y-3">
                   <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">Live Price Breakdown (from Settings rates)</p>
 
                   {!metalR && !result.is_override && (
@@ -1356,7 +1356,7 @@ export default function ProductsPage() {
                         <span className="text-slate-500 text-[12px] capitalize">{s.stone_type} stone</span>
                         <span className="font-bold text-slate-800">
                           {s.is_override
-                            ? <><span className="text-violet-600">Fixed</span> = ₹{fmt(s.price)}</>
+                            ? <><span className="text-blue-600">Fixed</span> = ₹{fmt(s.price)}</>
                             : <>{fmtDec(s.weight)} × ₹{fmt(s.rate)} = <span className="text-blue-700">₹{fmt(s.price)}</span></>
                           }
                         </span>
@@ -1767,7 +1767,7 @@ export default function ProductsPage() {
             ].map(({ label, value, isDiscount }) => (
               <div key={label} className="flex items-center justify-between py-2 border-b border-slate-100">
                 <span className="text-sm text-slate-600 font-medium">{label}</span>
-                <span className={`text-sm font-black ${isDiscount ? 'text-rose-600' : 'text-slate-900'}`}>
+                <span className={`text-sm font-black ${isDiscount ? 'text-red-600' : 'text-slate-900'}`}>
                   {isDiscount ? '' : '₹'}{value.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                 </span>
               </div>

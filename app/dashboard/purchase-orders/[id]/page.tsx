@@ -379,7 +379,7 @@ ${el.outerHTML}
       {/* Toast */}
       {toast && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[300] px-6 py-3 rounded-xl font-bold text-sm shadow-2xl flex items-center gap-2"
-          style={{ background: toast.type === 'success' ? '#1d4ed8' : '#ef4444', color: '#fff' }}>
+          style={{ background: toast.type === 'success' ? '#263a5e' : '#ef4444', color: '#fff' }}>
           {toast.type === 'success' ? '✓' : '✕'} {toast.message}
         </div>
       )}
@@ -498,13 +498,13 @@ ${el.outerHTML}
 
       {/* ── Summary Footer ────────────────────────────────────────────────────── */}
       {totalItems > 0 && (
-        <div className="flex items-center justify-between bg-slate-900 text-white rounded-2xl p-6 mt-2">
+        <div className="flex items-center justify-between bg-blue-700 text-white rounded-2xl p-6 mt-2">
           <div>
             <div className="text-xs text-slate-400 mb-1">{totalItems} Product{totalItems !== 1 ? 's' : ''}</div>
             <div className="text-2xl font-black">₹{fmt(poForm.total_amount || 0)}</div>
           </div>
           {!isPublished && (
-            <button onClick={() => setShowPublishModal(true)} className="px-6 py-3 rounded-xl bg-blue-600 text-white font-bold text-sm hover:bg-blue-500 transition-colors">
+            <button onClick={() => setShowPublishModal(true)} className="px-6 py-3 rounded-xl bg-white text-blue-700 font-bold text-sm hover:bg-blue-50 transition-colors">
               Publish to Inventory
             </button>
           )}
@@ -515,7 +515,7 @@ ${el.outerHTML}
       {showPublishModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[200] p-4">
           <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
-            <div className="bg-slate-900 text-white px-6 py-5">
+            <div className="bg-blue-700 text-white px-6 py-5">
               <div className="text-lg font-black">Publish to Inventory</div>
               <div className="text-xs text-slate-400 mt-1">Configure how {totalItems} product{totalItems !== 1 ? 's' : ''} will be added. This action is <b>irreversible</b>.</div>
             </div>
@@ -944,8 +944,8 @@ function FullProductForm({ item, isPublished, categories, metalTypes, purities, 
             disabled={dis} value={item.purchase_price || ''} onChange={e => onFieldChange('purchase_price', parseFloat(e.target.value) || 0)} placeholder="Cost from supplier" />
         </div>
         <div>
-          <label className={LBL + ' text-violet-700'}>Price Override (₹)</label>
-          <input type="number" className={dis ? INP_DIS : 'w-full px-3.5 py-2.5 border border-violet-200 rounded-lg text-sm bg-violet-50 focus:outline-none focus:ring-2 focus:ring-violet-400'}
+          <label className={LBL + ' text-blue-700'}>Price Override (₹)</label>
+          <input type="number" className={dis ? INP_DIS : 'w-full px-3.5 py-2.5 border border-blue-200 rounded-lg text-sm bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-400'}
             disabled={dis} value={item.price_override || ''} onChange={e => onFieldChange('price_override', e.target.value)} placeholder="Min base price (floor)" />
         </div>
         <div>

@@ -21,11 +21,11 @@ import {
 
 const roleBadge: Record<string, { wrap: string; dot: string; icon: any }> = {
   admin:   { wrap: 'bg-blue-50 text-blue-700 border-blue-100',        dot: 'bg-blue-600',   icon: Shield    },
-  manager: { wrap: 'bg-violet-50 text-violet-700 border-violet-100',  dot: 'bg-violet-600', icon: UserCheck },
+  manager: { wrap: 'bg-blue-50 text-blue-700 border-blue-100',  dot: 'bg-blue-600', icon: UserCheck },
   cashier: { wrap: 'bg-slate-50 text-slate-600 border-slate-100',     dot: 'bg-slate-400',  icon: UserIcon  },
   worker:  { wrap: 'bg-amber-50 text-amber-700 border-amber-100',     dot: 'bg-amber-500',  icon: Wrench    },
-  sales:   { wrap: 'bg-[#5A0F1A]/10 text-[#5A0F1A] border-[#5A0F1A]/20', dot: 'bg-[#5A0F1A]', icon: Briefcase },
-  custom:  { wrap: 'bg-teal-50 text-teal-700 border-teal-100',        dot: 'bg-teal-600',   icon: UserCog   },
+  sales:   { wrap: 'bg-emerald-50 text-emerald-700 border-emerald-100',   dot: 'bg-emerald-500', icon: Briefcase },
+  custom:  { wrap: 'bg-blue-50 text-blue-700 border-blue-100',        dot: 'bg-blue-600',   icon: UserCog   },
 };
 
 interface UserForm {
@@ -497,7 +497,7 @@ export default function UsersPage() {
                 ? r.value === 'worker'
                   ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20 px-8'
                   : r.value === 'sales'
-                  ? 'bg-[#5A0F1A] text-white shadow-lg shadow-[#5A0F1A]/20 px-8'
+                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20 px-8'
                   : 'bg-blue-600 text-white shadow-lg shadow-blue-600/20 px-8'
                 : 'bg-white border border-slate-200 text-slate-400 hover:text-blue-600 hover:border-blue-200'
             }`}
@@ -522,7 +522,7 @@ export default function UsersPage() {
               onClick={() => { setStatusFilter(s.value); setPage(1); }}
               className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${
                 statusFilter === s.value
-                  ? 'bg-slate-900 text-white'
+                  ? 'bg-blue-600 text-white'
                   : 'bg-white border border-slate-200 text-slate-400 hover:text-slate-600 hover:border-slate-300'
               }`}
             >
@@ -1050,14 +1050,14 @@ export default function UsersPage() {
                       {/* Visual bar */}
                       <div className="px-4 pt-3 pb-1">
                         <div className="flex h-2 rounded-full overflow-hidden gap-0.5">
-                          {gross > 0 && basic > 0     && <div style={{ width: `${basic/gross*100}%`,     backgroundColor: '#1E3264' }} />}
-                          {gross > 0 && hra > 0       && <div style={{ width: `${hra/gross*100}%`,       backgroundColor: '#A07820' }} />}
+                          {gross > 0 && basic > 0     && <div style={{ width: `${basic/gross*100}%`,     backgroundColor: '#263a5e' }} />}
+                          {gross > 0 && hra > 0       && <div style={{ width: `${hra/gross*100}%`,       backgroundColor: '#d97706' }} />}
                           {gross > 0 && transport > 0 && <div style={{ width: `${transport/gross*100}%`, backgroundColor: '#15803d' }} />}
                           {gross > 0 && special > 0   && <div style={{ width: `${special/gross*100}%`,   backgroundColor: '#64748b' }} />}
                         </div>
                         <div className="flex gap-3 mt-1.5 text-[9px] font-bold flex-wrap">
-                          <span style={{ color: '#1E3264' }}>■ Basic</span>
-                          <span style={{ color: '#A07820' }}>■ HRA</span>
+                          <span style={{ color: '#263a5e' }}>■ Basic</span>
+                          <span style={{ color: '#d97706' }}>■ HRA</span>
                           <span style={{ color: '#15803d' }}>■ Transport</span>
                           <span style={{ color: '#64748b' }}>■ Special</span>
                         </div>
@@ -1066,8 +1066,8 @@ export default function UsersPage() {
                       {/* Component inputs */}
                       <div className="grid grid-cols-2 gap-px bg-slate-100 border-t border-slate-100 mt-2">
                         {([
-                          { key: 'salary_basic',     label: 'Basic Salary',       color: '#1E3264', pct: appSettings.hr_salary_basic_pct ?? 50 },
-                          { key: 'salary_hra',       label: 'HRA',                color: '#A07820', pct: appSettings.hr_salary_hra_pct ?? 20 },
+                          { key: 'salary_basic',     label: 'Basic Salary',       color: '#263a5e', pct: appSettings.hr_salary_basic_pct ?? 50 },
+                          { key: 'salary_hra',       label: 'HRA',                color: '#d97706', pct: appSettings.hr_salary_hra_pct ?? 20 },
                           { key: 'salary_transport', label: 'Transport',          color: '#15803d', pct: appSettings.hr_salary_transport_pct ?? 10 },
                           { key: 'salary_special',   label: 'Special Allowance',  color: '#64748b', pct: appSettings.hr_salary_special_pct ?? 20 },
                         ] as { key: keyof UserForm; label: string; color: string; pct: number }[]).map(f => (
@@ -1265,7 +1265,7 @@ export default function UsersPage() {
                   subtitle: 'Onboarding Welcome',
                   desc:  'Warm welcome with first-day schedule, checklist, and reporting details.',
                   urlKey: 'welcome_letter_url',
-                  accent: 'bg-violet-600',
+                  accent: 'bg-blue-600',
                   icon: Sparkles,
                 },
               ]).map(doc => {

@@ -533,7 +533,7 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
               </button>
               <button
                 onClick={onClose}
-                className="flex-1 py-3.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-md transition-colors"
+                className="flex-1 py-3.5 bg-[#263A5E] hover:bg-[#1D2C49] text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-md transition-colors"
               >
                 Done
               </button>
@@ -596,15 +596,15 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
                   <p className="font-black text-slate-900">{product?.name ?? '—'}</p>
                   <p className="text-[11px] text-slate-500 mt-0.5">{product?.metal_type} {product?.purity} · {product?.gross_weight}g gross · Code: {first.unique_item_code}</p>
                   {makingCharges > 0 && <p className="text-[10px] text-slate-400 mt-0.5">Making charges: ₹{fmt(makingCharges)}</p>}
-                  <p className="text-[10px] text-[#2563EB] font-bold mt-0.5">Max discount allowed: {maxDiscount}%</p>
+                  <p className="text-[10px] text-[#263A5E] font-bold mt-0.5">Max discount allowed: {maxDiscount}%</p>
                 </div>
-                {branch && <span className="px-3 py-1 bg-[#2563EB]/10 text-[#2563EB] text-[10px] font-black uppercase rounded-lg flex-shrink-0">{branch.name}</span>}
+                {branch && <span className="px-3 py-1 bg-[#263A5E]/10 text-[#263A5E] text-[10px] font-black uppercase rounded-lg flex-shrink-0">{branch.name}</span>}
               </div>
             ) : (
               <div className="rounded-2xl border border-slate-100 overflow-hidden">
                 <div className="flex items-center justify-between gap-2 px-5 py-3 bg-slate-50 border-b border-slate-100">
                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{items.length} Items in this Bill</p>
-                  {branch && <span className="px-3 py-1 bg-[#2563EB]/10 text-[#2563EB] text-[10px] font-black uppercase rounded-lg flex-shrink-0">{branch.name}</span>}
+                  {branch && <span className="px-3 py-1 bg-[#263A5E]/10 text-[#263A5E] text-[10px] font-black uppercase rounded-lg flex-shrink-0">{branch.name}</span>}
                 </div>
                 <div className="max-h-48 overflow-y-auto divide-y divide-slate-50">
                   {items.map(it => {
@@ -615,14 +615,14 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
                           <p className="text-sm font-black text-slate-900 truncate">{p?.name ?? it.unique_item_code}</p>
                           <p className="text-[10px] text-slate-400 font-bold">{it.unique_item_code}</p>
                         </div>
-                        <span className="text-sm font-black text-[#2563EB] flex-shrink-0">₹{fmt(itemQuotedPrice(it))}</span>
+                        <span className="text-sm font-black text-[#263A5E] flex-shrink-0">₹{fmt(itemQuotedPrice(it))}</span>
                       </div>
                     );
                   })}
                 </div>
                 <div className="flex items-center justify-between px-5 py-3 bg-slate-50 border-t border-slate-100">
                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Bill Total</span>
-                  <span className="text-base font-black text-[#2563EB]">₹{fmt(basePrice)}</span>
+                  <span className="text-base font-black text-[#263A5E]">₹{fmt(basePrice)}</span>
                 </div>
                 {makingCharges > 0 && (
                   <div className="px-5 py-2 bg-white border-t border-slate-50">
@@ -635,7 +635,7 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
             {/* ── Cashier notes ── */}
             {first.sale_request_notes && (
               <div className="flex gap-3 bg-blue-50 border border-blue-100 rounded-2xl p-4">
-                <svg className="shrink-0 mt-0.5" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#3b82f6" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
+                <svg className="shrink-0 mt-0.5" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#263a5e" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
                 <div>
                   <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Note from {first.sale_request_by_name || 'Cashier'}</p>
                   <p className="text-xs font-bold text-blue-800 mt-0.5">{first.sale_request_notes}</p>
@@ -646,10 +646,10 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
             {/* ── Customer Name + Final Sale Price ── */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-[10px] font-black uppercase tracking-widest text-[#2563EB] mb-2">Customer Name <span className="text-red-500">*</span></label>
-                <div className="flex items-center gap-3 bg-white border border-[#2563EB]/30 rounded-xl px-4 py-3 shadow-sm">
+                <label className="block text-[10px] font-black uppercase tracking-widest text-[#263A5E] mb-2">Customer Name <span className="text-red-500">*</span></label>
+                <div className="flex items-center gap-3 bg-white border border-[#263A5E]/30 rounded-xl px-4 py-3 shadow-sm">
                   <div className="w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black text-white flex-shrink-0"
-                    style={{ background: 'linear-gradient(135deg, #2563EB, #1D4ED8)' }}>
+                    style={{ background: 'linear-gradient(135deg, #263A5E, #1D2C49)' }}>
                     {customerName.split(' ').filter(Boolean).map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '?'}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -664,16 +664,16 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
                 </div>
               </div>
               <div>
-                <label className="block text-[10px] font-black uppercase tracking-widest text-[#2563EB] mb-2">Final Sale Price (₹)</label>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-[#263A5E] mb-2">Final Sale Price (₹)</label>
                 <div className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-4 shadow-sm space-y-1.5">
                   <div className="flex justify-between items-center">
-                    <span className="text-sm font-black text-[#2563EB]">₹{fmt(finalPrice)}</span>
+                    <span className="text-sm font-black text-[#263A5E]">₹{fmt(finalPrice)}</span>
                     <div className="flex items-center gap-1.5 flex-wrap justify-end">
                       {managerDiscount > 0 && <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-md font-black">-{managerDiscount}% off</span>}
                       {investmentAmount > 0 && <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-md font-black">-₹{fmt(investmentAmount)} balance</span>}
-                      {mcDiscount > 0 && <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-md font-black">-₹{fmt(mcDiscount)} making</span>}
+                      {mcDiscount > 0 && <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md font-black">-₹{fmt(mcDiscount)} making</span>}
                       {totalAdvanceApplied > 0 && <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md font-black">-₹{fmt(totalAdvanceApplied)} advance</span>}
-                      {advMcDiscount > 0 && <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-md font-black">-₹{fmt(advMcDiscount)} making</span>}
+                      {advMcDiscount > 0 && <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md font-black">-₹{fmt(advMcDiscount)} making</span>}
                     </div>
                   </div>
                   {(managerDiscount > 0 || investmentAmount > 0 || mcDiscount > 0 || totalAdvanceApplied > 0 || advMcDiscount > 0) && (
@@ -692,7 +692,7 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
                         </div>
                       )}
                       {mcDiscount > 0 && (
-                        <div className="text-[10px] text-purple-600 font-medium flex items-center gap-1.5">
+                        <div className="text-[10px] text-blue-600 font-medium flex items-center gap-1.5">
                           <span>- Making charges waived:</span><span className="font-bold">₹{fmt(mcDiscount)}</span>
                         </div>
                       )}
@@ -702,11 +702,11 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
                         </div>
                       )}
                       {advMcDiscount > 0 && (
-                        <div className="text-[10px] text-purple-600 font-medium flex items-center gap-1.5">
+                        <div className="text-[10px] text-blue-600 font-medium flex items-center gap-1.5">
                           <span>- Advance making charges waiver ({advWaiverPct}% of ₹{fmt(makingCharges)}):</span><span className="font-bold">₹{fmt(advMcDiscount)}</span>
                         </div>
                       )}
-                      <div className="text-[10px] text-[#2563EB] font-black flex items-center gap-1.5 border-t border-slate-100 pt-1">
+                      <div className="text-[10px] text-[#263A5E] font-black flex items-center gap-1.5 border-t border-slate-100 pt-1">
                         <span>Customer pays:</span><span>₹{fmt(finalPrice)}</span>
                       </div>
                     </div>
@@ -720,12 +720,12 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
               <div>
                 <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Email</label>
                 <input type="email" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-4 text-sm font-bold text-slate-900 focus:outline-[#2563EB] shadow-sm" placeholder="email@example.com" />
+                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-4 text-sm font-bold text-slate-900 focus:outline-[#263A5E] shadow-sm" placeholder="email@example.com" />
               </div>
               <div>
                 <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Shipping Address</label>
                 <input type="text" value={shippingAddress} onChange={e => setShippingAddress(e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-4 text-sm font-bold text-slate-900 focus:outline-[#2563EB] shadow-sm" placeholder="Full address..." />
+                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-4 text-sm font-bold text-slate-900 focus:outline-[#263A5E] shadow-sm" placeholder="Full address..." />
               </div>
             </div>
 
@@ -734,17 +734,17 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
               <div>
                 <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">City</label>
                 <input type="text" value={shippingCity} onChange={e => setShippingCity(e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3.5 text-sm font-bold text-slate-900 focus:outline-[#2563EB] shadow-sm" />
+                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3.5 text-sm font-bold text-slate-900 focus:outline-[#263A5E] shadow-sm" />
               </div>
               <div>
                 <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">State</label>
                 <input type="text" value={shippingState} onChange={e => setShippingState(e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3.5 text-sm font-bold text-slate-900 focus:outline-[#2563EB] shadow-sm" />
+                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3.5 text-sm font-bold text-slate-900 focus:outline-[#263A5E] shadow-sm" />
               </div>
               <div>
                 <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Pin</label>
                 <input type="text" value={shippingPincode} onChange={e => setShippingPincode(e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3.5 text-sm font-bold text-slate-900 focus:outline-[#2563EB] shadow-sm" />
+                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3.5 text-sm font-bold text-slate-900 focus:outline-[#263A5E] shadow-sm" />
               </div>
             </div>
 
@@ -753,7 +753,7 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
               <div>
                 <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Payment Mode</label>
                 <select value={paymentMode} onChange={e => setPaymentMode(e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3.5 text-sm font-bold text-slate-900 focus:outline-[#2563EB] shadow-sm appearance-none cursor-pointer">
+                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3.5 text-sm font-bold text-slate-900 focus:outline-[#263A5E] shadow-sm appearance-none cursor-pointer">
                   <option value="cash">Cash</option>
                   <option value="card">Card</option>
                   <option value="upi">UPI</option>
@@ -764,7 +764,7 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
                 </select>
               </div>
               <div>
-                <label className="block text-[10px] font-black uppercase tracking-widest text-[#2563EB] mb-2">Sale Branch</label>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-[#263A5E] mb-2">Sale Branch</label>
                 <div className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-sm font-bold text-slate-700 shadow-sm truncate">
                   {branch?.name || reqData.sold_at_branch_id || '—'}
                 </div>
@@ -772,13 +772,13 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
             </div>
 
             {/* ── Cashier Attribution ── */}
-            <div className="p-4 rounded-2xl border-2 border-indigo-100 bg-gradient-to-r from-indigo-50/60 to-purple-50/40 space-y-2.5">
-              <label className="block text-[10px] font-black text-indigo-700 uppercase tracking-widest flex items-center gap-2">
+            <div className="p-4 rounded-2xl border-2 border-blue-100 bg-gradient-to-r from-blue-50/60 to-blue-50/40 space-y-2.5">
+              <label className="block text-[10px] font-black text-blue-700 uppercase tracking-widest flex items-center gap-2">
                 <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                 Cashier Attribution — Sales Performance Record
               </label>
               <select value={soldByUserId} onChange={e => setSoldByUserId(e.target.value)}
-                className="w-full bg-white border-2 border-indigo-200 rounded-xl px-4 py-3.5 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-400 appearance-none cursor-pointer shadow-sm">
+                className="w-full bg-white border-2 border-blue-200 rounded-xl px-4 py-3.5 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400 appearance-none cursor-pointer shadow-sm">
                 <option value="">— No Cashier / Admin Direct Sale —</option>
                 {cashiers.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
               </select>
@@ -789,14 +789,14 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
 
             {/* ── Discount ── */}
             <div>
-              <label className="block text-[10px] font-black uppercase tracking-widest text-[#2563EB] mb-2">
+              <label className="block text-[10px] font-black uppercase tracking-widest text-[#263A5E] mb-2">
                 Discount (Max {maxDiscount}%)
               </label>
               <div className="flex items-center gap-4">
                 <input
                   type="number" min={0} max={maxDiscount} value={managerDiscount}
                   onChange={e => setManagerDiscount(Math.min(Math.max(0, Number(e.target.value)), maxDiscount))}
-                  className="w-24 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-black text-center text-[#2563EB] focus:outline-[#2563EB] shadow-sm"
+                  className="w-24 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-black text-center text-[#263A5E] focus:outline-[#263A5E] shadow-sm"
                 />
                 <span className="text-[11px] font-bold text-slate-400">Lowers the Final Sale Price dynamically based on margin rules.</span>
               </div>
@@ -921,7 +921,7 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
                   <div className="rounded-2xl border-2 border-blue-200 bg-blue-50/40 p-5 space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#1d4ed8" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 12V7H5a2 2 0 010-4h14v4M3 5v14a2 2 0 002 2h16v-5M18 12a2 2 0 000 4h4v-4h-4z" /></svg>
+                        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#1d2c49" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 12V7H5a2 2 0 010-4h14v4M3 5v14a2 2 0 002 2h16v-5M18 12a2 2 0 000 4h4v-4h-4z" /></svg>
                         <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">Advance Balance Redemption</p>
                       </div>
                       <div className="flex items-center gap-3">
@@ -1080,7 +1080,7 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
               <button
                 onClick={handleApprove}
                 disabled={approving || rejecting || Boolean(investmentSubId && investmentAmount > 0 && !redemptionChoice)}
-                className="px-10 py-3.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-md transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+                className="px-10 py-3.5 bg-[#263A5E] hover:bg-[#1D2C49] text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-md transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
               >
                 {approving
                   ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Processing…</>
@@ -1325,8 +1325,8 @@ export default function SaleApprovalsPage() {
 
                     {/* Requester */}
                     <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-xl bg-[#2563EB]/10 flex items-center justify-center">
-                        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#2563EB" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                      <div className="w-7 h-7 rounded-xl bg-[#263A5E]/10 flex items-center justify-center">
+                        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#263A5E" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
                       </div>
                       <div>
                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Requested By</p>
@@ -1368,7 +1368,7 @@ export default function SaleApprovalsPage() {
 
                     {first.sale_request_notes && (
                       <div className="flex gap-2 bg-blue-50 rounded-2xl p-3">
-                        <svg className="shrink-0 mt-0.5" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#3b82f6" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
+                        <svg className="shrink-0 mt-0.5" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#263a5e" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
                         <p className="text-xs font-bold text-blue-700">{first.sale_request_notes}</p>
                       </div>
                     )}
@@ -1384,7 +1384,7 @@ export default function SaleApprovalsPage() {
                     <div className="flex flex-col gap-2 w-full md:w-auto">
                       <button
                         onClick={() => setReviewGroup(group.items)}
-                        className="flex items-center justify-center gap-2 px-5 py-3 bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-black text-sm rounded-2xl transition-all shadow-md shadow-[#2563EB]/20 min-w-[140px]"
+                        className="flex items-center justify-center gap-2 px-5 py-3 bg-[#263A5E] hover:bg-[#1D2C49] text-white font-black text-sm rounded-2xl transition-all shadow-md shadow-[#263A5E]/20 min-w-[140px]"
                       >
                         <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                         Review
