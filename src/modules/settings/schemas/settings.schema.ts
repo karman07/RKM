@@ -250,6 +250,17 @@ export class Settings {
     default: [],
   })
   hold_my_gold_tiers: { minAmount: number; maxAmount: number | null; discountPercent: number }[];
+
+  // ── Storefront ────────────────────────────────────────────────────────────────
+
+  /**
+   * Shows the "development build" banner on the public storefront when true.
+   * Admin-controlled from the Settings panel — independent of how/where the
+   * frontend is actually deployed, so staging/dev deploys can be labeled
+   * without relying on NODE_ENV alone.
+   */
+  @Prop({ type: Boolean, default: false })
+  dev_banner_enabled: boolean;
 }
 
 export const SettingsSchema = SchemaFactory.createForClass(Settings);

@@ -222,4 +222,11 @@ export class UpdateSettingsDto {
   @IsOptional()
   @IsArray()
   hold_my_gold_tiers?: { minAmount: number; maxAmount: number | null; discountPercent: number }[];
+
+  // ── Storefront ──────────────────────────────────────────────────────────────
+
+  /** Shows the "development build" banner on the public storefront */
+  @IsOptional()
+  @IsBoolean()
+  dev_banner_enabled?: boolean;
 }
