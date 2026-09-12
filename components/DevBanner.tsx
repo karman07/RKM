@@ -1,8 +1,6 @@
 export const DEV_BANNER_HEIGHT = 32;
 
-export const isDevBannerActive =
-  process.env.NODE_ENV !== "production" &&
-  process.env.NEXT_PUBLIC_APP_ENV === "development";
+export const isDevBannerActive = process.env.NODE_ENV === "development";
 
 export default function DevBanner() {
   if (!isDevBannerActive) return null;
