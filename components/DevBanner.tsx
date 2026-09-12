@@ -9,10 +9,16 @@ export const DEV_BANNER_HEIGHT = 32;
  * appears when an admin has explicitly turned it on.
  * Fetched server-side (in the root layout) so there's no client flash and
  * the resolved value can be threaded down to Navbar for its layout offset.
+ *
+ * A 404 means the API this build is pointed at doesn't have the
+ * `/settings/public` route at all (stale/mismatched backend deploy) — that's
+ * itself a "this isn't the real build" signal, so default the banner on
+ * rather than silently hiding it.
  */
 export async function getDevBannerActive(): Promise<boolean> {
   try {
     const res = await fetch(`${API_BASE_URL}/settings/public`, { cache: "no-store" });
+    if (res.status === 404) return true;
     if (!res.ok) return false;
     const data = await res.json();
     return data?.dev_banner_enabled === true;
