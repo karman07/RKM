@@ -750,6 +750,15 @@ export const deleteProduct = (id: string) =>
 export const regenerateProductBarcode = (id: string) =>
   request<Product>(`/products/${id}/regenerate-barcode`, { method: 'POST' });
 
+/** Live preview of the SKU the backend will auto-assign for this category/metal combo. */
+export const getSkuPreview = (categoryId?: string, metalType?: string) => {
+  const params = new URLSearchParams();
+  if (categoryId) params.set('category_id', categoryId);
+  if (metalType) params.set('metal_type', metalType);
+  const qs = params.toString();
+  return request<{ sku: string }>(`/products/sku-preview${qs ? `?${qs}` : ''}`);
+};
+
 // ─── Uploads ──────────────────────────────────────────────────────────────────
 
 export const uploadProductImages = async (

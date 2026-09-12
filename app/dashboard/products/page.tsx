@@ -4,7 +4,7 @@ import { useSearchParams } from 'next/navigation';
 import {
   getProducts, createProduct, updateProduct, deleteProduct,
   getProductById, getCategories, getLookups, uploadProductImages, removeProductImage, regenerateProductBarcode,
-  syncProductInventoryPrices,
+  syncProductInventoryPrices, getSkuPreview,
   staticUrl,
   type Product, type Category, type Lookup, type PricingBreakdown,
 } from '@/lib/api';
@@ -174,6 +174,7 @@ export default function ProductsPage() {
   const [editTarget, setEditTarget] = useState<Product | null>(null);
   const [form, setForm] = useState<ProductForm>(emptyForm);
   const [netWeightManual, setNetWeightManual] = useState(false);
+  const [skuLoading, setSkuLoading] = useState(false);
   const [pendingImages, setPendingImages] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
@@ -183,6 +184,7 @@ export default function ProductsPage() {
   const [uploading, setUploading] = useState(false);
   const [regeneratingBarcode, setRegeneratingBarcode] = useState(false);
   const [barcodePreview, setBarcodePreview] = useState<Product | null>(null);
+  const [printConfig, setPrintConfig] = useState({ rows: 3, columns: 3, widthMm: 40, heightMm: 25, showDetails: true });
 
   const [pricingModal, setPricingModal] = useState<(PricingBreakdown & { name: string }) | null>(null);
   const dyn = { Doughnut, Bar };
@@ -378,7 +380,7 @@ export default function ProductsPage() {
 
   function validateRequiredFields(): string | null {
     if (!form.name.trim()) return 'Name is required.';
-    if (!form.sku.trim()) return 'SKU is required.';
+    if (!form.sku.trim()) return 'SKU is still generating — please wait a moment and try again.';
     if (!form.category_id) return 'Category is required.';
     if (!form.description.trim()) return 'Description is required.';
     if (!form.gender) return 'Gender is required.';
@@ -575,31 +577,141 @@ export default function ProductsPage() {
     document.body.removeChild(link);
   }
 
+  function escapeHtml(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  /** Builds a printable sheet of barcode labels laid out in a rows × columns grid, sized per printConfig. */
+  function buildLabelSheetHtml(product: Product, config: typeof printConfig): string {
+    const imageUrl = staticUrl(product.barcode_url || '');
+    const rows = Math.max(1, config.rows);
+    const columns = Math.max(1, config.columns);
+    const widthMm = Math.max(10, config.widthMm);
+    const heightMm = Math.max(10, config.heightMm);
+    const nameSize = Math.max(6, Math.min(14, heightMm * 0.16));
+    const skuSize = Math.max(5, Math.min(11, heightMm * 0.12));
+
+    const label = `
+      <div class="label">
+        <img src="${imageUrl}" alt="barcode" />
+        ${config.showDetails ? `
+          <div class="details">
+            <div class="name">${escapeHtml(product.name)}</div>
+            <div class="sku">${escapeHtml(product.sku)}</div>
+          </div>
+        ` : ''}
+      </div>`;
+
+    return `
+      <html>
+        <head>
+          <title>Barcode Labels - ${escapeHtml(product.name)}</title>
+          <style>
+            * { box-sizing: border-box; }
+            body { margin: 0; padding: 10mm; font-family: Arial, sans-serif; }
+            .sheet {
+              display: grid;
+              grid-template-columns: repeat(${columns}, ${widthMm}mm);
+              gap: 3mm;
+            }
+            .label {
+              width: ${widthMm}mm;
+              height: ${heightMm}mm;
+              border: 1px solid #cbd5e1;
+              border-radius: 2mm;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              overflow: hidden;
+              padding: 1mm;
+            }
+            .label img { max-width: 100%; max-height: ${config.showDetails ? '62%' : '92%'}; object-fit: contain; }
+            .details { text-align: center; line-height: 1.25; margin-top: 0.5mm; width: 100%; }
+            .details .name { font-size: ${nameSize}pt; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+            .details .sku { font-size: ${skuSize}pt; color: #475569; font-family: monospace; }
+            @media print { body { padding: 0; } }
+          </style>
+        </head>
+        <body>
+          <div class="sheet">${label.repeat(rows * columns)}</div>
+        </body>
+      </html>`;
+  }
+
   function handlePrintBarcode(product: Product) {
     if (!product.barcode_url) {
       showToast('Barcode image not available');
       return;
     }
-    const imageUrl = staticUrl(product.barcode_url);
-    const title = `${product.name} (${product.sku})`;
     const printWindow = window.open('', '_blank', 'width=900,height=700');
     if (!printWindow) {
       showToast('Unable to open print window');
       return;
     }
-    printWindow.document.write(`
-      <html>
-        <head><title>Barcode - ${title}</title></head>
-        <body style="font-family: Arial, sans-serif; padding: 24px;">
-          <h2 style="margin: 0 0 8px;">${product.name}</h2>
-          <p style="margin: 0 0 16px; color: #475569;">SKU: ${product.sku} | ID: ${product._id}</p>
-          <img src="${imageUrl}" style="max-width: 100%; border: 1px solid #cbd5e1; padding: 12px;" />
-        </body>
-      </html>
-    `);
+    printWindow.document.write(buildLabelSheetHtml(product, printConfig));
     printWindow.document.close();
     printWindow.focus();
     printWindow.print();
+  }
+
+  /** Shared rows/columns/size controls rendered next to every barcode print action. */
+  function renderPrintSettings() {
+    return (
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
+        <div>
+          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Rows</label>
+          <input
+            type="number" min={1} max={20}
+            value={printConfig.rows}
+            onChange={(e) => setPrintConfig((c) => ({ ...c, rows: Math.max(1, Number(e.target.value) || 1) }))}
+            className="w-full px-2 py-1.5 border border-slate-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Columns</label>
+          <input
+            type="number" min={1} max={20}
+            value={printConfig.columns}
+            onChange={(e) => setPrintConfig((c) => ({ ...c, columns: Math.max(1, Number(e.target.value) || 1) }))}
+            className="w-full px-2 py-1.5 border border-slate-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Width (mm)</label>
+          <input
+            type="number" min={10} max={150}
+            value={printConfig.widthMm}
+            onChange={(e) => setPrintConfig((c) => ({ ...c, widthMm: Math.max(10, Number(e.target.value) || 10) }))}
+            className="w-full px-2 py-1.5 border border-slate-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Height (mm)</label>
+          <input
+            type="number" min={10} max={100}
+            value={printConfig.heightMm}
+            onChange={(e) => setPrintConfig((c) => ({ ...c, heightMm: Math.max(10, Number(e.target.value) || 10) }))}
+            className="w-full px-2 py-1.5 border border-slate-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        <label className="col-span-2 sm:col-span-4 flex items-center gap-2 text-xs text-slate-600">
+          <input
+            type="checkbox"
+            checked={printConfig.showDetails}
+            onChange={(e) => setPrintConfig((c) => ({ ...c, showDetails: e.target.checked }))}
+          />
+          Show name &amp; SKU details on each label
+        </label>
+        <p className="col-span-2 sm:col-span-4 text-[10px] text-slate-400">
+          {printConfig.rows * printConfig.columns} label{printConfig.rows * printConfig.columns === 1 ? '' : 's'} will print on this sheet.
+        </p>
+      </div>
+    );
   }
 
   async function openPricing(p: Product) {
@@ -625,6 +737,19 @@ export default function ProductsPage() {
       return next;
     });
   }
+
+  // Auto-generate the SKU (e.g. GLD-RNG-001) whenever category/metal changes — admins no longer type it by hand.
+  useEffect(() => {
+    if (editTarget || !modalOpen) return;
+    let active = true;
+    setSkuLoading(true);
+    getSkuPreview(form.category_id || undefined, form.metal_type || undefined)
+      .then((res) => { if (active) set('sku', res.sku); })
+      .catch(() => {})
+      .finally(() => { if (active) setSkuLoading(false); });
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.category_id, form.metal_type, editTarget, modalOpen]);
 
   const totalPages = Math.ceil(total / 10);
   const showCharts = !search && !metalFilter && !categoryFilter;
@@ -903,8 +1028,21 @@ export default function ProductsPage() {
                   <input className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.name} onChange={(e) => set('name', e.target.value)} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">SKU <span className="text-red-500">*</span></label>
-                  <input className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase" value={form.sku} onChange={(e) => set('sku', e.target.value.toUpperCase())} placeholder="GLD-RING-001" />
+                  <label className="block text-sm font-medium text-slate-700 mb-1">SKU</label>
+                  <div className="relative">
+                    <input
+                      className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-slate-50 text-slate-600 uppercase cursor-not-allowed"
+                      value={skuLoading ? 'Generating…' : (form.sku || '—')}
+                      readOnly
+                      disabled
+                    />
+                    {skuLoading && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    {editTarget ? 'Assigned at creation — not editable.' : 'Auto-generated from metal + category.'}
+                  </p>
                 </div>
               </div>
               <div>
@@ -1481,6 +1619,9 @@ export default function ProductsPage() {
                 {editTarget?.barcode_url && (
                   <img src={staticUrl(editTarget.barcode_url)} alt="product barcode" className="mt-3 w-full max-w-md bg-white border border-slate-200 rounded-lg p-2" />
                 )}
+                <div className="mt-3">
+                  {renderPrintSettings()}
+                </div>
               </div>
               )}
 
@@ -1660,6 +1801,7 @@ export default function ProductsPage() {
             ) : (
               <p className="text-sm text-slate-500 border border-dashed border-slate-300 rounded-lg p-5 text-center">Barcode image not available for this product.</p>
             )}
+            {renderPrintSettings()}
             <div className="flex flex-wrap gap-2 justify-end">
               <button
                 type="button"

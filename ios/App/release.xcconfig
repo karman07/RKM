@@ -1,0 +1,20 @@
+// Release Configuration for App Store Build
+CAPACITOR_DEBUG = false
+
+// Build Settings
+SWIFT_OPTIMIZATION_LEVEL = -O
+SWIFT_COMPILATION_MODE = wholemodule
+GCC_OPTIMIZATION_LEVEL = s
+ENABLE_BITCODE = NO
+VALIDATE_PRODUCT = YES
+
+// Code Signing
+CODE_SIGN_STYLE = Manual
+DEVELOPMENT_TEAM = YOUR_TEAM_ID
+CODE_SIGN_IDENTITY = Apple Distribution
+
+// Provisioning Profile
+PROVISIONING_PROFILE_SPECIFIER = YOUR_PROVISIONING_PROFILE_NAME
+
+// Product Bundle Identifier
+PRODUCT_BUNDLE_IDENTIFIER = com.rkm.admin
