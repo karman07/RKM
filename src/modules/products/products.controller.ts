@@ -44,6 +44,18 @@ export class ProductsController {
     return this.productsService.findAll(query);
   }
 
+  /** Live preview of the SKU that will be auto-assigned for this category/metal combo. Must stay above ':id'. */
+  @Get('sku-preview')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  async skuPreview(
+    @Query('category_id') categoryId?: string,
+    @Query('metal_type') metalType?: string,
+  ) {
+    const sku = await this.productsService.previewSku(categoryId, metalType);
+    return { sku };
+  }
+
   @Get(':id')
   findOne(
     @Param('id') id: string,

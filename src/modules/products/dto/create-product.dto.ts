@@ -55,10 +55,11 @@ export class CreateProductDto {
   @MaxLength(200)
   name: string;
 
+  /** Auto-generated on the backend (e.g. GLD-RNG-001) when omitted — admins no longer type this by hand. */
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(100)
-  sku: string;
+  sku?: string;
 
   @IsOptional()
   @IsMongoId()

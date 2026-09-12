@@ -7,6 +7,7 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Product, ProductDocument } from './schemas/product.schema';
+import { Category, CategoryDocument } from '../categories/schemas/category.schema';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { QueryProductDto } from './dto/query-product.dto';
@@ -14,20 +15,31 @@ import { PricingService, PricingInput, StoneInput } from './pricing.service';
 import { SettingsService } from '../settings/settings.service';
 import { BarcodeService } from '../uploads/barcode.service';
 
+/** Known metal → SKU-prefix abbreviations; anything else falls back to its first letters. */
+const METAL_SKU_ABBREVIATIONS: Record<string, string> = {
+  gold: 'GLD',
+  silver: 'SLV',
+  platinum: 'PLT',
+  diamond: 'DMD',
+};
+
 @Injectable()
 export class ProductsService {
   constructor(
     @InjectModel(Product.name) private readonly productModel: Model<ProductDocument>,
+    @InjectModel(Category.name) private readonly categoryModel: Model<CategoryDocument>,
     private readonly pricingService: PricingService,
     private readonly settingsService: SettingsService,
     private readonly barcodeService: BarcodeService,
   ) {}
 
   async create(dto: CreateProductDto, userId: string): Promise<ProductDocument> {
-    await this.ensureUniqueConstraints(dto.sku, dto.barcode);
+    const sku = dto.sku?.trim() || (await this.generateUniqueSku(dto.category_id, dto.metal_type));
+    await this.ensureUniqueConstraints(sku, dto.barcode);
 
     const product = new this.productModel({
       ...dto,
+      sku,
       created_by: new Types.ObjectId(userId),
       updated_by: new Types.ObjectId(userId),
     });
@@ -247,6 +259,63 @@ export class ProductsService {
     await product.save();
 
     return { message: `Product ${id} soft-deleted successfully` };
+  }
+
+  /** Read-only preview of the SKU that `create()` would auto-assign right now — used by the admin UI as the admin picks category/metal. */
+  async previewSku(categoryId?: string, metalType?: string): Promise<string> {
+    return this.generateUniqueSku(categoryId, metalType);
+  }
+
+  private async generateUniqueSku(categoryId?: string, metalType?: string): Promise<string> {
+    let categoryName: string | undefined;
+    if (categoryId && Types.ObjectId.isValid(categoryId)) {
+      const category = await this.categoryModel.findById(categoryId).select('name').lean();
+      categoryName = category?.name;
+    }
+
+    const prefix = `${this.metalSkuAbbr(metalType)}-${this.categorySkuAbbr(categoryName)}`;
+    let seq = await this.nextSkuSequence(prefix);
+
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const candidate = `${prefix}-${String(seq).padStart(3, '0')}`;
+      const exists = await this.productModel.exists({ sku: candidate });
+      if (!exists) return candidate;
+      seq += 1;
+    }
+    // Astronomically unlikely fallback — guarantees uniqueness without blocking creation.
+    return `${prefix}-${Date.now()}`;
+  }
+
+  /** Looks at every SKU already using this prefix and returns the next free running number. */
+  private async nextSkuSequence(prefix: string): Promise<number> {
+    const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`^${escaped}-(\\d+)$`);
+    const docs = await this.productModel.find({ sku: regex }).select('sku').lean();
+
+    let max = 0;
+    for (const doc of docs) {
+      const match = regex.exec((doc as any).sku);
+      const n = match ? parseInt(match[1], 10) : 0;
+      if (n > max) max = n;
+    }
+    return max + 1;
+  }
+
+  private metalSkuAbbr(metalType?: string): string {
+    if (!metalType) return 'GEN';
+    const key = metalType.trim().toLowerCase();
+    if (METAL_SKU_ABBREVIATIONS[key]) return METAL_SKU_ABBREVIATIONS[key];
+    const letters = metalType.toUpperCase().replace(/[^A-Z]/g, '');
+    return (letters.slice(0, 3) || 'GEN').padEnd(3, 'X');
+  }
+
+  /** Derives a 3-letter code from a category name, e.g. "Ring" → RNG, "Necklace" → NCK. */
+  private categorySkuAbbr(categoryName?: string): string {
+    const clean = (categoryName || '').toUpperCase().replace(/[^A-Z]/g, '');
+    if (!clean) return 'GEN';
+    const consonantsAfterFirst = clean.slice(1).replace(/[AEIOU]/g, '');
+    const combined = (clean[0] + consonantsAfterFirst).slice(0, 3) || clean.slice(0, 3);
+    return combined.padEnd(3, 'X');
   }
 
   private async ensureUniqueConstraints(
