@@ -125,6 +125,46 @@ export default function InventoryPage() {
     const price = item.live_selling_price ?? item.selling_price ?? 0;
     return (item.prebooking_advance_amount ?? 0) < price;
   }
+
+  /** Pulls the weight/grade/charge fields shown on a printed jewellery tag off the item's product */
+  function getLabelFields(item: InventoryItem) {
+    const product = typeof item.product_id === 'object' ? item.product_id : null;
+    return {
+      name: product?.name || 'RKM Masterpiece',
+      gwt: product?.gross_weight ?? 0,
+      nwt: product?.net_weight ?? 0,
+      stoneWt: product?.stone_weight ?? 0,
+      grade: product?.purity || '—',
+      lmc: product?.making_charge_rate ?? product?.fixed_making_charge ?? 0,
+      dis: product?.discount_percentage ?? item.admin_discount ?? 0,
+    };
+  }
+
+  /** Barcode (unchanged) + the tag data fields laid out beside it, for the printed piece label */
+  function renderLabelCardBody(item: InventoryItem, widthMm?: number) {
+    const fields = getLabelFields(item);
+    return (
+      <div className="flex items-start gap-4 w-full">
+        <img
+          suppressHydrationWarning
+          src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${item.barcode}&scale=4&height=12&includetext`}
+          style={widthMm ? { width: `${widthMm}mm` } : undefined}
+          className={widthMm ? 'object-contain shrink-0' : 'h-16 object-contain shrink-0'}
+          alt={item.barcode}
+        />
+        <div className="flex-1 min-w-0 text-left">
+          <p className="text-[10px] font-black text-slate-900 uppercase tracking-widest truncate">{fields.name}</p>
+          <div className="mt-2 space-y-1 text-[9px] font-bold text-slate-700">
+            <div className="flex justify-between gap-3"><span className="text-slate-400 uppercase tracking-wide">GWT/NWT</span><span>{fields.gwt} gm/ {fields.nwt} g</span></div>
+            <div className="flex justify-between gap-3"><span className="text-slate-400 uppercase tracking-wide">ST. WT</span><span>{fields.stoneWt} gm</span></div>
+            <div className="flex justify-between gap-3"><span className="text-slate-400 uppercase tracking-wide">Grade</span><span>{fields.grade}</span></div>
+            <div className="flex justify-between gap-3"><span className="text-slate-400 uppercase tracking-wide">LMC/DIS</span><span>{fields.lmc}/{fields.dis}</span></div>
+          </div>
+          <p className="mt-2 text-[8px] font-bold text-slate-400 uppercase tracking-widest italic">#{item.unique_item_code}</p>
+        </div>
+      </div>
+    );
+  }
   const [settings, setSettings] = useState<any>(null);
 
   const [statusFilter, setStatusFilter] = useState('');
@@ -245,7 +285,7 @@ export default function InventoryPage() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // ── Barcode Wide Modal ───────────────────────────────────────────────────
-  const [barcodeModal, setBarcodeModal] = useState<string | null>(null);
+  const [barcodeModal, setBarcodeModal] = useState<InventoryItem | null>(null);
   const [barcodeWidthMm, setBarcodeWidthMm] = useState(70); // printed label width, adjustable by the user
 
 
@@ -864,7 +904,7 @@ export default function InventoryPage() {
                                  </span>
                                )}
                                <div
-                                onClick={() => { setBarcodeModal(item.barcode); setBarcodeWidthMm(70); }}
+                                onClick={() => { setBarcodeModal(item); setBarcodeWidthMm(70); }}
                                 className="p-0.5 px-1 bg-white border border-slate-200 inline-block rounded shadow-sm hover:scale-[1.1] transition-transform duration-300 cursor-pointer"
                               >
                                  <img suppressHydrationWarning src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${item.barcode}&scale=3&height=6&includetext`} className="h-4 object-contain" alt={item.barcode} />
@@ -1635,19 +1675,45 @@ export default function InventoryPage() {
 
       {/* Barcode Wide Visor Modal */}
       <Modal open={!!barcodeModal} onClose={() => setBarcodeModal(null)} title="Asset Barcode View">
-        {barcodeModal && (
+        {barcodeModal && (() => {
+          const fields = getLabelFields(barcodeModal);
+          return (
           <div className="flex flex-col items-center justify-center p-8 md:p-12 bg-slate-50/50 rounded-[2rem] border border-slate-100">
             <div className="bg-white p-6 md:p-10 rounded-[2rem] shadow-xl border border-slate-200 w-full flex items-center justify-center overflow-x-auto">
                <img
                  suppressHydrationWarning
-                 src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${barcodeModal}&scale=5&height=15&includetext`}
+                 src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${barcodeModal.barcode}&scale=5&height=15&includetext`}
                  style={{ width: `${barcodeWidthMm}mm`, maxWidth: '100%' }}
                  className="object-contain transition-[width] duration-100"
-                 alt={barcodeModal}
+                 alt={barcodeModal.barcode}
                />
             </div>
-            <p className="mt-8 text-2xl font-black text-slate-900 tracking-widest uppercase">{barcodeModal}</p>
+            <p className="mt-8 text-2xl font-black text-slate-900 tracking-widest uppercase">{barcodeModal.barcode}</p>
             <p className="mt-2 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Scan using hardware scanner</p>
+
+            {/* Tag data — mirrors what prints alongside the barcode */}
+            <div className="w-full mt-6 bg-white rounded-2xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Name</span>
+                <span className="text-xs font-black text-slate-900 text-right truncate max-w-[60%]">{fields.name}</span>
+              </div>
+              <div className="flex items-center justify-between px-5 py-3">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">GWT/NWT</span>
+                <span className="text-xs font-black text-slate-900">{fields.gwt} gm / {fields.nwt} g</span>
+              </div>
+              <div className="flex items-center justify-between px-5 py-3">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ST. WT</span>
+                <span className="text-xs font-black text-slate-900">{fields.stoneWt} gm</span>
+              </div>
+              <div className="flex items-center justify-between px-5 py-3">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Grade</span>
+                <span className="text-xs font-black text-slate-900">{fields.grade}</span>
+              </div>
+              <div className="flex items-center justify-between px-5 py-3">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">LMC/DIS</span>
+                <span className="text-xs font-black text-slate-900">{fields.lmc}/{fields.dis}</span>
+              </div>
+            </div>
 
             {/* Resize control — sets the physical printed label width */}
             <div className="w-full mt-8 px-1">
@@ -1700,7 +1766,8 @@ export default function InventoryPage() {
               </button>
             </div>
           </div>
-        )}
+          );
+        })()}
       </Modal>
 
       {preBookTarget && (
@@ -1728,32 +1795,14 @@ export default function InventoryPage() {
       <div className="hidden print:block print-labels-sheet">
          <div className="grid grid-cols-2 gap-4">
             {items.filter(i => selectedIds.includes(i._id)).map(item => (
-              <div key={item._id} className="label-card border border-slate-200 p-8 rounded-xl flex flex-col items-center">
-                 <p className="text-[10px] font-black text-slate-900 uppercase tracking-widest mb-4">
-                   {typeof item.product_id === 'object' ? item.product_id.name : 'RKM Masterpiece'}
-                 </p>
-                 <img 
-                   suppressHydrationWarning
-                   src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${item.barcode}&scale=4&height=12&includetext`} 
-                   className="h-16 object-contain"
-                   alt={item.barcode} 
-                 />
-                 <p className="mt-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest italic">
-                   #{item.unique_item_code}
-                 </p>
+              <div key={item._id} className="label-card border border-slate-200 p-6 rounded-xl">
+                {renderLabelCardBody(item)}
               </div>
             ))}
             {/* If single visor is open and nothing selected, print just that one */}
             {selectedIds.length === 0 && barcodeModal && (
-               <div className="label-card border border-slate-200 p-12 rounded-xl flex flex-col items-center col-span-2">
-                 <img
-                   suppressHydrationWarning
-                   src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${barcodeModal}&scale=5&height=15&includetext`}
-                   style={{ width: `${barcodeWidthMm}mm` }}
-                   className="object-contain"
-                   alt={barcodeModal}
-                 />
-                 <p className="mt-6 text-xl font-black text-slate-900 tracking-widest uppercase">{barcodeModal}</p>
+               <div className="label-card border border-slate-200 p-8 rounded-xl col-span-2">
+                 {renderLabelCardBody(barcodeModal, barcodeWidthMm)}
               </div>
             )}
          </div>
