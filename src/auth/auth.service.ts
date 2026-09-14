@@ -185,10 +185,14 @@ export class AuthService {
       };
     }
 
+    const customRole = user.role === 'custom' && user.custom_role
+      ? await this.customRolesService.findById(String(user.custom_role)).catch(() => undefined)
+      : undefined;
+
     const settings = await this.getSettings();
     const expiryHours = settings.staff_session_expiry_hours ?? 2;
     return {
-      ...this.issueToken(user, undefined, expiryHours),
+      ...this.issueToken(user, customRole, expiryHours),
       session_expires_at: Date.now() + expiryHours * 60 * 60 * 1000,
     };
   }
