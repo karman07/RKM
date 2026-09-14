@@ -246,6 +246,7 @@ export default function InventoryPage() {
 
   // ── Barcode Wide Modal ───────────────────────────────────────────────────
   const [barcodeModal, setBarcodeModal] = useState<string | null>(null);
+  const [barcodeWidthMm, setBarcodeWidthMm] = useState(70); // printed label width, adjustable by the user
 
 
   // ─── Derived ───────────────────────────────────────────────────────────────
@@ -863,7 +864,7 @@ export default function InventoryPage() {
                                  </span>
                                )}
                                <div
-                                onClick={() => setBarcodeModal(item.barcode)}
+                                onClick={() => { setBarcodeModal(item.barcode); setBarcodeWidthMm(70); }}
                                 className="p-0.5 px-1 bg-white border border-slate-200 inline-block rounded shadow-sm hover:scale-[1.1] transition-transform duration-300 cursor-pointer"
                               >
                                  <img suppressHydrationWarning src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${item.barcode}&scale=3&height=6&includetext`} className="h-4 object-contain" alt={item.barcode} />
@@ -1637,16 +1638,53 @@ export default function InventoryPage() {
         {barcodeModal && (
           <div className="flex flex-col items-center justify-center p-8 md:p-12 bg-slate-50/50 rounded-[2rem] border border-slate-100">
             <div className="bg-white p-6 md:p-10 rounded-[2rem] shadow-xl border border-slate-200 w-full flex items-center justify-center overflow-x-auto">
-               <img 
-                 suppressHydrationWarning 
-                 src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${barcodeModal}&scale=5&height=15&includetext`} 
-                 className="w-full max-w-[500px] object-contain" 
-                 alt={barcodeModal} 
+               <img
+                 suppressHydrationWarning
+                 src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${barcodeModal}&scale=5&height=15&includetext`}
+                 style={{ width: `${barcodeWidthMm}mm`, maxWidth: '100%' }}
+                 className="object-contain transition-[width] duration-100"
+                 alt={barcodeModal}
                />
             </div>
             <p className="mt-8 text-2xl font-black text-slate-900 tracking-widest uppercase">{barcodeModal}</p>
             <p className="mt-2 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Scan using hardware scanner</p>
-            <div className="w-full mt-10 flex gap-3">
+
+            {/* Resize control — sets the physical printed label width */}
+            <div className="w-full mt-8 px-1">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Label Size</span>
+                <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{barcodeWidthMm}mm</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setBarcodeWidthMm(w => Math.max(30, w - 5))}
+                  className="shrink-0 w-8 h-8 rounded-full bg-slate-100 text-slate-500 text-sm font-black hover:bg-slate-200 transition-all active:scale-95"
+                  aria-label="Decrease label size"
+                >
+                  −
+                </button>
+                <input
+                  type="range"
+                  min={30}
+                  max={150}
+                  step={1}
+                  value={barcodeWidthMm}
+                  onChange={e => setBarcodeWidthMm(Number(e.target.value))}
+                  className="flex-1 accent-blue-600"
+                />
+                <button
+                  type="button"
+                  onClick={() => setBarcodeWidthMm(w => Math.min(150, w + 5))}
+                  className="shrink-0 w-8 h-8 rounded-full bg-slate-100 text-slate-500 text-sm font-black hover:bg-slate-200 transition-all active:scale-95"
+                  aria-label="Increase label size"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            <div className="w-full mt-6 flex gap-3">
               <button 
                 onClick={() => window.print()} 
                 className="flex-1 py-4 rounded-2xl bg-blue-600 text-white text-[11px] font-bold uppercase tracking-widest shadow-xl hover:bg-blue-700 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
@@ -1708,11 +1746,12 @@ export default function InventoryPage() {
             {/* If single visor is open and nothing selected, print just that one */}
             {selectedIds.length === 0 && barcodeModal && (
                <div className="label-card border border-slate-200 p-12 rounded-xl flex flex-col items-center col-span-2">
-                 <img 
+                 <img
                    suppressHydrationWarning
-                   src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${barcodeModal}&scale=5&height=15&includetext`} 
-                   className="h-24 object-contain"
-                   alt={barcodeModal} 
+                   src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${barcodeModal}&scale=5&height=15&includetext`}
+                   style={{ width: `${barcodeWidthMm}mm` }}
+                   className="object-contain"
+                   alt={barcodeModal}
                  />
                  <p className="mt-6 text-xl font-black text-slate-900 tracking-widest uppercase">{barcodeModal}</p>
               </div>
