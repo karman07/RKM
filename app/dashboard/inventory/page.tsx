@@ -274,12 +274,31 @@ export default function InventoryPage() {
   const LABEL_PREVIEW_SCALE = 7; // px-per-mm zoom used only for the on-screen drag editor
 
   type LabelBox = { xMm: number; yMm: number; widthMm: number; heightMm: number };
+  type FieldKey = 'name' | 'weight' | 'stoneWt' | 'grade' | 'lmc';
+  const FIELD_KEYS: FieldKey[] = ['name', 'weight', 'stoneWt', 'grade', 'lmc'];
+  const FIELD_LABELS: Record<FieldKey, string> = { name: 'Name', weight: 'GWT/NWT', stoneWt: 'ST. WT', grade: 'Grade', lmc: 'LMC/DIS' };
+
   const defaultBarcodeBox = (): LabelBox => ({ xMm: 1, yMm: 1, widthMm: 30, heightMm: DEFAULT_LABEL_H_MM - 2 });
-  const defaultDetailsBox = (): LabelBox => ({ xMm: 33, yMm: 0.5, widthMm: DEFAULT_LABEL_W_MM - 34, heightMm: DEFAULT_LABEL_H_MM - 1 });
+  /** Each text field starts stacked in a column beside the barcode — every one can then be
+      dragged/resized independently, just like the barcode. */
+  const defaultFieldBoxes = (): Record<FieldKey, LabelBox> => {
+    const x = 33, w = DEFAULT_LABEL_W_MM - 34;
+    const rowH = (DEFAULT_LABEL_H_MM - 1) / FIELD_KEYS.length;
+    const boxes = {} as Record<FieldKey, LabelBox>;
+    FIELD_KEYS.forEach((k, i) => { boxes[k] = { xMm: x, yMm: 0.5 + i * rowH, widthMm: w, heightMm: rowH }; });
+    return boxes;
+  };
 
   const [barcodeBox, setBarcodeBox] = useState<LabelBox>(defaultBarcodeBox());
-  const [detailsBox, setDetailsBox] = useState<LabelBox>(defaultDetailsBox());
+  const [fieldBoxes, setFieldBoxes] = useState<Record<FieldKey, LabelBox>>(defaultFieldBoxes());
   const [visibleFields, setVisibleFields] = useState({ name: true, weight: true, stoneWt: true, grade: true, lmc: true });
+
+  function setFieldBox(key: FieldKey, updater: React.SetStateAction<LabelBox>) {
+    setFieldBoxes(fb => ({
+      ...fb,
+      [key]: typeof updater === 'function' ? (updater as (prev: LabelBox) => LabelBox)(fb[key]) : updater,
+    }));
+  }
 
   /** Generic drag-move + corner-resize handlers for a positioned label element, in real mm,
       clamped so the element can never leave the label bounds. */
@@ -331,30 +350,27 @@ export default function InventoryPage() {
     return { onDragStart, onResizeStart };
   }
 
-  /** Compact detail lines for whichever fields are toggled on */
-  function buildDetailLines(item: InventoryItem) {
+  /** The printed text for one field of a given item */
+  function getFieldText(item: InventoryItem, key: FieldKey) {
     const f = getLabelFields(item);
-    const lines: string[] = [];
-    if (visibleFields.name)    lines.push(f.name);
-    if (visibleFields.weight)  lines.push(`GWT/NWT ${f.gwt}/${f.nwt}g`);
-    if (visibleFields.stoneWt) lines.push(`ST.WT ${f.stoneWt}g`);
-    if (visibleFields.grade)   lines.push(`GRADE ${f.grade}`);
-    if (visibleFields.lmc)     lines.push(`LMC/DIS ${f.lmc}/${f.dis}`);
-    return lines;
+    switch (key) {
+      case 'name':    return f.name;
+      case 'weight':  return `GWT/NWT ${f.gwt}/${f.nwt}g`;
+      case 'stoneWt': return `ST.WT ${f.stoneWt}g`;
+      case 'grade':   return `GRADE ${f.grade}`;
+      case 'lmc':     return `LMC/DIS ${f.lmc}/${f.dis}`;
+    }
   }
 
   /**
-   * Barcode + details block, positioned/sized exactly as arranged on the label. Shared by the
-   * interactive editor (pxPerMm + drag handles) and the print output (real mm, static).
+   * Barcode + each visible text field, positioned/sized exactly as arranged on the label.
+   * Every element (barcode and each individual field) drags and resizes independently.
+   * Shared by the interactive editor (pxPerMm + drag handles) and the print output (real mm, static).
    */
   function renderLabelElements(item: InventoryItem, opts?: { pxPerMm?: number; interactive?: boolean }) {
     const pxPerMm = opts?.pxPerMm;
     const unit = (mm: number) => pxPerMm ? `${mm * pxPerMm}px` : `${mm}mm`;
-    const lines = buildDetailLines(item);
-    const lineCount = Math.max(lines.length, 1);
-    const fontMm = clampNum((detailsBox.heightMm / lineCount) * 0.62, 1.1, 5);
     const barcodeHandlers = opts?.interactive ? makeBoxHandlers(barcodeBox, setBarcodeBox, 12, 5) : null;
-    const detailsHandlers = opts?.interactive ? makeBoxHandlers(detailsBox, setDetailsBox, 12, 5) : null;
 
     return (
       <>
@@ -383,35 +399,40 @@ export default function InventoryPage() {
           )}
         </div>
 
-        <div
-          onPointerDown={detailsHandlers?.onDragStart}
-          style={{
-            position: 'absolute',
-            left: unit(detailsBox.xMm), top: unit(detailsBox.yMm),
-            width: unit(detailsBox.widthMm), height: unit(detailsBox.heightMm),
-            display: 'flex', flexDirection: 'column', justifyContent: 'center', overflow: 'hidden',
-            cursor: opts?.interactive ? 'move' : undefined,
-          }}
-        >
-          {lines.map((l, i) => (
+        {FIELD_KEYS.filter(key => visibleFields[key]).map(key => {
+          const box = fieldBoxes[key];
+          const fontMm = clampNum(box.heightMm * 0.62, 1.1, 6);
+          const handlers = opts?.interactive ? makeBoxHandlers(box, updater => setFieldBox(key, updater), 10, 3) : null;
+          return (
             <div
-              key={i}
+              key={key}
+              onPointerDown={handlers?.onDragStart}
               style={{
-                fontSize: unit(fontMm), lineHeight: 1.15, fontWeight: 800,
-                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#0f172a',
+                position: 'absolute',
+                left: unit(box.xMm), top: unit(box.yMm),
+                width: unit(box.widthMm), height: unit(box.heightMm),
+                display: 'flex', alignItems: 'center', overflow: 'hidden',
+                cursor: opts?.interactive ? 'move' : undefined,
               }}
             >
-              {l}
+              <span
+                style={{
+                  fontSize: unit(fontMm), lineHeight: 1.15, fontWeight: 800,
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#0f172a',
+                }}
+              >
+                {getFieldText(item, key)}
+              </span>
+              {opts?.interactive && (
+                <div
+                  onPointerDown={e => { e.stopPropagation(); handlers?.onResizeStart(e); }}
+                  className="absolute -right-2 -bottom-2 w-4 h-4 rounded-full bg-emerald-600 border-2 border-white shadow-lg cursor-nwse-resize touch-none"
+                  title={`Drag to resize ${FIELD_LABELS[key]}`}
+                />
+              )}
             </div>
-          ))}
-          {opts?.interactive && (
-            <div
-              onPointerDown={e => { e.stopPropagation(); detailsHandlers?.onResizeStart(e); }}
-              className="absolute -right-2 -bottom-2 w-5 h-5 rounded-full bg-emerald-600 border-2 border-white shadow-lg cursor-nwse-resize touch-none"
-              title="Drag to resize the details block"
-            />
-          )}
-        </div>
+          );
+        })}
       </>
     );
   }
@@ -948,7 +969,7 @@ export default function InventoryPage() {
                 setLabelWidthMm(DEFAULT_LABEL_W_MM);
                 setLabelHeightMm(DEFAULT_LABEL_H_MM);
                 setBarcodeBox(defaultBarcodeBox());
-                setDetailsBox(defaultDetailsBox());
+                setFieldBoxes(defaultFieldBoxes());
                 setBulkLabelPreview(true);
               }}
               className="px-6 py-3 rounded-xl bg-blue-50 text-blue-600 text-xs font-black uppercase tracking-[0.1em] border border-blue-100 hover:bg-blue-600 hover:text-white transition-all shadow-sm flex items-center gap-2"
@@ -1067,7 +1088,7 @@ export default function InventoryPage() {
                                   setLabelWidthMm(DEFAULT_LABEL_W_MM);
                                   setLabelHeightMm(DEFAULT_LABEL_H_MM);
                                   setBarcodeBox(defaultBarcodeBox());
-                                  setDetailsBox(defaultDetailsBox());
+                                  setFieldBoxes(defaultFieldBoxes());
                                 }}
                                 className="p-0.5 px-1 bg-white border border-slate-200 inline-block rounded shadow-sm hover:scale-[1.1] transition-transform duration-300 cursor-pointer"
                               >
@@ -1862,7 +1883,11 @@ export default function InventoryPage() {
                       const v = clampNum(Number(e.target.value) || DEFAULT_LABEL_W_MM, 20, 200);
                       setLabelWidthMm(v);
                       setBarcodeBox(b => ({ ...b, xMm: Math.min(b.xMm, Math.max(0, v - b.widthMm)), widthMm: Math.min(b.widthMm, v) }));
-                      setDetailsBox(b => ({ ...b, xMm: Math.min(b.xMm, Math.max(0, v - b.widthMm)), widthMm: Math.min(b.widthMm, v) }));
+                      setFieldBoxes(fb => {
+                        const next = { ...fb };
+                        FIELD_KEYS.forEach(k => { next[k] = { ...next[k], xMm: Math.min(next[k].xMm, Math.max(0, v - next[k].widthMm)), widthMm: Math.min(next[k].widthMm, v) }; });
+                        return next;
+                      });
                     }}
                     className="w-16 px-2 py-1.5 rounded-lg border border-slate-200 text-xs font-black text-slate-900 text-center focus:outline-none focus:border-blue-400"
                   />
@@ -1878,7 +1903,11 @@ export default function InventoryPage() {
                       const v = clampNum(Number(e.target.value) || DEFAULT_LABEL_H_MM, 8, 100);
                       setLabelHeightMm(v);
                       setBarcodeBox(b => ({ ...b, yMm: Math.min(b.yMm, Math.max(0, v - b.heightMm)), heightMm: Math.min(b.heightMm, v) }));
-                      setDetailsBox(b => ({ ...b, yMm: Math.min(b.yMm, Math.max(0, v - b.heightMm)), heightMm: Math.min(b.heightMm, v) }));
+                      setFieldBoxes(fb => {
+                        const next = { ...fb };
+                        FIELD_KEYS.forEach(k => { next[k] = { ...next[k], yMm: Math.min(next[k].yMm, Math.max(0, v - next[k].heightMm)), heightMm: Math.min(next[k].heightMm, v) }; });
+                        return next;
+                      });
                     }}
                     className="w-16 px-2 py-1.5 rounded-lg border border-slate-200 text-xs font-black text-slate-900 text-center focus:outline-none focus:border-blue-400"
                   />
@@ -1923,11 +1952,11 @@ export default function InventoryPage() {
               </p>
               <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
                 <span className="inline-block w-2 h-2 rounded-full bg-emerald-600 mr-1.5 align-middle" />
-                Details — drag to move, corner to resize
+                Each text field — drag to move, corner to resize
               </p>
               <button
                 type="button"
-                onClick={() => { setBarcodeBox(defaultBarcodeBox()); setDetailsBox(defaultDetailsBox()); }}
+                onClick={() => { setBarcodeBox(defaultBarcodeBox()); setFieldBoxes(defaultFieldBoxes()); }}
                 className="text-[9px] font-black text-blue-600 hover:text-blue-800 uppercase tracking-widest"
               >
                 Reset Layout
