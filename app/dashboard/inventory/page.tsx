@@ -31,6 +31,7 @@ import {
 } from '@/lib/api';
 import Link from 'next/link';
 import Modal from '@/components/Modal';
+import LabelDesignerModal from '@/components/LabelDesignerModal';
 import CustomerSearchPanel, { type CustomerDraft } from '@/components/CustomerSearchPanel';
 import PaymentSplitsInput, { type PaymentSplit } from '@/components/PaymentSplitsInput';
 import PreBookModal from '@/components/PreBookModal';
@@ -126,21 +127,6 @@ export default function InventoryPage() {
     return (item.prebooking_advance_amount ?? 0) < price;
   }
 
-  /** Pulls the weight/grade/charge fields shown on a printed jewellery tag off the item's product */
-  function getLabelFields(item: InventoryItem) {
-    const product = typeof item.product_id === 'object' ? item.product_id : null;
-    return {
-      name: product?.name || 'RKM Masterpiece',
-      gwt: product?.gross_weight ?? 0,
-      nwt: product?.net_weight ?? 0,
-      stoneWt: product?.stone_weight ?? 0,
-      grade: product?.purity || '—',
-      lmc: product?.making_charge_rate ?? product?.fixed_making_charge ?? 0,
-      dis: product?.discount_percentage ?? item.admin_discount ?? 0,
-    };
-  }
-
-  const clampNum = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
   const [settings, setSettings] = useState<any>(null);
 
   const [statusFilter, setStatusFilter] = useState('');
@@ -261,192 +247,13 @@ export default function InventoryPage() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // ── Barcode Wide Modal ───────────────────────────────────────────────────
+  // Layout, drag/resize, fields, presets and the multi-label print sheet all live in
+  // LabelDesignerModal now — this page only tracks which item(s) opened it.
   const [barcodeModal, setBarcodeModal] = useState<InventoryItem | null>(null);
-  // Same editor/layout as the single-item visor, opened instead for a bulk print run —
-  // whatever's arranged here applies to every selected item, one label each.
   const [bulkLabelPreview, setBulkLabelPreview] = useState(false);
-  // Matches the die-cut label stock loaded in the printer (e.g. 65mm x 13mm) — editable so it
-  // can be adjusted to whatever roll is actually loaded.
-  const DEFAULT_LABEL_W_MM = 65;
-  const DEFAULT_LABEL_H_MM = 13;
-  const [labelWidthMm, setLabelWidthMm]   = useState(DEFAULT_LABEL_W_MM);
-  const [labelHeightMm, setLabelHeightMm] = useState(DEFAULT_LABEL_H_MM);
-  const LABEL_PREVIEW_SCALE = 7; // px-per-mm zoom used only for the on-screen drag editor
-
-  type LabelBox = { xMm: number; yMm: number; widthMm: number; heightMm: number };
-  type FieldKey = 'name' | 'weight' | 'stoneWt' | 'grade' | 'lmc';
-  const FIELD_KEYS: FieldKey[] = ['name', 'weight', 'stoneWt', 'grade', 'lmc'];
-  const FIELD_LABELS: Record<FieldKey, string> = { name: 'Name', weight: 'GWT/NWT', stoneWt: 'ST. WT', grade: 'Grade', lmc: 'LMC/DIS' };
-
-  const defaultBarcodeBox = (): LabelBox => ({ xMm: 1, yMm: 1, widthMm: 30, heightMm: DEFAULT_LABEL_H_MM - 2 });
-  /** Each text field starts stacked in a column beside the barcode — every one can then be
-      dragged/resized independently, just like the barcode. */
-  const defaultFieldBoxes = (): Record<FieldKey, LabelBox> => {
-    const x = 33, w = DEFAULT_LABEL_W_MM - 34;
-    const rowH = (DEFAULT_LABEL_H_MM - 1) / FIELD_KEYS.length;
-    const boxes = {} as Record<FieldKey, LabelBox>;
-    FIELD_KEYS.forEach((k, i) => { boxes[k] = { xMm: x, yMm: 0.5 + i * rowH, widthMm: w, heightMm: rowH }; });
-    return boxes;
-  };
-
-  const [barcodeBox, setBarcodeBox] = useState<LabelBox>(defaultBarcodeBox());
-  const [fieldBoxes, setFieldBoxes] = useState<Record<FieldKey, LabelBox>>(defaultFieldBoxes());
-  const [visibleFields, setVisibleFields] = useState({ name: true, weight: true, stoneWt: true, grade: true, lmc: true });
-
-  function setFieldBox(key: FieldKey, updater: React.SetStateAction<LabelBox>) {
-    setFieldBoxes(fb => ({
-      ...fb,
-      [key]: typeof updater === 'function' ? (updater as (prev: LabelBox) => LabelBox)(fb[key]) : updater,
-    }));
-  }
-
-  /** Generic drag-move + corner-resize handlers for a positioned label element, in real mm,
-      clamped so the element can never leave the label bounds. */
-  function makeBoxHandlers(box: LabelBox, setBox: React.Dispatch<React.SetStateAction<LabelBox>>, minW: number, minH: number) {
-    function onDragStart(e: React.PointerEvent) {
-      e.preventDefault();
-      e.stopPropagation();
-      const startX = e.clientX, startY = e.clientY;
-      const start = box;
-      function onMove(ev: PointerEvent) {
-        const dxMm = (ev.clientX - startX) / LABEL_PREVIEW_SCALE;
-        const dyMm = (ev.clientY - startY) / LABEL_PREVIEW_SCALE;
-        setBox(b => ({
-          ...b,
-          xMm: clampNum(start.xMm + dxMm, 0, labelWidthMm - start.widthMm),
-          yMm: clampNum(start.yMm + dyMm, 0, labelHeightMm - start.heightMm),
-        }));
-      }
-      function onUp() {
-        window.removeEventListener('pointermove', onMove);
-        window.removeEventListener('pointerup', onUp);
-      }
-      window.addEventListener('pointermove', onMove);
-      window.addEventListener('pointerup', onUp);
-    }
-
-    function onResizeStart(e: React.PointerEvent) {
-      e.preventDefault();
-      e.stopPropagation();
-      const startX = e.clientX, startY = e.clientY;
-      const start = box;
-      function onMove(ev: PointerEvent) {
-        const dxMm = (ev.clientX - startX) / LABEL_PREVIEW_SCALE;
-        const dyMm = (ev.clientY - startY) / LABEL_PREVIEW_SCALE;
-        setBox(b => ({
-          ...b,
-          widthMm: clampNum(start.widthMm + dxMm, minW, labelWidthMm - start.xMm),
-          heightMm: clampNum(start.heightMm + dyMm, minH, labelHeightMm - start.yMm),
-        }));
-      }
-      function onUp() {
-        window.removeEventListener('pointermove', onMove);
-        window.removeEventListener('pointerup', onUp);
-      }
-      window.addEventListener('pointermove', onMove);
-      window.addEventListener('pointerup', onUp);
-    }
-
-    return { onDragStart, onResizeStart };
-  }
-
-  /** The printed text for one field of a given item */
-  function getFieldText(item: InventoryItem, key: FieldKey) {
-    const f = getLabelFields(item);
-    switch (key) {
-      case 'name':    return f.name;
-      case 'weight':  return `GWT/NWT ${f.gwt}/${f.nwt}g`;
-      case 'stoneWt': return `ST.WT ${f.stoneWt}g`;
-      case 'grade':   return `GRADE ${f.grade}`;
-      case 'lmc':     return `LMC/DIS ${f.lmc}/${f.dis}`;
-    }
-  }
-
-  /**
-   * Barcode + each visible text field, positioned/sized exactly as arranged on the label.
-   * Every element (barcode and each individual field) drags and resizes independently.
-   * Shared by the interactive editor (pxPerMm + drag handles) and the print output (real mm, static).
-   */
-  function renderLabelElements(item: InventoryItem, opts?: { pxPerMm?: number; interactive?: boolean }) {
-    const pxPerMm = opts?.pxPerMm;
-    const unit = (mm: number) => pxPerMm ? `${mm * pxPerMm}px` : `${mm}mm`;
-    const barcodeHandlers = opts?.interactive ? makeBoxHandlers(barcodeBox, setBarcodeBox, 12, 5) : null;
-
-    return (
-      <>
-        <div
-          onPointerDown={barcodeHandlers?.onDragStart}
-          style={{
-            position: 'absolute',
-            left: unit(barcodeBox.xMm), top: unit(barcodeBox.yMm),
-            width: unit(barcodeBox.widthMm), height: unit(barcodeBox.heightMm),
-            cursor: opts?.interactive ? 'move' : undefined,
-          }}
-        >
-          <img
-            suppressHydrationWarning
-            src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${item.barcode}&scale=5&height=15&includetext`}
-            className="w-full h-full object-contain pointer-events-none select-none"
-            alt={item.barcode}
-            draggable={false}
-          />
-          {opts?.interactive && (
-            <div
-              onPointerDown={e => { e.stopPropagation(); barcodeHandlers?.onResizeStart(e); }}
-              className="absolute -right-2 -bottom-2 w-5 h-5 rounded-full bg-blue-600 border-2 border-white shadow-lg cursor-nwse-resize touch-none"
-              title="Drag to resize the barcode"
-            />
-          )}
-        </div>
-
-        {FIELD_KEYS.filter(key => visibleFields[key]).map(key => {
-          const box = fieldBoxes[key];
-          const fontMm = clampNum(box.heightMm * 0.62, 1.1, 6);
-          const handlers = opts?.interactive ? makeBoxHandlers(box, updater => setFieldBox(key, updater), 10, 3) : null;
-          return (
-            <div
-              key={key}
-              onPointerDown={handlers?.onDragStart}
-              style={{
-                position: 'absolute',
-                left: unit(box.xMm), top: unit(box.yMm),
-                width: unit(box.widthMm), height: unit(box.heightMm),
-                display: 'flex', alignItems: 'center', overflow: 'hidden',
-                cursor: opts?.interactive ? 'move' : undefined,
-              }}
-            >
-              <span
-                style={{
-                  fontSize: unit(fontMm), lineHeight: 1.15, fontWeight: 800,
-                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#0f172a',
-                }}
-              >
-                {getFieldText(item, key)}
-              </span>
-              {opts?.interactive && (
-                <div
-                  onPointerDown={e => { e.stopPropagation(); handlers?.onResizeStart(e); }}
-                  className="absolute -right-2 -bottom-2 w-4 h-4 rounded-full bg-emerald-600 border-2 border-white shadow-lg cursor-nwse-resize touch-none"
-                  title={`Drag to resize ${FIELD_LABELS[key]}`}
-                />
-              )}
-            </div>
-          );
-        })}
-      </>
-    );
-  }
-
-  /** What actually prints — barcode + details positioned exactly as arranged in the editor.
-      Used for both the single-item visor and every item in a bulk print run (one label each). */
-  function renderSingleLabelPrint(item: InventoryItem, key?: string) {
-    return (
-      <div key={key} className="single-label-card" style={{ width: `${labelWidthMm}mm`, height: `${labelHeightMm}mm`, position: 'relative' }}>
-        {renderLabelElements(item)}
-      </div>
-    );
-  }
-
+  // Bumped on every open so LabelDesignerModal remounts with a clean layout each time,
+  // instead of carrying over the previous item's drag/resize state.
+  const [labelDesignerKey, setLabelDesignerKey] = useState(0);
 
   // ─── Derived ───────────────────────────────────────────────────────────────
   const statusOptions  = useMemo(() => (lookups.inventory_status || []).filter(l => l.is_active), [lookups]);
@@ -776,48 +583,6 @@ export default function InventoryPage() {
 
   return (
     <div className="animate-[fadeRise_400ms_ease-out] space-y-8 pb-20">
-      <style jsx global>{`
-        @media print {
-          @page { margin: 10mm; }
-          /* overflow must stay visible here — the dashboard shell's ancestors (.admin-shell etc.)
-             use overflow-hidden + h-screen; combined with height:0 that would clip the
-             absolutely-positioned, multi-page label sheet below and make labels overlap/vanish
-             once there's more than one page to paginate. */
-          body * { visibility: hidden !important; height: 0 !important; overflow: visible !important; }
-          .print-labels-sheet, .print-labels-sheet * { visibility: visible !important; height: auto !important; overflow: visible !important; }
-          .print-labels-sheet {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
-            display: block !important;
-            background: white !important;
-          }
-          ${barcodeModal || bulkLabelPreview ? `
-          /* Asset label(s) — page sized exactly to the die-cut stock loaded in the printer.
-             Each label is its own page, matching a continuous label-roll printer. */
-          @page { size: ${labelWidthMm}mm ${labelHeightMm}mm; margin: 0; }
-          .single-label-card {
-            width: ${labelWidthMm}mm !important;
-            height: ${labelHeightMm}mm !important;
-            position: relative !important;
-            overflow: hidden !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            border: none !important;
-            break-after: page;
-            page-break-after: always;
-            break-inside: avoid;
-            page-break-inside: avoid;
-          }
-          .single-label-card:last-child {
-            break-after: auto;
-            page-break-after: auto;
-          }
-          ` : ''}
-        }
-      `}</style>
-
       {/* Toast */}
       {toast && (
         <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] px-8 py-4 rounded-2xl shadow-2xl backdrop-blur-md border animate-[fadeRise_300ms_ease-out] flex items-center gap-3 ${toast.type === 'success' ? 'bg-emerald-500/90 text-white border-emerald-400' : toast.type === 'danger' ? 'bg-red-500/90 text-white border-red-400' : 'bg-slate-800/90 text-white border-slate-600'}`}>
@@ -969,13 +734,7 @@ export default function InventoryPage() {
         {selectedIds.length > 0 && (
           <div className="flex items-center gap-3 animate-[fadeInRight_300ms_ease-out]">
             <button
-              onClick={() => {
-                setLabelWidthMm(DEFAULT_LABEL_W_MM);
-                setLabelHeightMm(DEFAULT_LABEL_H_MM);
-                setBarcodeBox(defaultBarcodeBox());
-                setFieldBoxes(defaultFieldBoxes());
-                setBulkLabelPreview(true);
-              }}
+              onClick={() => { setBulkLabelPreview(true); setLabelDesignerKey(k => k + 1); }}
               className="px-6 py-3 rounded-xl bg-blue-50 text-blue-600 text-xs font-black uppercase tracking-[0.1em] border border-blue-100 hover:bg-blue-600 hover:text-white transition-all shadow-sm flex items-center gap-2"
             >
               <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z" /></svg>
@@ -1087,13 +846,7 @@ export default function InventoryPage() {
                                  </span>
                                )}
                                <div
-                                onClick={() => {
-                                  setBarcodeModal(item);
-                                  setLabelWidthMm(DEFAULT_LABEL_W_MM);
-                                  setLabelHeightMm(DEFAULT_LABEL_H_MM);
-                                  setBarcodeBox(defaultBarcodeBox());
-                                  setFieldBoxes(defaultFieldBoxes());
-                                }}
+                                onClick={() => { setBarcodeModal(item); setLabelDesignerKey(k => k + 1); }}
                                 className="p-0.5 px-1 bg-white border border-slate-200 inline-block rounded shadow-sm hover:scale-[1.1] transition-transform duration-300 cursor-pointer"
                               >
                                  <img suppressHydrationWarning src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${item.barcode}&scale=3&height=6&includetext`} className="h-4 object-contain" alt={item.barcode} />
@@ -1862,141 +1615,15 @@ export default function InventoryPage() {
         </div>
       </Modal>
 
-      {/* Barcode Wide Visor Modal — also doubles as the bulk print layout editor */}
-      <Modal
+      {/* Barcode Wide Visor Modal — also doubles as the bulk multi-label print designer */}
+      <LabelDesignerModal
+        key={labelDesignerKey}
         open={!!barcodeModal || bulkLabelPreview}
+        mode={bulkLabelPreview ? 'bulk' : 'single'}
+        singleItem={barcodeModal}
+        bulkItems={bulkLabelPreview ? items.filter(i => selectedIds.includes(i._id)) : []}
         onClose={() => { setBarcodeModal(null); setBulkLabelPreview(false); }}
-        title={bulkLabelPreview ? `Label Layout — ${selectedIds.length} Item${selectedIds.length !== 1 ? 's' : ''}` : 'Asset Barcode View'}
-      >
-        {(() => {
-          const previewItem = barcodeModal ?? items.find(i => selectedIds.includes(i._id)) ?? null;
-          if (!previewItem) return null;
-          return (
-          <div className="flex flex-col items-center justify-center p-8 md:p-12 bg-slate-50/50 rounded-[2rem] border border-slate-100">
-
-            {/* Label stock dimensions — matches the die-cut roll loaded in the printer */}
-            <div className="w-full flex items-center justify-between gap-4 mb-5">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Label Stock</span>
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="number"
-                    min={20} max={200}
-                    value={labelWidthMm}
-                    onChange={e => {
-                      const v = clampNum(Number(e.target.value) || DEFAULT_LABEL_W_MM, 20, 200);
-                      setLabelWidthMm(v);
-                      setBarcodeBox(b => ({ ...b, xMm: Math.min(b.xMm, Math.max(0, v - b.widthMm)), widthMm: Math.min(b.widthMm, v) }));
-                      setFieldBoxes(fb => {
-                        const next = { ...fb };
-                        FIELD_KEYS.forEach(k => { next[k] = { ...next[k], xMm: Math.min(next[k].xMm, Math.max(0, v - next[k].widthMm)), widthMm: Math.min(next[k].widthMm, v) }; });
-                        return next;
-                      });
-                    }}
-                    className="w-16 px-2 py-1.5 rounded-lg border border-slate-200 text-xs font-black text-slate-900 text-center focus:outline-none focus:border-blue-400"
-                  />
-                  <span className="text-[9px] font-bold text-slate-400 uppercase">w</span>
-                </div>
-                <span className="text-slate-300 text-xs">×</span>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="number"
-                    min={8} max={100}
-                    value={labelHeightMm}
-                    onChange={e => {
-                      const v = clampNum(Number(e.target.value) || DEFAULT_LABEL_H_MM, 8, 100);
-                      setLabelHeightMm(v);
-                      setBarcodeBox(b => ({ ...b, yMm: Math.min(b.yMm, Math.max(0, v - b.heightMm)), heightMm: Math.min(b.heightMm, v) }));
-                      setFieldBoxes(fb => {
-                        const next = { ...fb };
-                        FIELD_KEYS.forEach(k => { next[k] = { ...next[k], yMm: Math.min(next[k].yMm, Math.max(0, v - next[k].heightMm)), heightMm: Math.min(next[k].heightMm, v) }; });
-                        return next;
-                      });
-                    }}
-                    className="w-16 px-2 py-1.5 rounded-lg border border-slate-200 text-xs font-black text-slate-900 text-center focus:outline-none focus:border-blue-400"
-                  />
-                  <span className="text-[9px] font-bold text-slate-400 uppercase">h</span>
-                </div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase">mm</span>
-              </div>
-            </div>
-
-            {/* Which details print alongside the barcode */}
-            <div className="w-full flex flex-wrap items-center gap-x-4 gap-y-2 mb-5">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] w-full sm:w-auto">Show On Label</span>
-              {([
-                ['name', 'Name'], ['weight', 'GWT/NWT'], ['stoneWt', 'ST. WT'], ['grade', 'Grade'], ['lmc', 'LMC/DIS'],
-              ] as const).map(([key, label]) => (
-                <label key={key} className="flex items-center gap-1.5 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={visibleFields[key]}
-                    onChange={() => setVisibleFields(v => ({ ...v, [key]: !v[key] }))}
-                    className="w-3.5 h-3.5 rounded accent-emerald-600"
-                  />
-                  <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">{label}</span>
-                </label>
-              ))}
-            </div>
-
-            {/* Interactive, to-scale editor — drag either block to move it, drag its corner
-                handle to resize it. This is a live WYSIWYG match of the printed output. */}
-            <div className="w-full flex items-center justify-center bg-slate-100 rounded-2xl p-8 overflow-auto">
-              <div
-                className="relative bg-white border-2 border-dashed border-slate-300 rounded-md shadow-inner shrink-0"
-                style={{ width: labelWidthMm * LABEL_PREVIEW_SCALE, height: labelHeightMm * LABEL_PREVIEW_SCALE }}
-              >
-                {renderLabelElements(previewItem, { pxPerMm: LABEL_PREVIEW_SCALE, interactive: true })}
-              </div>
-            </div>
-            <div className="mt-3 flex items-center justify-center gap-4 flex-wrap">
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                <span className="inline-block w-2 h-2 rounded-full bg-blue-600 mr-1.5 align-middle" />
-                Barcode — drag to move, corner to resize
-              </p>
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                <span className="inline-block w-2 h-2 rounded-full bg-emerald-600 mr-1.5 align-middle" />
-                Each text field — drag to move, corner to resize
-              </p>
-              <button
-                type="button"
-                onClick={() => { setBarcodeBox(defaultBarcodeBox()); setFieldBoxes(defaultFieldBoxes()); }}
-                className="text-[9px] font-black text-blue-600 hover:text-blue-800 uppercase tracking-widest"
-              >
-                Reset Layout
-              </button>
-            </div>
-
-            {bulkLabelPreview ? (
-              <p className="mt-6 text-[11px] font-bold text-slate-500 text-center">
-                Previewing <span className="font-black text-slate-900">{previewItem.barcode}</span> — this layout applies to all {selectedIds.length} selected item{selectedIds.length !== 1 ? 's' : ''}, one label each.
-              </p>
-            ) : (
-              <>
-                <p className="mt-6 text-2xl font-black text-slate-900 tracking-widest uppercase">{previewItem.barcode}</p>
-                <p className="mt-2 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Scan using hardware scanner</p>
-              </>
-            )}
-
-            <div className="w-full mt-6 flex gap-3">
-              <button
-                onClick={() => window.print()}
-                className="flex-1 py-4 rounded-2xl bg-blue-600 text-white text-[11px] font-bold uppercase tracking-widest shadow-xl hover:bg-blue-700 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
-              >
-                <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z" /></svg>
-                {bulkLabelPreview ? `Print ${selectedIds.length} Label${selectedIds.length !== 1 ? 's' : ''}` : 'Print Piece Label'}
-              </button>
-              <button
-                onClick={() => { setBarcodeModal(null); setBulkLabelPreview(false); }}
-                className="flex-1 py-4 rounded-2xl bg-slate-100 text-slate-500 text-[11px] font-bold uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-[0.98]"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-          );
-        })()}
-      </Modal>
+      />
 
       {preBookTarget && (
         <PreBookModal item={preBookTarget} onClose={() => setPreBookTarget(null)} onBooked={handleBooked} />
@@ -2018,16 +1645,6 @@ export default function InventoryPage() {
           onCancelled={handleBookingCancelled}
         />
       )}
-
-      {/* Invisible Print Wrapper for Scannable Labels — each item gets its own label,
-          sized/laid out exactly as arranged in the editor above. */}
-      <div className="hidden print:block print-labels-sheet">
-        {barcodeModal ? (
-          renderSingleLabelPrint(barcodeModal)
-        ) : bulkLabelPreview ? (
-          items.filter(i => selectedIds.includes(i._id)).map(item => renderSingleLabelPrint(item, item._id))
-        ) : null}
-      </div>
     </div>
   );
 }
