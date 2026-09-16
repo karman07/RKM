@@ -779,7 +779,11 @@ export default function InventoryPage() {
       <style jsx global>{`
         @media print {
           @page { margin: 10mm; }
-          body * { visibility: hidden !important; height: 0 !important; overflow: hidden !important; }
+          /* overflow must stay visible here — the dashboard shell's ancestors (.admin-shell etc.)
+             use overflow-hidden + h-screen; combined with height:0 that would clip the
+             absolutely-positioned, multi-page label sheet below and make labels overlap/vanish
+             once there's more than one page to paginate. */
+          body * { visibility: hidden !important; height: 0 !important; overflow: visible !important; }
           .print-labels-sheet, .print-labels-sheet * { visibility: visible !important; height: auto !important; overflow: visible !important; }
           .print-labels-sheet {
             position: absolute !important;
