@@ -110,7 +110,9 @@ export function buildBillPrintHtml(items: any[], date: string, customerRecordId:
       metalType: product?.metal_type ?? '-',
       purity: product?.purity ?? '-',
       makingType: product?.making_charge_type ?? 'fixed',
-      makingRate: product?.making_charge_rate ?? product?.fixed_making_charge ?? 0,
+      makingRate: product?.making_charge_type === 'percentage'
+        ? (product?.making_charge_percentage ?? 0)
+        : (product?.making_charge_rate ?? product?.fixed_making_charge ?? 0),
       hsn: '71131910',
     };
   });
@@ -180,7 +182,7 @@ export function buildBillPrintHtml(items: any[], date: string, customerRecordId:
       </td>
       <td style="${cellR}">
         <div style="font-weight:600;">Rs.${fmt(row.makingCharge)}</div>
-        <div style="font-size:7.5px;color:#666;">${row.makingType === 'per_gram' ? `Rs.${fmt(row.makingRate)}/g` : 'Fixed'}</div>
+        <div style="font-size:7.5px;color:#666;">${row.makingType === 'per_gram' ? `Rs.${fmt(row.makingRate)}/g` : row.makingType === 'percentage' ? `${row.makingRate}% of metal` : 'Fixed'}</div>
       </td>
       <td style="${cellR}">${row.wastage > 0 ? `${row.wastage}%` : '-'}</td>
       <td style="${cellR}">${row.discountAmt > 0 ? `<span style="font-weight:600;">Rs.${fmt(row.discountAmt)}</span>` : '<span style="color:#aaa;">-</span>'}</td>

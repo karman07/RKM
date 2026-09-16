@@ -97,6 +97,7 @@ export class PurchaseOrdersService {
           stones: (item as any).stones,
           making_charge_type: item.making_charge_type || 'per_gram',
           making_charge_rate: item.making_charge_rate,
+          making_charge_percentage: (item as any).making_charge_percentage,
           fixed_making_charge: item.fixed_making_charge,
           tax_percentage: item.tax_percentage,
           taxes: (item as any).taxes,

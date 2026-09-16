@@ -49,13 +49,17 @@ export class Settings {
   })
   stone_rates: Record<string, number>;
 
-  /** Default making charge type: 'per_gram' | 'fixed' */
+  /** Default making charge type: 'per_gram' | 'fixed' | 'percentage' */
   @Prop({ type: String, default: 'per_gram' })
   making_charge_type: string;
 
   /** Rate per gram when making_charge_type = 'per_gram' */
   @Prop({ type: Number, min: 0, default: 0 })
   making_charge_rate: number;
+
+  /** Rate (%) of metal value when making_charge_type = 'percentage' */
+  @Prop({ type: Number, min: 0, default: 0 })
+  making_charge_percentage: number;
 
   /** Fixed amount when making_charge_type = 'fixed' */
   @Prop({ type: Number, min: 0, default: 0 })

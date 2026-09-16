@@ -410,6 +410,7 @@ export class ProductsService {
       metal_rate: metalRate,
       making_charge_type: p.making_charge_type ?? 'fixed',
       making_charge_rate: p.making_charge_rate ?? 0,
+      making_charge_percentage: p.making_charge_percentage ?? 0,
       fixed_making_charge: p.fixed_making_charge ?? 0,
       tax_percentage: p.tax_percentage ?? 0,
       discount_percentage: p.discount_percentage ?? 0,

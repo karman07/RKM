@@ -63,6 +63,7 @@ const DEFAULT_LOOKUPS: Array<{ lookup_type: LookupType; label: string; value: st
   // Making Charge Type
   { lookup_type: LookupType.MAKING_CHARGE_TYPE, label: 'Per Gram', value: 'per_gram', sort_order: 1 },
   { lookup_type: LookupType.MAKING_CHARGE_TYPE, label: 'Fixed Amount', value: 'fixed', sort_order: 2 },
+  { lookup_type: LookupType.MAKING_CHARGE_TYPE, label: 'Percentage of Metal Value', value: 'percentage', sort_order: 3 },
 
   // Inventory Status
   { lookup_type: LookupType.INVENTORY_STATUS, label: 'Available', value: 'available', sort_order: 1 },

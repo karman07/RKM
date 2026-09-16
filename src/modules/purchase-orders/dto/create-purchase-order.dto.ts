@@ -24,6 +24,7 @@ export class PoItemDto {
 
   @IsOptional() @IsString() making_charge_type?: string;
   @IsOptional() @IsNumber() making_charge_rate?: number;
+  @IsOptional() @IsNumber() making_charge_percentage?: number;
   @IsOptional() @IsNumber() fixed_making_charge?: number;
 
   @IsOptional() @IsNumber() tax_percentage?: number;

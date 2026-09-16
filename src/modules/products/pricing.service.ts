@@ -32,6 +32,8 @@ export interface PricingInput {
   metal_rate: number;
   making_charge_type: string;
   making_charge_rate: number;
+  /** Rate (%) applied to metal value when making_charge_type = 'percentage' */
+  making_charge_percentage: number;
   fixed_making_charge: number;
   tax_percentage: number;
   discount_percentage?: number;
@@ -137,6 +139,8 @@ export class PricingService {
     const making_charges = parseFloat(
       (input.making_charge_type === 'per_gram'
         ? net_weight * input.making_charge_rate   // making charges on net weight (not billable)
+        : input.making_charge_type === 'percentage'
+        ? (metal_price * input.making_charge_percentage) / 100   // % of metal value — scales with gold rate
         : input.fixed_making_charge
       ).toFixed(2),
     );

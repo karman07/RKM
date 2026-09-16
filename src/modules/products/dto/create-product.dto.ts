@@ -212,6 +212,11 @@ export class CreateProductDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
+  making_charge_percentage?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
   fixed_making_charge?: number;
 
   @IsOptional()

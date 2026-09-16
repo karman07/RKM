@@ -72,6 +72,9 @@ export class PoItem {
   making_charge_rate?: number;
 
   @Prop({ type: Number })
+  making_charge_percentage?: number;
+
+  @Prop({ type: Number })
   fixed_making_charge?: number;
 
   @Prop({ type: Number, default: 3 })

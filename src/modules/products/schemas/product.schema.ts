@@ -144,6 +144,9 @@ export class Product {
   making_charge_rate: number;
 
   @Prop({ type: Number, min: 0, default: 0 })
+  making_charge_percentage: number;
+
+  @Prop({ type: Number, min: 0, default: 0 })
   fixed_making_charge: number;
 
   @Prop({ type: Number, min: 0, default: 0 })

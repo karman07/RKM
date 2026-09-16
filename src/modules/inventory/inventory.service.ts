@@ -130,6 +130,7 @@ export class InventoryService {
       metal_rate: metalRate,
       making_charge_type: product.making_charge_type ?? 'fixed',
       making_charge_rate: product.making_charge_rate ?? 0,
+      making_charge_percentage: product.making_charge_percentage ?? 0,
       fixed_making_charge: product.fixed_making_charge ?? 0,
       tax_percentage: product.tax_percentage ?? 0,
       discount_percentage: (item && item.admin_discount > 0) ? item.admin_discount : (product.discount_percentage ?? 0),
@@ -186,7 +187,7 @@ export class InventoryService {
       .find({ _id: { $in: itemIds } })
       .populate({
         path: 'product_id',
-        select: 'name sku metal_type purity stones wastage_percentage net_weight stone_weight stone_type making_charge_type making_charge_rate fixed_making_charge tax_percentage discount_percentage price_override purchase_price max_manager_discount barcode images dimensions extra_charges gross_weight',
+        select: 'name sku metal_type purity stones wastage_percentage net_weight stone_weight stone_type making_charge_type making_charge_rate making_charge_percentage fixed_making_charge tax_percentage discount_percentage price_override purchase_price max_manager_discount barcode images dimensions extra_charges gross_weight',
         populate: { path: 'category_id', select: 'name slug' },
       })
       .populate({ path: 'sold_at_branch_id', select: 'name code city address phone email state pincode gstin' })
@@ -778,7 +779,7 @@ export class InventoryService {
         .populate({
           path: 'product_id',
           // pricing_breakdown is a virtual field NOT stored in DB — we recompute it below
-          select: 'name sku metal_type purity stones wastage_percentage net_weight stone_weight stone_type making_charge_type making_charge_rate fixed_making_charge tax_percentage discount_percentage price_override purchase_price max_manager_discount barcode images dimensions extra_charges gross_weight',
+          select: 'name sku metal_type purity stones wastage_percentage net_weight stone_weight stone_type making_charge_type making_charge_rate making_charge_percentage fixed_making_charge tax_percentage discount_percentage price_override purchase_price max_manager_discount barcode images dimensions extra_charges gross_weight',
           populate: { path: 'category_id', select: 'name slug' },
         })
         .populate({ path: 'branch_id', select: 'name code city address phone email state pincode gstin' })
@@ -1344,7 +1345,7 @@ export class InventoryService {
       .findOne({ barcode })
       .populate({
         path: 'product_id',
-        select: 'name sku metal_type purity stones wastage_percentage net_weight stone_weight stone_type making_charge_type making_charge_rate fixed_making_charge tax_percentage discount_percentage price_override purchase_price max_manager_discount barcode images dimensions',
+        select: 'name sku metal_type purity stones wastage_percentage net_weight stone_weight stone_type making_charge_type making_charge_rate making_charge_percentage fixed_making_charge tax_percentage discount_percentage price_override purchase_price max_manager_discount barcode images dimensions',
         populate: { path: 'category_id', select: 'name slug' },
       })
       .populate({ path: 'branch_id', select: 'name code city' })
@@ -2283,7 +2284,7 @@ export class InventoryService {
         .find(filter as any)
         .populate({
           path: 'product_id',
-          select: 'name sku metal_type purity net_weight stone_weight gross_weight making_charge_type making_charge_rate fixed_making_charge tax_percentage images',
+          select: 'name sku metal_type purity net_weight stone_weight gross_weight making_charge_type making_charge_rate making_charge_percentage fixed_making_charge tax_percentage images',
         })
         .populate({ path: 'branch_id', select: 'name code city' })
         .populate({ path: 'sold_at_branch_id', select: 'name code city' })
