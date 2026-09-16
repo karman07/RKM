@@ -141,32 +141,6 @@ export default function InventoryPage() {
   }
 
   const clampNum = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
-
-  /** Barcode (unchanged) + the tag data fields laid out beside it, for the printed piece label */
-  function renderLabelCardBody(item: InventoryItem, widthMm?: number) {
-    const fields = getLabelFields(item);
-    return (
-      <div className="flex items-start gap-4 w-full">
-        <img
-          suppressHydrationWarning
-          src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${item.barcode}&scale=4&height=12&includetext`}
-          style={widthMm ? { width: `${widthMm}mm` } : undefined}
-          className={widthMm ? 'object-contain shrink-0' : 'h-16 object-contain shrink-0'}
-          alt={item.barcode}
-        />
-        <div className="flex-1 min-w-0 text-left">
-          <p className="text-[10px] font-black text-slate-900 uppercase tracking-widest truncate">{fields.name}</p>
-          <div className="mt-2 space-y-1 text-[9px] font-bold text-slate-700">
-            <div className="flex justify-between gap-3"><span className="text-slate-400 uppercase tracking-wide">GWT/NWT</span><span>{fields.gwt} gm/ {fields.nwt} g</span></div>
-            <div className="flex justify-between gap-3"><span className="text-slate-400 uppercase tracking-wide">ST. WT</span><span>{fields.stoneWt} gm</span></div>
-            <div className="flex justify-between gap-3"><span className="text-slate-400 uppercase tracking-wide">Grade</span><span>{fields.grade}</span></div>
-            <div className="flex justify-between gap-3"><span className="text-slate-400 uppercase tracking-wide">LMC/DIS</span><span>{fields.lmc}/{fields.dis}</span></div>
-          </div>
-          <p className="mt-2 text-[8px] font-bold text-slate-400 uppercase tracking-widest italic">#{item.unique_item_code}</p>
-        </div>
-      </div>
-    );
-  }
   const [settings, setSettings] = useState<any>(null);
 
   const [statusFilter, setStatusFilter] = useState('');
@@ -288,6 +262,9 @@ export default function InventoryPage() {
 
   // ── Barcode Wide Modal ───────────────────────────────────────────────────
   const [barcodeModal, setBarcodeModal] = useState<InventoryItem | null>(null);
+  // Same editor/layout as the single-item visor, opened instead for a bulk print run —
+  // whatever's arranged here applies to every selected item, one label each.
+  const [bulkLabelPreview, setBulkLabelPreview] = useState(false);
   // Matches the die-cut label stock loaded in the printer (e.g. 65mm x 13mm) — editable so it
   // can be adjusted to whatever roll is actually loaded.
   const DEFAULT_LABEL_W_MM = 65;
@@ -439,10 +416,11 @@ export default function InventoryPage() {
     );
   }
 
-  /** What actually prints — barcode + details positioned exactly as arranged in the editor */
-  function renderSingleLabelPrint(item: InventoryItem) {
+  /** What actually prints — barcode + details positioned exactly as arranged in the editor.
+      Used for both the single-item visor and every item in a bulk print run (one label each). */
+  function renderSingleLabelPrint(item: InventoryItem, key?: string) {
     return (
-      <div className="single-label-card" style={{ width: `${labelWidthMm}mm`, height: `${labelHeightMm}mm`, position: 'relative' }}>
+      <div key={key} className="single-label-card" style={{ width: `${labelWidthMm}mm`, height: `${labelHeightMm}mm`, position: 'relative' }}>
         {renderLabelElements(item)}
       </div>
     );
@@ -790,16 +768,9 @@ export default function InventoryPage() {
             display: block !important;
             background: white !important;
           }
-          .label-card {
-            break-inside: avoid;
-            page-break-inside: avoid;
-            border: 1px solid #e2e8f0 !important;
-            padding: 10mm !important;
-            margin-bottom: 5mm !important;
-            text-align: center;
-          }
-          ${selectedIds.length === 0 && barcodeModal ? `
-          /* Single asset label — page sized exactly to the die-cut stock loaded in the printer */
+          ${barcodeModal || bulkLabelPreview ? `
+          /* Asset label(s) — page sized exactly to the die-cut stock loaded in the printer.
+             Each label is its own page, matching a continuous label-roll printer. */
           @page { size: ${labelWidthMm}mm ${labelHeightMm}mm; margin: 0; }
           .single-label-card {
             width: ${labelWidthMm}mm !important;
@@ -809,6 +780,14 @@ export default function InventoryPage() {
             margin: 0 !important;
             padding: 0 !important;
             border: none !important;
+            break-after: page;
+            page-break-after: always;
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+          .single-label-card:last-child {
+            break-after: auto;
+            page-break-after: auto;
           }
           ` : ''}
         }
@@ -965,7 +944,13 @@ export default function InventoryPage() {
         {selectedIds.length > 0 && (
           <div className="flex items-center gap-3 animate-[fadeInRight_300ms_ease-out]">
             <button
-              onClick={() => window.print()}
+              onClick={() => {
+                setLabelWidthMm(DEFAULT_LABEL_W_MM);
+                setLabelHeightMm(DEFAULT_LABEL_H_MM);
+                setBarcodeBox(defaultBarcodeBox());
+                setDetailsBox(defaultDetailsBox());
+                setBulkLabelPreview(true);
+              }}
               className="px-6 py-3 rounded-xl bg-blue-50 text-blue-600 text-xs font-black uppercase tracking-[0.1em] border border-blue-100 hover:bg-blue-600 hover:text-white transition-all shadow-sm flex items-center gap-2"
             >
               <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z" /></svg>
@@ -1852,9 +1837,15 @@ export default function InventoryPage() {
         </div>
       </Modal>
 
-      {/* Barcode Wide Visor Modal */}
-      <Modal open={!!barcodeModal} onClose={() => setBarcodeModal(null)} title="Asset Barcode View">
-        {barcodeModal && (() => {
+      {/* Barcode Wide Visor Modal — also doubles as the bulk print layout editor */}
+      <Modal
+        open={!!barcodeModal || bulkLabelPreview}
+        onClose={() => { setBarcodeModal(null); setBulkLabelPreview(false); }}
+        title={bulkLabelPreview ? `Label Layout — ${selectedIds.length} Item${selectedIds.length !== 1 ? 's' : ''}` : 'Asset Barcode View'}
+      >
+        {(() => {
+          const previewItem = barcodeModal ?? items.find(i => selectedIds.includes(i._id)) ?? null;
+          if (!previewItem) return null;
           return (
           <div className="flex flex-col items-center justify-center p-8 md:p-12 bg-slate-50/50 rounded-[2rem] border border-slate-100">
 
@@ -1922,7 +1913,7 @@ export default function InventoryPage() {
                 className="relative bg-white border-2 border-dashed border-slate-300 rounded-md shadow-inner shrink-0"
                 style={{ width: labelWidthMm * LABEL_PREVIEW_SCALE, height: labelHeightMm * LABEL_PREVIEW_SCALE }}
               >
-                {renderLabelElements(barcodeModal, { pxPerMm: LABEL_PREVIEW_SCALE, interactive: true })}
+                {renderLabelElements(previewItem, { pxPerMm: LABEL_PREVIEW_SCALE, interactive: true })}
               </div>
             </div>
             <div className="mt-3 flex items-center justify-center gap-4 flex-wrap">
@@ -1943,22 +1934,30 @@ export default function InventoryPage() {
               </button>
             </div>
 
-            <p className="mt-6 text-2xl font-black text-slate-900 tracking-widest uppercase">{barcodeModal.barcode}</p>
-            <p className="mt-2 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Scan using hardware scanner</p>
+            {bulkLabelPreview ? (
+              <p className="mt-6 text-[11px] font-bold text-slate-500 text-center">
+                Previewing <span className="font-black text-slate-900">{previewItem.barcode}</span> — this layout applies to all {selectedIds.length} selected item{selectedIds.length !== 1 ? 's' : ''}, one label each.
+              </p>
+            ) : (
+              <>
+                <p className="mt-6 text-2xl font-black text-slate-900 tracking-widest uppercase">{previewItem.barcode}</p>
+                <p className="mt-2 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Scan using hardware scanner</p>
+              </>
+            )}
 
             <div className="w-full mt-6 flex gap-3">
-              <button 
-                onClick={() => window.print()} 
+              <button
+                onClick={() => window.print()}
                 className="flex-1 py-4 rounded-2xl bg-blue-600 text-white text-[11px] font-bold uppercase tracking-widest shadow-xl hover:bg-blue-700 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
               >
                 <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z" /></svg>
-                Print Piece Label
+                {bulkLabelPreview ? `Print ${selectedIds.length} Label${selectedIds.length !== 1 ? 's' : ''}` : 'Print Piece Label'}
               </button>
-              <button 
-                onClick={() => setBarcodeModal(null)} 
+              <button
+                onClick={() => { setBarcodeModal(null); setBulkLabelPreview(false); }}
                 className="flex-1 py-4 rounded-2xl bg-slate-100 text-slate-500 text-[11px] font-bold uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-[0.98]"
               >
-                Close Visor
+                Close
               </button>
             </div>
           </div>
@@ -1987,19 +1986,13 @@ export default function InventoryPage() {
         />
       )}
 
-      {/* Invisible Print Wrapper for Scannable Labels */}
+      {/* Invisible Print Wrapper for Scannable Labels — each item gets its own label,
+          sized/laid out exactly as arranged in the editor above. */}
       <div className="hidden print:block print-labels-sheet">
-        {selectedIds.length > 0 ? (
-          <div className="grid grid-cols-2 gap-4">
-            {items.filter(i => selectedIds.includes(i._id)).map(item => (
-              <div key={item._id} className="label-card border border-slate-200 p-6 rounded-xl">
-                {renderLabelCardBody(item)}
-              </div>
-            ))}
-          </div>
-        ) : barcodeModal ? (
-          // Single asset label — sized and centered exactly to the die-cut stock, barcode only
+        {barcodeModal ? (
           renderSingleLabelPrint(barcodeModal)
+        ) : bulkLabelPreview ? (
+          items.filter(i => selectedIds.includes(i._id)).map(item => renderSingleLabelPrint(item, item._id))
         ) : null}
       </div>
     </div>
