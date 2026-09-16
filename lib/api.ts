@@ -293,6 +293,7 @@ export interface Product {
   dimensions?: string;
   making_charge_type: string;
   making_charge_rate?: number;
+  making_charge_percentage?: number;
   fixed_making_charge?: number;
   tax_percentage: number;
   /**
@@ -1184,6 +1185,7 @@ export interface PoItem {
   stone_price?: number;
   making_charge_type?: string;
   making_charge_rate?: number;
+  making_charge_percentage?: number;
   fixed_making_charge?: number;
   tax_percentage?: number;
   purchase_price?: number;
@@ -1310,6 +1312,7 @@ export interface AppSettings {
   stone_rates: Record<string, number>;
   making_charge_type: string;
   making_charge_rate: number;
+  making_charge_percentage: number;
   fixed_making_charge: number;
   note?: string;
   /**

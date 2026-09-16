@@ -26,6 +26,7 @@ export interface PricingInputFE {
   metal_rate: number;
   making_charge_type: string;
   making_charge_rate: number;
+  making_charge_percentage: number;
   fixed_making_charge: number;
   tax_percentage: number;
   discount_percentage?: number;
@@ -94,6 +95,8 @@ export function computePrice(input: PricingInputFE): PricingResultFE {
   const making_charges = parseFloat(
     (input.making_charge_type === 'per_gram'
       ? net_weight * input.making_charge_rate
+      : input.making_charge_type === 'percentage'
+      ? (metal_price * input.making_charge_percentage) / 100
       : input.fixed_making_charge
     ).toFixed(2),
   );

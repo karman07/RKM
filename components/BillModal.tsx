@@ -394,7 +394,9 @@ ${billEl.outerHTML}
       metalType:  product?.metal_type  ?? '—',
       purity:     product?.purity      ?? '—',
       makingType: product?.making_charge_type ?? 'fixed',
-      makingRate: product?.making_charge_rate ?? product?.fixed_making_charge ?? 0,
+      makingRate: product?.making_charge_type === 'percentage'
+        ? ((product as any)?.making_charge_percentage ?? 0)
+        : (product?.making_charge_rate ?? product?.fixed_making_charge ?? 0),
       stonesBreakdown: pb?.stones_breakdown ?? [],
       extraCharges:    (pb as any)?.extra_charges_breakdown ?? [],
       hsn: '71131910',
@@ -653,7 +655,7 @@ ${billEl.outerHTML}
                     </td>
                     <td style={cellR}>
                       <div style={{ fontWeight: 600 }}>₹{fmt(row.makingCharge)}</div>
-                      <div style={{ fontSize: '7.5px', color: '#666' }}>{row.makingType === 'per_gram' ? `₹${fmt(row.makingRate)}/g` : 'Fixed'}</div>
+                      <div style={{ fontSize: '7.5px', color: '#666' }}>{row.makingType === 'per_gram' ? `₹${fmt(row.makingRate)}/g` : row.makingType === 'percentage' ? `${row.makingRate}% of metal` : 'Fixed'}</div>
                     </td>
                     <td style={cellR}>{row.wastage > 0 ? `${row.wastage}%` : '—'}</td>
                     <td style={cellR}>

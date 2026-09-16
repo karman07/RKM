@@ -52,6 +52,7 @@ function productToItem(p: Product, mode: ItemMode): any {
     stones:            (p.stones || []).map(s => ({ stone_type: s.stone_type, weight: String(s.weight), price_override: String(s.price_override ?? '') })),
     making_charge_type:p.making_charge_type || 'per_gram',
     making_charge_rate:p.making_charge_rate ?? 0,
+    making_charge_percentage:(p as any).making_charge_percentage ?? 0,
     fixed_making_charge:p.fixed_making_charge ?? 0,
     tax_percentage:    p.tax_percentage ?? 3,
     taxes:             Array.isArray(p.taxes) && p.taxes.length > 0 ? p.taxes.map(t => ({ name: t.name, percentage: String(t.percentage) })) : DEFAULT_TAXES,
@@ -79,7 +80,7 @@ function blankItem(): any {
     gender: '', occasion: '', dimensions: '',
     gross_weight: 0, net_weight: 0, stone_weight: 0, wastage_percentage: 0,
     has_stones: false, stone_type: '', stones: [],
-    making_charge_type: 'per_gram', making_charge_rate: 0, fixed_making_charge: 0,
+    making_charge_type: 'per_gram', making_charge_rate: 0, making_charge_percentage: 0, fixed_making_charge: 0,
     tax_percentage: 3, taxes: DEFAULT_TAXES, extra_charges: [],
     discount_percentage: 0, max_manager_discount: 0, price_override: '',
     purchase_price: 0, selling_price: 0, images: [], _pendingImages: [] as File[],
@@ -861,14 +862,20 @@ function FullProductForm({ item, isPublished, categories, metalTypes, purities, 
           <div>
             <label className={LBL}>Making Charge Type</label>
             <select className={dis ? INP_DIS : INP} disabled={dis} value={item.making_charge_type || 'per_gram'} onChange={e => onFieldChange('making_charge_type', e.target.value)}>
-              <option value="per_gram">Per Gram</option>
-              <option value="fixed">Fixed Amount</option>
-              {makingTypes.map((l: Lookup) => <option key={l._id} value={l.value}>{l.label}</option>)}
+              {makingTypes.length > 0 ? makingTypes.map((l: Lookup) => <option key={l._id} value={l.value}>{l.label}</option>) : (
+                <>
+                  <option value="per_gram">Per Gram</option>
+                  <option value="fixed">Fixed Amount</option>
+                  <option value="percentage">Percentage of Metal Value</option>
+                </>
+              )}
             </select>
           </div>
           <div>
             {item.making_charge_type === 'fixed' ? (
               <><label className={LBL}>Fixed Amount (₹)</label><input type="number" min="0" className={dis ? INP_DIS : INP} disabled={dis} value={item.fixed_making_charge || ''} onChange={e => onFieldChange('fixed_making_charge', parseFloat(e.target.value) || 0)} /></>
+            ) : item.making_charge_type === 'percentage' ? (
+              <><label className={LBL}>Rate (%)</label><input type="number" min="0" className={dis ? INP_DIS : INP} disabled={dis} value={item.making_charge_percentage || ''} onChange={e => onFieldChange('making_charge_percentage', parseFloat(e.target.value) || 0)} /></>
             ) : (
               <><label className={LBL}>Rate per gram (₹)</label><input type="number" min="0" className={dis ? INP_DIS : INP} disabled={dis} value={item.making_charge_rate || ''} onChange={e => onFieldChange('making_charge_rate', parseFloat(e.target.value) || 0)} /></>
             )}

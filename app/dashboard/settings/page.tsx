@@ -67,6 +67,7 @@ export default function SettingsPage() {
   const [purityLookups, setPurityLookups] = useState<Lookup[]>([]);
   const [chargeType, setChargeType] = useState('per_gram');
   const [chargeRate, setChargeRate] = useState('');
+  const [chargePercentage, setChargePercentage] = useState('');
   const [fixedCharge, setFixedCharge] = useState('');
   const [note, setNote] = useState('');
   const [stoneRefundPct, setStoneRefundPct] = useState<string>('50');
@@ -190,6 +191,7 @@ export default function SettingsPage() {
     setStoneRates(sr);
     setChargeType(settings.making_charge_type ?? 'per_gram');
     setChargeRate(settings.making_charge_rate ? String(settings.making_charge_rate) : '');
+    setChargePercentage(settings.making_charge_percentage ? String(settings.making_charge_percentage) : '');
     setFixedCharge(settings.fixed_making_charge ? String(settings.fixed_making_charge) : '');
     setNote(settings.note ?? '');
     setStoneRefundPct(settings.stone_refund_percentage != null ? String(settings.stone_refund_percentage) : '50');
@@ -273,6 +275,7 @@ export default function SettingsPage() {
         stone_rates: numericStone,
         making_charge_type: chargeType,
         making_charge_rate: Number(chargeRate) || 0,
+        making_charge_percentage: Number(chargePercentage) || 0,
         fixed_making_charge: Number(fixedCharge) || 0,
         note: note.trim(),
         stone_refund_percentage: Number(stoneRefundPct) || 50,
@@ -535,7 +538,7 @@ return (
           <div className="space-y-3">
             <label className="text-[13px] font-bold" style={{ color: colors.textMain }}>Structure</label>
             <div className="flex gap-2">
-              {(['per_gram', 'fixed'] as const).map((type) => (
+              {(['per_gram', 'fixed', 'percentage'] as const).map((type) => (
                 <button
                   key={type}
                   onClick={() => setChargeType(type)}
@@ -545,22 +548,26 @@ return (
                     }`}
                   style={{ color: chargeType === type ? '#fff' : colors.textMain }}
                 >
-                  {type === 'per_gram' ? 'Per Gram' : 'Fixed'}
+                  {type === 'per_gram' ? 'Per Gram' : type === 'percentage' ? 'Percentage' : 'Fixed'}
                 </button>
               ))}
             </div>
           </div>
 
           <div className="space-y-3">
-            <label className="text-[13px] font-bold" style={{ color: colors.textMain }}>Amount (₹)</label>
+            <label className="text-[13px] font-bold" style={{ color: colors.textMain }}>Amount {chargeType === 'percentage' ? '(%)' : '(₹)'}</label>
             <div className="relative">
-              <span className="absolute inset-y-0 left-4 flex items-center text-sm font-bold opacity-30" style={{ color: colors.textMain }}>₹</span>
+              <span className="absolute inset-y-0 left-4 flex items-center text-sm font-bold opacity-30" style={{ color: colors.textMain }}>{chargeType === 'percentage' ? '%' : '₹'}</span>
               <input
                 type="number" min={0} step={0.01}
                 className="w-full pl-8 pr-4 py-3 border rounded-xl text-sm font-semibold transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 style={{ backgroundColor: theme === 'light' ? '#f8fafc' : '#162846', borderColor: colors.border, color: colors.textMain }}
-                value={chargeType === 'per_gram' ? chargeRate : fixedCharge}
-                onChange={(e) => chargeType === 'per_gram' ? setChargeRate(e.target.value) : setFixedCharge(e.target.value)}
+                value={chargeType === 'fixed' ? fixedCharge : chargeType === 'percentage' ? chargePercentage : chargeRate}
+                onChange={(e) => {
+                  if (chargeType === 'fixed') setFixedCharge(e.target.value);
+                  else if (chargeType === 'percentage') setChargePercentage(e.target.value);
+                  else setChargeRate(e.target.value);
+                }}
               />
             </div>
           </div>

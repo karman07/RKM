@@ -110,7 +110,7 @@ interface ProductForm {
   in_stock: boolean;
   /** Multi-stone breakdown rows */
   stones: StoneRow[];
-  making_charge_type: string; making_charge_rate: string; fixed_making_charge: string;
+  making_charge_type: string; making_charge_rate: string; making_charge_percentage: string; fixed_making_charge: string;
   /** @deprecated — kept for backward compat; prefer taxes array */
   tax_percentage: string;
   /** Dynamic per-product taxes — admin defines names (SGST, CGST, etc.) & percentages */
@@ -137,7 +137,7 @@ const emptyForm: ProductForm = {
   has_stones: false, stone_type: '',
   in_stock: true,
   stones: [],
-  making_charge_type: '', making_charge_rate: '', fixed_making_charge: '',
+  making_charge_type: '', making_charge_rate: '', making_charge_percentage: '', fixed_making_charge: '',
   tax_percentage: '3',
   taxes: DEFAULT_TAXES,
   discount_percentage: '0', price_override: '',
@@ -156,6 +156,12 @@ function sortLookupOptions(items: Lookup[] = []) {
     .filter((item) => item.is_active)
     .sort((left, right) => left.sort_order - right.sort_order || left.label.localeCompare(right.label));
 }
+
+const MAKING_CHARGE_SHORT_LABELS: Record<string, string> = {
+  per_gram: 'Per Gram',
+  fixed: 'Fixed Amount',
+  percentage: 'Percentage',
+};
 
 export default function ProductsPage() {
   const searchParams = useSearchParams();
@@ -234,6 +240,7 @@ export default function ProductsPage() {
       stones: [],
       making_charge_type: makingChargeTypeOptions[0]?.value ?? '',
       making_charge_rate: settings.making_charge_rate ? String(settings.making_charge_rate) : '',
+      making_charge_percentage: settings.making_charge_percentage ? String(settings.making_charge_percentage) : '',
       fixed_making_charge: settings.fixed_making_charge ? String(settings.fixed_making_charge) : '',
       tax_percentage: '3',
       taxes: DEFAULT_TAXES,
@@ -354,6 +361,7 @@ export default function ProductsPage() {
       })),
       making_charge_type: p.making_charge_type,
       making_charge_rate: String(p.making_charge_rate ?? ''),
+      making_charge_percentage: String((p as any).making_charge_percentage ?? ''),
       fixed_making_charge: String(p.fixed_making_charge ?? ''),
       tax_percentage: String(p.tax_percentage),
       taxes: Array.isArray((p as any).taxes) && (p as any).taxes.length > 0
@@ -401,6 +409,9 @@ export default function ProductsPage() {
     if (form.making_charge_type === 'per_gram' && (!form.making_charge_rate || Number(form.making_charge_rate) <= 0)) {
       return 'Making charge rate is required for per gram mode.';
     }
+    if (form.making_charge_type === 'percentage' && (!form.making_charge_percentage || Number(form.making_charge_percentage) <= 0)) {
+      return 'Making charge rate (%) is required for percentage mode.';
+    }
     if (form.making_charge_type === 'fixed' && (!form.fixed_making_charge || Number(form.fixed_making_charge) <= 0)) {
       return 'Fixed making charge is required for fixed mode.';
     }
@@ -445,6 +456,7 @@ export default function ProductsPage() {
           })),
         making_charge_type: form.making_charge_type,
         making_charge_rate: form.making_charge_rate ? Number(form.making_charge_rate) : undefined,
+        making_charge_percentage: form.making_charge_percentage ? Number(form.making_charge_percentage) : undefined,
         fixed_making_charge: form.fixed_making_charge ? Number(form.fixed_making_charge) : undefined,
         // Compute total tax_percentage from taxes array for backward compat
         tax_percentage: (Array.isArray(form.taxes) ? form.taxes : [])
@@ -1318,6 +1330,7 @@ export default function ProductsPage() {
               metal_rate: metalR,
               making_charge_type: form.making_charge_type || 'fixed',
               making_charge_rate: Number(form.making_charge_rate) || 0,
+              making_charge_percentage: Number(form.making_charge_percentage) || 0,
               fixed_making_charge: Number(form.fixed_making_charge) || 0,
               tax_percentage: totalTaxPct,
               discount_percentage: Number(form.discount_percentage) || 0,
@@ -1369,7 +1382,7 @@ export default function ProductsPage() {
 
                     {/* Making */}
                     <div className="flex justify-between">
-                      <span className="text-slate-500 text-[12px]">Making ({form.making_charge_type === 'per_gram' ? `₹${form.making_charge_rate}/g` : 'fixed'})</span>
+                      <span className="text-slate-500 text-[12px]">Making ({form.making_charge_type === 'per_gram' ? `₹${form.making_charge_rate}/g` : form.making_charge_type === 'percentage' ? `${form.making_charge_percentage}% of metal` : 'fixed'})</span>
                       <span className="font-bold text-slate-800">₹{fmt(result.making_charges)}</span>
                     </div>
 
@@ -1559,27 +1572,61 @@ export default function ProductsPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Making Charge Type</label>
-                    <select className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.making_charge_type} onChange={(e) => set('making_charge_type', e.target.value)}>
-                      <option value="">Select type</option>
-                      {makingChargeTypeOptions.map((o) => <option key={o._id} value={o.value}>{o.label}</option>)}
-                    </select>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Making Charge</label>
+                  <div className="flex gap-2 mb-2">
+                    {(makingChargeTypeOptions.length > 0 ? makingChargeTypeOptions : [
+                      { _id: 'per_gram', value: 'per_gram', label: 'Per Gram' },
+                      { _id: 'fixed', value: 'fixed', label: 'Fixed Amount' },
+                      { _id: 'percentage', value: 'percentage', label: 'Percentage' },
+                    ]).map((o) => {
+                      const shortLabel = MAKING_CHARGE_SHORT_LABELS[o.value] ?? o.label;
+                      const active = form.making_charge_type === o.value;
+                      return (
+                        <button
+                          type="button"
+                          key={o._id}
+                          onClick={() => set('making_charge_type', o.value)}
+                          className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-colors ${
+                            active ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          {shortLabel}
+                        </button>
+                      );
+                    })}
                   </div>
-                  <div>
-                    {form.making_charge_type === 'per_gram' ? (
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Rate per gram (₹)</label>
-                        <input type="number" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.making_charge_rate} onChange={(e) => set('making_charge_rate', e.target.value)} />
-                      </div>
-                    ) : (
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Fixed Amount (₹)</label>
-                        <input type="number" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.fixed_making_charge} onChange={(e) => set('fixed_making_charge', e.target.value)} />
-                      </div>
-                    )}
+
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-3.5 flex items-center text-slate-400 text-sm pointer-events-none">
+                      {form.making_charge_type === 'percentage' ? '%' : '₹'}
+                    </span>
+                    <input
+                      type="number"
+                      className="w-full pl-8 pr-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      value={
+                        form.making_charge_type === 'fixed' ? form.fixed_making_charge
+                        : form.making_charge_type === 'percentage' ? form.making_charge_percentage
+                        : form.making_charge_rate
+                      }
+                      onChange={(e) => set(
+                        form.making_charge_type === 'fixed' ? 'fixed_making_charge'
+                        : form.making_charge_type === 'percentage' ? 'making_charge_percentage'
+                        : 'making_charge_rate',
+                        e.target.value
+                      )}
+                      placeholder={
+                        form.making_charge_type === 'per_gram' ? 'Rate per gram'
+                        : form.making_charge_type === 'percentage' ? 'Rate %'
+                        : 'Fixed amount'
+                      }
+                    />
                   </div>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    {form.making_charge_type === 'per_gram' && 'Charged per gram of net weight.'}
+                    {form.making_charge_type === 'percentage' && '% of metal value — recalculates automatically with the gold rate.'}
+                    {form.making_charge_type === 'fixed' && 'One flat amount, regardless of weight or gold rate.'}
+                  </p>
                 </div>
               </div>
             );

@@ -13,6 +13,7 @@ const defaultSettings: AppSettings = {
   stone_rates: { diamond: 0, ruby: 0, emerald: 0, sapphire: 0, pearl: 0, coral: 0 },
   making_charge_type: 'per_gram',
   making_charge_rate: 0,
+  making_charge_percentage: 0,
   fixed_making_charge: 0,
 };
 
