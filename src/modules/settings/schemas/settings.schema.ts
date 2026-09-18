@@ -265,6 +265,18 @@ export class Settings {
    */
   @Prop({ type: Boolean, default: false })
   dev_banner_enabled: boolean;
+
+  // ── Asset Label Designer ──────────────────────────────────────────────────────
+
+  /**
+   * The admin's saved barcode/asset label layout — stock size + every element's
+   * position, size, visibility and style. Opaque to the backend (owned entirely by
+   * the label designer UI); shared across every device/browser on this account so
+   * a layout dialed in once is there for both single-piece and bulk printing from
+   * then on, wherever the admin signs in.
+   */
+  @Prop({ type: Object, default: null })
+  label_template: Record<string, any> | null;
 }
 
 export const SettingsSchema = SchemaFactory.createForClass(Settings);

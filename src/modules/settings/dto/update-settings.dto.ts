@@ -234,4 +234,11 @@ export class UpdateSettingsDto {
   @IsOptional()
   @IsBoolean()
   dev_banner_enabled?: boolean;
+
+  // ── Asset Label Designer ────────────────────────────────────────────────────
+
+  /** Saved barcode/asset label layout (stock size + elements) — opaque to the backend */
+  @IsOptional()
+  @IsObject()
+  label_template?: Record<string, any> | null;
 }
