@@ -31,7 +31,7 @@ import {
 } from '@/lib/api';
 import Link from 'next/link';
 import Modal from '@/components/Modal';
-import LabelDesignerModal from '@/components/LabelDesignerModal';
+import AssetBarcodeModal from '@/components/AssetBarcodeModal';
 import CustomerSearchPanel, { type CustomerDraft } from '@/components/CustomerSearchPanel';
 import PaymentSplitsInput, { type PaymentSplit } from '@/components/PaymentSplitsInput';
 import PreBookModal from '@/components/PreBookModal';
@@ -247,13 +247,8 @@ export default function InventoryPage() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // ── Barcode Wide Modal ───────────────────────────────────────────────────
-  // Layout, drag/resize, fields, presets and the multi-label print sheet all live in
-  // LabelDesignerModal now — this page only tracks which item(s) opened it.
   const [barcodeModal, setBarcodeModal] = useState<InventoryItem | null>(null);
   const [bulkLabelPreview, setBulkLabelPreview] = useState(false);
-  // Bumped on every open so LabelDesignerModal remounts with a clean layout each time,
-  // instead of carrying over the previous item's drag/resize state.
-  const [labelDesignerKey, setLabelDesignerKey] = useState(0);
 
   // ─── Derived ───────────────────────────────────────────────────────────────
   const statusOptions  = useMemo(() => (lookups.inventory_status || []).filter(l => l.is_active), [lookups]);
@@ -734,7 +729,7 @@ export default function InventoryPage() {
         {selectedIds.length > 0 && (
           <div className="flex items-center gap-3 animate-[fadeInRight_300ms_ease-out]">
             <button
-              onClick={() => { setBulkLabelPreview(true); setLabelDesignerKey(k => k + 1); }}
+              onClick={() => setBulkLabelPreview(true)}
               className="px-6 py-3 rounded-xl bg-blue-50 text-blue-600 text-xs font-black uppercase tracking-[0.1em] border border-blue-100 hover:bg-blue-600 hover:text-white transition-all shadow-sm flex items-center gap-2"
             >
               <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z" /></svg>
@@ -846,7 +841,7 @@ export default function InventoryPage() {
                                  </span>
                                )}
                                <div
-                                onClick={() => { setBarcodeModal(item); setLabelDesignerKey(k => k + 1); }}
+                                onClick={() => setBarcodeModal(item)}
                                 className="p-0.5 px-1 bg-white border border-slate-200 inline-block rounded shadow-sm hover:scale-[1.1] transition-transform duration-300 cursor-pointer"
                               >
                                  <img suppressHydrationWarning src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${item.barcode}&scale=3&height=6&includetext`} className="h-4 object-contain" alt={item.barcode} />
@@ -1615,9 +1610,8 @@ export default function InventoryPage() {
         </div>
       </Modal>
 
-      {/* Barcode Wide Visor Modal — also doubles as the bulk multi-label print designer */}
-      <LabelDesignerModal
-        key={labelDesignerKey}
+      {/* Barcode Wide Visor Modal — plain barcode + details view, print or download PNG */}
+      <AssetBarcodeModal
         open={!!barcodeModal || bulkLabelPreview}
         mode={bulkLabelPreview ? 'bulk' : 'single'}
         singleItem={barcodeModal}
