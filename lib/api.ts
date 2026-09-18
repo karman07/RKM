@@ -1367,6 +1367,9 @@ export interface AppSettings {
   hold_my_gold_tiers?: { minAmount: number; maxAmount: number | null; discountPercent: number }[];
   /** Shows the "development build" banner on the public storefront (frontend) */
   dev_banner_enabled?: boolean;
+  /** Saved asset label layout (stock size + elements) from the barcode label designer —
+      opaque to everything except LabelDesignerModal, shared across every device on this account */
+  label_template?: Record<string, any> | null;
   updatedAt?: string;
 }
 
