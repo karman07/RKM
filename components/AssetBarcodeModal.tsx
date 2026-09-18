@@ -14,10 +14,14 @@ interface AssetBarcodeModalProps {
   onClose: () => void;
 }
 
-// Fixed label layout — matches the die-cut jewellery roll stock. No editor, no drag/resize,
-// no item details — just the system-generated barcode, full-bleed on the label.
-const LABEL_W_MM = 65;
-const LABEL_H_MM = 13;
+// Fixed label layout — matches the LP 46 Lite's die-cut stock (50 x 25mm) and its driver's
+// configured media size. This has to match both the physical label and the driver setting —
+// a mismatch here is what causes content to print across several physical labels instead of
+// one, since the driver has its own fixed page geometry the browser's @page size can't
+// override. No editor, no drag/resize, no item details — just the system-generated barcode,
+// full-bleed on the label.
+const LABEL_W_MM = 50;
+const LABEL_H_MM = 25;
 const PNG_EXPORT_DPI = 600;
 
 /**
