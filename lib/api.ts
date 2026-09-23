@@ -134,6 +134,7 @@ export interface Product {
   wastage_percentage?: number;
   making_charge_type?: string;
   making_charge_rate?: number;
+  making_charge_percentage?: number;
   fixed_making_charge?: number;
 }
 
