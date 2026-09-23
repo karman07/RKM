@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import JsBarcode from 'jsbarcode';
 import { toPng } from 'html-to-image';
 import Modal from '@/components/Modal';
@@ -108,8 +109,15 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
       <style jsx global>{`
         @media print {
           @page { size: ${LABEL_W_MM}mm ${LABEL_H_MM}mm; margin: 0; }
-          body * { visibility: hidden !important; height: 0 !important; overflow: visible !important; }
-          .print-labels-sheet, .print-labels-sheet * { visibility: visible !important; height: auto !important; overflow: visible !important; }
+          /* The print sheet is portaled to be a direct child of <body> (see below) specifically
+             so this can be a plain display:none on every OTHER direct child — no visibility or
+             height tricks needed. Those were tried first and both failed for real reasons: a
+             height:0-then-auto override broke Chrome's print rasterizer (barcodes came out
+             blank), and hiding via visibility alone still let elements sized by top/bottom
+             insets (e.g. the modal's "fixed inset-0" backdrop) keep their full-viewport box and
+             pad out extra blank pages. display:none removes a box from layout outright, so
+             neither failure mode applies. */
+          body > *:not(.print-labels-sheet) { display: none !important; }
           .print-labels-sheet {
             position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important;
             display: block !important; background: white !important;
@@ -188,14 +196,20 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
 
       {/* Print wrapper — each item gets its own label, one per page. Kept off-screen via
           position rather than display:none (see BarcodeCanvas above for why); the @media
-          print rule repositions it into view only when actually printing. */}
-      <div className="print-labels-sheet" style={{ position: 'fixed', left: -99999, top: 0 }} aria-hidden="true">
-        {mode === 'single' && singleItem ? (
-          <LabelCard item={singleItem} />
-        ) : (
-          bulkItems.map(item => <LabelCard key={item._id} item={item} />)
-        )}
-      </div>
+          print rule repositions it into view only when actually printing. Portaled to a direct
+          child of <body> (rather than rendered in place, deep inside the modal/page tree) so
+          the print CSS above can hide "every other direct child of body" with a single,
+          unambiguous display:none — see the comment on that rule for why. */}
+      {createPortal(
+        <div className="print-labels-sheet" style={{ position: 'fixed', left: -99999, top: 0 }} aria-hidden="true">
+          {mode === 'single' && singleItem ? (
+            <LabelCard item={singleItem} />
+          ) : (
+            bulkItems.map(item => <LabelCard key={item._id} item={item} />)
+          )}
+        </div>,
+        document.body
+      )}
 
       {/* Off-screen clean copy of the previewed label for PNG export — kept in normal layout
           flow (shifted off the visible page, not display:none) since html-to-image needs the

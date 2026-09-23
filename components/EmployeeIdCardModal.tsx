@@ -15,8 +15,8 @@ interface EmployeeIdCardModalProps {
 /** Fixed destination printed/encoded on every employee ID card */
 const PRODUCTS_URL = 'https://rkmjewellers.com/products';
 
-/** Brand accent — matches the maroon used for "Sales" elsewhere in the admin */
-const MAROON = '#263a5e';
+/** Brand accent for the ID card */
+const MAROON = '#7a1128';
 
 export default function EmployeeIdCardModal({ user, branches, onClose }: EmployeeIdCardModalProps) {
   const [generatingPdf, setGeneratingPdf] = useState<'download' | 'share' | null>(null);
@@ -47,7 +47,7 @@ export default function EmployeeIdCardModal({ user, branches, onClose }: Employe
   const handleDownload = async () => {
     setGeneratingPdf('download');
     try {
-      await downloadElementAsPdf('printable-employee-id-card', `${cardNo}.pdf`);
+      await downloadElementAsPdf('printable-employee-id-card', `${cardNo}.pdf`, { singlePage: true });
     } catch (e: any) {
       toast.error(e?.message || 'Failed to generate PDF');
     } finally {
@@ -63,6 +63,7 @@ export default function EmployeeIdCardModal({ user, branches, onClose }: Employe
         `${cardNo}.pdf`,
         `Employee ID Card ${cardNo}`,
         `RKM Jewellers employee ID card for ${user.name}`,
+        { singlePage: true },
       );
       if (!shared) toast.info('Direct sharing isn\'t supported on this browser — the ID card PDF was downloaded instead.');
     } catch (e: any) {

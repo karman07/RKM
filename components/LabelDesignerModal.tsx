@@ -641,8 +641,15 @@ export default function LabelDesignerModal({ open, mode, singleItem, bulkItems, 
       <style jsx global>{`
         @media print {
           @page { margin: 0; }
-          body * { visibility: hidden !important; height: 0 !important; overflow: visible !important; }
-          .print-labels-sheet, .print-labels-sheet * { visibility: visible !important; height: auto !important; overflow: visible !important; }
+          /* Hide everything except the print sheet, WITHOUT touching height on the sheet's own
+             subtree (unlike the old "zero everything, then un-zero the sheet" approach) — forcing
+             height:0 then height:auto back on a barcode's own ancestor chain left the SVG's used
+             height computed (via its viewBox aspect ratio) but not actually painted by Chrome's
+             print rasterizer, so every label but the first came out blank on a bulk print run. */
+          body *:not(.print-labels-sheet):not(.print-labels-sheet *) {
+            visibility: hidden !important; height: 0 !important; overflow: visible !important;
+          }
+          .print-labels-sheet { visibility: visible !important; }
           .print-labels-sheet {
             position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important;
             display: block !important; background: white !important;
