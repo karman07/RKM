@@ -19,6 +19,26 @@ export class QueryProductDto {
   status?: string;
 
   @IsOptional()
+  @IsString()
+  gender?: string;
+
+  @IsOptional()
+  @IsString()
+  occasion?: string;
+
+  @IsOptional()
+  @IsString()
+  stone_type?: string;
+
+  @IsOptional()
+  @IsString()
+  purity?: string;
+
+  @IsOptional()
+  @IsString()
+  metal_color?: string;
+
+  @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(0)

@@ -87,7 +87,7 @@ export class ProductsService {
   }
 
   async findAll(query: QueryProductDto) {
-    const { search, category_id, metal_type, status, page = 1, limit = 20 } = query;
+    const { search, category_id, metal_type, status, gender, occasion, stone_type, purity, metal_color, page = 1, limit = 20 } = query;
     const skip = (page - 1) * limit;
 
     const filter: Record<string, unknown> = { deleted_at: null };
@@ -101,11 +101,31 @@ export class ProductsService {
     }
 
     if (metal_type) {
-      filter.metal_type = metal_type;
+      filter.metal_type = new RegExp(`^${metal_type}$`, 'i');
     }
 
     if (status) {
       filter.status = status;
+    }
+
+    if (gender) {
+      filter.gender = new RegExp(`^${gender}$`, 'i');
+    }
+
+    if (occasion) {
+      filter.occasion = new RegExp(`^${occasion}$`, 'i');
+    }
+
+    if (stone_type) {
+      filter.stone_type = new RegExp(`^${stone_type}$`, 'i');
+    }
+
+    if (purity) {
+      filter.purity = new RegExp(`^${purity}$`, 'i');
+    }
+
+    if (metal_color) {
+      filter.metal_color = new RegExp(`^${metal_color}$`, 'i');
     }
 
     const [rawItems, total] = await Promise.all([
