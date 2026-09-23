@@ -50,7 +50,7 @@ function calcBreakdown(item: InventoryItem, settings: AppSettings | null) {
     } else if (product?.making_charge_type === 'per_gram') {
       makingCharge = Math.round(netWeight * (product.making_charge_rate ?? 0));
     } else if (product?.making_charge_type === 'percentage') {
-      const rate = product.making_charge_rate ?? 0;
+      const rate = (product as any).making_charge_percentage ?? 0;
       metalValue = Math.round((preTax - stoneValue) / (1 + (rate / 100)));
       makingCharge = Math.round(preTax - stoneValue - metalValue);
     }
