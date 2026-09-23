@@ -82,6 +82,21 @@ function titleFromFilters(params: URLSearchParams) {
   return possible[0].replace(/_/g, " ");
 }
 
+/** Page numbers to render around the current page, with "…" gaps for the rest. */
+function getPaginationRange(current: number, total: number): Array<number | "..."> {
+  const delta = 1;
+  const left = Math.max(2, current - delta);
+  const right = Math.min(total - 1, current + delta);
+  const range: Array<number | "..."> = [1];
+
+  if (left > 2) range.push("...");
+  for (let i = left; i <= right; i++) range.push(i);
+  if (right < total - 1) range.push("...");
+  if (total > 1) range.push(total);
+
+  return range;
+}
+
 export default function ProductsPage() {
   return (
     <Suspense fallback={
@@ -121,24 +136,29 @@ function ProductsContent() {
     [params, categoryValue]
   );
 
+  const [metaLoaded, setMetaLoaded] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
+
+  const PAGE_SIZE = 24;
+  const currentPage = Math.max(1, parseInt(params.get("page") || "1", 10) || 1);
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  // True while the search box has an unsubmitted edit that hasn't hit the server yet —
+  // in that window `filteredProducts` is a client-side narrowing of just the loaded
+  // page, so totals/pagination (which describe the server-confirmed search) don't apply.
+  const isSearchPending = searchInput.trim() !== (params.get("search") ?? "").trim();
+
+  // Categories + lookups rarely change — fetch once, used to resolve the
+  // "category" slug in the URL into the category_id the backend expects.
   useEffect(() => {
-    async function fetchData() {
+    async function fetchMeta() {
       try {
-        const [productRes, categoryRes, lookupRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/products?limit=200`),
+        const [categoryRes, lookupRes] = await Promise.all([
           fetch(`${API_BASE_URL}/categories`),
           fetch(`${API_BASE_URL}/lookups`),
         ]);
 
-        const productJson = await productRes.json();
         const categoryJson = await categoryRes.json();
         const lookupJson = await lookupRes.json();
-
-        const fetchedProducts = Array.isArray(productJson)
-          ? productJson
-          : Array.isArray(productJson?.data)
-            ? productJson.data
-            : [];
 
         const fetchedCategories = Array.isArray(categoryJson)
           ? categoryJson.filter((c: Category & { is_active?: boolean }) => c.is_active !== false)
@@ -156,9 +176,63 @@ function ProductsContent() {
               ) as Record<string, Lookup[]>)
             : {};
 
-        setProducts(fetchedProducts);
         setCategories(fetchedCategories);
         setLookups(fetchedLookups);
+      } catch (err) {
+        console.error("Error loading category/lookup filters:", err);
+      } finally {
+        setMetaLoaded(true);
+      }
+    }
+
+    fetchMeta();
+  }, []);
+
+  // Products are fetched from the backend WITH the active filters applied
+  // server-side (category, metal, gender, occasion, stone, purity, search),
+  // one page at a time. Filtering a client-side cache was the bug: any
+  // product outside a fixed top-N slice of the whole catalog was invisible
+  // no matter what matched.
+  const paramsKey = params.toString();
+
+  useEffect(() => {
+    if (!metaLoaded) return;
+
+    async function fetchProducts() {
+      setLoading(true);
+      try {
+        const qs = new URLSearchParams();
+        qs.set("limit", String(PAGE_SIZE));
+        qs.set("page", String(currentPage));
+
+        const search = params.get("search");
+        if (search) qs.set("search", search);
+
+        if (categoryValue) {
+          const match = categories.find(
+            (c) => c.slug?.toLowerCase() === categoryValue.toLowerCase()
+          );
+          if (match) qs.set("category_id", match._id);
+        }
+
+        (["metal_type", "gender", "occasion", "stone_type", "purity", "metal_color"] as const).forEach(
+          (key) => {
+            const value = params.get(key);
+            if (value) qs.set(key, value);
+          }
+        );
+
+        const res = await fetch(`${API_BASE_URL}/products?${qs.toString()}`);
+        const json = await res.json();
+
+        const fetchedProducts = Array.isArray(json)
+          ? json
+          : Array.isArray(json?.data)
+            ? json.data
+            : [];
+
+        setProducts(fetchedProducts);
+        setTotalCount(typeof json?.meta?.total === "number" ? json.meta.total : fetchedProducts.length);
       } catch (err) {
         console.error("Error loading products page:", err);
       } finally {
@@ -166,8 +240,9 @@ function ProductsContent() {
       }
     }
 
-    fetchData();
-  }, []);
+    fetchProducts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metaLoaded, categories, paramsKey]);
 
   const isFirstRender = useRef(true);
 
@@ -181,6 +256,11 @@ function ProductsContent() {
   }, [params]);
 
   const filteredProducts = useMemo(() => {
+    // Category/metal/gender/occasion/stone/purity filters are already applied
+    // server-side (see the products fetch above). This only does an instant,
+    // as-you-type narrowing of the already-fetched, already-filtered batch —
+    // submitting the search box re-fetches from the server so it isn't
+    // limited to whatever happens to be loaded.
     let result = products;
 
     if (searchInput.trim()) {
@@ -191,20 +271,6 @@ function ProductsContent() {
           .join(" ")
           .toLowerCase();
         return terms.every((term) => searchable.includes(term));
-      });
-    }
-
-    if (activeFilters.length === 0 && !searchInput.trim()) {
-      // still apply sort
-    } else if (activeFilters.length > 0) {
-      result = result.filter((p) => {
-        return activeFilters.every(([key, value]) => {
-          if (key === "category") {
-            return p.category_id?.slug?.toLowerCase() === value.toLowerCase();
-          }
-          const fieldValue = (p as any)[key];
-          return String(fieldValue || "").toLowerCase() === value.toLowerCase();
-        });
       });
     }
 
@@ -219,7 +285,7 @@ function ProductsContent() {
     // "newest" = natural API order (default)
 
     return result;
-  }, [products, activeFilters, searchInput, sortBy]);
+  }, [products, searchInput, sortBy]);
 
   const filterGroups = useMemo(() => {
     const groups: Array<{ key: string; label: string; options: Array<{ value: string; label: string }> }> = [];
@@ -257,6 +323,15 @@ function ProductsContent() {
       if (key === "category") next.delete("jewellery_type");
     }
 
+    next.delete("page"); // filter changed — start back at page 1
+    const q = next.toString();
+    return q ? `/products?${q}` : "/products";
+  };
+
+  const buildPageHref = (pageNum: number) => {
+    const next = new URLSearchParams(params.toString());
+    if (pageNum <= 1) next.delete("page");
+    else next.set("page", String(pageNum));
     const q = next.toString();
     return q ? `/products?${q}` : "/products";
   };
@@ -265,6 +340,7 @@ function ProductsContent() {
     setSearchInput("");
     const next = new URLSearchParams(params.toString());
     next.delete("search");
+    next.delete("page");
     router.push(`/products${next.toString() ? `?${next.toString()}` : ""}`);
   };
 
@@ -303,7 +379,7 @@ function ProductsContent() {
                 key={filteredProducts.length}
                 className="font-serif text-4xl text-[#B8975A] leading-none animate-in fade-in zoom-in duration-500"
               >
-                {loading ? "..." : filteredProducts.length}
+                {loading ? "..." : isSearchPending ? filteredProducts.length : totalCount}
               </p>
             </div>
           </div>
@@ -319,6 +395,7 @@ function ProductsContent() {
                 const next = new URLSearchParams(params.toString());
                 if (searchInput.trim()) next.set("search", searchInput.trim());
                 else next.delete("search");
+                next.delete("page");
                 router.push(`/products${next.toString() ? `?${next.toString()}` : ""}`);
               }}
               className="group flex items-center bg-white border border-[#DDD7CC] shadow-[0_4px_24px_rgba(0,0,0,0.06)] focus-within:border-[#B8975A] focus-within:shadow-[0_4px_24px_rgba(184,151,90,0.14)] transition-all duration-400 rounded-full overflow-hidden"
@@ -551,6 +628,56 @@ function ProductsContent() {
               />
             ))}
           </div>
+        )}
+
+        {!loading && !isSearchPending && totalPages > 1 && (
+          <nav aria-label="Pagination" className="mt-10 sm:mt-14 flex items-center justify-center gap-1.5 sm:gap-2">
+            <Link
+              href={buildPageHref(Math.max(1, currentPage - 1))}
+              aria-disabled={currentPage === 1}
+              tabIndex={currentPage === 1 ? -1 : undefined}
+              className={`px-3.5 sm:px-4 py-2 text-[9px] sm:text-[10px] uppercase tracking-[0.2em] font-bold rounded-full border transition-colors ${
+                currentPage === 1
+                  ? "border-[#EBEBEB] text-[#CFCFCF] pointer-events-none"
+                  : "border-[#D2D2D2] text-[#6E6E6E] hover:border-[#B8975A] hover:text-[#B8975A]"
+              }`}
+            >
+              Prev
+            </Link>
+
+            {getPaginationRange(currentPage, totalPages).map((p, i) =>
+              p === "..." ? (
+                <span key={`ellipsis-${i}`} className="px-1 text-[#B8B8B8] text-xs select-none">
+                  …
+                </span>
+              ) : (
+                <Link
+                  key={p}
+                  href={buildPageHref(p)}
+                  className={`w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center text-[11px] font-bold rounded-full border transition-colors ${
+                    p === currentPage
+                      ? "bg-[#B8975A] text-white border-[#B8975A] shadow-[0_6px_16px_rgba(184,151,90,0.35)]"
+                      : "border-[#D2D2D2] text-[#6E6E6E] hover:border-[#B8975A] hover:text-[#B8975A]"
+                  }`}
+                >
+                  {p}
+                </Link>
+              )
+            )}
+
+            <Link
+              href={buildPageHref(Math.min(totalPages, currentPage + 1))}
+              aria-disabled={currentPage === totalPages}
+              tabIndex={currentPage === totalPages ? -1 : undefined}
+              className={`px-3.5 sm:px-4 py-2 text-[9px] sm:text-[10px] uppercase tracking-[0.2em] font-bold rounded-full border transition-colors ${
+                currentPage === totalPages
+                  ? "border-[#EBEBEB] text-[#CFCFCF] pointer-events-none"
+                  : "border-[#D2D2D2] text-[#6E6E6E] hover:border-[#B8975A] hover:text-[#B8975A]"
+              }`}
+            >
+              Next
+            </Link>
+          </nav>
         )}
       </section>
     </main>
