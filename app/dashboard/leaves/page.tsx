@@ -202,7 +202,7 @@ export default function LeavesPage() {
   // Filtered all-leaves (admin + hr staff tab)
   const filteredAll = useMemo(() => {
     let list = allLeaves;
-    if (viewerType === 'admin' && statusFilter) list = list.filter(l => l.status === statusFilter);
+    if (statusFilter) list = list.filter(l => l.status === statusFilter);
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(l =>
@@ -238,7 +238,7 @@ export default function LeavesPage() {
     ...(isAdmin ? [{ value: '', label: 'All' }] : []),
   ];
 
-  const TABLE_HEADERS = ['Employee', 'Branch', 'Type', 'Duration', 'Reason', 'Status', ...(isAdmin ? ['Actions'] : [])];
+  const TABLE_HEADERS = ['Employee', 'Branch', 'Type', 'Duration', 'Reason', 'Status', 'Actions'];
   const displayList  = (!isAdmin && activeTab === 'mine') ? filteredMine : filteredAll;
 
   return (
@@ -261,11 +261,11 @@ export default function LeavesPage() {
             </h1>
           </div>
           <p className="text-slate-500 font-medium ml-4 uppercase tracking-[0.2em] text-[10px]">
-            {isAdmin ? 'Approve or decline staff leave requests' : 'View all staff leaves & manage your own'}
+            {isAdmin ? 'Approve or decline staff leave requests' : 'Review staff leave requests & manage your own'}
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {isAdmin && pendingCount > 0 && (
+          {(isAdmin || activeTab === 'staff') && pendingCount > 0 && (
             <div className="flex items-center gap-2 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-2xl text-[11px] font-black uppercase tracking-wider text-amber-700">
               <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
               {pendingCount} Pending Review
@@ -302,14 +302,6 @@ export default function LeavesPage() {
               </span>
             )}
           </button>
-        </div>
-      )}
-
-      {/* ── HR staff-leaves info banner ── */}
-      {!isAdmin && activeTab === 'staff' && (
-        <div className="mb-6 flex items-start gap-3 px-5 py-4 bg-blue-50 border border-blue-100 rounded-2xl text-[12px] text-blue-700 font-medium">
-          <FileText className="w-4 h-4 mt-0.5 shrink-0" />
-          You can view all staff leave requests. Only the admin can approve or reject them.
         </div>
       )}
 
@@ -419,7 +411,7 @@ export default function LeavesPage() {
                   <LeaveRow
                     key={leave._id}
                     leave={leave}
-                    canReview={isAdmin}
+                    canReview={true}
                     onReview={(l, action) => { setReviewTarget(l); setReviewAction(action); setAdminNote(''); }}
                   />
                 ))

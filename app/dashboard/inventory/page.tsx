@@ -6,6 +6,7 @@ import {
   addInventoryItem,
   deleteInventoryItem,
   bulkDeleteInventory,
+  assignInventorySource,
   getInventory,
   getInventoryByBarcode,
   getLookups,
@@ -246,6 +247,11 @@ export default function InventoryPage() {
   const [bulkDeleteForm, setBulkDeleteForm] = useState({ reason: '', notes: '' });
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
+  // ── Bulk Change Vendor ───────────────────────────────────────────────────
+  const [changeVendorModal, setChangeVendorModal] = useState(false);
+  const [changeVendorValue, setChangeVendorValue] = useState('');
+  const [changingVendor, setChangingVendor] = useState(false);
+
   // ── Barcode Wide Modal ───────────────────────────────────────────────────
   const [barcodeModal, setBarcodeModal] = useState<InventoryItem | null>(null);
   const [bulkLabelPreview, setBulkLabelPreview] = useState(false);
@@ -417,6 +423,27 @@ export default function InventoryPage() {
       showToast(error instanceof Error ? error.message : 'Bulk delete failed', 'danger');
     } finally {
       setBulkDeleting(false);
+    }
+  }
+
+  // ─── Bulk Change Vendor ───────────────────────────────────────────────────
+  async function handleBulkChangeVendor() {
+    if (selectedIds.length === 0 || !changeVendorValue.trim()) return;
+    setChangingVendor(true);
+    try {
+      const result = await assignInventorySource(selectedIds, changeVendorValue.trim());
+      setChangeVendorModal(false);
+      setSelectedIds([]);
+      setChangeVendorValue('');
+      showToast(
+        `${result.updated} item${result.updated !== 1 ? 's' : ''} moved to ${changeVendorValue.trim()}${result.skipped > 0 ? ` · ${result.skipped} skipped (sold)` : ''}`,
+        'success',
+      );
+      load();
+    } catch (error: unknown) {
+      showToast(error instanceof Error ? error.message : 'Vendor change failed', 'danger');
+    } finally {
+      setChangingVendor(false);
     }
   }
 
@@ -753,6 +780,13 @@ export default function InventoryPage() {
             >
               <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M3 7v6h6" /><path d="M3 13a9 9 0 1 0 2.6-6.4L3 9" /></svg>
               Return to Vendor ({selectedIds.length})
+            </button>
+            <button
+              onClick={() => { setChangeVendorValue(''); setChangeVendorModal(true); }}
+              className="px-6 py-3 rounded-xl bg-blue-50 text-blue-600 text-xs font-black uppercase tracking-[0.1em] border border-blue-100 hover:bg-blue-600 hover:text-white transition-all shadow-sm flex items-center gap-2"
+            >
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M20 7h-9m3-3-3 3 3 3M4 17h9m-3 3 3-3-3-3" /></svg>
+              Change Vendor ({selectedIds.length})
             </button>
             <button
               onClick={() => { setBulkDeleteForm({ reason: '', notes: '' }); setBulkDeleteModal(true); }}
@@ -1272,6 +1306,53 @@ export default function InventoryPage() {
           </div>
         </div>
       </Modal>
+
+      {/* ──────────────────── BULK CHANGE VENDOR MODAL ──────────────────────── */}
+      {changeVendorModal && (
+        <Modal open onClose={() => setChangeVendorModal(false)} title="Change Vendor" width="max-w-lg">
+          <div className="p-2 space-y-5">
+            <div className="p-5 rounded-2xl bg-blue-50 border border-blue-100 space-y-3 font-black text-blue-800">
+              <div className="flex justify-between items-center text-[11px] uppercase tracking-widest border-b border-blue-200/50 pb-2">
+                <span>Items Selected</span>
+                <span className="bg-blue-600 text-white px-3 py-1 rounded-lg">{selectedIds.length}</span>
+              </div>
+              <p className="text-xs uppercase tracking-tight opacity-70">Reassign the vendor / source for all selected items. Sold items will be skipped.</p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Vendor / Source <span className="text-red-500">*</span></label>
+              <select
+                className="w-full px-5 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-bold focus:ring-2 focus:ring-blue-400 transition-all"
+                value={suppliers.some(s => s.name === changeVendorValue) ? changeVendorValue : ''}
+                onChange={e => setChangeVendorValue(e.target.value)}
+              >
+                <option value="" disabled>Select a vendor…</option>
+                {suppliers.map(s => (
+                  <option key={s._id} value={s.name}>{s.name}</option>
+                ))}
+              </select>
+              <input
+                type="text"
+                className="w-full px-5 py-3 rounded-xl border border-slate-200 bg-slate-50/50 outline-none text-sm font-bold focus:ring-2 focus:ring-blue-400 transition-all"
+                value={changeVendorValue}
+                onChange={e => setChangeVendorValue(e.target.value)}
+                placeholder="...or type a custom vendor name"
+              />
+            </div>
+
+            <div className="pt-2 flex gap-4">
+              <button onClick={() => setChangeVendorModal(false)} className="flex-1 py-4 rounded-2xl border border-slate-200 text-[11px] font-bold uppercase tracking-widest text-slate-400 hover:bg-slate-50">Cancel</button>
+              <button
+                onClick={handleBulkChangeVendor}
+                disabled={changingVendor || !changeVendorValue.trim()}
+                className="flex-[2] py-4 rounded-2xl bg-blue-600 text-white text-[11px] font-black uppercase tracking-widest shadow-xl hover:bg-blue-700 transition-all disabled:opacity-40"
+              >
+                {changingVendor ? 'Updating...' : `Confirm Vendor Change (${selectedIds.length})`}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* ──────────────────── BULK DELETE MODAL ─────────────────────────────── */}
       {bulkDeleteModal && (

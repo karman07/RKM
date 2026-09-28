@@ -865,6 +865,13 @@ export const assignInventoryBranch = (ids: string[], branch_id: string | null) =
     body: JSON.stringify({ ids, branch_id }),
   });
 
+/** Change the vendor/source label on one or more inventory items (admin only) */
+export const assignInventorySource = (ids: string[], source: string) =>
+  request<{ updated: number; skipped: number }>('/inventory/assign-source', {
+    method: 'POST',
+    body: JSON.stringify({ ids, source }),
+  });
+
 
 /** Update the active discount(s) on an inventory item */
 export const updateInventoryDiscount = (id: string, discounts: { admin_discount?: number; manager_discount?: number; }) =>
