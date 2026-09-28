@@ -554,7 +554,34 @@ export class InventoryService {
     };
   }
 
+  // ─── Assign Vendor / Source ─────────────────────────────────────────────────
 
+  /**
+   * Update the vendor/source label on one or more inventory items.
+   * Sold items are excluded, mirroring assignBranch.
+   */
+  async assignSource(
+    ids: string[],
+    source: string,
+  ): Promise<{ updated: number; skipped: number }> {
+    ids.forEach(id => this.validateObjectId(id));
+
+    const result = await this.inventoryModel.updateMany(
+      {
+        _id: { $in: ids.map(id => new Types.ObjectId(id)) },
+        is_deleted: { $ne: true },
+        status: { $nin: [InventoryStatus.SOLD] },
+      },
+      {
+        $set: { source },
+      },
+    );
+
+    return {
+      updated: result.modifiedCount,
+      skipped: ids.length - result.modifiedCount,
+    };
+  }
 
   async deleteItem(id: string, reason: string, notes?: string): Promise<{ deleted: boolean; item_id: string; reason: string }> {
     this.validateObjectId(id);

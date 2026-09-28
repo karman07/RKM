@@ -6,7 +6,6 @@ import {
   Body,
   Logger,
 } from '@nestjs/common';
-import { CustomersService } from '../customers/customers.service';
 import { WhatsAppLogService } from './services/whatsapp-log.service';
 import { WhatsAppConfig } from './config/whatsapp.config';
 import { MessageStatus } from './schemas/whatsapp-message.schema';
@@ -17,13 +16,14 @@ export class WhatsAppWebhookController {
 
   constructor(
     private readonly waConfig: WhatsAppConfig,
-    private readonly customersService: CustomersService,
     private readonly logService: WhatsAppLogService,
   ) {}
 
   /**
    * GET /whatsapp/webhook
-   * Meta calls this once to verify the webhook endpoint.
+   * Kept for Meta-style webhook verification handshakes (hub.mode/hub.challenge) in case
+   * one is ever fronting this endpoint. Airtel IQ's own callback doesn't use this — it just
+   * POSTs status updates directly (see receive() below).
    * The verify token is read from WHATSAPP_WEBHOOK_VERIFY_TOKEN in .env
    */
   @Get()
@@ -42,53 +42,35 @@ export class WhatsAppWebhookController {
 
   /**
    * POST /whatsapp/webhook
-   * Receives all incoming events: messages, delivery receipts, read receipts.
-   * Always returns 200 — never throw, or Meta will retry endlessly.
+   * Receives Airtel IQ's delivery-status callback (see "Sample Callback" in the Airtel IQ
+   * WhatsApp API Documentation) — a flat JSON body per message, not Meta's nested
+   * entry[0].changes[0].value shape. The docs don't show a distinct inbound-reply payload
+   * shape, so only outbound delivery-status handling is wired up here for now.
+   * Always returns 200 — never throw, or Airtel will retry endlessly.
    */
   @Post()
   async receive(@Body() body: any): Promise<{ status: string }> {
     try {
-      const entry   = body?.entry?.[0];
-      const changes = entry?.changes?.[0];
-      const value   = changes?.value;
+      // Airtel may batch callbacks as an array, or send one object per request.
+      const events: any[] = Array.isArray(body) ? body : [body];
 
-      // ─── Delivery / Read status updates ────────────────────────────────────
-      if (value?.statuses?.length) {
-        for (const status of value.statuses) {
-          const waId: string       = status.id;
-          const statusType: string = status.status; // sent | delivered | read | failed
+      for (const event of events) {
+        const waId: string | undefined = event?.messageId ?? event?.vendorAckId;
+        const statusType: string = String(event?.messageStatus ?? event?.msgStatus ?? '').toUpperCase();
+        if (!waId || !statusType) continue;
 
-          let mappedStatus: MessageStatus;
-          if (statusType === 'delivered') mappedStatus = MessageStatus.DELIVERED;
-          else if (statusType === 'read')  mappedStatus = MessageStatus.READ;
-          else if (statusType === 'failed') mappedStatus = MessageStatus.FAILED;
-          else mappedStatus = MessageStatus.SENT;
+        let mappedStatus: MessageStatus;
+        if (statusType === 'DELIVERED') mappedStatus = MessageStatus.DELIVERED;
+        else if (statusType === 'READ') mappedStatus = MessageStatus.READ;
+        else if (statusType === 'FAILED') mappedStatus = MessageStatus.FAILED;
+        else mappedStatus = MessageStatus.SENT;
 
-          await this.logService.updateStatusByWaId(
-            waId,
-            mappedStatus,
-            statusType === 'delivered' ? new Date() : undefined,
-          );
-          this.logger.log(`Delivery update → waId: ${waId}, status: ${statusType}`);
-        }
-      }
-
-      // ─── Incoming messages ────────────────────────────────────────────────
-      if (value?.messages?.length) {
-        for (const inMsg of value.messages) {
-          const from: string = `+${inMsg.from}`;
-          const text: string = inMsg?.text?.body ?? inMsg?.type ?? '';
-
-          // Try to link to a known customer by phone number
-          let customerId: string | undefined;
-          try {
-            const cust = await this.customersService.findByPhone(from);
-            if (cust) customerId = (cust as any)._id?.toString();
-          } catch (_) { /* noop */ }
-
-          await this.logService.logInbound(from, text, customerId);
-          this.logger.log(`Inbound message from ${from}: ${text.substring(0, 60)}`);
-        }
+        await this.logService.updateStatusByWaId(
+          waId,
+          mappedStatus,
+          statusType === 'DELIVERED' ? new Date() : undefined,
+        );
+        this.logger.log(`Delivery update → waId: ${waId}, status: ${statusType}`);
       }
 
       return { status: 'ok' };

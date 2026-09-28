@@ -76,6 +76,24 @@ export class InventoryController {
   }
 
   /**
+   * POST /inventory/assign-source
+   * Admin-only: Change the vendor/source label on one or more items.
+   * Body: { ids: string[], source: string }
+   */
+  @Post('assign-source')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  assignSource(@Body() body: { ids: string[]; source: string }) {
+    if (!body.ids || !Array.isArray(body.ids) || body.ids.length === 0) {
+      throw new Error('ids array is required');
+    }
+    if (!body.source || !body.source.trim()) {
+      throw new Error('source is required');
+    }
+    return this.inventoryService.assignSource(body.ids, body.source.trim());
+  }
+
+  /**
    * POST /inventory/sync-prices/product/:productId
    * Admin-only: Recomputes selling_price for all available inventory items
    * of a specific product (called after product pricing params are updated).

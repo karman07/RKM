@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosInstance } from 'axios';
 import { WhatsAppConfig } from '../config/whatsapp.config';
+import { WhatsAppTemplateService } from './whatsapp-template.service';
 
 export interface SendResult {
   success: boolean;
@@ -8,16 +9,22 @@ export interface SendResult {
   error?: string;
 }
 
+/** Airtel IQ's "Send Templates API" path — see Airtel IQ WhatsApp API Documentation. */
+const SEND_TEMPLATE_PATH = '/gateway/airtel-xchange/basic/whatsapp-manager/v1/template/send';
+
 @Injectable()
 export class WhatsAppApiService {
   private readonly logger = new Logger(WhatsAppApiService.name);
   private readonly http: AxiosInstance;
 
-  constructor(private readonly waConfig: WhatsAppConfig) {
+  constructor(
+    private readonly waConfig: WhatsAppConfig,
+    private readonly templateService: WhatsAppTemplateService,
+  ) {
     this.http = axios.create({
       baseURL: this.waConfig.apiBaseUrl,
       headers: {
-        Authorization: `Bearer ${this.waConfig.token}`,
+        'app-id': this.waConfig.airtelAppId,
         'Content-Type': 'application/json',
       },
       timeout: this.waConfig.apiTimeoutMs,
@@ -40,13 +47,18 @@ export class WhatsAppApiService {
   }
 
   /**
-   * Sends a WhatsApp template message via the Cloud API.
+   * Sends a WhatsApp template message via Airtel IQ.
    * Returns a structured SendResult — never throws, so callers can log outcomes cleanly.
+   *
+   * `language` is accepted for signature compatibility with the rest of the module (the
+   * template registry, queue jobs, etc.) but isn't used in the request itself — Airtel IQ
+   * sends by `templateId`, and a template's language is fixed when it's created, not chosen
+   * per-send.
    */
   async sendTemplateMessage(
     phoneNumber: string,
     templateName: string,
-    language: string,
+    _language: string,
     params: string[],
   ): Promise<SendResult> {
     const normalized = this.normalizePhone(phoneNumber);
@@ -55,40 +67,37 @@ export class WhatsAppApiService {
       return { success: false, error: `Invalid phone number: ${phoneNumber}` };
     }
 
-    const bodyComponents = params.length
-      ? [
-          {
-            type: 'body',
-            parameters: params.map((p) => ({ type: 'text', text: String(p) })),
-          },
-        ]
-      : [];
+    const template = await this.templateService.findByName(templateName);
+    if (!template?.metaTemplateId) {
+      const errMsg = `Template '${templateName}' has not been created/approved on Airtel IQ yet`;
+      this.logger.warn(errMsg);
+      return { success: false, error: errMsg };
+    }
 
     const payload = {
-      messaging_product: 'whatsapp',
+      templateId: template.metaTemplateId,
       to: normalized.replace('+', ''),
-      type: 'template',
-      template: {
-        name: templateName,
-        language: { code: language },
-        components: bodyComponents,
-      },
+      from: this.waConfig.airtelFromNumber,
+      filterBlacklistNumbers: false,
+      ...(params.length ? { message: { variables: params.map(String) } } : {}),
     };
 
     try {
-      const { data } = await this.http.post(
-        `/${this.waConfig.phoneNumberId}/messages`,
-        payload,
-      );
-      const waMessageId: string = data?.messages?.[0]?.id ?? '';
+      const { data } = await this.http.post(SEND_TEMPLATE_PATH, payload, {
+        headers: { Authorization: this.waConfig.airtelBasicAuthHeader },
+      });
+      // Airtel IQ's send response isn't documented with a fixed field name for the
+      // message id in the PDF — the async delivery callback shows both `messageId` and
+      // `vendorAckId`, so accept whichever the send response actually returns.
+      const waMessageId: string = data?.messageId ?? data?.vendorAckId ?? data?.id ?? '';
       this.logger.log(
         `Sent template '${templateName}' to ${normalized} → waId: ${waMessageId}`,
       );
       return { success: true, waMessageId };
     } catch (err: any) {
       const errMsg =
-        err?.response?.data?.error?.message ?? err.message ?? 'Unknown error';
-      this.logger.error(`WhatsApp API error for ${normalized}: ${errMsg}`);
+        err?.response?.data?.error?.message ?? err?.response?.data?.message ?? err.message ?? 'Unknown error';
+      this.logger.error(`Airtel WhatsApp API error for ${normalized}: ${errMsg}`);
       return { success: false, error: errMsg };
     }
   }

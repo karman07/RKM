@@ -10,28 +10,52 @@ import { ConfigService } from '@nestjs/config';
 export class WhatsAppConfig {
   constructor(private readonly config: ConfigService) {}
 
-  // ─── API Credentials ──────────────────────────────────────────────────────
+  // ─── Airtel IQ API Credentials ────────────────────────────────────────────
+  // Airtel IQ uses HTTP Basic auth (username:password, base64-encoded) rather
+  // than a bearer token — see "User Authentication" in the Airtel IQ WhatsApp
+  // API docs. customerId/subAccountId/wabaId/appId/fromNumber are assigned per
+  // account by Airtel and are required on every request.
 
-  get token(): string {
-    return this.config.getOrThrow<string>('WHATSAPP_TOKEN');
+  get airtelUsername(): string {
+    return this.config.getOrThrow<string>('AIRTEL_WHATSAPP_USERNAME');
   }
 
-  get phoneNumberId(): string {
-    return this.config.getOrThrow<string>('WHATSAPP_PHONE_NUMBER_ID');
+  get airtelPassword(): string {
+    return this.config.getOrThrow<string>('AIRTEL_WHATSAPP_PASSWORD');
   }
 
-  /**
-   * WhatsApp Business Account ID — required for template management API.
-   * Found in Meta Business Manager → WhatsApp Accounts → Account ID.
-   */
-  get wabaId(): string {
-    return this.config.getOrThrow<string>('WHATSAPP_WABA_ID');
+  /** Basic <base64(username:password)> — ready to drop straight into an Authorization header. */
+  get airtelBasicAuthHeader(): string {
+    const token = Buffer.from(`${this.airtelUsername}:${this.airtelPassword}`).toString('base64');
+    return `Basic ${token}`;
+  }
+
+  get airtelAppId(): string {
+    return this.config.get<string>('AIRTEL_WHATSAPP_APP_ID') ?? 'IRONMAN';
+  }
+
+  get airtelCustomerId(): string {
+    return this.config.getOrThrow<string>('AIRTEL_WHATSAPP_CUSTOMER_ID');
+  }
+
+  get airtelSubAccountId(): string {
+    return this.config.getOrThrow<string>('AIRTEL_WHATSAPP_SUBACCOUNT_ID');
+  }
+
+  /** WhatsApp Business Account ID — required for template management + send APIs. */
+  get airtelWabaId(): string {
+    return this.config.getOrThrow<string>('AIRTEL_WHATSAPP_WABA_ID');
+  }
+
+  /** The registered WhatsApp business number messages are sent "from" (E.164, no +). */
+  get airtelFromNumber(): string {
+    return this.config.getOrThrow<string>('AIRTEL_WHATSAPP_FROM_NUMBER');
   }
 
   // ─── API HTTP Config ──────────────────────────────────────────────────────
 
   get apiBaseUrl(): string {
-    return this.config.get<string>('WHATSAPP_API_BASE_URL') ?? 'https://graph.facebook.com/v19.0';
+    return this.config.get<string>('AIRTEL_WHATSAPP_BASE_URL') ?? 'https://iqwhatsapp.airtel.in';
   }
 
   get apiTimeoutMs(): number {
