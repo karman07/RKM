@@ -65,6 +65,7 @@ export class WhatsAppTemplateService {
       adminNotes:      dto.adminNotes,
       status:          TemplateStatus.PENDING,
       variableMapping: dto.variableMapping ?? {},
+      sampleBodyValues: dto.sampleBodyValues ?? [],
     });
 
     const saved = await template.save();
@@ -147,13 +148,14 @@ export class WhatsAppTemplateService {
     template: WhatsAppTemplateDocument,
     sampleBodyValues?: string[],
   ): Promise<void> {
+    const samples = sampleBodyValues?.length ? sampleBodyValues : template.sampleBodyValues;
     const payload = {
       customerId:     this.waConfig.airtelCustomerId,
       templateName:   template.name,
       wabaId:         this.waConfig.airtelWabaId,
       category:       template.category,
       subAccountId:   this.waConfig.airtelSubAccountId,
-      templateContent: this.buildTemplateContent(template, sampleBodyValues),
+      templateContent: this.buildTemplateContent(template, samples),
     };
 
     try {
@@ -166,9 +168,11 @@ export class WhatsAppTemplateService {
         timeout: this.waConfig.apiTimeoutMs,
       });
 
-      // Airtel's create-template response shape isn't shown in the docs beyond the request
-      // body — accept whichever id field it actually returns.
-      const templateId: string = data?.templateId ?? data?.id ?? data?.data?.templateId ?? '';
+      // Confirmed live: Airtel wraps the created template under `template.templateId`,
+      // e.g. {"success":true,"template":{"templateId":"...","registrationStatus":"PENDING_FOR_REVIEW",...}}.
+      // Kept the older fallbacks in case a different account/API version responds flatter.
+      const templateId: string =
+        data?.template?.templateId ?? data?.templateId ?? data?.id ?? data?.data?.templateId ?? '';
 
       await this.templateModel.findByIdAndUpdate(template._id, {
         $set: {
@@ -188,6 +192,17 @@ export class WhatsAppTemplateService {
         $set: { rejectionReason: `Submission error: ${errMsg}` },
       });
     }
+  }
+
+  /** Maps Airtel IQ's registrationStatus strings onto our local TemplateStatus enum. */
+  private mapAirtelRegistrationStatus(raw: string): TemplateStatus {
+    const s = raw.toUpperCase();
+    if (s.includes('APPROVED')) return TemplateStatus.APPROVED;
+    if (s.includes('REJECT')) return TemplateStatus.REJECTED;
+    if (s.includes('DISABLE')) return TemplateStatus.DISABLED;
+    if (s.includes('PAUSE')) return TemplateStatus.PAUSED;
+    if (s.includes('APPEAL')) return TemplateStatus.IN_APPEAL;
+    return TemplateStatus.PENDING;
   }
 
   // ─── Fetch a single template's status from Airtel IQ ──────────────────────
@@ -216,16 +231,27 @@ export class WhatsAppTemplateService {
         timeout: this.waConfig.apiTimeoutMs,
       });
 
-      const status = data?.status ?? data?.data?.status;
-      if (status) {
+      // Confirmed live: Fetch Template wraps the result under `template`, and the approval
+      // state is `registrationStatus` (e.g. "PENDING_FOR_REVIEW", "APPROVED") — `status` on
+      // that object is the creation lifecycle (e.g. "SUBMITTED_FOR_CREATION"/"ACTIVE"), not
+      // the approval state, so it isn't what we want here.
+      const raw: string | undefined =
+        data?.template?.registrationStatus ?? data?.registrationStatus ?? data?.status ?? data?.data?.status;
+
+      if (raw) {
+        const status = this.mapAirtelRegistrationStatus(raw);
+        const rejectionReasonRaw: string =
+          data?.template?.rejectionReason ?? data?.rejectedReason ?? data?.data?.rejectedReason ?? '';
+        const rejectionReason = rejectionReasonRaw && rejectionReasonRaw !== 'NONE' ? rejectionReasonRaw : '';
+
         await this.templateModel.findByIdAndUpdate(template._id, {
           $set: {
-            status:          status as TemplateStatus,
-            rejectionReason: data?.rejectedReason ?? data?.data?.rejectedReason ?? '',
-            lastSyncedAt:    new Date(),
+            status,
+            rejectionReason,
+            lastSyncedAt: new Date(),
           },
         });
-        this.logger.log(`Synced '${template.name}': ${status}`);
+        this.logger.log(`Synced '${template.name}': ${raw} -> ${status}`);
       }
     } catch (err: any) {
       this.logger.error(`Airtel IQ sync error for '${template.name}': ${err.message}`);

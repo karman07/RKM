@@ -109,6 +109,14 @@ export class WhatsAppTemplate {
    */
   @Prop({ type: Object, default: {} })
   variableMapping: Record<string, string>;
+
+  /**
+   * Sample values for the body's {{1}}, {{2}}, ... placeholders, persisted so a later
+   * re-submission (POST /whatsapp/templates/:id/submit) can resend them — Airtel IQ
+   * rejects a template with variables that has no sample values on submission.
+   */
+  @Prop({ type: [String], default: [] })
+  sampleBodyValues: string[];
 }
 
 export const WhatsAppTemplateSchema = SchemaFactory.createForClass(WhatsAppTemplate);
