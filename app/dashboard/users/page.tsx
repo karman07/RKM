@@ -350,15 +350,21 @@ export default function UsersPage() {
         customRoleId = form.role.replace('custom:', '');
       }
       const isWorker = roleValue === 'worker';
+      if (!isWorker && !form.email.trim()) {
+        setError('Email is required for roles that can log in.');
+        setSaving(false);
+        return;
+      }
       const payload: any = {
         name: form.name, role: roleValue,
         isActive: form.is_active, branch: form.branch || null,
         ...(form.avatar            ? { avatar:                  form.avatar                    } : {}),
-        ...(isWorker               ? {}                                                         : { email: form.email }),
+        ...((isWorker || !form.email) ? {}                                                      : { email: form.email }),
         ...(form.personal_email     ? { personal_email:       form.personal_email             } : {}),
         ...((!isWorker && form.email && /@rkmjewellers\.com$/i.test(form.email.trim()))
               ? { professional_email: form.email.trim().toLowerCase() } : {}),
-        ...(customRoleId           ? { custom_role:            customRoleId                   } : {}),
+        ...(customRoleId           ? { custom_role:            customRoleId                   }
+              : editTarget         ? { custom_role:            null                           } : {}),
         ...(isWorker && form.job_title ? { job_title:          form.job_title                 } : {}),
         ...(form.base_salary       ? { base_salary:            Number(form.base_salary)       } : {}),
         ...(form.salary_type       ? { salary_type:            form.salary_type               } : {}),
