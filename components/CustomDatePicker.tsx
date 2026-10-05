@@ -56,8 +56,10 @@ export default function CustomDatePicker({ label, value, onChange, min, placehol
 
   const isDisabled = (day: number) => {
     if (!min) return false;
-    const d = new Date(viewDate.getFullYear(), viewDate.getMonth(), day);
-    return d < new Date(min);
+    // Compare as YYYY-MM-DD strings — new Date(min) parses as UTC midnight, which makes the
+    // min day itself look "in the past" in timezones ahead of UTC (e.g. IST).
+    const dateStr = `${viewDate.getFullYear()}-${String(viewDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    return dateStr < min;
   };
 
   const formattedValue = selectedDate 
