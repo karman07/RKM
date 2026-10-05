@@ -65,10 +65,12 @@ function LabelContents({ item }: { item: InventoryItem }) {
   const product = typeof item.product_id === 'object' ? (item.product_id as Product) : null;
   const lmc = product?.making_charge_rate ?? product?.fixed_making_charge ?? 0;
   const dis = product?.discount_percentage ?? item.admin_discount ?? 0;
-  const cells: [string, string][] = [
-    ['GWT', `${product?.gross_weight ?? 0}g`], ['NWT', `${product?.net_weight ?? 0}g`],
-    ['ST.WT', `${product?.stone_weight ?? 0}g`], ['GRADE', `${product?.purity || '—'}`],
-    ['LMC', `${lmc}`], ['DIS', `${dis}`],
+  const rows: [string, string][] = [
+    ['NAME', product?.name || 'RKM Masterpiece'],
+    ['GWT/NWT', `${product?.gross_weight ?? 0}gm/${product?.net_weight ?? 0}gm`],
+    ['ST. WT', `${product?.stone_weight ?? 0} gm`],
+    ['GRADE', `${product?.purity || '—'}`],
+    ['LMC/DIS', `${lmc}/${dis}`],
   ];
   return (
     <div
@@ -82,24 +84,14 @@ function LabelContents({ item }: { item: InventoryItem }) {
           {item.barcode}
         </div>
       </div>
-      <div className="flex-1 min-w-0 flex flex-col justify-center border-l border-black" style={{ paddingLeft: '2mm', lineHeight: 1.18 }}>
-        <div className="truncate uppercase font-extrabold" style={{ fontSize: '15cqh', letterSpacing: '0.03em' }}>
-          {product?.name || 'RKM Masterpiece'}
-        </div>
-        <div className="grid grid-cols-2 gap-x-[1.5mm]" style={{ fontSize: '12.5cqh', paddingTop: '2cqh' }}>
-          {cells.map(([k, v]) => (
-            <div key={k} className="truncate">
-              <span className="font-medium" style={{ color: '#444' }}>{k} </span>
-              <span className="font-bold">{v}</span>
-            </div>
-          ))}
-        </div>
-        {product?.sku && (
-          <div className="truncate" style={{ fontSize: '12.5cqh' }}>
-            <span className="font-medium" style={{ color: '#444' }}>SKU </span>
-            <span className="font-bold">{product.sku}</span>
+      <div className="flex-1 min-w-0 flex flex-col justify-center border-l border-black font-bold uppercase"
+        style={{ paddingLeft: '2mm', fontSize: '13cqh', lineHeight: 1.22 }}>
+        {rows.map(([k, v]) => (
+          <div key={k} className="flex justify-between gap-[1.5mm] whitespace-nowrap">
+            <span className="shrink-0">{k}</span>
+            <span className="truncate text-right">{v}</span>
           </div>
-        )}
+        ))}
       </div>
     </div>
   );
