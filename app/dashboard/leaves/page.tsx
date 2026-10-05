@@ -21,6 +21,11 @@ const STATUS_CFG = {
   rejected: { label: 'Rejected', text: 'text-red-500',    dot: 'bg-red-500'    },
 };
 
+const todayStr = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 export default function LeavesPage() {
   const router = useRouter();
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -28,6 +33,7 @@ export default function LeavesPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [singleDay, setSingleDay] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const [form, setForm] = useState({ leave_type: 'casual', from_date: '', to_date: '', reason: '' });
 
@@ -53,14 +59,16 @@ export default function LeavesPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.from_date || !form.to_date || !form.reason.trim()) { showToast('Please fill all fields', 'error'); return; }
-    if (new Date(form.to_date) < new Date(form.from_date)) { showToast('End date must be after start date', 'error'); return; }
+    const toDate = singleDay ? form.from_date : form.to_date;
+    if (!form.from_date || !toDate || !form.reason.trim()) { showToast('Please fill all fields', 'error'); return; }
+    if (toDate < form.from_date) { showToast('End date must be after start date', 'error'); return; }
     setSubmitting(true);
     try {
-      await submitLeaveRequest({ ...form, branch_id: user?.branch?._id });
+      await submitLeaveRequest({ ...form, to_date: toDate, branch_id: user?.branch?._id });
       showToast('Leave request submitted!', 'success');
       setShowForm(false);
       setForm({ leave_type: 'casual', from_date: '', to_date: '', reason: '' });
+      setSingleDay(false);
       await load();
     } catch (err: any) {
       showToast(err.message || 'Failed to submit request', 'error');
@@ -138,9 +146,27 @@ export default function LeavesPage() {
               </div>
 
               {/* Dates */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <CustomDatePicker label="From Date" value={form.from_date} onChange={val => setForm(f => ({ ...f, from_date: val }))} min={new Date().toISOString().split('T')[0]} placeholder="dd / mm / yyyy" />
-                <CustomDatePicker label="To Date" value={form.to_date} onChange={val => setForm(f => ({ ...f, to_date: val }))} min={form.from_date || new Date().toISOString().split('T')[0]} placeholder="dd / mm / yyyy" />
+              <label className="flex items-center gap-2 cursor-pointer select-none w-fit">
+                <input type="checkbox" checked={singleDay} onChange={e => setSingleDay(e.target.checked)} className="w-4 h-4 accent-[#5A0F1A]" />
+                <span className="text-[11px] font-black uppercase tracking-widest text-slate-500">Single day leave</span>
+              </label>
+              <div className={`grid grid-cols-1 ${singleDay ? '' : 'sm:grid-cols-2'} gap-6`}>
+                <CustomDatePicker
+                  label={singleDay ? 'Date' : 'From Date'}
+                  value={form.from_date}
+                  onChange={val => setForm(f => ({ ...f, from_date: val, to_date: !f.to_date || f.to_date < val ? val : f.to_date }))}
+                  min={todayStr()}
+                  placeholder="dd / mm / yyyy"
+                />
+                {!singleDay && (
+                  <CustomDatePicker
+                    label="To Date"
+                    value={form.to_date}
+                    onChange={val => setForm(f => ({ ...f, to_date: val }))}
+                    min={form.from_date || todayStr()}
+                    placeholder="dd / mm / yyyy"
+                  />
+                )}
               </div>
 
               {/* Reason */}
