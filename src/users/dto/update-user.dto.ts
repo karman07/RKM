@@ -43,6 +43,16 @@ export class UpdateUserDto {
   @IsOptional()
   role?: UserRole;
 
+  /** Set when role === 'custom'; null clears it when switching to a built-in role */
+  @IsString()
+  @IsOptional()
+  custom_role?: string | null;
+
+  /** For WORKER role: actual job title */
+  @IsString()
+  @IsOptional()
+  job_title?: string;
+
   @IsString()
   @IsOptional()
   branch?: string;
