@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import JsBarcode from 'jsbarcode';
 import { toPng } from 'html-to-image';
 import Modal from '@/components/Modal';
-import type { InventoryItem } from '@/lib/api';
+import type { InventoryItem, Product } from '@/lib/api';
 
 interface AssetBarcodeModalProps {
   open: boolean;
@@ -20,7 +20,7 @@ interface AssetBarcodeModalProps {
 // driver — a mismatch there is what causes content to print across several physical labels
 // instead of one, since the driver has its own fixed page geometry that the browser's @page
 // size can't override on its own (see the print button's hint text below). No editor, no
-// drag/resize, no item details — just the system-generated barcode, full-bleed on the label.
+// drag/resize — the system-generated barcode plus value text and item details on the label.
 const LABEL_W_MM = 65;
 const LABEL_H_MM = 13;
 const PNG_EXPORT_DPI = 600;
@@ -47,7 +47,7 @@ function BarcodeCanvas({ text }: { text: string }) {
       displayValue: false,
       margin: 10,
       width: 6,   // module width in native canvas px
-      height: 300,
+      height: 150,
       lineColor: '#000000',
       background: '#ffffff',
     });
@@ -57,11 +57,50 @@ function BarcodeCanvas({ text }: { text: string }) {
 }
 
 /** The label's contents, shared verbatim between the on-screen preview, print output and PNG
-    export — only the outer wrapper's size differs between them. */
+    export — only the outer wrapper's size differs between them. Left: the scannable barcode with
+    its value printed underneath. Right: the item's tag details. All type is sized in `cqh`
+    (percent of the label's own height) so it scales identically in the preview, print and PNG
+    without touching the fixed LABEL_W_MM x LABEL_H_MM geometry. */
 function LabelContents({ item }: { item: InventoryItem }) {
+  const product = typeof item.product_id === 'object' ? (item.product_id as Product) : null;
+  const lmc = product?.making_charge_rate ?? product?.fixed_making_charge ?? 0;
+  const dis = product?.discount_percentage ?? item.admin_discount ?? 0;
+  const cells: [string, string][] = [
+    ['GWT', `${product?.gross_weight ?? 0}g`], ['NWT', `${product?.net_weight ?? 0}g`],
+    ['ST.WT', `${product?.stone_weight ?? 0}g`], ['GRADE', `${product?.purity || '—'}`],
+    ['LMC', `${lmc}`], ['DIS', `${dis}`],
+  ];
   return (
-    <div className="w-full h-full p-[1mm] box-border bg-white">
-      <BarcodeCanvas text={item.barcode} />
+    <div
+      className="w-full h-full px-[1.2mm] py-[0.8mm] box-border bg-white flex items-stretch gap-[2mm] text-black"
+      style={{ containerType: 'size' }}
+    >
+      <div className="flex flex-col min-w-0 justify-center" style={{ flex: '0 0 44%' }}>
+        <div className="flex-1 min-h-0"><BarcodeCanvas text={item.barcode} /></div>
+        <div className="text-center font-semibold leading-none whitespace-nowrap overflow-hidden"
+          style={{ fontSize: '11.5cqh', letterSpacing: '0.01em', paddingTop: '3cqh' }}>
+          {item.barcode}
+        </div>
+      </div>
+      <div className="flex-1 min-w-0 flex flex-col justify-center border-l border-black" style={{ paddingLeft: '2mm', lineHeight: 1.18 }}>
+        <div className="truncate uppercase font-extrabold" style={{ fontSize: '15cqh', letterSpacing: '0.03em' }}>
+          {product?.name || 'RKM Masterpiece'}
+        </div>
+        <div className="grid grid-cols-2 gap-x-[1.5mm]" style={{ fontSize: '12.5cqh', paddingTop: '2cqh' }}>
+          {cells.map(([k, v]) => (
+            <div key={k} className="truncate">
+              <span className="font-medium" style={{ color: '#444' }}>{k} </span>
+              <span className="font-bold">{v}</span>
+            </div>
+          ))}
+        </div>
+        {product?.sku && (
+          <div className="truncate" style={{ fontSize: '12.5cqh' }}>
+            <span className="font-medium" style={{ color: '#444' }}>SKU </span>
+            <span className="font-bold">{product.sku}</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

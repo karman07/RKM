@@ -111,13 +111,13 @@ export default function BranchAllocationPage() {
   const totalPages = Math.max(1, Math.ceil(total / LIMIT));
   const selectedCount = selectedIds.length;
 
+  // Selection is kept across search/filter/page changes; "select all" only touches the rows on screen.
   function toggleAll() {
     const selectable = items.filter(i => i.status !== 'sold').map(i => i._id);
-    if (selectedIds.length === selectable.length && selectable.length > 0) {
-      setSelectedIds([]);
-    } else {
-      setSelectedIds(selectable);
-    }
+    const allSelected = selectable.length > 0 && selectable.every(id => selectedIds.includes(id));
+    setSelectedIds(prev => allSelected
+      ? prev.filter(id => !selectable.includes(id))
+      : [...prev, ...selectable.filter(id => !prev.includes(id))]);
   }
 
   function toggleOne(id: string) {
@@ -155,7 +155,6 @@ export default function BranchAllocationPage() {
     setFilterStatus('');
     setSearch('');
     setPage(1);
-    setSelectedIds([]);
   }
 
   const hasFilters = !!(filterProduct || filterBranch || filterStatus || search);
@@ -238,7 +237,7 @@ export default function BranchAllocationPage() {
         <div className="flex flex-wrap items-center gap-3">
           <select
             value={filterStatus}
-            onChange={e => { setFilterStatus(e.target.value); setPage(1); setSelectedIds([]); }}
+            onChange={e => { setFilterStatus(e.target.value); setPage(1); }}
             className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-bold uppercase tracking-widest text-slate-600 outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">All Statuses</option>
@@ -250,7 +249,7 @@ export default function BranchAllocationPage() {
 
           <select
             value={filterBranch}
-            onChange={e => { setFilterBranch(e.target.value); setPage(1); setSelectedIds([]); }}
+            onChange={e => { setFilterBranch(e.target.value); setPage(1); }}
             className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-bold uppercase tracking-widest text-slate-600 outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">All Items</option>
@@ -262,7 +261,7 @@ export default function BranchAllocationPage() {
 
           <select
             value={filterProduct}
-            onChange={e => { setFilterProduct(e.target.value); setPage(1); setSelectedIds([]); }}
+            onChange={e => { setFilterProduct(e.target.value); setPage(1); }}
             className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-bold uppercase tracking-widest text-slate-600 outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">All Products</option>
@@ -274,7 +273,7 @@ export default function BranchAllocationPage() {
           <div className="flex-1 relative min-w-[200px]">
             <input
               value={search}
-              onChange={e => { setSearch(e.target.value); setPage(1); setSelectedIds([]); }}
+              onChange={e => { setSearch(e.target.value); setPage(1); }}
               placeholder="Search by barcode or item code..."
               className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm font-medium outline-none focus:ring-2 focus:ring-blue-500"
             />
@@ -314,7 +313,7 @@ export default function BranchAllocationPage() {
                     <input
                       type="checkbox"
                       className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                      checked={selectableInPage.length > 0 && selectedIds.length === selectableInPage.length}
+                      checked={selectableInPage.length > 0 && selectableInPage.every(i => selectedIds.includes(i._id))}
                       onChange={toggleAll}
                     />
                   </th>
@@ -418,14 +417,14 @@ export default function BranchAllocationPage() {
             <div className="flex gap-2">
               <button
                 disabled={page <= 1}
-                onClick={() => { setPage(p => p - 1); setSelectedIds([]); }}
+                onClick={() => { setPage(p => p - 1); }}
                 className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-500 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
               >
                 Previous
               </button>
               <button
                 disabled={page >= totalPages}
-                onClick={() => { setPage(p => p + 1); setSelectedIds([]); }}
+                onClick={() => { setPage(p => p + 1); }}
                 className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-500 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
               >
                 Next
