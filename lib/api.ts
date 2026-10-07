@@ -1651,8 +1651,8 @@ export const deleteIncentive = (id: string) =>
 
 // ─── Customers ────────────────────────────────────────────────────────────────
 
-export const getCustomers = (page: number = 1, limit: number = 20) =>
-  request<PaginatedResponse<Customer>>(`/customers?page=${page}&limit=${limit}`);
+export const getCustomers = (page: number = 1, limit: number = 20, search?: string) =>
+  request<PaginatedResponse<Customer>>(`/customers?page=${page}&limit=${limit}${search?.trim() ? `&search=${encodeURIComponent(search.trim())}` : ''}`);
 export const getCustomerById = (id: string) => request<Customer>(`/customers/${id}`);
 export const searchCustomersByPhone = (phone: string) =>
   request<{ data: Customer[] }>(`/customers/search?phone=${encodeURIComponent(phone)}`);
@@ -2087,6 +2087,11 @@ export async function redeemSubscription(id: string, data: { amount: number; sal
 
 export async function markGoldCashPayment(id: string, data: { month: number; amount?: number; staffId?: string; note?: string }): Promise<GoldSubscription> {
   return request<GoldSubscription>(`/gold-investment/subscriptions/${id}/mark-payment`, { method: 'POST', body: JSON.stringify(data) });
+}
+
+/** Closes/cancels an enrollment — stops autopay and interest; balance and history are kept. */
+export async function closeGoldSubscription(id: string, reason?: string): Promise<GoldSubscription> {
+  return request<GoldSubscription>(`/gold-investment/subscriptions/${id}/close`, { method: 'POST', body: JSON.stringify({ reason }) });
 }
 
 /** Restarts a cancelled/halted subscription — resumes the mandate directly if Razorpay allows it, otherwise issues a fresh one and messages the customer a new authorization link. */

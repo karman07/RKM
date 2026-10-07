@@ -451,6 +451,7 @@ export default function CustomersPage() {
   const [page, setPage] = useState(1);
   const [limit] = useState(12);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [toast, setToast] = useState('');
   const { theme } = useAppTheme();
@@ -458,7 +459,7 @@ export default function CustomersPage() {
 
   const load = () => {
     setLoading(true);
-    getCustomers(page, limit)
+    getCustomers(page, limit, debouncedSearch)
       .then(res => {
         setCustomers(res.data);
         setMeta(res.meta);
@@ -466,16 +467,20 @@ export default function CustomersPage() {
       .finally(() => setLoading(false));
   };
 
+  // Debounce typing, then search the whole customer database server-side (reset to page 1)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (search !== debouncedSearch) { setDebouncedSearch(search); setPage(1); }
+    }, 350);
+    return () => clearTimeout(t);
+  }, [search, debouncedSearch]);
+
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, limit]);
+  }, [page, limit, debouncedSearch]);
 
-  const filtered = customers.filter(c => 
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    c.email?.toLowerCase().includes(search.toLowerCase()) ||
-    c.phone?.includes(search)
-  );
+  const filtered = customers;
 
   return (
     <div className="p-8 max-w-[1600px] mx-auto animate-in fade-in duration-500">

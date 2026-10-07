@@ -6,7 +6,7 @@ import InvestmentReceiptModal from '@/components/InvestmentReceiptModal';
 import {
   getInvestmentPlans, createInvestmentPlan, updateInvestmentPlan, deleteInvestmentPlan,
   getSubscriptions, enrollSubscription, updateSubscription, getGoldStats,
-  markGoldCashPayment, sendGoldReminder, addInterestToSubscription, restartGoldSubscription, getMe,
+  markGoldCashPayment, sendGoldReminder, addInterestToSubscription, restartGoldSubscription, closeGoldSubscription, getMe,
   getSettings, updateSettings, searchCustomers,
   InvestmentPlan, GoldSubscription, GoldStats, User, Customer,
 } from '@/lib/api';
@@ -101,6 +101,7 @@ export default function GoldInvestmentDashboard() {
 
   // Restart (cancelled/halted mandate)
   const [restartLoading, setRestartLoading] = useState(false);
+  const [closeLoading, setCloseLoading] = useState(false);
 
   // Current admin (gates the "Add Interest" action to admins only)
   const [me, setMe] = useState<User | null>(null);
@@ -421,6 +422,23 @@ export default function GoldInvestmentDashboard() {
       setReminderMsg(e.message || 'Failed to send');
     } finally {
       setReminderLoading(false);
+    }
+  };
+
+  const handleClose = async () => {
+    if (!selectedSub) return;
+    const reason = window.prompt(`Close ${selectedSub.customerName}'s enrollment?\nAutopay will be stopped and interest will stop accruing. Their balance and history are kept.\n\nReason (optional):`);
+    if (reason === null) return;
+    setCloseLoading(true);
+    try {
+      const updated = await closeGoldSubscription(selectedSub._id, reason);
+      setSelectedSub({ ...selectedSub, ...updated, plan: selectedSub.plan });
+      await loadAll();
+      toast.success('Enrollment closed');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to close enrollment');
+    } finally {
+      setCloseLoading(false);
     }
   };
 
@@ -1073,6 +1091,17 @@ export default function GoldInvestmentDashboard() {
                       <p className="text-[10px] text-emerald-800">
                         Autopay won't charge this cycle again. It resumes automatically{selectedSub.autopayResumeAt ? ` on ${new Date(selectedSub.autopayResumeAt).toLocaleDateString('en-IN', { dateStyle: 'medium' })}` : ' before the next cycle'}.
                       </p>
+                    </div>
+                  )}
+
+                  {/* Close / cancel enrollment */}
+                  {(selectedSub.status === 'active' || selectedSub.status === 'halted' || selectedSub.status === 'pending') && (
+                    <div className="border border-slate-200 rounded-2xl p-4 bg-white">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1">Close Enrollment</p>
+                      <p className="text-[10px] text-slate-500 mb-3">Stops autopay and interest for this customer. Balance and history are kept; you can restart it later.</p>
+                      <button onClick={handleClose} disabled={closeLoading} className="w-full py-2.5 border border-red-200 text-red-600 hover:bg-red-50 text-[10px] font-black uppercase rounded-xl transition-all disabled:opacity-50">
+                        {closeLoading ? 'Closing…' : 'Close / Cancel Enrollment'}
+                      </button>
                     </div>
                   )}
 

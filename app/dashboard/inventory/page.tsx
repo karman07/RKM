@@ -138,6 +138,8 @@ export default function InventoryPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [supplierQuery, setSupplierQuery] = useState('');
   const [supplierOpen, setSupplierOpen] = useState(false);
+  const [productQuery, setProductQuery] = useState('');
+  const [productOpen, setProductOpen] = useState(false);
 
   // ── Add item modal ──────────────────────────────────────────────────────────
   const [addModal, setAddModal] = useState(false);
@@ -1106,14 +1108,46 @@ export default function InventoryPage() {
           {/* Product Select */}
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Product <span className="text-red-500">*</span></label>
-            <select
-              className="w-full px-5 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-bold focus:ring-2 focus:ring-blue-500"
-              value={addForm.product_id}
-              onChange={e => handleProductSelect(e.target.value)}
-            >
-              <option value="">Select a product...</option>
-              {products.map(p => <option key={p._id} value={p._id}>{p.name} ({p.sku}) — {p.metal_type} {p.purity}</option>)}
-            </select>
+            <div className="relative">
+              <input
+                className="w-full px-5 py-3 pr-10 rounded-xl border border-slate-200 bg-white outline-none text-sm font-bold focus:ring-2 focus:ring-blue-500"
+                value={productOpen ? productQuery : (selectedProduct ? `${selectedProduct.name} (${selectedProduct.sku})` : '')}
+                placeholder="Search product by name, SKU, metal or purity…"
+                onFocus={() => { setProductQuery(''); setProductOpen(true); }}
+                onChange={e => { setProductQuery(e.target.value); setProductOpen(true); }}
+                onBlur={() => setTimeout(() => setProductOpen(false), 150)}
+              />
+              <svg className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M19 9l-7 7-7-7" /></svg>
+              {productOpen && (() => {
+                const terms = productQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+                const filtered = products.filter(p => {
+                  const hay = `${p.name} ${p.sku} ${p.metal_type} ${p.purity}`.toLowerCase();
+                  return terms.every(t => hay.includes(t));
+                });
+                return (
+                  <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+                    {filtered.length === 0 ? (
+                      <div className="px-5 py-3 text-[11px] text-slate-400 font-semibold">No products found</div>
+                    ) : (
+                      <div className="max-h-60 overflow-y-auto divide-y divide-slate-50">
+                        {filtered.map(p => (
+                          <button
+                            key={p._id}
+                            type="button"
+                            onMouseDown={e => e.preventDefault()}
+                            onClick={() => { handleProductSelect(p._id); setProductOpen(false); }}
+                            className={`w-full px-4 py-2.5 text-left hover:bg-slate-50 transition-colors ${p._id === addForm.product_id ? 'bg-blue-50' : ''}`}
+                          >
+                            <p className="text-sm font-bold text-slate-800 truncate">{p.name}</p>
+                            <p className="text-[10px] text-slate-400 truncate">{p.sku} · {p.metal_type} {p.purity}</p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
           </div>
 
           {/* Product Snapshot Panel */}
@@ -1166,7 +1200,7 @@ export default function InventoryPage() {
                   className="w-full px-5 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-medium focus:ring-2 focus:ring-blue-500 pr-10"
                   value={supplierQuery || addForm.source}
                   placeholder="Search supplier or type name…"
-                  onFocus={() => setSupplierOpen(true)}
+                  onFocus={() => { setSupplierQuery(''); setSupplierOpen(true); }}
                   onChange={e => {
                     setSupplierQuery(e.target.value);
                     setAddForm({ ...addForm, source: e.target.value });
@@ -1181,7 +1215,7 @@ export default function InventoryPage() {
                 {supplierOpen && (
                   <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
                     {(() => {
-                      const q = (supplierQuery || addForm.source).trim().toLowerCase();
+                      const q = supplierQuery.trim().toLowerCase();
                       const filtered = suppliers.filter(s =>
                         !q || s.name.toLowerCase().includes(q) || (s.place || '').toLowerCase().includes(q) || (s.contact_person || '').toLowerCase().includes(q)
                       );
