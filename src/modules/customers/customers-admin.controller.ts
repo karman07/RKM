@@ -20,8 +20,9 @@ export class CustomersAdminController {
     @Query('page') page: string,
     @Query('limit') limit: string,
     @Query('relationship_manager') relationshipManager: string,
+    @Query('search') search: string,
   ) {
-    return this.customersService.findAll(Number(page) || 1, Number(limit) || 20, relationshipManager || undefined);
+    return this.customersService.findAll(Number(page) || 1, Number(limit) || 20, relationshipManager || undefined, search || undefined);
   }
 
   /** Search customers by partial phone, name, or email */

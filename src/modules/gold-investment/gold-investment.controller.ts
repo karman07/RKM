@@ -15,6 +15,7 @@ import {
   UpdateInvestmentPlanDto,
   CreateSubscriptionDto,
   UpdateSubscriptionDto,
+  CloseSubscriptionDto,
   RedeemBalanceDto,
   PreviewRedemptionDto,
   MarkCashPaymentDto,
@@ -227,6 +228,14 @@ export class GoldInvestmentController {
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   reviewSalesPayment(@Param('id') id: string, @Param('entryId') entryId: string, @Body() dto: ReviewSalesPaymentDto, @Req() req: any) {
     return this.svc.reviewSalesPayment(id, entryId, dto, req.user.userId);
+  }
+
+  /** Close/cancel an enrollment (stops autopay, freezes interest; balance is retained) */
+  @Post('subscriptions/:id/close')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  closeSubscription(@Param('id') id: string, @Body() dto: CloseSubscriptionDto, @Req() req: any) {
+    return this.svc.closeSubscription(id, dto.reason, req.user?.userId);
   }
 
   /** Restart a cancelled/halted subscription — resumes the mandate directly if possible, otherwise issues a new one */

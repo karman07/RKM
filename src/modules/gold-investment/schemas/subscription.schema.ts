@@ -291,6 +291,13 @@ export class Subscription {
   @Prop()
   adminNotes: string;
 
+  /** Closed deliberately by staff (not a bank/mandate failure) — suppresses autopay-failure reminders and alerts */
+  @Prop({ default: false })
+  closedByStaff: boolean;
+
+  @Prop()
+  closureReason: string;
+
   /** Auto-stop interest after cancellation */
   @Prop({ default: false })
   interestStopped: boolean;

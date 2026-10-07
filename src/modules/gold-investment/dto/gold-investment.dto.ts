@@ -192,6 +192,12 @@ export class UpdateSubscriptionDto {
   makingChargeWaiverEnabled?: boolean;
 }
 
+export class CloseSubscriptionDto {
+  @IsString()
+  @IsOptional()
+  reason?: string;
+}
+
 /** Public lead-capture from the customer-facing Hold My Gold section — staff follows up in-store. */
 export class RequestHoldMyGoldEnrollmentDto {
   @IsString()

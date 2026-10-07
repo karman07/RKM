@@ -174,10 +174,15 @@ export class CustomersService {
     return this.customerModel.findOne({ phone }).exec();
   }
 
-  async findAll(page: number = 1, limit: number = 20, relationshipManagerId?: string) {
+  async findAll(page: number = 1, limit: number = 20, relationshipManagerId?: string, search?: string) {
     const skip = (page - 1) * limit;
     const filter: Record<string, unknown> = { is_deleted: { $ne: true } };
     if (relationshipManagerId) filter.relationship_manager = relationshipManagerId;
+    const q = search?.trim();
+    if (q) {
+      const regex = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      filter.$or = [{ name: regex }, { phone: regex }, { email: regex }];
+    }
     const [data, total] = await Promise.all([
       this.customerModel.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit)
         .populate('relationship_manager', 'name email mobile_number role').exec(),

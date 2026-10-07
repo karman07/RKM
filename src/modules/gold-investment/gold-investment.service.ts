@@ -358,10 +358,7 @@ export class GoldInvestmentService {
     if (!plan.isActive) throw new BadRequestException('This plan is no longer active');
 
     const existingActiveForPlan = await this.subModel.findOne({
-      $or: [
-        { customerEmail: dto.customerEmail },
-        { customerPhone: dto.customerPhone },
-      ],
+      $or: this.customerMatch(dto.customerEmail, dto.customerPhone),
       plan: plan._id,
       status: { $in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.HALTED] },
     }).exec();
@@ -576,10 +573,7 @@ export class GoldInvestmentService {
     }
 
     const existingActiveForPlan = await this.subModel.findOne({
-      $or: [
-        { customerEmail: dto.customerEmail },
-        { customerPhone: dto.customerPhone },
-      ],
+      $or: this.customerMatch(dto.customerEmail, dto.customerPhone),
       plan: plan._id,
       status: { $in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.HALTED] },
     }).exec();
@@ -590,10 +584,7 @@ export class GoldInvestmentService {
 
     // Clean up any abandoned pending subscriptions
     await this.subModel.deleteMany({
-      $or: [
-        { customerEmail: dto.customerEmail },
-        { customerPhone: dto.customerPhone },
-      ],
+      $or: this.customerMatch(dto.customerEmail, dto.customerPhone),
       status: SubscriptionStatus.PENDING,
     }).exec();
 
@@ -633,6 +624,44 @@ export class GoldInvestmentService {
       shortUrl: rzpSub.short_url || '',
       razorpayKey: this.configService.get<string>('RAZORPAY_ID'),
     };
+  }
+
+  /**
+   * Staff-initiated close/cancel of an enrollment. Stops the Razorpay mandate (best-effort),
+   * freezes interest and suppresses autopay-failure reminders. Balance and history are kept,
+   * and the subscription can still be restarted later.
+   */
+  async closeSubscription(id: string, reason: string | undefined, staffId?: string): Promise<SubscriptionDocument> {
+    const sub = await this.subModel.findById(id).populate('plan').exec();
+    if (!sub) throw new NotFoundException('Subscription not found');
+    if (sub.status === SubscriptionStatus.CANCELLED || sub.status === SubscriptionStatus.COMPLETED) {
+      throw new BadRequestException(`Subscription is already ${sub.status}`);
+    }
+
+    // Mark first so the Razorpay "subscription.cancelled" webhook treats this as deliberate.
+    sub.closedByStaff = true;
+    sub.closureReason = reason?.trim() || '';
+    sub.status = SubscriptionStatus.CANCELLED;
+    sub.endedAt = new Date();
+    sub.interestStopped = true;
+    sub.requiresManualPayment = false;
+    sub.pausedForCashMonth = null;
+    sub.autopayResumeAt = null;
+    if (sub.closureReason) {
+      sub.adminNotes = [sub.adminNotes, `Closed by staff: ${sub.closureReason}`].filter(Boolean).join('\n');
+    }
+    await sub.save();
+
+    if (sub.razorpaySubscriptionId && !sub.razorpaySubscriptionId.startsWith('manual_')) {
+      try {
+        await (this.razorpay.subscriptions as any).cancel(sub.razorpaySubscriptionId, false);
+      } catch (err) {
+        this.logger.warn(`Razorpay cancel failed for subscription ${id} (already cancelled or in-store enrollment): ${(err as any)?.error?.description ?? err}`);
+      }
+    }
+
+    this.logger.log(`Subscription ${id} closed by staff ${staffId || 'unknown'}`);
+    return sub;
   }
 
   /**
@@ -837,10 +866,18 @@ export class GoldInvestmentService {
     return subs.map(s => this.addNextDueDate(s));
   }
 
+  /** Identity match on email/phone — skips blank values so a missing field never matches every subscription that also lacks it. */
+  private customerMatch(email?: string, phone?: string): Record<string, string>[] {
+    const or: Record<string, string>[] = [];
+    if (email?.trim()) or.push({ customerEmail: email.trim() });
+    if (phone?.trim()) or.push({ customerPhone: phone.trim() });
+    return or.length ? or : [{ _id: '000000000000000000000000' }];
+  }
+
   async findCustomerSubscriptions(email: string, phone: string) {
     const subs = await this.subModel
       .find({
-        $or: [{ customerEmail: email }, { customerPhone: phone }],
+        $or: this.customerMatch(email, phone),
         status: { $ne: SubscriptionStatus.PENDING },
       })
       .populate('plan')
@@ -1408,6 +1445,7 @@ export class GoldInvestmentService {
       }
 
       case 'subscription.cancelled':
+        if (sub.closedByStaff) { await sub.save(); break; }
         sub.status = SubscriptionStatus.CANCELLED;
         sub.endedAt = new Date();
         sub.interestStopped = true;

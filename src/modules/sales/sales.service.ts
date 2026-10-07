@@ -132,7 +132,8 @@ export class SalesService {
     const salesAgent = await this.usersService.findById(doc.sales_agent_id.toString());
 
     if (reviewerRole === UserRole.MANAGER) {
-      const managerId = (salesAgent as any)?.reporting_manager_id?.toString();
+      const rm = (salesAgent as any)?.reporting_manager_id;
+      const managerId = (rm?._id ?? rm)?.toString();
       if (managerId !== reviewerId) {
         throw new ForbiddenException('You can only review enquiries for sales agents assigned to you');
       }
