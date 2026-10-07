@@ -40,6 +40,14 @@ function NewEnquiryModal({
   customers: FullCustomer[]; defaultCustomerId?: string; defaultItemId?: string; defaultPlanId?: string; defaultType?: 'item_sale' | 'investment' | 'pre_booking';
 }) {
   const [customerId, setCustomerId] = useState(defaultCustomerId ?? '');
+  const [customerQuery, setCustomerQuery] = useState('');
+  const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
+  const selectedCustomer = customers.find(c => c._id === customerId);
+  const filteredCustomers = (() => {
+    const q = customerQuery.trim().toLowerCase();
+    if (!q) return customers;
+    return customers.filter(c => c.name?.toLowerCase().includes(q) || String(c.phone ?? '').includes(q));
+  })();
   const [type, setType] = useState<'item_sale' | 'investment' | 'pre_booking'>(defaultType ?? (defaultPlanId ? 'investment' : 'item_sale'));
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
@@ -168,11 +176,32 @@ function NewEnquiryModal({
 
         <div>
           <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Customer</label>
-          <select value={customerId} onChange={e => setCustomerId(e.target.value)}
-            className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A] bg-white transition-all">
-            <option value="">Select a customer…</option>
-            {customers.map(c => <option key={c._id} value={c._id}>{c.name} · {c.phone}</option>)}
-          </select>
+          <div className="relative">
+            <input
+              type="text"
+              value={customerPickerOpen ? customerQuery : (selectedCustomer ? `${selectedCustomer.name} · ${selectedCustomer.phone}` : '')}
+              onFocus={() => { setCustomerQuery(''); setCustomerPickerOpen(true); }}
+              onChange={e => { setCustomerQuery(e.target.value); setCustomerPickerOpen(true); }}
+              onBlur={() => setTimeout(() => setCustomerPickerOpen(false), 150)}
+              placeholder="Search customer by name or phone…"
+              className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A] bg-white transition-all"
+            />
+            {customerPickerOpen && (
+              <div className="absolute z-10 top-full mt-2 left-0 right-0 bg-white border border-slate-100 rounded-2xl shadow-2xl max-h-64 overflow-y-auto">
+                {filteredCustomers.length === 0 ? (
+                  <div className="p-4 text-center text-xs text-slate-400 font-bold">No customers found</div>
+                ) : filteredCustomers.map(c => (
+                  <button key={c._id} type="button"
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={() => { setCustomerId(c._id); setCustomerPickerOpen(false); }}
+                    className={`w-full px-4 py-2.5 hover:bg-slate-50 transition-colors text-left text-sm ${c._id === customerId ? 'bg-[#5A0F1A]/5' : ''}`}>
+                    <span className="font-bold text-slate-900">{c.name}</span>
+                    <span className="text-slate-400"> · {c.phone}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           {customers.length === 0 && (
             <p className="text-[11px] text-amber-600 font-bold mt-1.5">Add a customer first before raising an enquiry.</p>
           )}
