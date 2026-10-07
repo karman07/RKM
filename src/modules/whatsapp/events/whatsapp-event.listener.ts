@@ -7,11 +7,13 @@ import {
   SALE_COMPLETED_EVENT,
   SALE_RETURNED_EVENT,
   SALE_RESERVED_EVENT,
+  ADVANCE_RECEIVED_EVENT,
 } from './whatsapp.events';
 import type {
   SaleCompletedEvent,
   SaleReturnedEvent,
   SaleReservedEvent,
+  AdvanceReceivedEvent,
 } from './whatsapp.events';
 import { MessageCategory } from '../schemas/whatsapp-message.schema';
 
@@ -96,6 +98,28 @@ export class WhatsAppEventListener {
         customerName: payload.customerName,
         itemName:     payload.itemName,
         branchName:   payload.branchName,
+      },
+      payload.customerId,
+      0,
+      MessageCategory.UTILITY,
+    );
+  }
+
+  @OnEvent(ADVANCE_RECEIVED_EVENT, { async: true })
+  async onAdvanceReceived(payload: AdvanceReceivedEvent): Promise<void> {
+    if (!(await this.shouldSendWhatsApp())) {
+      this.logger.log('[WAListener] WhatsApp notifications disabled, skipping advance_received');
+      return;
+    }
+    this.logger.log(`Event: ${ADVANCE_RECEIVED_EVENT} for ${payload.customerPhone}`);
+    await this.whatsappService.sendByEvent(
+      payload.customerPhone,
+      ADVANCE_RECEIVED_EVENT,
+      {
+        customerName:     payload.customerName,
+        amount:           payload.amount,
+        availableBalance: payload.availableBalance,
+        branchName:       payload.branchName,
       },
       payload.customerId,
       0,

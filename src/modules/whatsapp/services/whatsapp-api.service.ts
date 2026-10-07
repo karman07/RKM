@@ -79,7 +79,7 @@ export class WhatsAppApiService {
       to: normalized.replace('+', ''),
       from: this.waConfig.airtelFromNumber,
       filterBlacklistNumbers: false,
-      ...(params.length ? { message: { variables: params.map(String) } } : {}),
+      ...(params.length ? { message: { payload: params.map(String) } } : {}),
     };
 
     try {

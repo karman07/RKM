@@ -2426,6 +2426,7 @@ export class InventoryService {
           mode: dto.mode,
           note: dto.notes?.trim() || `Pre-booking advance for ${claimed.unique_item_code}`,
           lock_in_days: dto.lock_in_days,
+          skip_whatsapp: true,
         },
         requestingUserId,
       );
@@ -2450,6 +2451,8 @@ export class InventoryService {
           customerPhone: advance.customerPhone,
           customerName: advance.customerName,
           itemId: saved._id?.toString(),
+          itemName: (saved as any).product_id?.name || saved.unique_item_code,
+          branchName: (advance as any).branch_id?.name,
         });
       } catch (evtErr) {
         console.error('[InventoryService] Event emit error:', evtErr?.message);

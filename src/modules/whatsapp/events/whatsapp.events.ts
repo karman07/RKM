@@ -7,6 +7,7 @@
 export const SALE_COMPLETED_EVENT = 'sale.completed';
 export const SALE_RETURNED_EVENT = 'sale.returned';
 export const SALE_RESERVED_EVENT = 'sale.reserved';
+export const ADVANCE_RECEIVED_EVENT = 'advance.received';
 
 export interface SaleCompletedEvent {
   customerId?: string;
@@ -39,5 +40,14 @@ export interface SaleReservedEvent {
   customerName: string;
   itemId: string;
   itemName?: string;
+  branchName?: string;
+}
+
+export interface AdvanceReceivedEvent {
+  customerId?: string;
+  customerPhone: string;
+  customerName: string;
+  amount: number;
+  availableBalance?: number;
   branchName?: string;
 }

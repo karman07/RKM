@@ -505,7 +505,7 @@ export function buildOnlineOrderInvoiceHtml(order: any): string {
 }
 
 /** Renders the invoice HTML to a PDF buffer, matching BillModal's print settings (A4 landscape, 6mm margin). */
-export async function renderBillPdf(html: string): Promise<Buffer> {
+export async function renderBillPdf(html: string, opts: { landscape?: boolean } = {}): Promise<Buffer> {
   // On servers where Puppeteer's own Chromium download isn't available (missing unzip,
   // restricted network, etc.), point PUPPETEER_EXECUTABLE_PATH at a system-installed
   // Chromium/Chrome binary instead — see backend/.env for setup notes.
@@ -520,7 +520,7 @@ export async function renderBillPdf(html: string): Promise<Buffer> {
     await page.setContent(html, { waitUntil: 'networkidle0' });
     const pdf = await page.pdf({
       format: 'A4',
-      landscape: true,
+      landscape: opts.landscape ?? true,
       margin: { top: '6mm', bottom: '6mm', left: '6mm', right: '6mm' },
       printBackground: true,
     });

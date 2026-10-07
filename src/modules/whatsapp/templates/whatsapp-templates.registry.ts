@@ -69,6 +69,17 @@ export const WHATSAPP_TEMPLATES: Record<string, TemplateDefinition> = {
     ],
   },
 
+  // Fired when a standalone advance payment is recorded (not the advance taken for a pre-booking)
+  'advance.received': {
+    templateName: 'advance_received',
+    language: 'en_US',
+    buildParams: (ctx) => [
+      ctx.customerName ?? 'Customer',
+      String(ctx.amount ?? ''),
+      String(ctx.availableBalance ?? ''),
+    ],
+  },
+
   // Generic promotional / custom blast
   'marketing.bulk': {
     templateName: 'general_promotion',

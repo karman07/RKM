@@ -3,7 +3,11 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { CustomerAdvance, CustomerAdvanceDocument, CustomerAdvanceStatus } from './schemas/customer-advance.schema';
 import { Customer, CustomerDocument } from './schemas/customer.schema';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EmailService } from '../email/email.service';
+import { buildAdvanceReceiptHtml, advanceReceiptNumber } from './advance-receipt-pdf.builder';
+import { renderBillPdf } from '../inventory/bill-pdf.builder';
+import { ADVANCE_RECEIVED_EVENT } from '../whatsapp/events/whatsapp.events';
 
 interface CreateAdvanceDto {
   amount: number;
@@ -13,6 +17,8 @@ interface CreateAdvanceDto {
   note?: string;
   branch_id?: string;
   lock_in_days?: number;
+  /** Set by pre-booking, which sends its own reservation message instead of a separate advance one */
+  skip_whatsapp?: boolean;
 }
 
 interface RedeemAdvanceDto {
@@ -41,6 +47,7 @@ export class CustomerAdvanceService {
     @InjectModel(CustomerAdvance.name) private advanceModel: Model<CustomerAdvanceDocument>,
     @InjectModel(Customer.name) private customerModel: Model<CustomerDocument>,
     private readonly emailService: EmailService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   private withBalance(doc: CustomerAdvanceDocument) {
@@ -96,6 +103,20 @@ export class CustomerAdvanceService {
     this.notifyAdvanceCreated(result, customer.email).catch(err =>
       this.logger.error(`Failed to send advance emails: ${err?.message}`),
     );
+    if (!dto.skip_whatsapp) {
+      try {
+        this.eventEmitter.emit(ADVANCE_RECEIVED_EVENT, {
+          customerId: customer._id.toString(),
+          customerPhone: customer.phone,
+          customerName: customer.name,
+          amount: result.amount,
+          availableBalance: result.availableBalance,
+          branchName: result.branch_id && typeof result.branch_id === 'object' ? result.branch_id.name : undefined,
+        });
+      } catch (evtErr: any) {
+        this.logger.error(`Advance WhatsApp event error: ${evtErr?.message}`);
+      }
+    }
     return result;
   }
 
@@ -103,6 +124,16 @@ export class CustomerAdvanceService {
   private async notifyAdvanceCreated(advance: any, customerEmail?: string) {
     const branchName = advance.branch_id && typeof advance.branch_id === 'object' ? advance.branch_id.name : undefined;
     const recordedBy = advance.createdBy && typeof advance.createdBy === 'object' ? advance.createdBy.name : undefined;
+
+    // Same Advance Receipt the admin/manager apps render, attached as a PDF. If PDF
+    // generation fails the emails still go out without it.
+    let attachments: { filename: string; content: Buffer }[] | undefined;
+    try {
+      const pdf = await renderBillPdf(buildAdvanceReceiptHtml(advance), { landscape: false });
+      attachments = [{ filename: `${advanceReceiptNumber(advance)}.pdf`, content: pdf }];
+    } catch (err: any) {
+      this.logger.error(`Failed to render advance receipt PDF: ${err?.message}`);
+    }
 
     if (customerEmail) {
       const html = this.emailService.buildAdvanceCustomerHtml({
@@ -118,6 +149,7 @@ export class CustomerAdvanceService {
         subject: 'Advance Payment Received | RKM Jewellers',
         html,
         trigger: 'advance_created',
+        attachments,
       });
     }
 
@@ -129,7 +161,7 @@ export class CustomerAdvanceService {
       branchName,
       recordedBy,
     });
-    await this.emailService.notifyAdminsByEmail('New Advance Recorded | RKM Jewellers', adminHtml, { trigger: 'advance_created' });
+    await this.emailService.notifyAdminsByEmail('New Advance Recorded | RKM Jewellers', adminHtml, { trigger: 'advance_created', attachments });
   }
 
   async getAdvancesByCustomer(customerId: string) {
