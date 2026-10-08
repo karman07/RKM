@@ -74,6 +74,8 @@ export default function GoldInvestmentDashboard() {
   const [enrollCustomer, setEnrollCustomer] = useState<Customer | null>(null);
   const [enrollPlanId, setEnrollPlanId] = useState('');
   const [enrollAmount, setEnrollAmount] = useState<number>(0);
+  const todayStr = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in local time
+  const [enrollStartDate, setEnrollStartDate] = useState<string>(todayStr());
   const [enrollSaving, setEnrollSaving] = useState(false);
   const [enrollError, setEnrollError] = useState('');
   // Custom terms — lets staff override interest rate / duration / cash benefit / making charge
@@ -93,6 +95,8 @@ export default function GoldInvestmentDashboard() {
   // Cash payment marking
   const [markingMonth, setMarkingMonth] = useState<number | null>(null);
   const [cashNote, setCashNote] = useState('');
+  const [cashDate, setCashDate] = useState('');
+  const [cashGoldRate, setCashGoldRate] = useState('');
   const [cashLoading, setCashLoading] = useState(false);
 
   // Reminder
@@ -225,6 +229,7 @@ export default function GoldInvestmentDashboard() {
     const firstActive = plans.find(p => p.isActive);
     setEnrollPlanId(firstActive?._id || '');
     setEnrollAmount(firstActive?.monthlyAmount || 0);
+    setEnrollStartDate(todayStr());
     setEnrollCustomTerms(false);
     setEnrollInterestRate(firstActive?.interestRate || 0);
     setEnrollDurationMonths(firstActive?.durationMonths || 0);
@@ -262,6 +267,7 @@ export default function GoldInvestmentDashboard() {
         customerName: enrollCustomer.name,
         customerEmail: enrollCustomer.email,
         customerPhone: enrollCustomer.phone,
+        startDate: enrollStartDate || undefined,
         customMonthlyAmount: enrollSelectedPlan && enrollAmount !== enrollSelectedPlan.monthlyAmount ? enrollAmount : undefined,
         customInterestRate: enrollCustomTerms && enrollSelectedPlan && enrollInterestRate !== enrollSelectedPlan.interestRate ? enrollInterestRate : undefined,
         customDurationMonths: enrollCustomTerms && enrollSelectedPlan?.durationMonths && enrollDurationMonths !== enrollSelectedPlan.durationMonths ? enrollDurationMonths : undefined,
@@ -378,10 +384,14 @@ export default function GoldInvestmentDashboard() {
     if (!confirm(`Mark month ${month} as CASH PAID for ${selectedSub.customerName}?`)) return;
     setCashLoading(true);
     try {
-      const updated = await markGoldCashPayment(selectedSub._id, { month, note: cashNote });
+      const updated = await markGoldCashPayment(selectedSub._id, {
+        month, note: cashNote,
+        paymentDate: cashDate || undefined,
+        goldRate: cashDate && cashDate !== todayStr() && parseFloat(cashGoldRate) > 0 ? parseFloat(cashGoldRate) : undefined,
+      });
       setSelectedSub(updated);
       setMarkingMonth(null);
-      setCashNote('');
+      setCashNote(''); setCashDate(''); setCashGoldRate('');
       await loadAll();
       toast.success('Payment recorded');
     } catch (e: any) {
@@ -911,6 +921,15 @@ export default function GoldInvestmentDashboard() {
 
               {enrollSelectedPlan && (
                 <div>
+                  <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Enrollment Start Date *</label>
+                  <input type="date" value={enrollStartDate} max={todayStr()} onChange={e => setEnrollStartDate(e.target.value)}
+                    className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all" />
+                  <p className="text-[9px] text-slate-400 mt-1">Pick an earlier date to add an existing customer who joined in the past, then mark their old months as paid with the actual payment dates.</p>
+                </div>
+              )}
+
+              {enrollSelectedPlan && (
+                <div>
                   <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Monthly Amount (INR) *</label>
                   <input type="number" min={enrollFloor} value={enrollAmount} onChange={e => setEnrollAmount(Number(e.target.value) || 0)}
                     className="w-full border-b-2 border-slate-100 focus:border-slate-900 py-2.5 text-sm font-bold outline-none transition-all" />
@@ -1253,7 +1272,7 @@ export default function GoldInvestmentDashboard() {
                                 {!isPaid && canMarkPayments && (
                                   <button
                                     type="button"
-                                    onClick={() => { setMarkingMonth(isMarkingThis ? null : monthNum); setCashNote(''); }}
+                                    onClick={() => { setMarkingMonth(isMarkingThis ? null : monthNum); setCashNote(''); setCashDate(todayStr()); setCashGoldRate(''); }}
                                     className={`text-[8px] font-black uppercase px-2.5 py-1.5 rounded-lg border transition-all ${isMarkingThis ? 'bg-slate-200 text-slate-500 border-slate-300' : 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700'}`}
                                   >
                                     {isMarkingThis ? 'Cancel' : 'Mark Paid'}
@@ -1272,6 +1291,30 @@ export default function GoldInvestmentDashboard() {
                                   placeholder="Note (e.g. cash received by Ravi)"
                                   className="w-full border border-emerald-300 rounded-lg px-3 py-1.5 text-xs font-bold outline-none focus:border-emerald-500 bg-white"
                                 />
+                                <div className="flex gap-2">
+                                  <div className="flex-1">
+                                    <label className="block text-[8px] font-black uppercase tracking-widest text-emerald-700 mb-0.5">Payment Date</label>
+                                    <input
+                                      type="date"
+                                      value={cashDate}
+                                      min={selectedSub.startedAt ? new Date(selectedSub.startedAt).toLocaleDateString('en-CA') : undefined}
+                                      max={todayStr()}
+                                      onChange={e => setCashDate(e.target.value)}
+                                      className="w-full border border-emerald-300 rounded-lg px-3 py-1.5 text-xs font-bold outline-none focus:border-emerald-500 bg-white"
+                                    />
+                                  </div>
+                                  {cashDate && cashDate !== todayStr() && (
+                                    <div className="flex-1">
+                                      <label className="block text-[8px] font-black uppercase tracking-widest text-emerald-700 mb-0.5">Gold Rate ₹/g (optional)</label>
+                                      <input
+                                        type="number" min={0} value={cashGoldRate}
+                                        onChange={e => setCashGoldRate(e.target.value)}
+                                        placeholder="Rate on that day"
+                                        className="w-full border border-emerald-300 rounded-lg px-3 py-1.5 text-xs font-bold outline-none focus:border-emerald-500 bg-white"
+                                      />
+                                    </div>
+                                  )}
+                                </div>
                                 <button
                                   type="button"
                                   onClick={() => handleMarkCash(monthNum)}

@@ -1651,8 +1651,11 @@ export const deleteIncentive = (id: string) =>
 
 // ─── Customers ────────────────────────────────────────────────────────────────
 
-export const getCustomers = (page: number = 1, limit: number = 20, search?: string) =>
-  request<PaginatedResponse<Customer>>(`/customers?page=${page}&limit=${limit}${search?.trim() ? `&search=${encodeURIComponent(search.trim())}` : ''}`);
+export const getCustomers = (page: number = 1, limit: number = 20, search?: string, deleted = false) =>
+  request<PaginatedResponse<Customer>>(`/customers?page=${page}&limit=${limit}${search?.trim() ? `&search=${encodeURIComponent(search.trim())}` : ''}${deleted ? '&deleted=true' : ''}`);
+/** Admin-only — brings a soft-deleted customer back */
+export const restoreCustomer = (id: string) =>
+  request<{ restored: boolean; customer_id: string }>(`/customers/${id}/restore`, { method: 'POST' });
 export const getCustomerById = (id: string) => request<Customer>(`/customers/${id}`);
 export const searchCustomersByPhone = (phone: string) =>
   request<{ data: Customer[] }>(`/customers/search?phone=${encodeURIComponent(phone)}`);
@@ -1711,6 +1714,11 @@ export const waSendToCustomer = (customerId: string, payload: {
 }) => request<{ queued: boolean; message: string }>(`/whatsapp/customer/${customerId}`, {
   method: 'POST', body: JSON.stringify(payload),
 });
+
+export const waSetOptIn = (customerId: string, optIn: boolean) =>
+  request<{ customerId: string; whatsappOptIn: boolean }>(`/whatsapp/customer/${customerId}/opt-in`, {
+    method: 'PATCH', body: JSON.stringify({ optIn }),
+  });
 
 export const waSendBulk = (payload: {
   customerIds: string[]; templateName: string; params?: string[]; productId?: string;
@@ -2073,6 +2081,8 @@ export async function enrollSubscription(data: {
   customMonthlyAmount?: number;
   /** Custom term overrides for this enrollment only — leave unset to use the plan's defaults */
   customInterestRate?: number; customDurationMonths?: number; customCashBenefitPercent?: number; customMakingChargeDiscountPercent?: number;
+  /** Enrollment start date (YYYY-MM-DD) — may be in the past to add existing customers. Defaults to today. */
+  startDate?: string;
 }): Promise<GoldSubscription> {
   return request<GoldSubscription>('/gold-investment/subscriptions/enroll', { method: 'POST', body: JSON.stringify(data) });
 }
@@ -2085,7 +2095,7 @@ export async function redeemSubscription(id: string, data: { amount: number; sal
   return request<GoldSubscription>(`/gold-investment/subscriptions/${id}/redeem`, { method: 'POST', body: JSON.stringify(data) });
 }
 
-export async function markGoldCashPayment(id: string, data: { month: number; amount?: number; staffId?: string; note?: string }): Promise<GoldSubscription> {
+export async function markGoldCashPayment(id: string, data: { month: number; amount?: number; staffId?: string; note?: string; paymentDate?: string; goldRate?: number }): Promise<GoldSubscription> {
   return request<GoldSubscription>(`/gold-investment/subscriptions/${id}/mark-payment`, { method: 'POST', body: JSON.stringify(data) });
 }
 
@@ -2880,6 +2890,11 @@ export interface AdvanceAnalytics {
 }
 
 /** Aggregate advance-deposit stats for the Payments analytics page */
+/** Searches every advance ever recorded (all time) by customer name/phone, note, mode or amount */
+export const searchAdvances = (q: string, page = 1, limit = 20, from?: string, to?: string) =>
+  request<{ data: CustomerAdvance[]; meta: { total: number; page: number; limit: number; total_pages: number } }>(
+    `/customers/advances/search?q=${encodeURIComponent(q)}&page=${page}&limit=${limit}${from ? `&from=${from}` : ''}${to ? `&to=${to}` : ''}`);
+
 export const getAdvanceAnalytics = (days = 30) =>
   request<AdvanceAnalytics>(`/customers/advances/analytics?days=${days}`);
 

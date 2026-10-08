@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { getCustomers, searchCustomersByPhone, createCustomer, GST_TREATMENTS, type Customer, staticUrl } from '@/lib/api';
+import { getCustomers, restoreCustomer, searchCustomersByPhone, createCustomer, GST_TREATMENTS, type Customer, staticUrl } from '@/lib/api';
 import { useAppTheme } from '@/components/AppThemeContext';
 import { APP_THEME } from '@/lib/theme-constants';
 import { getFirebaseAuth } from '@/lib/firebase';
@@ -452,6 +452,7 @@ export default function CustomersPage() {
   const [limit] = useState(12);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [showDeleted, setShowDeleted] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [toast, setToast] = useState('');
   const { theme } = useAppTheme();
@@ -459,7 +460,7 @@ export default function CustomersPage() {
 
   const load = () => {
     setLoading(true);
-    getCustomers(page, limit, debouncedSearch)
+    getCustomers(page, limit, debouncedSearch, showDeleted)
       .then(res => {
         setCustomers(res.data);
         setMeta(res.meta);
@@ -478,7 +479,20 @@ export default function CustomersPage() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, limit, debouncedSearch]);
+  }, [page, limit, debouncedSearch, showDeleted]);
+
+  async function handleRestore(c: Customer) {
+    if (!confirm(`Restore ${c.name}? They will reappear in Client Relations.`)) return;
+    try {
+      await restoreCustomer(c._id);
+      setToast(`${c.name} restored`);
+      setTimeout(() => setToast(''), 3000);
+      load();
+    } catch (e: any) {
+      setToast(e?.message || 'Failed to restore customer');
+      setTimeout(() => setToast(''), 4000);
+    }
+  }
 
   const filtered = customers;
 
@@ -520,8 +534,12 @@ export default function CustomersPage() {
               className="pl-12 pr-6 py-4 bg-white border border-slate-100 rounded-2xl w-full md:w-[400px] outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 transition-all shadow-sm"
             />
           </div>
-          <button className="p-4 bg-white border border-slate-100 rounded-2xl text-slate-400 hover:text-blue-600 transition-all hover:shadow-md active:scale-95">
-            <Filter size={20} />
+          <button
+            onClick={() => { setShowDeleted(v => !v); setPage(1); }}
+            title="Show deleted clients"
+            className={`px-5 py-4 border rounded-2xl text-[11px] font-black uppercase tracking-wider transition-all whitespace-nowrap ${showDeleted ? 'bg-red-50 border-red-200 text-red-600' : 'bg-white border-slate-100 text-slate-400 hover:text-blue-600'}`}
+          >
+            {showDeleted ? 'Showing Deleted' : 'Deleted'}
           </button>
           <button
             onClick={() => setShowAdd(true)}
@@ -541,7 +559,22 @@ export default function CustomersPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filtered.map((customer) => (
+          {filtered.map((customer) => showDeleted ? (
+            <div key={customer._id} className="bg-white border border-red-100 rounded-3xl p-8 flex flex-col gap-4">
+              <div>
+                <p className="text-lg font-black text-slate-900">{customer.name}</p>
+                <p className="text-sm text-slate-400 font-semibold">{customer.phone || customer.email || '—'}</p>
+                <p className="text-[10px] font-black uppercase tracking-widest text-red-500 mt-2">
+                  Deleted{(customer as any).deleted_at ? ` · ${new Date((customer as any).deleted_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}` : ''}
+                </p>
+                {(customer as any).deletion_reason && <p className="text-xs text-slate-400 mt-1">“{(customer as any).deletion_reason}”</p>}
+              </div>
+              <button onClick={() => handleRestore(customer)}
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black uppercase tracking-wider rounded-2xl transition-all">
+                Restore Client
+              </button>
+            </div>
+          ) : (
             <Link 
               key={customer._id}
               href={`/dashboard/customers/${customer._id}`}

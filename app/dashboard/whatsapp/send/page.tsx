@@ -6,7 +6,7 @@ import {
   ArrowRight, Clock, Lock, Unlock, Smartphone,
 } from 'lucide-react';
 import {
-  getCustomers, waSendToCustomer, waListTemplatesV2,
+  getCustomers, waSendToCustomer, waSetOptIn, waListTemplatesV2,
   type Customer, type WaTemplateV2, type WaMessageCategory,
 } from '@/lib/api';
 
@@ -52,6 +52,7 @@ export default function SendPage() {
   const [sending,        setSending]        = useState(false);
   const [loading,        setLoading]        = useState(true);
   const [error,          setError]          = useState('');
+  const [needsOptIn,     setNeedsOptIn]     = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
@@ -101,8 +102,21 @@ export default function SendPage() {
     return result;
   }
 
+  async function handleOptInAndSend() {
+    if (!recipient) return;
+    if (!confirm(`Confirm that ${recipient.name} has agreed to receive WhatsApp messages from RKM Jewellers?`)) return;
+    try {
+      await waSetOptIn(recipient._id, true);
+      setCustomers(prev => prev.map(c => c._id === recipient._id ? ({ ...c, whatsappOptIn: true } as Customer) : c));
+      setNeedsOptIn(false);
+      await handleSend();
+    } catch (e: any) {
+      setError(e.message || 'Failed to record opt-in');
+    }
+  }
+
   async function handleSend() {
-    setError('');
+    setError(''); setNeedsOptIn(false);
     if (!selectedId) { setError('Please select a recipient'); return; }
     if (!selectedTpl) { setError('Please select an approved template'); return; }
     if (!template)   { setError('Template not found'); return; }
@@ -120,6 +134,7 @@ export default function SendPage() {
         setSelectedId(''); setSelectedTpl(''); setParamOverrides({});
       } else {
         setError(res.message || 'Message could not be queued');
+        if (/not opted in/i.test(res.message || '')) setNeedsOptIn(true);
       }
     } catch (e: any) {
       const msg = e.message || 'Failed to send';
@@ -146,6 +161,12 @@ export default function SendPage() {
           <div className="flex-1">
             <p className="text-sm font-black text-red-700">Cannot send message</p>
             <p className="text-xs text-red-500 font-medium mt-0.5">{error}</p>
+            {needsOptIn && recipient && (
+              <button onClick={handleOptInAndSend} disabled={sending}
+                className="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-[10px] font-black uppercase tracking-widest rounded-xl disabled:opacity-50">
+                Record opt-in for {recipient.name} &amp; send
+              </button>
+            )}
           </div>
           <button onClick={() => setError('')} className="text-red-300 hover:text-red-500 transition-colors">
             <XCircle size={16} />
@@ -241,6 +262,9 @@ export default function SendPage() {
                     <p className="text-[11px] font-black text-slate-700 truncate">{c.name}</p>
                     <p className="text-[9px] text-slate-400 font-bold">{c.phone || c.email || '—'}</p>
                   </div>
+                  {!(c as any).whatsappOptIn && (
+                    <span className="text-[8px] font-black uppercase tracking-wider text-amber-600 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded-md shrink-0">Not opted in</span>
+                  )}
                   {selectedId === c._id && <CheckCircle2 size={14} className="text-blue-500 shrink-0" />}
                 </button>
               ))

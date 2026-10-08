@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, PieChart, Pie, Cell, Legend,
@@ -11,7 +12,7 @@ import {
 } from 'lucide-react';
 import { useAppTheme } from '@/components/AppThemeContext';
 import { APP_THEME } from '@/lib/theme-constants';
-import { API_BASE, getInventory, fetchAllPages, getAdvanceAnalytics, getMiscPayments, type InventoryItem, type AdvanceAnalytics, type MiscPayment, type CustomerAdvance, type GoldSubscription } from '@/lib/api';
+import { API_BASE, getInventory, fetchAllPages, getAdvanceAnalytics, searchAdvances, getMiscPayments, type InventoryItem, type AdvanceAnalytics, type MiscPayment, type CustomerAdvance, type GoldSubscription } from '@/lib/api';
 import { downloadCsv } from '@/lib/export-utils';
 import AddAdvancePaymentModal from '@/components/AddAdvancePaymentModal';
 import AdvanceReceiptModal from '@/components/AdvanceReceiptModal';
@@ -78,6 +79,15 @@ export default function PaymentsPage() {
   const colors = APP_THEME[theme];
   const [data, setData] = useState<any>(null);
   const [advanceData, setAdvanceData] = useState<AdvanceAnalytics | null>(null);
+  // All-time advance search (not limited to the date window above)
+  const [advSearch, setAdvSearch] = useState('');
+  const [advFrom, setAdvFrom] = useState('');
+  const [advTo, setAdvTo] = useState('');
+  const advActive = !!(advSearch.trim() || advFrom || advTo);
+  const [advResults, setAdvResults] = useState<CustomerAdvance[]>([]);
+  const [advPage, setAdvPage] = useState(1);
+  const [advTotal, setAdvTotal] = useState(0);
+  const [advSearching, setAdvSearching] = useState(false);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(30);
   const [exporting, setExporting] = useState(false);
@@ -86,6 +96,27 @@ export default function PaymentsPage() {
   const [showCreateInvoice, setShowCreateInvoice] = useState(false);
   const [newInvoiceItems, setNewInvoiceItems] = useState<InventoryItem[] | null>(null);
   const [showRecordInvestmentPayment, setShowRecordInvestmentPayment] = useState(false);
+
+  useEffect(() => {
+    const q = advSearch.trim();
+    if (!advActive) { setAdvResults([]); setAdvTotal(0); setAdvPage(1); return; }
+    setAdvSearching(true);
+    const t = setTimeout(() => {
+      searchAdvances(q, 1, 20, advFrom || undefined, advTo || undefined)
+        .then(r => { setAdvResults(r.data); setAdvTotal(r.meta.total); setAdvPage(1); })
+        .catch(() => { setAdvResults([]); setAdvTotal(0); })
+        .finally(() => setAdvSearching(false));
+    }, 350);
+    return () => clearTimeout(t);
+  }, [advSearch, advFrom, advTo, advActive]);
+
+  function loadMoreAdvances() {
+    const next = advPage + 1;
+    setAdvSearching(true);
+    searchAdvances(advSearch.trim(), next, 20, advFrom || undefined, advTo || undefined)
+      .then(r => { setAdvResults(prev => [...prev, ...r.data]); setAdvPage(next); })
+      .finally(() => setAdvSearching(false));
+  }
 
   useEffect(() => {
     getAdvanceAnalytics(days).then(setAdvanceData).catch(() => setAdvanceData(null));
@@ -315,7 +346,7 @@ export default function PaymentsPage() {
       </div>
 
       {/* Advance Deposits — money received in advance, not yet part of sale revenue */}
-      {advanceData && advanceData.count > 0 && (
+      {advanceData && (
         <div
           className="p-8 rounded-[2.5rem] border shadow-2xl shadow-slate-200/40"
           style={{ backgroundColor: colors.bg, borderColor: colors.border }}
@@ -350,9 +381,31 @@ export default function PaymentsPage() {
           </div>
 
           {/* Individual advance records — every advance added shows up here, click to view/reprint its receipt */}
-          {advanceData.recent && advanceData.recent.length > 0 && (
+          {advanceData.recent && (
             <div className="mt-6 pt-6 border-t" style={{ borderColor: colors.border }}>
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Recent Advances</p>
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                  {advActive ? `Search results · all time${advSearching ? '' : ` · ${advTotal} found`}` : 'Recent Advances'}
+                </p>
+                <Link href="/dashboard/payments/advances" className="text-[10px] font-black uppercase tracking-widest text-blue-600 hover:underline">View all advances →</Link>
+                <div className="flex flex-wrap items-center gap-2">
+                <input type="date" value={advFrom} max={advTo || undefined} onChange={e => setAdvFrom(e.target.value)} title="From date"
+                  className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500" />
+                <span className="text-[10px] font-black text-slate-300">TO</span>
+                <input type="date" value={advTo} min={advFrom || undefined} onChange={e => setAdvTo(e.target.value)} title="To date"
+                  className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500" />
+                {advActive && (
+                  <button onClick={() => { setAdvSearch(''); setAdvFrom(''); setAdvTo(''); }}
+                    className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50 rounded-xl">Clear</button>
+                )}
+                <input
+                  value={advSearch}
+                  onChange={e => setAdvSearch(e.target.value)}
+                  placeholder="Search all advances — name, phone, amount, note…"
+                  className="w-full sm:w-72 px-4 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                </div>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
@@ -363,7 +416,7 @@ export default function PaymentsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {advanceData.recent.map(a => (
+                    {(advActive ? advResults : advanceData.recent).map(a => (
                       <tr
                         key={a._id}
                         onClick={() => setNewAdvanceReceipt(a)}
@@ -380,6 +433,15 @@ export default function PaymentsPage() {
                     ))}
                   </tbody>
                 </table>
+                {advActive && !advSearching && advResults.length === 0 && (
+                  <p className="text-center text-xs font-bold text-slate-400 py-6">No advances found for this search</p>
+                )}
+                {advActive && advResults.length < advTotal && (
+                  <button onClick={loadMoreAdvances} disabled={advSearching}
+                    className="mt-3 w-full py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50 rounded-xl disabled:opacity-50">
+                    {advSearching ? 'Loading…' : `Load more (${advTotal - advResults.length} remaining)`}
+                  </button>
+                )}
               </div>
             </div>
           )}

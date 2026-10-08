@@ -751,7 +751,7 @@ export default function InventoryPage() {
           {locationOptions.map(o => <option key={o._id} value={o.value}>{o.label}</option>)}
         </select>
         <div className="flex-1 relative">
-          <input className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-100 bg-slate-50/50 text-sm font-medium outline-none focus:ring-2 focus:ring-blue-600 transition-all" value={barcodeInput} onChange={e => { setBarcodeInput(e.target.value); setPage(1); }} placeholder="Search by barcode or item code..." />
+          <input className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-100 bg-slate-50/50 text-sm font-medium outline-none focus:ring-2 focus:ring-blue-600 transition-all" value={barcodeInput} onChange={e => { setBarcodeInput(e.target.value); setPage(1); }} placeholder="Search by SKU, barcode, item code or product name..." />
           <svg className="absolute left-3.5 top-3 text-slate-400" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
         </div>
 
@@ -814,7 +814,7 @@ export default function InventoryPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1450px]">
+            <table className="w-full min-w-[1600px]">
               <thead>
                 <tr className="bg-slate-50/50 border-b border-slate-100">
                   <th className="px-4 py-3 text-center w-10">
@@ -826,6 +826,7 @@ export default function InventoryPage() {
                     />
                   </th>
                   <th className="px-4 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.15em]">Product / Code</th>
+                  <th className="px-4 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.15em]">SKU</th>
                   <th className="px-4 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.15em]">Dimensions</th>
                   <th className="px-4 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.15em]">Source</th>
                   <th className="px-4 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.15em]">Location</th>
@@ -885,6 +886,18 @@ export default function InventoryPage() {
                             </div>
                           </div>
                         </div>
+                      </td>
+
+                      {/* SKU */}
+                      <td className="px-4 py-3">
+                        {product?.sku ? (
+                          <div className="flex flex-col gap-1">
+                            <span className="inline-block w-fit px-2 py-1 rounded-lg bg-slate-100 border border-slate-200 text-[10px] font-black font-mono text-slate-700 tracking-tight">{product.sku}</span>
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">{[product.metal_type, product.purity].filter(Boolean).join(' · ')}</span>
+                          </div>
+                        ) : (
+                          <span className="text-[9px] text-slate-300 italic uppercase">No SKU</span>
+                        )}
                       </td>
 
                       {/* Dimensions — highlighted */}
@@ -1085,7 +1098,9 @@ export default function InventoryPage() {
 
       {/* Pagination */}
       <div className="flex flex-col sm:flex-row items-center justify-between px-8 py-6 bg-white border-t border-slate-50 rounded-b-[2.5rem] gap-4">
-        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Page <span className="text-slate-900">{page}</span> of <span className="text-slate-900">{totalPages}</span> &mdash; {total} total items</p>
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+          Showing <span className="text-slate-900">{total === 0 ? 0 : (page - 1) * limit + 1}–{Math.min(page * limit, total)}</span> of <span className="text-slate-900">{total.toLocaleString('en-IN')}</span> items &mdash; Page <span className="text-slate-900">{page}</span> of <span className="text-slate-900">{totalPages}</span>
+        </p>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 pr-4 border-r border-slate-100">
             <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Per page:</span>
@@ -1093,9 +1108,23 @@ export default function InventoryPage() {
               {[10, 20, 50, 100].map(v => <option key={v} value={v}>{v}</option>)}
             </select>
           </div>
-          <div className="flex gap-3">
-            <button disabled={page === 1} onClick={() => setPage(p => p - 1)} className="px-5 py-2.5 rounded-2xl bg-slate-50 border border-slate-100 text-[10px] font-black text-slate-600 uppercase tracking-widest hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95">← Prev</button>
-            <button disabled={page === totalPages} onClick={() => setPage(p => p + 1)} className="px-5 py-2.5 rounded-2xl bg-slate-50 border border-slate-100 text-[10px] font-black text-slate-600 uppercase tracking-widest hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95">Next →</button>
+          <div className="flex items-center gap-1.5">
+            <button disabled={page === 1} onClick={() => setPage(1)} title="First page" className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-100 text-[10px] font-black text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all">«</button>
+            <button disabled={page === 1} onClick={() => setPage(p => p - 1)} className="px-4 py-2 rounded-xl bg-slate-50 border border-slate-100 text-[10px] font-black text-slate-600 uppercase tracking-widest hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all">‹ Prev</button>
+            {(() => {
+              const nums: (number | '…')[] = [];
+              const add = (n: number) => { if (n >= 1 && n <= totalPages && !nums.includes(n)) nums.push(n); };
+              add(1); add(page - 1); add(page); add(page + 1); add(totalPages);
+              nums.sort((a, b) => (a as number) - (b as number));
+              const out: (number | '…')[] = [];
+              nums.forEach((n, i) => { if (i > 0 && (n as number) - (nums[i - 1] as number) > 1) out.push('…'); out.push(n); });
+              return out.map((n, i) => n === '…'
+                ? <span key={`e${i}`} className="px-1 text-slate-300 font-black">…</span>
+                : <button key={n} onClick={() => setPage(n)}
+                    className={`min-w-[34px] px-2 py-2 rounded-xl border text-[10px] font-black transition-all ${n === page ? 'bg-slate-900 border-slate-900 text-white' : 'bg-slate-50 border-slate-100 text-slate-600 hover:bg-slate-100'}`}>{n}</button>);
+            })()}
+            <button disabled={page === totalPages} onClick={() => setPage(p => p + 1)} className="px-4 py-2 rounded-xl bg-slate-50 border border-slate-100 text-[10px] font-black text-slate-600 uppercase tracking-widest hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all">Next ›</button>
+            <button disabled={page === totalPages} onClick={() => setPage(totalPages)} title="Last page" className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-100 text-[10px] font-black text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all">»</button>
           </div>
         </div>
       </div>
