@@ -41,6 +41,12 @@ export class WhatsAppService {
     return { customerId, whatsappOptIn: !!(customer as any).whatsappOptIn };
   }
 
+  /** Marks every customer as opted in to WhatsApp (existing records were created with the old opt-in default of false). */
+  async optInAllCustomers(): Promise<{ updated: number }> {
+    const res = await this.customerModel.updateMany({ whatsappOptIn: { $ne: true } }, { $set: { whatsappOptIn: true } }).exec();
+    return { updated: res.modifiedCount ?? 0 };
+  }
+
   // ─── Send to a single customer by ID ──────────────────────────────────────
 
   async sendMessageToCustomer(

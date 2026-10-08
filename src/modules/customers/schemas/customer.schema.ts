@@ -195,7 +195,7 @@ export class Customer {
   isActive: boolean;
 
   /** Whether this customer has opted in to receive WhatsApp messages */
-  @Prop({ default: false })
+  @Prop({ default: true })
   whatsappOptIn: boolean;
 
   /** Timestamp of the last WhatsApp message sent to this customer */

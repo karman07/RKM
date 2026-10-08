@@ -49,6 +49,15 @@ export class WhatsAppController {
   }
 
   /**
+   * POST /whatsapp/customers/opt-in-all
+   * Opt in every customer who isn't already.
+   */
+  @Post('customers/opt-in-all')
+  async optInAll() {
+    return this.whatsappService.optInAllCustomers();
+  }
+
+  /**
    * PATCH /whatsapp/customer/:id/opt-in
    * Record that a customer has consented (or withdrawn consent) to WhatsApp messages.
    */
