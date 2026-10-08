@@ -26,10 +26,20 @@ export default function SalesLogin() {
     setError('');
     setLoading(true);
     try {
+      // Managers are geofenced to their branch, so share location when available (sales agents ignore it).
+      const coords = await new Promise<{ latitude?: number; longitude?: number }>(resolve => {
+        if (typeof navigator === 'undefined' || !navigator.geolocation) return resolve({});
+        navigator.geolocation.getCurrentPosition(
+          p => resolve({ latitude: p.coords.latitude, longitude: p.coords.longitude }),
+          () => resolve({}),
+          { timeout: 8000, enableHighAccuracy: true },
+        );
+      });
+
       const res = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, ...coords }),
       });
 
       if (!res.ok) {
@@ -43,8 +53,8 @@ export default function SalesLogin() {
       const body = await res.json();
       const { access_token, user, session_expires_at } = body;
 
-      if (user?.role !== 'sales') {
-        setError('Access Denied: This portal is for Sales Team accounts only.');
+      if (user?.role !== 'sales' && user?.role !== 'manager') {
+        setError('Access Denied: This portal is for Sales Team and Manager accounts only.');
         return;
       }
 
