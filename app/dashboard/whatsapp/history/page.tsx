@@ -6,7 +6,7 @@ import {
   XCircle, Send, Eye, Clock, AlertCircle,
 } from 'lucide-react';
 import {
-  getCustomers, waGetHistory, waGetRateCard,
+  getCustomers, fetchAllPages, waGetHistory, waGetRateCard,
   type Customer, type WaMessage,
 } from '@/lib/api';
 
@@ -52,9 +52,9 @@ export default function HistoryPage() {
   const [inrRate,    setInrRate]     = useState(83.50);
 
   useEffect(() => {
-    Promise.all([getCustomers(1, 300), waGetRateCard()])
+    Promise.all([fetchAllPages((p, l) => getCustomers(p, l)), waGetRateCard()])
       .then(([custs, rc]) => {
-        setCustomers(custs.data);
+        setCustomers(custs);
         setInrRate((rc as any).usdToInr ?? 83.50);
       }).catch(() => {}).finally(() => setLoadingC(false));
   }, []);

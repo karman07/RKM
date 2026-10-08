@@ -1720,6 +1720,9 @@ export const waSetOptIn = (customerId: string, optIn: boolean) =>
     method: 'PATCH', body: JSON.stringify({ optIn }),
   });
 
+export const waOptInAllCustomers = () =>
+  request<{ updated: number }>('/whatsapp/customers/opt-in-all', { method: 'POST' });
+
 export const waSendBulk = (payload: {
   customerIds: string[]; templateName: string; params?: string[]; productId?: string;
 }) => request<{ queued: number; skipped: number }>('/whatsapp/bulk', {

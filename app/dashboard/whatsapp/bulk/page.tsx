@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Layers, Search, CheckCircle2, XCircle, AlertCircle, Lock } from 'lucide-react';
 import {
-  getCustomers, waSendBulk, waListTemplatesV2,
+  getCustomers, fetchAllPages, waSendBulk, waListTemplatesV2,
   type Customer, type WaTemplateV2,
 } from '@/lib/api';
 
@@ -33,8 +33,8 @@ export default function BulkPage() {
   const [toast, setToast]           = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
-    Promise.all([getCustomers(1, 300), waListTemplatesV2('APPROVED')])
-      .then(([custs, tpls]) => { setCustomers(custs.data); setTemplates(tpls); })
+    Promise.all([fetchAllPages((p, l) => getCustomers(p, l)), waListTemplatesV2('APPROVED')])
+      .then(([custs, tpls]) => { setCustomers(custs); setTemplates(tpls); })
       .catch(() => {}).finally(() => setLoading(false));
   }, []);
 

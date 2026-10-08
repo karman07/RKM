@@ -6,7 +6,7 @@ import {
   ArrowRight, Clock, Lock, Unlock, Smartphone,
 } from 'lucide-react';
 import {
-  getCustomers, waSendToCustomer, waSetOptIn, waListTemplatesV2,
+  getCustomers, fetchAllPages, waOptInAllCustomers, waSendToCustomer, waSetOptIn, waListTemplatesV2,
   type Customer, type WaTemplateV2, type WaMessageCategory,
 } from '@/lib/api';
 
@@ -56,9 +56,9 @@ export default function SendPage() {
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
-    Promise.all([getCustomers(1, 300), waListTemplatesV2()])
+    Promise.all([fetchAllPages((p, l) => getCustomers(p, l)), waListTemplatesV2()])
       .then(([custs, tpls]) => {
-        setCustomers(custs.data);
+        setCustomers(custs);
         setApproved(tpls.filter(t => t.status === 'APPROVED'));
         setOther(tpls.filter(t => t.status !== 'APPROVED'));
       }).catch(() => {}).finally(() => setLoading(false));
@@ -100,6 +100,17 @@ export default function SendPage() {
       );
     });
     return result;
+  }
+
+  async function handleOptInAll() {
+    if (!confirm('Mark ALL customers as opted in to WhatsApp messages?')) return;
+    try {
+      const { updated } = await waOptInAllCustomers();
+      setCustomers(prev => prev.map(c => ({ ...c, whatsappOptIn: true } as Customer)));
+      setToast({ msg: `✓ ${updated} customer${updated === 1 ? '' : 's'} opted in`, type: 'success' });
+    } catch (e: any) {
+      setToast({ msg: e.message || 'Failed to opt in customers', type: 'error' });
+    }
   }
 
   async function handleOptInAndSend() {
@@ -239,8 +250,13 @@ export default function SendPage() {
             <div className="w-6 h-6 rounded-full bg-blue-600 text-white text-[10px] font-black flex items-center justify-center shrink-0">2</div>
             <div>
               <h3 className="text-sm font-black text-slate-800">Select Recipient</h3>
-              <p className="text-[10px] text-slate-400 font-medium">Must be opted-in to WhatsApp</p>
+              <p className="text-[10px] text-slate-400 font-medium">{customers.length.toLocaleString('en-IN')} customers · must be opted-in to WhatsApp</p>
             </div>
+            {customers.some(c => !(c as any).whatsappOptIn) && (
+              <button onClick={handleOptInAll} className="ml-auto px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-amber-700 bg-amber-50 border border-amber-100 rounded-lg hover:bg-amber-100">
+                Opt in all
+              </button>
+            )}
           </div>
 
           <div className="relative">
