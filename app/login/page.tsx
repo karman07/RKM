@@ -2,7 +2,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { API_BASE } from '../../lib/api';
-import { startAuthentication } from '../../lib/webauthn';
 
 type GpsState =
   | { status: 'requesting' }
@@ -10,7 +9,7 @@ type GpsState =
   | { status: 'denied' }
   | { status: 'unavailable' };
 
-type Step = 'gps' | 'form' | 'scanning' | 'done';
+type Step = 'gps' | 'form' | 'done';
 
 interface GeoError {
   message: string;
@@ -108,7 +107,7 @@ export default function CashierLogin() {
 
   useEffect(() => { askGPS(); }, [askGPS]);
 
-  // Step 1: verify email + password via /auth/login
+  // Verify email + password (and GPS geofence) via /auth/login
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(''); setGeoError(null); setIsAdminBlock(false);
@@ -145,63 +144,11 @@ export default function CashierLogin() {
 
       const body = await res.json();
 
-      // First login — no fingerprint registered yet, go register one
-      if (body.needs_webauthn_setup) {
-        sessionStorage.setItem('webauthn_setup', JSON.stringify({
-          setup_token: body.setup_token,
-          webauthn_options: body.webauthn_options,
-          email, password, coords: coordsRef.current,
-        }));
-        router.push('/fingerprint-setup');
-        return;
-      }
-
-      // Password verified — now require fingerprint
-      if (body.webauthn_required) {
-        setStep('scanning');
-        await doFingerprintScan(body.pending_token, body.webauthn_options);
-        return;
-      }
-
-      // Should not reach here for cashier — but handle gracefully
       await completeLogin(body);
     } catch (err: any) {
       setError(err.message || 'System error');
     } finally {
       setLoading(false);
-    }
-  }
-
-  // Step 2: fingerprint scan after password is verified
-  async function doFingerprintScan(pendingToken: string, webauthnOptions: any) {
-    setStep('scanning');
-    setError('');
-    try {
-      const assertion = await startAuthentication({ optionsJSON: webauthnOptions });
-
-      const res = await fetch(`${API_BASE}/auth/webauthn/authenticate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${pendingToken}` },
-        body: JSON.stringify({ authentication_response: assertion }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        const msg = data.breach
-          ? 'Fingerprint not recognized. This attempt has been flagged.'
-          : (typeof data.message === 'string' ? data.message : 'Fingerprint verification failed.');
-        setError(msg);
-        setStep('form');
-        return;
-      }
-
-      await completeLogin(await res.json());
-    } catch (err: any) {
-      const msg = err?.name === 'NotAllowedError'
-        ? 'Fingerprint scan was cancelled or timed out. Please try again.'
-        : (err.message || 'Biometric verification failed.');
-      setError(msg);
-      setStep('form');
     }
   }
 
@@ -275,31 +222,6 @@ export default function CashierLogin() {
     );
   }
 
-  // ── Fingerprint scanning ─────────────────────────────────────────────────────
-  if (step === 'scanning') {
-    return (
-      <PageShell>
-        <div className="text-center space-y-6">
-          <div className="flex justify-center">
-            <div className="w-28 h-28 rounded-full bg-[#5A0F1A]/5 border-2 border-[#5A0F1A]/20 flex items-center justify-center relative">
-              <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="#5A0F1A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 10a2 2 0 0 0-2 2v.5" /><path d="M10 10.5c0-1.1.9-2 2-2s2 .9 2 2v3" />
-                <path d="M8 10a4 4 0 0 1 8 0v4.5" /><path d="M6 10a6 6 0 0 1 12 0v3.5" />
-                <path d="M4 10a8 8 0 0 1 16 0v2" /><path d="M14 17a2 2 0 0 1-4 0v-3" />
-              </svg>
-              <div className="absolute inset-0 rounded-full border-4 border-[#5A0F1A]/20 border-t-[#5A0F1A] animate-spin" />
-            </div>
-          </div>
-          <div>
-            <p className="text-base font-black text-slate-900">Scan Your Fingerprint</p>
-            <p className="text-sm text-slate-500 mt-1">Password verified — now scan your finger on the sensor</p>
-          </div>
-          <p className="text-[10px] font-medium text-slate-400">Your fingerprint never leaves your device</p>
-        </div>
-      </PageShell>
-    );
-  }
-
   // ── Login form (email + password) ────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#FAFAFA] flex flex-col justify-center py-12 px-4 font-sans relative overflow-hidden">
@@ -315,7 +237,7 @@ export default function CashierLogin() {
           <p className="text-sm font-medium text-slate-500">RKM Jewellers · Staff Access</p>
           <div className="inline-flex items-center gap-2 mt-3 px-4 py-2 bg-slate-100 border border-slate-200 rounded-full">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
-            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">GPS · Password · Fingerprint</span>
+            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">GPS · Password</span>
           </div>
         </div>
       </div>
@@ -404,35 +326,18 @@ export default function CashierLogin() {
               </div>
             </div>
 
-            {/* Step indicator */}
-            <div className="flex items-center gap-2 py-1">
-              <div className="flex items-center gap-1.5 flex-1">
-                <div className="w-5 h-5 rounded-full bg-[#5A0F1A] flex items-center justify-center flex-shrink-0">
-                  <span className="text-[9px] font-black text-white">1</span>
-                </div>
-                <span className="text-[10px] font-bold text-slate-700">Email &amp; Password</span>
-              </div>
-              <div className="w-6 h-px bg-slate-200" />
-              <div className="flex items-center gap-1.5 flex-1">
-                <div className="w-5 h-5 rounded-full bg-slate-200 flex items-center justify-center flex-shrink-0">
-                  <span className="text-[9px] font-black text-slate-400">2</span>
-                </div>
-                <span className="text-[10px] font-bold text-slate-400">Fingerprint</span>
-              </div>
-            </div>
-
             <button type="submit" disabled={loading}
               className="w-full h-[56px] bg-[#5A0F1A] hover:bg-[#7A1C2A] active:scale-[0.98] text-white rounded-2xl shadow-lg shadow-[#5A0F1A]/25 transition-all font-bold uppercase tracking-widest text-xs disabled:opacity-60 flex items-center justify-center gap-3">
               {loading
                 ? <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Verifying...</>
                 : <>
                     <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" /></svg>
-                    Verify &amp; Continue to Fingerprint
+                    Sign In
                   </>}
             </button>
 
             <p className="text-center text-[10px] font-bold text-slate-300 uppercase tracking-widest">
-              Protected by RKM Security · GPS · Biometric
+              Protected by RKM Security · GPS
             </p>
           </form>
         </div>
