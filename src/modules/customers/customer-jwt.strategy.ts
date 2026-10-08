@@ -22,7 +22,7 @@ export class CustomerJwtStrategy extends PassportStrategy(Strategy, 'customer-jw
       throw new UnauthorizedException('Not a customer token');
     }
     const customer = await this.customersService.findById(payload.sub);
-    if (!customer || customer.isActive === false) {
+    if (!customer || customer.isActive === false || customer.is_deleted) {
       throw new UnauthorizedException('Customer not found or inactive');
     }
     return customer; // This will be attached to req.user

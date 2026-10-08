@@ -187,7 +187,7 @@ export class GoldInvestmentController {
   /** The logged-in sales rep's own submitted payments (any status), for their "My Submissions" view. */
   @Get('subscriptions/my-submitted-payments')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SALES)
+  @Roles(UserRole.SALES, UserRole.MANAGER)
   listMySubmittedPayments(@Req() req: any) {
     return this.svc.listMySubmittedPayments(req.user.userId);
   }
@@ -217,7 +217,7 @@ export class GoldInvestmentController {
   /** Sales rep submits a cash payment they collected — awaits admin/manager approval */
   @Post('subscriptions/:id/submit-payment')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SALES)
+  @Roles(UserRole.SALES, UserRole.MANAGER)
   submitSalesPayment(@Param('id') id: string, @Body() dto: SubmitSalesPaymentDto, @Req() req: any) {
     return this.svc.submitSalesPayment(id, dto, req.user.userId);
   }

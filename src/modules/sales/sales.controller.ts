@@ -13,13 +13,13 @@ export class SalesController {
   constructor(private readonly salesService: SalesService) {}
 
   @Post('enquiries')
-  @Roles(UserRole.SALES)
+  @Roles(UserRole.SALES, UserRole.MANAGER)
   createEnquiry(@Body() dto: CreateSaleEnquiryDto, @Req() req: any) {
     return this.salesService.createEnquiry(req.user.userId, dto);
   }
 
   @Get('enquiries/mine')
-  @Roles(UserRole.SALES)
+  @Roles(UserRole.SALES, UserRole.MANAGER)
   findMine(@Req() req: any) {
     return this.salesService.findMine(req.user.userId);
   }
@@ -50,7 +50,7 @@ export class SalesController {
   }
 
   @Get('dashboard')
-  @Roles(UserRole.SALES)
+  @Roles(UserRole.SALES, UserRole.MANAGER)
   getDashboard(@Req() req: any) {
     return this.salesService.getDashboard(req.user.userId);
   }

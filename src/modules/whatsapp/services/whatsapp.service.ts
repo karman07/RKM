@@ -29,6 +29,18 @@ export class WhatsAppService {
     @InjectModel(Customer.name) private readonly customerModel: Model<CustomerDocument>,
   ) {}
 
+  // ─── Opt-in management ────────────────────────────────────────────────────
+
+  /** Records (or withdraws) a customer's consent to receive WhatsApp messages. */
+  async setOptIn(customerId: string, optIn: boolean): Promise<{ customerId: string; whatsappOptIn: boolean }> {
+    const customer = await this.customerModel
+      .findByIdAndUpdate(customerId, { $set: { whatsappOptIn: optIn } }, { new: true })
+      .select('whatsappOptIn')
+      .exec();
+    if (!customer) throw new NotFoundException(`Customer ${customerId} not found`);
+    return { customerId, whatsappOptIn: !!(customer as any).whatsappOptIn };
+  }
+
   // ─── Send to a single customer by ID ──────────────────────────────────────
 
   async sendMessageToCustomer(

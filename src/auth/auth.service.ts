@@ -155,45 +155,33 @@ export class AuthService {
 
     const isStaff = STAFF_ROLES.includes(user.role);
 
-    if (isStaff) {
-      const userId = new Types.ObjectId(user._id);
-      const existingCredential = await this.credentialModel.findOne({ user_id: userId });
-
-      if (!existingCredential) {
-        const regOptions = await this.generateRegistrationOptions(user);
-        return {
-          needs_webauthn_setup: true,
-          setup_token: this.jwtService.sign(
-            { email: user.email, sub: user._id, role: user.role, setup: true },
-            { expiresIn: '15m' },
-          ),
-          webauthn_options: regOptions,
-          user: { id: user._id, email: user.email, name: user.name, role: user.role },
-        };
-      }
-
-      // Credential already registered — should not reach here in normal flow
-      // (beginWebAuthn handles this path). Still return auth challenge as fallback.
-      const authOptions = await this.generateAuthenticationOptions(user);
-      return {
-        webauthn_required: true,
-        webauthn_options: authOptions,
-        pending_token: this.jwtService.sign(
-          { email: user.email, sub: user._id, role: user.role, pending: true },
-          { expiresIn: '5m' },
-        ),
-      };
-    }
-
     const customRole = user.role === 'custom' && user.custom_role
       ? await this.customRolesService.findById(String(user.custom_role)).catch(() => undefined)
       : undefined;
 
     const settings = await this.getSettings();
     const expiryHours = settings.staff_session_expiry_hours ?? 2;
+    const expiresAt = new Date(Date.now() + expiryHours * 60 * 60 * 1000);
+
+    // Fingerprint (WebAuthn) verification has been removed — staff sign in with password + GPS only.
+    // Keep the login-session audit trail that the fingerprint step used to write.
+    if (isStaff) {
+      try {
+        await this.sessionModel.create({
+          user_id: new Types.ObjectId(user._id),
+          user_name: user.name,
+          user_email: user.email,
+          user_role: user.role,
+          webauthn_verified: false,
+          login_at: new Date(),
+          expires_at: expiresAt,
+        });
+      } catch (e) { this.logger.error('Failed to log login session', e); }
+    }
+
     return {
       ...this.issueToken(user, customRole, expiryHours),
-      session_expires_at: Date.now() + expiryHours * 60 * 60 * 1000,
+      session_expires_at: expiresAt.getTime(),
     };
   }
 

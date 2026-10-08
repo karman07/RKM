@@ -105,7 +105,7 @@ export class CustomersService {
       };
     }
 
-    if (customer.isActive === false) throw new UnauthorizedException('Account is disabled');
+    if (customer.isActive === false || customer.is_deleted) throw new UnauthorizedException('Account is disabled');
 
     // Generate our backend JWT token
     const payload = { sub: customer._id, role: 'customer' };
@@ -174,9 +174,9 @@ export class CustomersService {
     return this.customerModel.findOne({ phone }).exec();
   }
 
-  async findAll(page: number = 1, limit: number = 20, relationshipManagerId?: string, search?: string) {
+  async findAll(page: number = 1, limit: number = 20, relationshipManagerId?: string, search?: string, deletedOnly = false) {
     const skip = (page - 1) * limit;
-    const filter: Record<string, unknown> = { is_deleted: { $ne: true } };
+    const filter: Record<string, unknown> = { is_deleted: deletedOnly ? true : { $ne: true } };
     if (relationshipManagerId) filter.relationship_manager = relationshipManagerId;
     const q = search?.trim();
     if (q) {
@@ -327,6 +327,27 @@ export class CustomersService {
       is_deleted: { $ne: true },
       $or: [{ name: regex }, { phone: regex }, { email: regex }],
     }).limit(15).exec();
+  }
+
+  /** Admin-only — brings a soft-deleted customer back into listings and search. */
+  async restoreCustomer(id: string) {
+    const customer = await this.customerModel.findById(id).exec();
+    if (!customer) throw new NotFoundException('Customer not found');
+    if (!customer.is_deleted) throw new BadRequestException('Customer is not deleted');
+
+    customer.is_deleted = false;
+    customer.deleted_at = null;
+    customer.deletion_reason = '';
+    try {
+      await customer.save();
+    } catch (e: any) {
+      if (e.code === 11000) {
+        const field = Object.keys(e.keyPattern || {})[0] || 'phone/email';
+        throw new BadRequestException(`Cannot restore: another customer already uses this ${field}.`);
+      }
+      throw e;
+    }
+    return { restored: true, customer_id: id };
   }
 
   /** Admin-only soft delete — hides the customer from listings/search while preserving

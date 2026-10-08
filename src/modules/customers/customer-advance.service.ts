@@ -298,6 +298,40 @@ export class CustomerAdvanceService {
     return this.getAdvanceAnalytics(days, new Types.ObjectId(staffId));
   }
 
+  /** Search every advance ever recorded (no date window) by customer name/phone, note, mode or exact amount. */
+  async searchAdvances(q: string, page = 1, limit = 20, from?: string, to?: string) {
+    const term = q?.trim();
+    const filter: any = {};
+    if (term) {
+      const regex = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      const or: any[] = [{ customerName: regex }, { customerPhone: regex }, { note: regex }, { mode: regex }];
+      const amount = Number(term.replace(/,/g, ''));
+      if (!Number.isNaN(amount)) or.push({ amount });
+      filter.$or = or;
+    }
+    const range: any = {};
+    if (from && !Number.isNaN(Date.parse(from))) { const d = new Date(from); d.setHours(0, 0, 0, 0); range.$gte = d; }
+    if (to && !Number.isNaN(Date.parse(to))) { const d = new Date(to); d.setHours(23, 59, 59, 999); range.$lte = d; }
+    if (range.$gte || range.$lte) filter.createdAt = range;
+    const skip = (page - 1) * limit;
+    const [rows, total] = await Promise.all([
+      this.advanceModel
+        .find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('createdBy', 'name role')
+        .populate('branch_id', 'name code address city state pincode phone gstin')
+        .populate('customer', 'name phone address city state pincode country')
+        .exec(),
+      this.advanceModel.countDocuments(filter).exec(),
+    ]);
+    return {
+      data: rows.map(a => this.withBalance(a)),
+      meta: { total, page, limit, total_pages: Math.ceil(total / limit) },
+    };
+  }
+
   /** Aggregate stats on advances taken/redeemed in the last `days` — for the Payments analytics page. When `staffId` is passed, scoped to advances that staff member personally recorded. */
   async getAdvanceAnalytics(days = 30, staffId?: Types.ObjectId) {
     const since = new Date();

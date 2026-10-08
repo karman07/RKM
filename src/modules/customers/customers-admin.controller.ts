@@ -21,8 +21,9 @@ export class CustomersAdminController {
     @Query('limit') limit: string,
     @Query('relationship_manager') relationshipManager: string,
     @Query('search') search: string,
+    @Query('deleted') deleted: string,
   ) {
-    return this.customersService.findAll(Number(page) || 1, Number(limit) || 20, relationshipManager || undefined, search || undefined);
+    return this.customersService.findAll(Number(page) || 1, Number(limit) || 20, relationshipManager || undefined, search || undefined, deleted === 'true');
   }
 
   /** Search customers by partial phone, name, or email */
@@ -73,6 +74,14 @@ export class CustomersAdminController {
     return this.customersService.deleteCustomer(id, body?.reason);
   }
 
+  /** Restore a soft-deleted customer (admin only) */
+  @Post(':id/restore')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async restoreCustomer(@Param('id') id: string) {
+    return this.customersService.restoreCustomer(id);
+  }
+
   // ── Customer Advances ───────────────────────────────────────────────────────
 
   /** Look up active advance balances for a customer by phone — used at time of sale */
@@ -82,6 +91,14 @@ export class CustomersAdminController {
   async getAdvanceBalance(@Query('phone') phone: string) {
     if (!phone) return [];
     return this.customerAdvanceService.getAdvanceBalance(phone);
+  }
+
+  /** Search all advances ever recorded (not limited to the analytics date window) */
+  @Get('advances/search')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  async searchAdvances(@Query('q') q?: string, @Query('page') page?: string, @Query('limit') limit?: string, @Query('from') from?: string, @Query('to') to?: string) {
+    return this.customerAdvanceService.searchAdvances(q ?? '', Number(page) || 1, Math.min(Number(limit) || 20, 100), from, to);
   }
 
   /** Aggregate advance-deposit stats for the Payments analytics page */

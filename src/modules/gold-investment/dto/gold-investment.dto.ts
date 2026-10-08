@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsBoolean, IsEnum, IsArray, Min, Max } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsBoolean, IsEnum, IsArray, IsDateString, Min, Max } from 'class-validator';
 import { PlanType } from '../schemas/investment-plan.schema';
 
 export enum RedemptionType {
@@ -142,6 +142,11 @@ export class CreateSubscriptionDto {
   @Max(100)
   @IsOptional()
   customCashBenefitPercent?: number;
+
+  /** Staff in-store enroll only — enrollment start date (YYYY-MM-DD), may be in the past to onboard existing customers. Defaults to today. */
+  @IsDateString()
+  @IsOptional()
+  startDate?: string;
 
   @IsNumber()
   @Min(0)
@@ -330,6 +335,17 @@ export class MarkCashPaymentDto {
   @IsString()
   @IsOptional()
   note?: string;
+
+  /** Date the payment was actually received (YYYY-MM-DD) — may be in the past when backfilling old records. Defaults to today. */
+  @IsDateString()
+  @IsOptional()
+  paymentDate?: string;
+
+  /** Gold rate (INR/gram) to credit this payment at — for back-dated payments where today's rate would be wrong. Defaults to the current rate. */
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  goldRate?: number;
 }
 
 /** A sales rep submits a cash payment they collected — awaits admin/manager approval before it counts */

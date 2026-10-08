@@ -62,6 +62,17 @@ export class GoldInvestmentService {
     return (settings as any)?.metal_rates?.gold || 0;
   }
 
+  /** Parses an optional staff-entered backdate (YYYY-MM-DD). Past dates are allowed; future ones are not. Defaults to now. */
+  private parseBackdate(value: string | undefined, label: string): Date {
+    if (!value) return new Date();
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) throw new BadRequestException(`Invalid ${label}`);
+    // A date-only value is midnight UTC; keep it on that calendar day in IST by anchoring at midday.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) d.setUTCHours(6, 30, 0, 0);
+    if (d.getTime() > Date.now() + 24 * 60 * 60 * 1000) throw new BadRequestException(`${label} cannot be in the future`);
+    return d;
+  }
+
   /** The monthly amount actually governing a subscription — the customer's own chosen amount, or the plan's default. */
   private effectiveMonthlyAmount(sub: any, plan: any): number {
     return sub?.customMonthlyAmount ?? plan?.monthlyAmount ?? 0;
@@ -369,7 +380,7 @@ export class GoldInvestmentService {
     const { customMonthlyAmount, planCategory } = await this.resolveCustomAmount(plan, dto.customMonthlyAmount);
     const { customInterestRate, customDurationMonths, customCashBenefitPercent, customMakingChargeDiscountPercent, isCustomPlan } = this.resolveCustomTerms(plan, dto);
 
-    const startedAt = new Date();
+    const startedAt = this.parseBackdate(dto.startDate, 'Start date');
     const effectiveDuration = customDurationMonths ?? plan.durationMonths;
     let maturesAt: Date | undefined;
     if (effectiveDuration) {
@@ -970,6 +981,10 @@ export class GoldInvestmentService {
       amount?: number;
       staffId?: string;
       note?: string;
+      /** When the payment was actually received — set for back-dated (historical) entries. Defaults to now. */
+      paymentDate?: Date;
+      /** Gold rate to credit at — set for back-dated entries. Defaults to the current rate. */
+      goldRate?: number;
       submittedBy?: string;
       submittedByName?: string;
       approvedBy?: string;
@@ -982,13 +997,13 @@ export class GoldInvestmentService {
     const annualRate = this.effectiveInterestRate(sub, plan);
     const monthlyRate = annualRate / 12 / 100;
 
-    const goldRate = await this.currentGoldRate();
+    const goldRate = opts.goldRate && opts.goldRate > 0 ? opts.goldRate : await this.currentGoldRate();
     const gramsCredited = goldRate > 0 ? monthlyAmount / goldRate : 0;
 
     const entry = {
       month: opts.month,
       amount: monthlyAmount,
-      date: new Date(),
+      date: opts.paymentDate ?? new Date(),
       type: 'cash' as const,
       staffId: opts.staffId,
       note: opts.note,
@@ -1011,7 +1026,7 @@ export class GoldInvestmentService {
     const effectiveDuration = this.effectiveDurationMonths(sub, plan);
     if (effectiveDuration && sub.installmentsPaid >= effectiveDuration) {
       sub.status = SubscriptionStatus.COMPLETED;
-      sub.endedAt = new Date();
+      sub.endedAt = opts.paymentDate ?? new Date();
       sub.interestStopped = false;
       this.logger.log(`Subscription ${sub._id} marked COMPLETED after cash payment of month ${opts.month}`);
     } else if (
@@ -1043,10 +1058,20 @@ export class GoldInvestmentService {
     const plan = sub.plan as any;
     this.assertMonthPayable(sub, plan, dto.month);
 
-    const { entry } = await this.applyCashPayment(sub, plan, { month: dto.month, amount: dto.amount, staffId: dto.staffId, note: dto.note });
+    const paymentDate = this.parseBackdate(dto.paymentDate, 'Payment date');
+    const isBackdated = Date.now() - paymentDate.getTime() > 24 * 60 * 60 * 1000;
+    if (dto.paymentDate && sub.startedAt && paymentDate.getTime() < new Date(sub.startedAt).getTime() - 24 * 60 * 60 * 1000) {
+      throw new BadRequestException('Payment date cannot be before the enrollment start date');
+    }
+
+    const { entry } = await this.applyCashPayment(sub, plan, {
+      month: dto.month, amount: dto.amount, staffId: dto.staffId, note: dto.note,
+      paymentDate, goldRate: dto.goldRate,
+    });
     await sub.save();
 
-    this.notifyPaymentReceived(sub, plan, entry, { source: 'manual' });
+    // Historical backfills shouldn't message the customer about a payment made long ago.
+    if (!isBackdated) this.notifyPaymentReceived(sub, plan, entry, { source: 'manual' });
     return sub;
   }
 

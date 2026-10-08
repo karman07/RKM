@@ -49,6 +49,15 @@ export class WhatsAppController {
   }
 
   /**
+   * PATCH /whatsapp/customer/:id/opt-in
+   * Record that a customer has consented (or withdrawn consent) to WhatsApp messages.
+   */
+  @Patch('customer/:id/opt-in')
+  async setOptIn(@Param('id') customerId: string, @Body() body: { optIn?: boolean }) {
+    return this.whatsappService.setOptIn(customerId, body?.optIn !== false);
+  }
+
+  /**
    * POST /whatsapp/bulk
    * Send a WhatsApp message to multiple customers.
    */
