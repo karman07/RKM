@@ -1432,6 +1432,11 @@ export interface AdvanceAnalytics {
 }
 
 /** Aggregate advance-deposit stats for the Payments analytics page */
+/** Searches every advance ever recorded (all time) by customer name/phone, note, mode or amount */
+export const searchAdvances = (q: string, page = 1, limit = 20, from?: string, to?: string) =>
+  request<{ data: CustomerAdvance[]; meta: { total: number; page: number; limit: number; total_pages: number } }>(
+    `/customers/advances/search?q=${encodeURIComponent(q)}&page=${page}&limit=${limit}${from ? `&from=${from}` : ''}${to ? `&to=${to}` : ''}`);
+
 export const getAdvanceAnalytics = (days = 30) =>
   request<AdvanceAnalytics>(`/customers/advances/analytics?days=${days}`);
 

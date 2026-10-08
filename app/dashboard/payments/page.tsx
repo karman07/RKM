@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
-  getProfile, getBranchAnalytics, getAdvanceAnalytics,
+  getProfile, getBranchAnalytics, getAdvanceAnalytics, searchAdvances,
   type UserProfile, type BranchAnalytics, type AdvanceAnalytics, type CustomerAdvance, type InventoryItem, type GoldSubscription,
 } from '@/lib/api';
 import AddAdvancePaymentModal from '@/components/AddAdvancePaymentModal';
@@ -68,6 +68,15 @@ export default function ManagerPaymentsPage() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [analytics, setAnalytics] = useState<BranchAnalytics | null>(null);
   const [advanceData, setAdvanceData] = useState<AdvanceAnalytics | null>(null);
+  // All-time advance search (not limited to the date window above)
+  const [advSearch, setAdvSearch] = useState('');
+  const [advFrom, setAdvFrom] = useState('');
+  const [advTo, setAdvTo] = useState('');
+  const advActive = !!(advSearch.trim() || advFrom || advTo);
+  const [advResults, setAdvResults] = useState<CustomerAdvance[]>([]);
+  const [advPage, setAdvPage] = useState(1);
+  const [advTotal, setAdvTotal] = useState(0);
+  const [advSearching, setAdvSearching] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const [showAddPayment, setShowAddPayment] = useState(false);
@@ -87,6 +96,27 @@ export default function ManagerPaymentsPage() {
       .catch(() => {})
       .finally(() => setLoading(false));
     getAdvanceAnalytics(30).then(setAdvanceData).catch(() => setAdvanceData(null));
+  }
+
+  useEffect(() => {
+    const q = advSearch.trim();
+    if (!advActive) { setAdvResults([]); setAdvTotal(0); setAdvPage(1); return; }
+    setAdvSearching(true);
+    const t = setTimeout(() => {
+      searchAdvances(q, 1, 20, advFrom || undefined, advTo || undefined)
+        .then(r => { setAdvResults(r.data); setAdvTotal(r.meta.total); setAdvPage(1); })
+        .catch(() => { setAdvResults([]); setAdvTotal(0); })
+        .finally(() => setAdvSearching(false));
+    }, 350);
+    return () => clearTimeout(t);
+  }, [advSearch, advFrom, advTo, advActive]);
+
+  function loadMoreAdvances() {
+    const next = advPage + 1;
+    setAdvSearching(true);
+    searchAdvances(advSearch.trim(), next, 20, advFrom || undefined, advTo || undefined)
+      .then(r => { setAdvResults(prev => [...prev, ...r.data]); setAdvPage(next); })
+      .finally(() => setAdvSearching(false));
   }
 
   useEffect(() => { load(); }, []);
@@ -184,7 +214,7 @@ export default function ManagerPaymentsPage() {
       </div>
 
       {/* Advance Deposits breakdown */}
-      {advanceData && advanceData.count > 0 && (
+      {advanceData && (
         <div className="p-6 bg-white rounded-[2rem] border border-slate-100 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -203,9 +233,30 @@ export default function ManagerPaymentsPage() {
           </div>
 
           {/* Individual advance records — every advance added shows up here, click to view/reprint its receipt */}
-          {advanceData.recent && advanceData.recent.length > 0 && (
+          {advanceData.recent && (
             <div className="mt-6 pt-6 border-t border-slate-100">
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Recent Advances</p>
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                  {advActive ? `Search results · all time${advSearching ? '' : ` · ${advTotal} found`}` : 'Recent Advances'}
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                <input type="date" value={advFrom} max={advTo || undefined} onChange={e => setAdvFrom(e.target.value)} title="From date"
+                  className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500" />
+                <span className="text-[10px] font-black text-slate-300">TO</span>
+                <input type="date" value={advTo} min={advFrom || undefined} onChange={e => setAdvTo(e.target.value)} title="To date"
+                  className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500" />
+                {advActive && (
+                  <button onClick={() => { setAdvSearch(''); setAdvFrom(''); setAdvTo(''); }}
+                    className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50 rounded-xl">Clear</button>
+                )}
+                <input
+                  value={advSearch}
+                  onChange={e => setAdvSearch(e.target.value)}
+                  placeholder="Search all advances — name, phone, amount, note…"
+                  className="w-full sm:w-72 px-4 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                </div>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
@@ -216,7 +267,7 @@ export default function ManagerPaymentsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {advanceData.recent.map(a => (
+                    {(advActive ? advResults : advanceData.recent).map(a => (
                       <tr
                         key={a._id}
                         onClick={() => setNewAdvanceReceipt(a)}
@@ -233,6 +284,15 @@ export default function ManagerPaymentsPage() {
                     ))}
                   </tbody>
                 </table>
+                {advActive && !advSearching && advResults.length === 0 && (
+                  <p className="text-center text-xs font-bold text-slate-400 py-6">No advances found for this search</p>
+                )}
+                {advActive && advResults.length < advTotal && (
+                  <button onClick={loadMoreAdvances} disabled={advSearching}
+                    className="mt-3 w-full py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50 rounded-xl disabled:opacity-50">
+                    {advSearching ? 'Loading…' : `Load more (${advTotal - advResults.length} remaining)`}
+                  </button>
+                )}
               </div>
             </div>
           )}
