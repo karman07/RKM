@@ -79,7 +79,8 @@ export class WhatsAppApiService {
       to: normalized.replace('+', ''),
       from: this.waConfig.airtelFromNumber,
       filterBlacklistNumbers: false,
-      ...(params.length ? { message: { payload: params.map(String) } } : {}),
+      // Airtel IQ: body {{1}}, {{2}}… go in `message.variables` (`payload` is for button payloads).
+      ...(params.length ? { message: { variables: params.map(String) } } : {}),
     };
 
     try {
@@ -89,7 +90,7 @@ export class WhatsAppApiService {
       // Airtel IQ's send response isn't documented with a fixed field name for the
       // message id in the PDF — the async delivery callback shows both `messageId` and
       // `vendorAckId`, so accept whichever the send response actually returns.
-      const waMessageId: string = data?.messageId ?? data?.vendorAckId ?? data?.id ?? '';
+      const waMessageId: string = data?.messageId ?? data?.vendorAckId ?? data?.messageRequestId ?? data?.id ?? '';
       this.logger.log(
         `Sent template '${templateName}' to ${normalized} → waId: ${waMessageId}`,
       );

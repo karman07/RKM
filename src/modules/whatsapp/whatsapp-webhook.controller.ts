@@ -55,7 +55,10 @@ export class WhatsAppWebhookController {
       const events: any[] = Array.isArray(body) ? body : [body];
 
       for (const event of events) {
-        const waId: string | undefined = event?.messageId ?? event?.vendorAckId;
+        // The send API returns the bare UUID (== callback `vendorAckId`); the callback's `messageId`
+        // is that UUID with the recipient number appended — try both so the log row is found.
+        const waIds = [event?.vendorAckId, event?.messageId].filter(Boolean).map((v: string) => String(v).trim());
+        const waId = waIds[0];
         const statusType: string = String(event?.messageStatus ?? event?.msgStatus ?? '').toUpperCase();
         if (!waId || !statusType) continue;
 
@@ -65,12 +68,16 @@ export class WhatsAppWebhookController {
         else if (statusType === 'FAILED') mappedStatus = MessageStatus.FAILED;
         else mappedStatus = MessageStatus.SENT;
 
+        const failure: string | undefined = mappedStatus === MessageStatus.FAILED
+          ? (event?.error?.message?.error?.message ?? event?.error?.title ?? 'Delivery failed')
+          : undefined;
         await this.logService.updateStatusByWaId(
-          waId,
+          waIds,
           mappedStatus,
           statusType === 'DELIVERED' ? new Date() : undefined,
+          failure,
         );
-        this.logger.log(`Delivery update → waId: ${waId}, status: ${statusType}`);
+        this.logger.log(`Delivery update → waId: ${waId}, status: ${statusType}${failure ? ` (${failure})` : ''}`);
       }
 
       return { status: 'ok' };

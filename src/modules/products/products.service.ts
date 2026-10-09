@@ -92,8 +92,15 @@ export class ProductsService {
 
     const filter: Record<string, unknown> = { deleted_at: null };
 
-    if (search) {
-      filter.$text = { $search: search };
+    // Substring match on name / SKU / barcode. Every word must match somewhere, so "GLD-RNG-064"
+    // finds that exact SKU (a $text search would split it on the hyphens and OR the pieces together,
+    // matching every gold item).
+    const terms = (search ?? '').trim().split(/\s+/).filter(Boolean);
+    if (terms.length) {
+      filter.$and = terms.map(term => {
+        const rx = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+        return { $or: [{ name: rx }, { sku: rx }, { barcode: rx }] };
+      });
     }
 
     if (category_id) {

@@ -81,13 +81,15 @@ export class WhatsAppLogService {
 
   /** Update status when a delivery/read webhook arrives. */
   async updateStatusByWaId(
-    waMessageId: string,
+    waMessageId: string | string[],
     status: MessageStatus,
     deliveredAt?: Date,
+    errorMessage?: string,
   ): Promise<void> {
+    const ids = Array.isArray(waMessageId) ? waMessageId : [waMessageId];
     await this.msgModel.updateOne(
-      { waMessageId },
-      { $set: { status, ...(deliveredAt ? { deliveredAt } : {}) } },
+      { waMessageId: { $in: ids } },
+      { $set: { status, ...(deliveredAt ? { deliveredAt } : {}), ...(errorMessage ? { errorMessage } : {}) } },
     );
   }
 
