@@ -79,6 +79,8 @@ interface OnlineOrder {
   items: OnlineOrderItem[];
   subtotal: number;
   delivery_charge: number;
+  coupon_code?: string;
+  discount_amount?: number;
   total: number;
   status: OrderStatus;
   payment_status: 'paid' | 'pending' | 'refunded';
@@ -461,6 +463,11 @@ export default function OrdersPage() {
                             <div className="flex justify-between text-xs font-bold text-slate-500">
                               <span>Subtotal</span><span>₹{order.subtotal?.toLocaleString('en-IN')}</span>
                             </div>
+                            {(order.discount_amount ?? 0) > 0 && (
+                              <div className="flex justify-between text-xs font-bold text-emerald-700">
+                                <span>Coupon{order.coupon_code ? ` (${order.coupon_code})` : ''}</span><span>− ₹{order.discount_amount?.toLocaleString('en-IN')}</span>
+                              </div>
+                            )}
                             <div className="flex justify-between text-xs font-bold text-slate-500">
                               <span>Delivery</span>
                               <span>{order.delivery_charge > 0 ? `₹${order.delivery_charge?.toLocaleString('en-IN')}` : <span className="text-emerald-600">Free</span>}</span>

@@ -1032,6 +1032,11 @@ export default function ProfilePage() {
                             <div className="flex justify-between text-[10px] font-bold text-slate-500">
                               <span>Subtotal</span><span>₹{order.subtotal?.toLocaleString('en-IN')}</span>
                             </div>
+                            {order.discount_amount > 0 && (
+                              <div className="flex justify-between text-[10px] font-bold text-emerald-700">
+                                <span>Coupon{order.coupon_code ? ` (${order.coupon_code})` : ''}</span><span>− ₹{order.discount_amount?.toLocaleString('en-IN')}</span>
+                              </div>
+                            )}
                             {order.delivery_charge > 0 && (
                               <div className="flex justify-between text-[10px] font-bold text-slate-500">
                                 <span>Delivery</span><span>₹{order.delivery_charge?.toLocaleString('en-IN')}</span>

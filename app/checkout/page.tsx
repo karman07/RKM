@@ -48,7 +48,36 @@ export default function CheckoutPage() {
   const [states, setStates] = useState<string[]>(["Punjab", "Haryana", "Delhi", "Chandigarh"]);
   const [loadingStates, setLoadingStates] = useState(true);
 
-  const total = subtotal + deliveryCharge;
+  // Promo code: previewed against the server; the server re-checks it when the order is placed.
+  const [couponInput, setCouponInput] = useState("");
+  const [applyingCoupon, setApplyingCoupon] = useState(false);
+  const [coupon, setCoupon] = useState<{ code: string; discount: number } | null>(null);
+  // If the cart changes after a code was applied, drop it so the discount can't go stale.
+  useEffect(() => { setCoupon(null); }, [subtotal]);
+
+  async function applyCoupon() {
+    const code = couponInput.trim();
+    if (!code) return;
+    setApplyingCoupon(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/online-orders/coupons/validate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, subtotal, email: form.email || customer?.email }),
+      });
+      const data = await res.json();
+      if (res.ok && data.valid) { setCoupon({ code: data.code, discount: data.discount }); toast.success(data.message); }
+      else { setCoupon(null); toast.error(data.message || "This coupon code is not valid"); }
+    } catch { toast.error("Could not check the coupon. Try again."); }
+    finally { setApplyingCoupon(false); }
+  }
+
+  const discount = coupon?.discount ?? 0;
+
+  // Orders are settled in whole rupees — the total is rounded off automatically.
+  const rawTotal = subtotal - discount + deliveryCharge;
+  const total = Math.round(rawTotal);
+  const roundOff = total - rawTotal;
 
   useEffect(() => {
     if (!customer) return;
@@ -160,6 +189,7 @@ export default function CheckoutPage() {
           delivery_pincode: form.pincode, notes: form.notes,
           latitude: coords?.lat, longitude: coords?.lng, distance_km: distanceKm,
           delivery_charge: deliveryCharge, subtotal, total,
+          coupon_code: coupon?.code, discount_amount: discount,
           items: cartItems.map(i => ({ product_id: i._id, name: i.name, quantity: i.quantity, price: i.pricing_breakdown?.final_price || 0, image: i.images?.[0] })),
         }),
       });
@@ -169,7 +199,7 @@ export default function CheckoutPage() {
       // 2. Open Razorpay
       const rzp = new window.Razorpay({
         key: key_id || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_SgRfxMd5cy2i1U',
-        amount: total * 100,
+        amount: Math.round(total * 100),
         currency: "INR",
         name: "RKM Jewellers",
         description: "Online Order Payment",
@@ -353,6 +383,33 @@ export default function CheckoutPage() {
                 <div className="flex justify-between text-[10px] uppercase tracking-[0.2em] font-black text-[#7A8C85]">
                   <span>Subtotal</span><span>₹{subtotal.toLocaleString("en-IN")}</span>
                 </div>
+                <div className="space-y-2">
+                  {coupon ? (
+                    <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+                      <span className="text-[10px] uppercase tracking-[0.2em] font-black text-emerald-700">{coupon.code} applied</span>
+                      <button type="button" onClick={() => { setCoupon(null); setCouponInput(""); }} className="text-[10px] font-black uppercase tracking-widest text-emerald-700 underline">Remove</button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <input
+                        value={couponInput}
+                        onChange={e => setCouponInput(e.target.value.toUpperCase())}
+                        onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); applyCoupon(); } }}
+                        placeholder="Coupon code"
+                        className="flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-[#F0EBE0] bg-white text-xs font-bold tracking-widest uppercase focus:outline-none focus:border-[#B8975A]"
+                      />
+                      <button type="button" onClick={applyCoupon} disabled={applyingCoupon || !couponInput.trim()}
+                        className="px-4 rounded-xl bg-[#5C0828] text-white text-[10px] font-black uppercase tracking-widest disabled:opacity-40">
+                        {applyingCoupon ? "…" : "Apply"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {discount > 0 && (
+                  <div className="flex justify-between text-[10px] uppercase tracking-[0.2em] font-black text-emerald-700">
+                    <span>Coupon discount</span><span>− ₹{discount.toLocaleString("en-IN")}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-[10px] uppercase tracking-[0.2em] font-black">
                   <span className="text-[#7A8C85]">Delivery</span>
                   {distanceKm === null
@@ -361,6 +418,11 @@ export default function CheckoutPage() {
                       ? <span className="text-emerald-600">Free</span>
                       : <span>₹{deliveryCharge}</span>}
                 </div>
+                {Math.abs(roundOff) >= 0.005 && (
+                  <div className="flex justify-between text-[10px] uppercase tracking-[0.2em] font-black text-[#7A8C85]">
+                    <span>Round Off</span><span>{roundOff > 0 ? "+" : "−"} ₹{Math.abs(roundOff).toFixed(2)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between items-baseline pt-4 border-t border-[#F0EBE0]">
                   <span className="font-serif text-2xl text-[#5C0828]">Total</span>
                   <span className="font-serif text-4xl" style={{ color: GOLD }}>₹{total.toLocaleString("en-IN")}</span>
