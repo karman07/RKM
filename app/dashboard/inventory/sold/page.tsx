@@ -201,7 +201,7 @@ export default function SoldInventoryPage() {
       }
       if (modeFilter !== 'all' && item.payment_mode !== modeFilter) return false;
       if (!q) return true;
-      const productName = typeof item.product_id === 'object' ? item.product_id.name : '';
+      const productName = typeof item.product_id === 'object' ? item.product_id?.name : '';
       const haystack = [item.unique_item_code, item.barcode, item.sale_reference, (item as any).invoice_number, productName, item.sold_customer_name, item.sold_customer_phone, item.sale_channel, item.payment_mode].filter(Boolean).join(' ').toLowerCase();
       return haystack.includes(q);
     });
