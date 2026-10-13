@@ -186,6 +186,20 @@ export class StockIssuesService {
     return issue.save();
   }
 
+  /** Stores the signed challan (image/PDF) against the issue — sales members can only do this for their own challans. */
+  async attachSignedCopy(id: string, file: Express.Multer.File, actor: IssueActor) {
+    const issue = await this.issueModel.findOne({ _id: id, ...this.scopeFilter(actor) });
+    if (!issue) throw new NotFoundException('Stock issue not found');
+    if (issue.status === StockIssueStatus.CANCELLED) {
+      throw new BadRequestException('This challan is cancelled');
+    }
+    const uploader = await this.usersService.findById(actor.userId).catch(() => null);
+    issue.signed_copy_url = `/static/stock-issue-signed/${file.filename}`;
+    issue.signed_copy_uploaded_at = new Date();
+    issue.signed_copy_uploaded_by_name = (uploader as any)?.name || '';
+    return issue.save();
+  }
+
   async cancel(id: string, actor: IssueActor) {
     const issue = await this.issueModel.findOne({ _id: id, ...this.scopeFilter(actor) });
     if (!issue) throw new NotFoundException('Stock issue not found');

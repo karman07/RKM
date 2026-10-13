@@ -1,4 +1,6 @@
-import { Body, Controller, Get, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post, Query, Req, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { multerDocConfig } from '../uploads/multer.config';
 import type { Response } from 'express';
 import { StockIssuesService, IssueActor } from './stock-issues.service';
 import { CheckInStockIssueDto, CreateStockIssueDto } from './dto/stock-issue.dto';
@@ -58,6 +60,14 @@ export class StockIssuesController {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(pdf);
+  }
+
+  @Post(':id/signed-copy')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SALES)
+  @UseInterceptors(FileInterceptor('file', multerDocConfig('stock-issue-signed')))
+  uploadSignedCopy(@Param('id') id: string, @UploadedFile() file: Express.Multer.File, @Req() req: any) {
+    if (!file) throw new BadRequestException('No file uploaded');
+    return this.service.attachSignedCopy(id, file, actorOf(req));
   }
 
   @Post(':id/check-in')

@@ -109,6 +109,11 @@ export class StockIssue {
   @Prop({ type: Date, default: Date.now }) issued_at: Date;
   @Prop({ type: Date, default: null }) closed_at: Date | null;
   @Prop({ type: Date, default: null }) cancelled_at: Date | null;
+
+  /** Scan/photo of the printed challan, signed by the sales-team member on receipt */
+  @Prop({ trim: true, default: '' }) signed_copy_url: string;
+  @Prop({ type: Date, default: null }) signed_copy_uploaded_at: Date | null;
+  @Prop({ trim: true, default: '' }) signed_copy_uploaded_by_name: string;
 }
 
 export const StockIssueSchema = SchemaFactory.createForClass(StockIssue);
