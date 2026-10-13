@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import {
-  getProfile, getMyReimbursements, submitReimbursement, checkSessionExpiry,
+  getProfile, getMyReimbursements, submitReimbursement, uploadReimbursementReceipt, checkSessionExpiry,
   type UserProfile, type ReimbursementRequest,
 } from '../../../lib/api';
 
@@ -30,6 +30,7 @@ export default function ReimbursementsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const [form, setForm] = useState({ category: 'travel', amount: '', description: '' });
+  const [receipt, setReceipt] = useState<File | null>(null);
 
   function showToast(msg: string, type: 'success' | 'error') {
     setToast({ msg, type });
@@ -56,12 +57,15 @@ export default function ReimbursementsPage() {
     const amount = parseFloat(form.amount);
     if (!form.amount || isNaN(amount) || amount <= 0) { showToast('Please enter a valid amount', 'error'); return; }
     if (!form.description.trim()) { showToast('Please enter a description', 'error'); return; }
+    if (!receipt) { showToast('Please attach the receipt or bill', 'error'); return; }
     setSubmitting(true);
     try {
-      await submitReimbursement({ category: form.category, amount, description: form.description, branch_id: user?.branch?._id });
+      const { url: receipt_url } = await uploadReimbursementReceipt(receipt);
+      await submitReimbursement({ receipt_url, category: form.category, amount, description: form.description, branch_id: user?.branch?._id });
       showToast('Reimbursement submitted!', 'success');
       setShowForm(false);
       setForm({ category: 'travel', amount: '', description: '' });
+      setReceipt(null);
       await load();
     } catch (err: any) {
       showToast(err.message || 'Failed to submit', 'error');
@@ -176,6 +180,16 @@ export default function ReimbursementsPage() {
                   className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-900 placeholder-slate-300 focus:outline-none focus:border-[#7A1C2A] focus:ring-2 focus:ring-[#7A1C2A]/10 transition-all resize-none"
                 />
               </div>
+
+            <div>
+              <label className="block text-[11px] font-black uppercase tracking-widest text-slate-400 mb-2">Receipt / Bill * <span className="normal-case tracking-normal font-semibold">(photo or PDF, max 10 MB)</span></label>
+              <input
+                type="file" accept="image/*,.pdf,application/pdf"
+                onChange={e => setReceipt(e.target.files?.[0] ?? null)}
+                className="w-full text-sm text-slate-600 file:mr-3 file:px-4 file:py-2.5 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#5A0F1A]/10 file:text-[#5A0F1A] file:cursor-pointer border border-slate-200 rounded-2xl bg-slate-50"
+              />
+              {receipt && <p className="text-[11px] text-slate-500 mt-1.5 truncate">Selected: {receipt.name}</p>}
+            </div>
 
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowForm(false)} className="flex-1 py-3.5 border border-slate-200 rounded-2xl text-sm font-bold text-slate-500 hover:bg-slate-50 transition-all">Cancel</button>

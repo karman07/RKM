@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 
 import { toast } from 'sonner';
 import BarcodeScannerModal from '../../../components/BarcodeScannerModal';
+import { useHardwareScanner } from '../../../hooks/useHardwareScanner';
 import ViewItemModal from '../../../components/ViewItemModal';
 import SaleRequestModal from '../../../components/SaleRequestModal';
 import BatchSaleRequestModal from '../../../components/BatchSaleRequestModal';
@@ -71,7 +72,8 @@ function InventoryContent() {
   const [cartExpanded, setCartExpanded] = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
 
-  const cartTotal = cart.reduce((sum, it) => sum + (it.live_selling_price ?? it.selling_price), 0);
+  // Whole rupees — bills are rounded off automatically.
+  const cartTotal = Math.round(cart.reduce((sum, it) => sum + (it.live_selling_price ?? it.selling_price), 0));
   const isInCart = (id: string) => cart.some(it => it._id === id);
   function addToCart(item: InventoryItem) {
     setCart(prev => prev.some(it => it._id === item._id) ? prev : [...prev, item]);
@@ -118,7 +120,8 @@ function InventoryContent() {
   }, [autoScan]);
 
   async function handleScan(barcode: string) {
-    setShowScanner(false);
+    // In cart mode the camera stays open so many QR codes can be scanned back to back.
+    if (!cartMode) setShowScanner(false);
     setScanLoading(true);
     setScanError('');
     setScannedItem(null);
@@ -143,6 +146,9 @@ function InventoryContent() {
     } finally { setScanLoading(false); }
   }
 
+  // Hardware QR / barcode scanner (USB or Bluetooth, keyboard mode) works anywhere on this page.
+  useHardwareScanner((code) => { void handleScan(code); });
+
   function handlePageChange(p: number) {
     setPage(p);
     if (user) loadInventory(user, p);
@@ -157,7 +163,7 @@ function InventoryContent() {
 
   return (
     <div className="p-4 lg:p-8 max-w-7xl mx-auto space-y-6 bg-white min-h-full">
-      {showScanner && <BarcodeScannerModal onScan={handleScan} onClose={() => setShowScanner(false)} />}
+      {showScanner && <BarcodeScannerModal continuous={cartMode} onScan={handleScan} onClose={() => setShowScanner(false)} />}
       {viewItem && <ViewItemModal item={viewItem} onClose={() => setViewItem(null)} />}
       {saleRequestItem && user && (
         <SaleRequestModal

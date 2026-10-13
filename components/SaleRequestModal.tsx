@@ -193,6 +193,8 @@ export function PaymentSection({
   totalAmount: number;
 }) {
   const paid = splits.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+  // Bills are settled in whole rupees — the amount to collect is rounded off automatically.
+  totalAmount = Math.round(totalAmount);
   const remaining = totalAmount - paid;
   const balanced = Math.abs(remaining) < 0.5;
   const fmt = (n: number) => Math.round(n).toLocaleString('en-IN');
@@ -484,7 +486,7 @@ export default function SaleRequestModal({ item, userId, branchId, onClose, onSu
           <div>
             <p className="text-[10px] font-black uppercase tracking-widest text-white/60 mb-0.5">Request Sale Approval</p>
             <h2 className="text-lg font-black text-white leading-tight">{product?.name ?? item.unique_item_code}</h2>
-            <p className="text-white/80 text-sm font-bold mt-0.5">₹{price.toLocaleString('en-IN')}</p>
+            <p className="text-white/80 text-sm font-bold mt-0.5">₹{Math.round(price).toLocaleString('en-IN')}{Math.abs(Math.round(price) - price) >= 0.005 && <span className="text-white/50 text-[11px] font-semibold"> · round off {Math.round(price) - price > 0 ? '+' : '−'}₹{Math.abs(Math.round(price) - price).toFixed(2)}</span>}</p>
           </div>
           <button onClick={onClose} className="w-9 h-9 rounded-2xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors">
             <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M6 18L18 6M6 6l12 12" /></svg>
