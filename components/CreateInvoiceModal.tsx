@@ -8,8 +8,9 @@ import {
   type RedemptionPreview, type RedemptionType,
 } from '@/lib/api';
 import Modal from './Modal';
+import BarcodeScannerModal from './BarcodeScannerModal';
 import VerifiedCustomerPanel, { type CustomerDraft } from './VerifiedCustomerPanel';
-import PaymentSplitsInput, { type PaymentSplit } from './PaymentSplitsInput';
+import PaymentSplitsInput, { validatePaymentSplits, type PaymentSplit } from './PaymentSplitsInput';
 import RedemptionComparisonPanel from './RedemptionComparisonPanel';
 import { toast } from 'sonner';
 
@@ -66,6 +67,7 @@ function priceForLine(item: InventoryItem, discountPct: number) {
 export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
   // ── Item search ────────────────────────────────────────────────────────────
   const [query, setQuery] = useState('');
+  const [showQrScanner, setShowQrScanner] = useState(false);
   const [results, setResults] = useState<InventoryItem[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
@@ -303,7 +305,11 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
   // advances (a separate, unchanged scheme) are then subtracted from that as before.
   const baseAmountAfterInvestment = chosenRedemptionOption ? chosenRedemptionOption.finalPayableAmount : cartTotal;
   // What's left to collect via real payment methods (cash/card/etc.) after redemptions
-  const amountDue = Math.max(0, baseAmountAfterInvestment - totalAdvanceApplied - advanceMakingChargesDiscount);
+  const rawAmountDue = Math.max(0, baseAmountAfterInvestment - totalAdvanceApplied - advanceMakingChargesDiscount);
+  // Bills are settled in whole rupees: the amount due is rounded off automatically and the
+  // difference is shown as a Round Off line.
+  const amountDue = Math.round(rawAmountDue);
+  const roundOff = amountDue - rawAmountDue;
 
   // Fill the default single payment split with the amount due, but only while
   // the user hasn't typed an amount themselves.
@@ -394,7 +400,8 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
     const manualSplits = paymentSplits
       .filter(s => parseFloat(s.amount) > 0)
       .map(s => ({ mode: s.mode, amount: parseFloat(s.amount), reference: s.reference || undefined }));
-    if (manualSplits.length === 0 && amountDue > 0) { setError('Add at least one payment method with an amount.'); return; }
+    const splitError = validatePaymentSplits(paymentSplits, amountDue);
+    if (splitError) { setError(splitError); return; }
 
     const advanceEntries = Object.entries(advanceApplied).filter(([, amt]) => amt > 0);
 
@@ -477,9 +484,14 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
         <div>
           <div className="flex items-center justify-between mb-1.5">
             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block">Add Items *</label>
-            <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-emerald-600" title="Scan a barcode with a hardware scanner anywhere in this form, or type one and press Enter">
-              <BarcodeIcon /> Scanner-ready
-            </span>
+            <button
+              type="button"
+              onClick={() => setShowQrScanner(true)}
+              className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-emerald-600 hover:text-emerald-700"
+              title="Scan item QR codes with the camera (or use a hardware scanner anywhere in this form)"
+            >
+              <BarcodeIcon /> Scan QR codes
+            </button>
           </div>
           <div className="relative">
             <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"><SearchIcon /></span>
@@ -487,7 +499,7 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
               value={query}
               onChange={e => setQuery(e.target.value)}
               onKeyDown={handleSearchKeyDown}
-              placeholder="Search by name or SKU — or scan / type a barcode…"
+              placeholder="Search by name or SKU — or scan / type a QR code…"
               className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none transition-all"
             />
             {query.trim().length >= 2 && (
@@ -793,7 +805,7 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
         </div>
 
         {/* ── Payment ──────────────────────────────────────────────────── */}
-        {((investmentSubId && investmentAmount > 0) || totalAdvanceApplied > 0) && (
+        {((investmentSubId && investmentAmount > 0) || totalAdvanceApplied > 0 || Math.abs(roundOff) >= 0.005) && (
           <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 space-y-1.5 text-xs">
             <div className="flex justify-between font-bold text-slate-500"><span>Bill Total</span><span>₹{fmt(cartTotal)}</span></div>
             {chosenRedemptionOption && (
@@ -814,6 +826,9 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
             {advanceMakingChargesDiscount > 0 && (
               <div className="flex justify-between font-bold text-blue-700"><span>Making Charges Waived (Advance)</span><span>− ₹{fmt(advanceMakingChargesDiscount)}</span></div>
             )}
+            {Math.abs(roundOff) >= 0.005 && (
+              <div className="flex justify-between font-bold text-slate-500"><span>Round Off</span><span>{roundOff > 0 ? '+' : '−'} ₹{Math.abs(roundOff).toFixed(2)}</span></div>
+            )}
             <div className="flex justify-between font-black text-slate-900 pt-1.5 border-t border-slate-200"><span>Amount Due</span><span>₹{fmt(amountDue)}</span></div>
           </div>
         )}
@@ -832,6 +847,9 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
           </button>
         </div>
       </div>
+      {showQrScanner && (
+        <BarcodeScannerModal continuous onScan={(code) => { void addByBarcode(code); }} onClose={() => setShowQrScanner(false)} />
+      )}
     </Modal>
   );
 }

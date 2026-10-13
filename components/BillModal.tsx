@@ -414,7 +414,11 @@ ${billEl.outerHTML}
       metalPrice, stonePrice, makingCharge, extraTotal,
       subtotal, discountAmt, taxable, grossPrice,
       totalTaxAmt, taxBreakdown,
-      combinedDisAmt: parseFloat((((item.manager_discount ?? 0)) * grossPrice / 100).toFixed(2)),
+      // Admin discount applies to the item's list price; the manager's % applies on what's left.
+      adminPct: Number((item as any).admin_discount) || 0,
+      mgrPct: Number((item as any).manager_discount) || 0,
+      adminDisAmt: parseFloat((grossPrice * (Number((item as any).admin_discount) || 0) / 100).toFixed(2)),
+      mgrDisAmt: parseFloat(((grossPrice - grossPrice * (Number((item as any).admin_discount) || 0) / 100) * (Number((item as any).manager_discount) || 0) / 100).toFixed(2)),
       finalSelling,
       payable,
       netWeight:   product?.net_weight ?? 0,
@@ -445,7 +449,15 @@ ${billEl.outerHTML}
   const totalFinal   = itemRows.reduce((a, r) => a + r.finalSelling, 0);
   const totalMaking  = itemRows.reduce((a, r) => a + r.makingCharge, 0);
   const totalDisAmt  = itemRows.reduce((a, r) => a + r.discountAmt, 0);
-  const totalMgrDis  = itemRows.reduce((a, r) => a + r.combinedDisAmt, 0);
+  const totalAdminDis = itemRows.reduce((a, r) => a + r.adminDisAmt, 0);
+  const totalMgrDis  = itemRows.reduce((a, r) => a + r.mgrDisAmt, 0);
+  // Show the % in the label only when every item on the bill carries the same one.
+  const uniformPct = (pick: (r: (typeof itemRows)[number]) => number) => {
+    const set = new Set(itemRows.map(pick));
+    return set.size === 1 ? ` (${parseFloat([...set][0].toFixed(2))}%)` : '';
+  };
+  const adminPctLabel = uniformPct(r => r.adminPct);
+  const mgrPctLabel = uniformPct(r => r.mgrPct);
   const taxTotals: Record<string, number> = {};
   allTaxNames.forEach(name => {
     taxTotals[name] = itemRows.reduce((s, r) => s + (r.taxBreakdown.find(t => t.name === name)?.amount ?? 0), 0);
@@ -469,15 +481,20 @@ ${billEl.outerHTML}
   // Advance redemption totals across all items
   const totalAdvanceRedeemed = items.reduce((s, it) => s + ((it as any).advance_redeemed ?? 0), 0);
   const totalAdvanceMakingDiscount = items.reduce((s, it) => s + ((it as any).advance_making_charges_discount ?? 0), 0);
+  // Everything knocked off the price: scheme + admin + manager discounts and the making-charge waivers.
+  const totalSavings = totalDisAmt + totalAdminDis + totalMgrDis + totalMakingDiscount + totalAdvanceMakingDiscount;
   const paymentSplits: { mode: string; amount: number; reference?: string }[] = (customer as any)?.payment_splits ?? [];
   // What the customer actually paid/owes. payment_splits is a bill-level concept — every item
   // in a multi-item bill carries an identical copy of the same array — so read it once here
   // rather than summing itemRows.payable across items, which would multiply the total by the
   // item count. Only fall back to each item's own computed payable when no splits exist at all
   // (older records sold before payment_splits was recorded).
-  const totalPayable = paymentSplits.length > 0
+  const rawPayable = paymentSplits.length > 0
     ? paymentSplits.reduce((s, sp) => s + (sp.amount || 0), 0)
     : itemRows.reduce((a, r) => a + r.payable, 0);
+  // Bills are settled in whole rupees — round the payable off automatically and show the difference.
+  const totalPayable = Math.round(rawPayable);
+  const roundOff = totalPayable - rawPayable;
   // Header "Mode" summary — read from payment_splits (the authoritative record) rather than
   // item.payment_mode, which historically could get stamped with an internal redemption mode
   // name (see backend fix) on older records. Joins every split when there's more than one.
@@ -731,6 +748,15 @@ ${billEl.outerHTML}
                           {row.item.hallmark && (
                             <div style={{ color: '#888', fontSize: '7.5px' }}>Hallmark: {row.item.hallmark}</div>
                           )}
+                          {(row.adminPct > 0 || row.mgrPct > 0 || row.discountAmt > 0) && (
+                            <div style={{ color: '#7A1C2A', fontSize: '7.5px', fontWeight: 600 }}>
+                              Discount: {[
+                                row.discountAmt > 0 ? `Scheme ₹${fmt(row.discountAmt)}` : '',
+                                row.adminPct > 0 ? `${row.adminPct}% admin (₹${fmt(row.adminDisAmt)})` : '',
+                                row.mgrPct > 0 ? `${row.mgrPct}% manager (₹${fmt(row.mgrDisAmt)})` : '',
+                              ].filter(Boolean).join(' + ')}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -848,14 +874,16 @@ ${billEl.outerHTML}
               {/* Rows */}
               {[
                 { label: 'Gross Product Value', value: `₹${fmt(totalSubtotal)}`, bold: false },
-                totalDisAmt > 0 && { label: 'Product Discount', value: `- ₹${fmt(totalDisAmt)}`, bold: false },
-                totalMgrDis > 0 && { label: 'Additional Discount (Manager)', value: `- ₹${fmt(totalMgrDis)}`, bold: false },
+                totalDisAmt > 0 && { label: 'Product / Scheme Discount', value: `- ₹${fmt(totalDisAmt)}`, bold: false },
                 { label: 'Taxable Value', value: `₹${fmt(totalTaxable)}`, bold: false },
                 { label: 'Total Tax (GST)', value: `₹${fmt(grandTotalTax)}`, bold: false },
+                totalAdminDis > 0 && { label: `Less: Admin Discount${adminPctLabel}`, value: `- ₹${fmt(totalAdminDis)}`, bold: false, color: '#7A1C2A' },
+                totalMgrDis > 0 && { label: `Less: Manager Discount${mgrPctLabel}`, value: `- ₹${fmt(totalMgrDis)}`, bold: false, color: '#7A1C2A' },
                 totalInvestmentRedeemed > 0 && { label: `Investment Balance Applied${investmentRedemptionLabel ? ` (${investmentRedemptionLabel})` : ''}`, value: `- ₹${fmt(totalInvestmentRedeemed)}`, bold: false, color: '#7A1C2A' },
                 totalMakingDiscount > 0 && { label: 'Making Charges Waived (Investment)', value: `- ₹${fmt(totalMakingDiscount)}`, bold: false, color: '#7A1C2A' },
                 totalAdvanceRedeemed > 0 && { label: 'Advance Payment Applied', value: `- ₹${fmt(totalAdvanceRedeemed)}`, bold: false, color: '#7A1C2A' },
                 totalAdvanceMakingDiscount > 0 && { label: 'Making Charges Discount (Advance)', value: `- ₹${fmt(totalAdvanceMakingDiscount)}`, bold: false, color: '#7A1C2A' },
+                Math.abs(roundOff) >= 0.005 && { label: 'Round Off', value: `${roundOff > 0 ? '+' : '-'} ₹${Math.abs(roundOff).toFixed(2)}`, bold: false },
               ].filter(Boolean).map((row: any, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '2.5px 0', borderBottom: '1px solid #eee' }}>
                   <span style={{ color: row.color ?? '#555' }}>{row.label}</span>
@@ -874,6 +902,12 @@ ${billEl.outerHTML}
                 Rupees {inWords(totalPayable)}
               </div>
             </div>
+            {totalSavings > 0 && (
+              <div style={{ marginTop: '6px', padding: '5px 10px', border: '1px dashed #7A1C2A', color: '#7A1C2A', fontWeight: 700, fontSize: '9.5px', display: 'flex', justifyContent: 'space-between' }}>
+                <span>Total Discount / You Saved</span>
+                <span>₹{fmt(totalSavings)}</span>
+              </div>
+            )}
           </div>
         </div>
 

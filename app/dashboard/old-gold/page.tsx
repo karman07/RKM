@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState, useMemo, useCallback } from 'react';
+import ItemPhotosInput from '../../../components/ItemPhotosInput';
 import { useSearchParams } from 'next/navigation';
 import {
   getOldGoldTransactions,
@@ -15,6 +16,7 @@ import {
   type AppSettings,
   type UserProfile,
   type Lookup,
+  staticUrl,
 } from '../../../lib/api';
 
 // ── Brand colors (manager theme) ──────────────────────────────────────────────
@@ -92,7 +94,7 @@ function Toast({ msg, ok }: { msg: string; ok: boolean }) {
 // ── Create slide-over ─────────────────────────────────────────────────────────
 
 interface DraftStone { stone_type: string; description: string; count: string; weight: string; weight_unit: string; quality: string; estimated_value: string; }
-interface DraftItem { description: string; weight_grams: string; purity: string; estimated_value: string; stones: DraftStone[] }
+interface DraftItem { description: string; weight_grams: string; purity: string; estimated_value: string; stones: DraftStone[]; images: string[] }
 
 function CreatePanel({
   customers, settings, purityLookups, stoneTypeLookups, userBranchId, onClose, onCreate,
@@ -114,7 +116,7 @@ function CreatePanel({
   const [search, setSearch]         = useState('');
   const [notes, setNotes]           = useState('');
   const [items, setItems]           = useState<DraftItem[]>([
-    { description: '', weight_grams: '', purity: purities[0] ?? '', estimated_value: '', stones: [] },
+    { description: '', weight_grams: '', purity: purities[0] ?? '', estimated_value: '', stones: [], images: [] },
   ]);
   const [clientReq, setClientReq]       = useState('');
   const [clientReqNotes, setClientReqNotes] = useState('');
@@ -205,6 +207,7 @@ function CreatePanel({
           weight_grams: parseFloat(i.weight_grams) || 0,
           purity: i.purity,
           estimated_value: parseFloat(i.estimated_value) || 0,
+          images: i.images,
           stones: i.stones.map(s => ({
             stone_type: s.stone_type,
             description: s.description,
@@ -286,7 +289,7 @@ function CreatePanel({
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Gold Items</label>
-              <button onClick={() => setItems(p => [...p, { description: '', weight_grams: '', purity: purities[0] ?? '', estimated_value: '', stones: [] }])}
+              <button onClick={() => setItems(p => [...p, { description: '', weight_grams: '', purity: purities[0] ?? '', estimated_value: '', stones: [], images: [] }])}
                 className="text-[11px] font-black flex items-center gap-1 transition-colors"
                 style={{ color: PRIMARY }}>
                 <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
@@ -342,6 +345,8 @@ function CreatePanel({
                         onChange={e => updateItem(i, 'estimated_value', e.target.value)}
                         className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-1" />
                     </div>
+
+                    <ItemPhotosInput value={item.images} onChange={urls => setItems(p => p.map((it, j) => j === i ? { ...it, images: urls } : it))} />
 
                     {/* Stones */}
                     <div className="col-span-2 mt-1">
@@ -528,7 +533,7 @@ function CreatePanel({
           <button onClick={onClose} className="flex-1 py-3 rounded-2xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors">
             Cancel
           </button>
-          <button onClick={save} disabled={saving || !customerId || items.every(i => !i.description)}
+          <button onClick={save} disabled={saving || !customerId || items.every(i => !i.description) || items.some(i => i.images.length === 0)}
             className="flex-1 py-3 rounded-2xl text-white text-sm font-black transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
             style={{ background: saving || !customerId ? undefined : PRIMARY }}>
             {saving
@@ -836,7 +841,17 @@ export default function OldGoldPage() {
                           {txn.items.map((item, i) => (
                             <>
                               <tr key={i} className="bg-white border-b border-slate-50">
-                                <td className="px-4 py-3 font-medium text-slate-800">{item.description || '—'}</td>
+                                <td className="px-4 py-3 font-medium text-slate-800">{item.description || '—'}
+                      {(item.images?.length ?? 0) > 0 && (
+                        <div className="flex gap-1 mt-1.5">
+                          {item.images!.map((u, k) => (
+                            <a key={k} href={staticUrl(u)} target="_blank" rel="noreferrer" title="Open photo">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={staticUrl(u)} alt={`Item photo ${k + 1}`} className="w-10 h-10 rounded-lg object-cover border border-slate-200" />
+                            </a>
+                          ))}
+                        </div>
+                      )}</td>
                                 <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{item.weight_grams}g</td>
                                 <td className="px-4 py-3">
                                   <span className="text-[10px] font-black px-2 py-0.5 rounded-full border"

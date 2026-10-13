@@ -605,6 +605,25 @@ function EditCustomerModal({
   const [city, setCity] = useState(customer.city ?? '');
   const [state, setState] = useState(customer.state ?? '');
   const [pincode, setPincode] = useState(customer.pincode ?? '');
+  const [country, setCountry] = useState(customer.country ?? 'India');
+  const [attention, setAttention] = useState(customer.attention ?? '');
+  const [street2, setStreet2] = useState(customer.street2 ?? '');
+  const [aadharCard, setAadharCard] = useState(customer.aadharCard ?? '');
+  const [panCard, setPanCard] = useState(customer.panCard ?? '');
+  const [accountNumber, setAccountNumber] = useState(customer.accountNumber ?? '');
+  const [ifscCode, setIfscCode] = useState(customer.ifscCode ?? '');
+  const [bankName, setBankName] = useState(customer.bankName ?? '');
+  const [paymentTerms, setPaymentTerms] = useState(customer.payment_terms ?? '');
+  const [creditLimit, setCreditLimit] = useState(customer.credit_limit ? String(customer.credit_limit) : '');
+  const [sameAsBilling, setSameAsBilling] = useState(!customer.shipping_address);
+  const [shipAttention, setShipAttention] = useState(customer.shipping_address?.attention ?? '');
+  const [shipAddress, setShipAddress] = useState(customer.shipping_address?.address ?? '');
+  const [shipStreet2, setShipStreet2] = useState(customer.shipping_address?.street2 ?? '');
+  const [shipCity, setShipCity] = useState(customer.shipping_address?.city ?? '');
+  const [shipState, setShipState] = useState(customer.shipping_address?.state ?? '');
+  const [shipZip, setShipZip] = useState(customer.shipping_address?.zip ?? '');
+  const [shipCountry, setShipCountry] = useState(customer.shipping_address?.country ?? 'India');
+  const [shipPhone, setShipPhone] = useState(customer.shipping_address?.phone ?? '');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
@@ -634,6 +653,25 @@ function EditCustomerModal({
     setCity(customer.city ?? '');
     setState(customer.state ?? '');
     setPincode(customer.pincode ?? '');
+    setCountry(customer.country ?? 'India');
+    setAttention(customer.attention ?? '');
+    setStreet2(customer.street2 ?? '');
+    setAadharCard(customer.aadharCard ?? '');
+    setPanCard(customer.panCard ?? '');
+    setAccountNumber(customer.accountNumber ?? '');
+    setIfscCode(customer.ifscCode ?? '');
+    setBankName(customer.bankName ?? '');
+    setPaymentTerms(customer.payment_terms ?? '');
+    setCreditLimit(customer.credit_limit ? String(customer.credit_limit) : '');
+    setSameAsBilling(!customer.shipping_address);
+    setShipAttention(customer.shipping_address?.attention ?? '');
+    setShipAddress(customer.shipping_address?.address ?? '');
+    setShipStreet2(customer.shipping_address?.street2 ?? '');
+    setShipCity(customer.shipping_address?.city ?? '');
+    setShipState(customer.shipping_address?.state ?? '');
+    setShipZip(customer.shipping_address?.zip ?? '');
+    setShipCountry(customer.shipping_address?.country ?? 'India');
+    setShipPhone(customer.shipping_address?.phone ?? '');
     setCustomerSubType(customer.customer_sub_type ?? 'individual');
     setCompanyName(customer.company_name ?? '');
     setSalutation(customer.salutation ?? '');
@@ -671,6 +709,26 @@ function EditCustomerModal({
         city: city.trim() || undefined,
         state: state.trim() || undefined,
         pincode: pincode.trim() || undefined,
+        country: country.trim() || 'India',
+        attention: attention.trim() || undefined,
+        street2: street2.trim() || undefined,
+        aadharCard: aadharCard.trim() || undefined,
+        panCard: panCard.trim().toUpperCase() || undefined,
+        accountNumber: accountNumber.trim() || undefined,
+        ifscCode: ifscCode.trim().toUpperCase() || undefined,
+        bankName: bankName.trim() || undefined,
+        payment_terms: paymentTerms.trim() || undefined,
+        credit_limit: creditLimit ? Number(creditLimit) : undefined,
+        shipping_address: sameAsBilling ? null : {
+          attention: shipAttention.trim(),
+          address: shipAddress.trim(),
+          street2: shipStreet2.trim(),
+          city: shipCity.trim(),
+          state: shipState.trim(),
+          zip: shipZip.trim(),
+          country: shipCountry.trim() || 'India',
+          phone: shipPhone.trim(),
+        },
         customFields: definedFields.length ? validDefinedFields : undefined,
         customer_sub_type: customerSubType,
         company_name: customerSubType === 'business' ? companyName.trim() || undefined : undefined,
@@ -810,6 +868,86 @@ function EditCustomerModal({
           </div>
 
           <div className="border-t border-slate-100 pt-3 space-y-3">
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Address Details</p>
+            <div className="grid grid-cols-2 gap-2">
+              <input placeholder="Attention / contact name" value={attention} onChange={e => setAttention(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2"
+                style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+              <input placeholder="Country" value={country} onChange={e => setCountry(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2"
+                style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+            </div>
+            <input placeholder="Address line 2 / street" value={street2} onChange={e => setStreet2(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2"
+                style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+          </div>
+
+          <div className="border-t border-slate-100 pt-3 space-y-3">
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">KYC &amp; Bank Details</p>
+            <div className="grid grid-cols-2 gap-2">
+              <input placeholder="Aadhaar number" value={aadharCard} onChange={e => setAadharCard(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2"
+                style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+              <input placeholder="PAN" value={panCard} onChange={e => setPanCard(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2"
+                style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <input placeholder="Bank name" value={bankName} onChange={e => setBankName(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2"
+                style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+              <input placeholder="Account number" value={accountNumber} onChange={e => setAccountNumber(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2"
+                style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+              <input placeholder="IFSC" value={ifscCode} onChange={e => setIfscCode(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2"
+                style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+            </div>
+          </div>
+
+          <div className="border-t border-slate-100 pt-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Shipping Address</p>
+              <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 cursor-pointer">
+                <input type="checkbox" checked={sameAsBilling} onChange={e => setSameAsBilling(e.target.checked)} />
+                Same as billing
+              </label>
+            </div>
+            {!sameAsBilling && (
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <input placeholder="Attention" value={shipAttention} onChange={e => setShipAttention(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2"
+                style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+                  <input placeholder="Phone" value={shipPhone} onChange={e => setShipPhone(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2"
+                style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+                </div>
+                <input placeholder="Address" value={shipAddress} onChange={e => setShipAddress(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2"
+                style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+                <input placeholder="Address line 2" value={shipStreet2} onChange={e => setShipStreet2(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2"
+                style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+                <div className="grid grid-cols-2 gap-2">
+                  <input placeholder="City" value={shipCity} onChange={e => setShipCity(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2"
+                style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+                  <input placeholder="State" value={shipState} onChange={e => setShipState(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2"
+                style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+                  <input placeholder="Zip / pincode" value={shipZip} onChange={e => setShipZip(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2"
+                style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+                  <input placeholder="Country" value={shipCountry} onChange={e => setShipCountry(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2"
+                style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-slate-100 pt-3 space-y-3">
             <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">GST &amp; Tax</p>
             <select value={gstTreatment} onChange={e => setGstTreatment(e.target.value as any)}
               className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2"
@@ -822,6 +960,14 @@ function EditCustomerModal({
                 className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm uppercase focus:outline-none focus:ring-2"
                 style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
               <input placeholder="Place of supply" value={placeOfSupply} onChange={e => setPlaceOfSupply(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2"
+                style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <input placeholder="Payment terms (e.g. Net 15)" value={paymentTerms} onChange={e => setPaymentTerms(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2"
+                style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
+              <input type="number" min="0" placeholder="Credit limit (₹)" value={creditLimit} onChange={e => setCreditLimit(e.target.value)}
                 className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2"
                 style={{ '--tw-ring-color': `${PRIMARY}40` } as any} />
             </div>
@@ -1324,6 +1470,47 @@ function CustomerDrawer({ customer, onClose, onUpdated }: { customer: FullCustom
             )}
           </div>
         )}
+
+        {/* All saved customer details */}
+        {(() => {
+          const sa = customer.shipping_address;
+          const rows: [string, string | undefined][] = [
+            ['Gender', customer.gender],
+            ['Type', customer.customer_sub_type],
+            ['Company', customer.company_name],
+            ['Work phone', customer.work_phone],
+            ['Website', customer.website],
+            ['Address', [customer.address, customer.street2].filter(Boolean).join(', ')],
+            ['City / State', [customer.city, customer.state].filter(Boolean).join(', ')],
+            ['Pincode / Country', [customer.pincode, customer.country].filter(Boolean).join(', ')],
+            ['Aadhaar', customer.aadharCard],
+            ['PAN', customer.panCard],
+            ['Bank', [customer.bankName, customer.accountNumber, customer.ifscCode].filter(Boolean).join(' · ')],
+            ['GST treatment', GST_TREATMENTS.find(g => g.value === customer.gst_treatment)?.label],
+            ['GSTIN', customer.gst_no],
+            ['Place of supply', customer.place_of_supply],
+            ['Payment terms', customer.payment_terms],
+            ['Credit limit', customer.credit_limit ? `₹${customer.credit_limit.toLocaleString('en-IN')}` : undefined],
+            ['Shipping address', sa ? [sa.address, sa.street2, sa.city, sa.state, sa.zip, sa.country].filter(Boolean).join(', ') : undefined],
+            ['Contact persons', (customer.contact_persons ?? []).map(p => [p.first_name, p.last_name].filter(Boolean).join(' ')).filter(Boolean).join(', ')],
+            ['Notes', customer.notes],
+          ];
+          const filled = rows.filter(([, v]) => v && String(v).trim());
+          if (!filled.length) return null;
+          return (
+            <div className="px-6 py-4 border-b border-slate-100">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Customer Details</p>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                {filled.map(([k, v]) => (
+                  <div key={k} className="min-w-0">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{k}</p>
+                    <p className="text-xs font-bold text-slate-700 break-words">{v}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Additional Information (admin-defined custom fields) */}
         {(customer.customFields?.length ?? 0) > 0 && (

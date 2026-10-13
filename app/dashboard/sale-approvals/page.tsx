@@ -204,7 +204,8 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
   // When a redemption option is locked in, its GST-recomputed payable amount replaces
   // afterDiscount as the base — advances (unchanged scheme) subtract from that as before.
   const baseAmountAfterInvestment = chosenRedemptionOption ? chosenRedemptionOption.finalPayableAmount : afterDiscount;
-  const finalPrice = Math.max(0, baseAmountAfterInvestment - totalAdvanceApplied - advMcDiscount);
+  // Whole rupees — the amount to collect is rounded off automatically.
+  const finalPrice = Math.round(Math.max(0, baseAmountAfterInvestment - totalAdvanceApplied - advMcDiscount));
   // Ratio used to distribute the combined discount/redemption proportionally back to each
   // item's own quoted price when approving a batch (mirrors sellBatch's per-item pricing).
   const priceRatio = basePrice > 0 ? finalPrice / basePrice : 0;

@@ -20,6 +20,7 @@ export default function Modal({ open, onClose, title, children, width = 'max-w-l
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
           <h2 className="text-base font-semibold text-slate-900 tracking-tight">{title}</h2>
           <button
+            data-dialog-close
             onClick={onClose}
             className="text-slate-400 hover:text-slate-700 transition rounded-lg p-1 hover:bg-slate-100"
           >

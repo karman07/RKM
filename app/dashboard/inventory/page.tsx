@@ -7,8 +7,10 @@ import PreBookModal from '../../../components/PreBookModal';
 import CompletePreBookingModal from '../../../components/CompletePreBookingModal';
 import CancelPreBookingModal from '../../../components/CancelPreBookingModal';
 import BarcodeScannerModal from '../../../components/BarcodeScannerModal';
+import { useHardwareScanner } from '../../../hooks/useHardwareScanner';
 import BillModal from '../../../components/BillModal';
 import RedemptionComparisonPanel from '../../../components/RedemptionComparisonPanel';
+import PaymentSplitsInput, { validatePaymentSplits, MODES_NEEDING_REFERENCE, type PaymentSplit } from '../../../components/PaymentSplitsInput';
 import {
   getProfile, getInventory, updateInventoryStatus, updateManagerDiscount, getCashiers,
   generateSaleInvoiceNumber, staticUrl, searchCustomers, getGoldBalance, previewGoldRedemption,
@@ -433,6 +435,17 @@ export function InventoryPageContent() {
       toast.error(`No item found for barcode ${code}`);
     }
   }
+
+  // Hardware QR / barcode scanner (USB or Bluetooth, keyboard mode) works anywhere on this page:
+  // in Multi-Item Bill mode a scan adds the item to the bill, otherwise it searches for it.
+  useHardwareScanner((code) => {
+    if (cartModeRef.current) {
+      void handleBarcodeAddToCart(code);
+    } else {
+      setSearchInput(code);
+      setSearch(code);
+    }
+  });
   const cartTotal = cart.reduce((sum, i) => sum + cartItemPrice(i), 0);
   // Making charges / taxable amount / tax / gold weight across the whole cart — used to feed
   // the redemption preview, the same way CreateInvoiceModal's cart does.
@@ -507,10 +520,33 @@ export function InventoryPageContent() {
   // balance redemption and their making-charges discounts — the investment side uses the chosen
   // redemption option's GST-recomputed payable amount as its base, same as CreateInvoiceModal.
   const cartBaseAmountAfterInvestment = chosenRedemptionOption ? chosenRedemptionOption.finalPayableAmount : cartTotal;
-  const cartAmountDue = Math.max(0, cartBaseAmountAfterInvestment - totalAdvanceApplied - cartAdvanceMakingChargesDiscount);
+  // Whole rupees — the amount to collect is rounded off automatically.
+  const cartAmountDue = Math.round(Math.max(0, cartBaseAmountAfterInvestment - totalAdvanceApplied - cartAdvanceMakingChargesDiscount));
   const splitsAllocated = checkoutSplits.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
   const cartRemaining = Math.round((cartAmountDue - splitsAllocated) * 100) / 100;
   const CART_TOLERANCE = 1; // rupee rounding tolerance
+
+  // Pre-fill the single default cart payment row with the amount due until staff edit it.
+  useEffect(() => {
+    setCheckoutSplits((prev) =>
+      prev.length === 1 && !prev[0].amount && cartAmountDue > 0 ? [{ ...prev[0], amount: cartAmountDue }] : prev,
+    );
+  }, [cartAmountDue]);
+
+  // Single-item sale: payment can be split across methods (e.g. part cash, part UPI).
+  const [sellSplits, setSellSplits] = useState<PaymentSplit[]>([{ mode: 'cash', amount: '', reference: '' }]);
+  const sellAdvanceMakingChargesDiscount = totalAdvanceApplied > 0 ? Math.round(sellItemMakingCharges * advanceWaiverPct / 100) : 0;
+  const sellAmountDue = Math.round(Math.max(
+    0,
+    (chosenRedemptionOption ? chosenRedemptionOption.finalPayableAmount : sellItemBasePrice) - totalAdvanceApplied - sellAdvanceMakingChargesDiscount,
+  ));
+  // Fresh form for every item; pre-fill the single default row with the amount due until staff edit it.
+  useEffect(() => { setSellSplits([{ mode: 'cash', amount: '', reference: '' }]); }, [sellItem?._id]);
+  useEffect(() => {
+    setSellSplits((prev) =>
+      prev.length === 1 && prev[0].amount === '' && sellAmountDue > 0 ? [{ ...prev[0], amount: String(sellAmountDue) }] : prev,
+    );
+  }, [sellAmountDue, sellItem?._id]);
 
   function isInCart(id: string) {
     return cart.some((i) => i._id === id);
@@ -561,6 +597,11 @@ export function InventoryPageContent() {
     }
     if (Math.abs(cartRemaining) > CART_TOLERANCE) {
       toast.error('Payment splits must add up to the cart total before checkout');
+      return;
+    }
+    const missingRef = checkoutSplits.find((sp) => Number(sp.amount) > 0 && MODES_NEEDING_REFERENCE.includes(sp.mode) && !sp.reference?.trim());
+    if (missingRef) {
+      toast.error(`Enter the reference / transaction ID for the ${missingRef.mode.replace('_', ' ')} payment.`);
       return;
     }
     if (investmentSubId && investmentAmount > 0 && !redemptionChoice) {
@@ -832,6 +873,16 @@ export function InventoryPageContent() {
 
   async function handleSell() {
     if (!sellItem) return;
+    const splitError = validatePaymentSplits(sellSplits, sellAmountDue);
+    if (splitError) { toast.error(splitError); return; }
+    const sellManualSplits = sellSplits
+      .filter((sp) => parseFloat(sp.amount) > 0)
+      .map((sp) => ({ mode: sp.mode, amount: Math.round(parseFloat(sp.amount)), reference: sp.reference.trim() || undefined }));
+    const sellMode = sellManualSplits[0]?.mode ?? 'cash';
+    if (sellManualSplits.some((sp) => sp.mode === 'emi') && sellManualSplits.length > 1) {
+      toast.error('EMI must be the only payment method on a bill.');
+      return;
+    }
     if (sellForm.customer_phone && !phoneVerified) {
       setOtpError('Please verify the phone number using OTP before confirming.');
       return;
@@ -859,7 +910,7 @@ export function InventoryPageContent() {
         // When a redemption option is locked in, its GST-recomputed payable amount replaces the
         // discounted item price as the base — advances (unchanged scheme) subtract from that.
         const baseAmountAfterInvestment = chosenRedemptionOption ? chosenRedemptionOption.finalPayableAmount : sellItemBasePrice;
-        const finalPrice = Math.max(0, baseAmountAfterInvestment - totalAdvanceApplied - advanceMakingChargesDiscount);
+        const finalPrice = Math.round(Math.max(0, baseAmountAfterInvestment - totalAdvanceApplied - advanceMakingChargesDiscount));
 
         const advanceEntries = Object.entries(advanceApplied).filter(([, amt]) => amt > 0);
 
@@ -868,9 +919,7 @@ export function InventoryPageContent() {
         const paymentSplits: { mode: string; amount: number; reference?: string }[] = [];
         if (hasInvestment) paymentSplits.push({ mode: 'investment_balance', amount: investmentAmount, reference: investmentSubId });
         advanceEntries.forEach(([id, amt]) => paymentSplits.push({ mode: 'advance_balance', amount: amt, reference: id }));
-        if (finalPrice > 0) {
-          paymentSplits.push({ mode: sellForm.payment_mode, amount: finalPrice });
-        }
+        paymentSplits.push(...sellManualSplits);
 
         // Investment plan redemption (if any) is committed atomically server-side, inside
         // updateInventoryStatus, using the exact same breakdown shown on the comparison screen —
@@ -884,7 +933,7 @@ export function InventoryPageContent() {
           shipping_city: sellForm.shipping_city || undefined,
           shipping_state: sellForm.shipping_state || undefined,
           shipping_pincode: sellForm.shipping_pincode || undefined,
-          payment_mode: sellForm.payment_mode,
+          payment_mode: sellMode,
           sale_channel: 'store',
           sale_reference: saleInvoiceNumber,
           sold_by_user_id: sellForm.sold_by_user_id || undefined,
@@ -932,7 +981,7 @@ export function InventoryPageContent() {
     };
 
     try {
-      if (sellForm.payment_mode === 'emi') {
+      if (sellMode === 'emi') {
         const orderData = await createPaymentOrder(sellItem._id);
         
         const options = {
@@ -1868,18 +1917,9 @@ export function InventoryPageContent() {
                 </div>
               </div>
 
+              <PaymentSplitsInput splits={sellSplits} onChange={setSellSplits} totalAmount={sellAmountDue} enforceTotal={sellAmountDue > 0} />
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Payment Mode</label>
-                  <select value={sellForm.payment_mode} onChange={(e) => setSellForm({ ...sellForm, payment_mode: e.target.value })}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3.5 text-sm font-bold text-slate-900 focus:outline-[#7A1C2A] shadow-sm appearance-none cursor-pointer">
-                    <option value="cash">Cash</option>
-                    <option value="card">Card</option>
-                    <option value="upi">UPI</option>
-                    <option value="bank_transfer">Bank Transfer</option>
-                    <option value="emi">EMI</option>
-                  </select>
-                </div>
                 <div>
                   <label className="block text-[10px] font-black uppercase tracking-widest text-[#7A1C2A] mb-2">Sale Branch *</label>
                   <div className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-sm font-bold text-slate-700 shadow-sm truncate">
@@ -2349,14 +2389,15 @@ export function InventoryPageContent() {
 
       {showCameraScanner && (
         <BarcodeScannerModal
+          continuous={cartMode}
           onScan={(code) => {
             if (cartMode) {
               void handleBarcodeAddToCart(code);
             } else {
               setSearchInput(code);
               setSearch(code);
+              setShowCameraScanner(false);
             }
-            setShowCameraScanner(false);
           }}
           onClose={() => setShowCameraScanner(false)}
         />
@@ -2839,7 +2880,7 @@ export function InventoryPageContent() {
                         type="text"
                         value={split.reference}
                         onChange={(e) => updateSplit(idx, { reference: e.target.value })}
-                        placeholder="Reference (optional)"
+                        placeholder={MODES_NEEDING_REFERENCE.includes(split.mode) ? 'Reference / TXN ID *' : 'Reference (optional)'}
                         className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold text-slate-900 focus:outline-[#7A1C2A] shadow-sm min-w-0"
                       />
                       <button

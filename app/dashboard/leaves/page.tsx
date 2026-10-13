@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 
 import {
   getProfile,
-  getMyLeaves,
+  getMyLeaves, getMyLeaveBalance, type LeaveBalance,
   submitLeaveRequest,
   checkSessionExpiry,
   type UserProfile,
@@ -34,6 +34,7 @@ export default function LeavesPage() {
   const router = useRouter();
   const [user, setUser] = useState<UserProfile | null>(null);
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
+  const [balance, setBalance] = useState<LeaveBalance | null>(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -55,6 +56,7 @@ export default function LeavesPage() {
   async function load() {
     const l = await getMyLeaves().catch(() => []);
     setLeaves(l);
+    getMyLeaveBalance().then(setBalance).catch(() => {});
   }
 
   useEffect(() => {
@@ -134,6 +136,29 @@ export default function LeavesPage() {
         </div>
 
         {/* Application Form */}
+        {balance?.policy_configured && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {balance.balances.map(b => {
+              const lt = LEAVE_TYPES.find(l => l.value === b.type);
+              return (
+                <div key={b.type} className="border border-slate-100 rounded-2xl p-4 bg-white shadow-sm">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{lt?.label ?? b.type}</p>
+                  {b.allowed === null ? (
+                    <p className="text-sm font-bold text-slate-500 mt-1">Unlimited</p>
+                  ) : (
+                    <>
+                      <p className={`text-2xl font-black mt-1 ${b.remaining === 0 ? 'text-red-500' : 'text-slate-900'}`}>
+                        {b.remaining}<span className="text-sm text-slate-400 font-bold"> / {b.allowed} left</span>
+                      </p>
+                      <p className="text-[10px] text-slate-400 font-medium mt-0.5">{b.taken} taken{b.pending > 0 ? ` · ${b.pending} pending` : ''}</p>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {showForm && (
           <div className="bg-white border border-slate-200 rounded-[2rem] p-8 shadow-sm">
             <h2 className="text-lg font-black text-slate-900 mb-6">New Leave Application</h2>
@@ -157,6 +182,12 @@ export default function LeavesPage() {
                         <path strokeLinecap="round" strokeLinejoin="round" d={lt.iconPath} />
                       </svg>
                       <span className="text-[10px] font-black uppercase tracking-wider leading-tight">{lt.label}</span>
+                    {(() => {
+                      const b = balance?.balances.find(x => x.type === lt.value);
+                      return balance?.policy_configured && b && b.allowed !== null
+                        ? <span className="text-[9px] font-bold normal-case opacity-80">{b.remaining} left</span>
+                        : null;
+                    })()}
                     </button>
                   ))}
                 </div>
