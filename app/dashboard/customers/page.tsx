@@ -36,6 +36,14 @@ function AddCustomerModal({ open, onClose, onCreated }: { open: boolean; onClose
   const [gstTreatment, setGstTreatment] = useState('');
   const [gstNo, setGstNo] = useState('');
   const [placeOfSupply, setPlaceOfSupply] = useState('');
+  const [gender, setGender] = useState('');
+  const [state, setState] = useState('');
+  const [pincode, setPincode] = useState('');
+  const [aadharCard, setAadharCard] = useState('');
+  const [panCard, setPanCard] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  const [ifscCode, setIfscCode] = useState('');
 
   const [definedFields, setDefinedFields] = useState<EmployeeCustomField[]>([]);
   const [definedFieldValues, setDefinedFieldValues] = useState<Record<string, string>>({});
@@ -51,6 +59,7 @@ function AddCustomerModal({ open, onClose, onCreated }: { open: boolean; onClose
     setShowMore(false); setCustomerSubType('individual'); setCompanyName('');
     setSalutation(''); setFirstName(''); setLastName(''); setWorkPhone(''); setWebsite('');
     setGstTreatment(''); setGstNo(''); setPlaceOfSupply('');
+    setGender(''); setState(''); setPincode(''); setAadharCard(''); setPanCard(''); setBankName(''); setAccountNumber(''); setIfscCode('');
   }
 
   async function handleSave() {
@@ -80,6 +89,14 @@ function AddCustomerModal({ open, onClose, onCreated }: { open: boolean; onClose
         gst_treatment: (gstTreatment || undefined) as any,
         gst_no: gstNo.trim() || undefined,
         place_of_supply: placeOfSupply.trim() || undefined,
+        gender: gender || undefined,
+        state: state.trim() || undefined,
+        pincode: pincode.trim() || undefined,
+        aadharCard: aadharCard.trim() || undefined,
+        panCard: panCard.trim().toUpperCase() || undefined,
+        bankName: bankName.trim() || undefined,
+        accountNumber: accountNumber.trim() || undefined,
+        ifscCode: ifscCode.trim().toUpperCase() || undefined,
       });
       onCreated(customer);
       reset();
@@ -167,6 +184,26 @@ function AddCustomerModal({ open, onClose, onCreated }: { open: boolean; onClose
                 className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A]" />
               <input placeholder="Website" value={website} onChange={e => setWebsite(e.target.value)}
                 className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A]" />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <select value={gender} onChange={e => setGender(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A]">
+                <option value="">Gender</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+              </select>
+              <input placeholder="State" value={state} onChange={e => setState(e.target.value)} className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A]" />
+              <input placeholder="Pincode" value={pincode} onChange={e => setPincode(e.target.value)} className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A]" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <input placeholder="Aadhaar number" value={aadharCard} onChange={e => setAadharCard(e.target.value)} className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A]" />
+              <input placeholder="PAN" value={panCard} onChange={e => setPanCard(e.target.value)} className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A]" />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <input placeholder="Bank name" value={bankName} onChange={e => setBankName(e.target.value)} className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A]" />
+              <input placeholder="Account number" value={accountNumber} onChange={e => setAccountNumber(e.target.value)} className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A]" />
+              <input placeholder="IFSC" value={ifscCode} onChange={e => setIfscCode(e.target.value)} className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A]" />
             </div>
             <select value={gstTreatment} onChange={e => setGstTreatment(e.target.value)}
               className="w-full border border-slate-200 rounded-xl px-2.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#5A0F1A]/10 focus:border-[#5A0F1A]">

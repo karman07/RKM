@@ -181,6 +181,11 @@ export interface FullCustomer {
   isEmailVerified: boolean;
   isActive: boolean;
   createdAt: string;
+  aadharCard?: string;
+  panCard?: string;
+  accountNumber?: string;
+  ifscCode?: string;
+  bankName?: string;
   relationship_manager?: { _id: string; name: string; email?: string; mobile_number?: string; role?: string } | string | null;
   customFields?: { key: string; value: string }[];
   // Zoho-style business/contact fields
@@ -211,6 +216,11 @@ export interface CustomerProfileFields {
   state?: string;
   pincode?: string;
   country?: string;
+  aadharCard?: string;
+  panCard?: string;
+  accountNumber?: string;
+  ifscCode?: string;
+  bankName?: string;
   customFields?: { key: string; value: string }[];
   work_phone?: string;
   customer_sub_type?: 'business' | 'individual';
@@ -521,6 +531,19 @@ export const submitLeaveRequest = (data: {
 
 export const getMyLeaves = () => request<LeaveRequest[]>('/hr/leaves/mine');
 
+export interface LeaveBalanceRow {
+  type: 'sick' | 'casual' | 'earned' | 'other';
+  /** null = unlimited / not tracked */
+  allowed: number | null;
+  taken: number;
+  pending: number;
+  remaining: number | null;
+  overridden: boolean;
+}
+export interface LeaveBalance { year: number; policy_configured: boolean; balances: LeaveBalanceRow[] }
+export const getMyLeaveBalance = (year = new Date().getFullYear()) =>
+  request<LeaveBalance>(`/hr/leave-balance/mine?year=${year}`);
+
 // ── HR: Reimbursements ────────────────────────────────────────
 
 export interface ReimbursementRequest {
@@ -543,7 +566,25 @@ export const submitReimbursement = (data: {
   amount: number;
   description: string;
   branch_id?: string;
+  receipt_url: string;
 }) => request<ReimbursementRequest>('/hr/reimbursements', { method: 'POST', body: JSON.stringify(data) });
+
+/** Uploads a reimbursement receipt / bill (image or PDF, max 10 MB). Every claim must carry one. */
+export const uploadReimbursementReceipt = async (file: File): Promise<{ url: string }> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const token = getToken();
+  const res = await fetch(`${API_BASE}/uploads/reimbursement-receipts`, {
+    method: 'POST',
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: formData,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.message || 'Failed to upload receipt');
+  }
+  return res.json();
+};
 
 export const getMyReimbursements = () => request<ReimbursementRequest[]>('/hr/reimbursements/mine');
 
