@@ -1297,7 +1297,7 @@ export interface StockIssueLine {
   gross_weight: number; net_weight: number; stone_weight: number; value: number;
   image?: string;
   outcome: 'out' | 'returned' | 'sold';
-  outcome_at?: string | null; outcome_note?: string;
+  outcome_at?: string | null; outcome_note?: string; outcome_by_name?: string;
 }
 
 export interface StockIssue {
@@ -1314,6 +1314,8 @@ export interface StockIssue {
   total_items: number; total_gross_weight: number; total_net_weight: number; total_value: number;
   status: 'issued' | 'partially_closed' | 'closed' | 'cancelled';
   issued_at: string; closed_at?: string | null; cancelled_at?: string | null;
+  signed_copy_url?: string; signed_copy_uploaded_at?: string | null; signed_copy_uploaded_by_name?: string;
+  activity?: { action: string; by_name?: string; by_role?: string; detail?: string; at: string }[];
 }
 
 export const getStockIssues = (page = 1, limit = 20, params?: { status?: string; sales_user_id?: string; branch_id?: string }) => {
@@ -1321,6 +1323,7 @@ export const getStockIssues = (page = 1, limit = 20, params?: { status?: string;
   const qs = new URLSearchParams({ page: String(page), limit: String(limit), ...clean }).toString();
   return request<PaginatedResponse<StockIssue>>(`/stock-issues?${qs}`);
 };
+export const getStockIssueSalesMembers = () => request<{ _id: string; name: string; employee_id?: string }[]>('/stock-issues/sales-members');
 export const getStockIssue = (id: string) => request<StockIssue>(`/stock-issues/${id}`);
 export const createStockIssue = (payload: {
   sales_user_id: string; branch_id?: string; inventory_item_ids: string[];
@@ -1330,6 +1333,14 @@ export const checkInStockIssue = (id: string, items: { inventory_item_id: string
   request<StockIssue>(`/stock-issues/${id}/check-in`, { method: 'POST', body: JSON.stringify({ items }) });
 export const cancelStockIssue = (id: string) => request<StockIssue>(`/stock-issues/${id}/cancel`, { method: 'POST' });
 export const verifyStockIssue = (code: string) => request<StockIssue>(`/stock-issues/verify/${encodeURIComponent(code)}`);
+
+export async function uploadStockIssueSignedCopy(id: string, file: File): Promise<StockIssue> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${API_BASE}/stock-issues/${id}/signed-copy`, { method: 'POST', headers: authHeadersMultipart(), body: form });
+  if (!res.ok) throw new Error(await extractUploadError(res, 'Signed copy upload failed'));
+  return res.json();
+}
 
 /** Downloads the server-rendered challan PDF. */
 export async function downloadStockIssuePdf(id: string, filename: string): Promise<void> {
