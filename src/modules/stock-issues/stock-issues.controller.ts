@@ -41,6 +41,13 @@ export class StockIssuesController {
     return this.service.findAll(actorOf(req), Number(page) || 1, Number(limit) || 20, status, salesUserId, branchId);
   }
 
+  /** Active sales-team members — lets managers (who can't use /users/role) pick who to issue stock to. */
+  @Get('sales-members')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  salesMembers() {
+    return this.service.listSalesMembers();
+  }
+
   @Get('verify/:code')
   @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER)
   verify(@Param('code') code: string, @Req() req: any) {

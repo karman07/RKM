@@ -113,6 +113,10 @@ export class StockIssuesService {
       total_gross_weight: sum('gross_weight'),
       total_net_weight: sum('net_weight'),
       total_value: sum('value'),
+      activity: [{
+        action: 'issued', by_name: (issuer as any)?.name || '', by_role: actor.role,
+        detail: `${items.length} item(s) issued to ${u.name}`, at: new Date(),
+      }],
     });
 
     try {
@@ -140,6 +144,11 @@ export class StockIssuesService {
     return { data, meta: { total, page, limit, total_pages: Math.ceil(total / limit) } };
   }
 
+  async listSalesMembers() {
+    const res = await this.usersService.findByRole(UserRole.SALES, 1, 500);
+    return res.data.filter((u: any) => u.isActive).map((u: any) => ({ _id: u._id, name: u.name, employee_id: u.employee_id }));
+  }
+
   async findOne(id: string, actor: IssueActor) {
     if (!Types.ObjectId.isValid(id)) throw new NotFoundException('Stock issue not found');
     const issue = await this.issueModel.findOne({ _id: id, ...this.scopeFilter(actor) }).lean();
@@ -163,6 +172,8 @@ export class StockIssuesService {
       throw new BadRequestException(`This challan is already ${issue.status}`);
     }
 
+    const checker = await this.usersService.findById(actor.userId).catch(() => null);
+    const checkerName = (checker as any)?.name || '';
     const release: string[] = [];
     for (const line of dto.items) {
       const row = issue.items.find(i => i.inventory_item_id.toString() === line.inventory_item_id);
@@ -171,6 +182,11 @@ export class StockIssuesService {
       row.outcome = line.outcome as StockIssueLineOutcome;
       row.outcome_at = new Date();
       row.outcome_note = line.note?.trim() || '';
+      row.outcome_by_name = checkerName;
+      issue.activity.push({
+        action: line.outcome, by_name: checkerName, by_role: actor.role,
+        detail: `${row.name || ''} #${row.unique_item_code || ''}${row.outcome_note ? ` — ${row.outcome_note}` : ''}`.trim(), at: new Date(),
+      } as any);
       release.push(line.inventory_item_id);
     }
     if (!release.length) throw new BadRequestException('Nothing to check in — those items were already reconciled');
@@ -181,7 +197,10 @@ export class StockIssuesService {
 
     const open = issue.items.filter(i => i.outcome === StockIssueLineOutcome.OUT).length;
     issue.status = open === 0 ? StockIssueStatus.CLOSED : StockIssueStatus.PARTIALLY_CLOSED;
-    if (open === 0) issue.closed_at = new Date();
+    if (open === 0) {
+      issue.closed_at = new Date();
+      issue.activity.push({ action: 'closed', by_name: checkerName, by_role: actor.role, detail: 'All items reconciled', at: new Date() } as any);
+    }
     issue.markModified('items');
     return issue.save();
   }
@@ -197,6 +216,10 @@ export class StockIssuesService {
     issue.signed_copy_url = `/static/stock-issue-signed/${file.filename}`;
     issue.signed_copy_uploaded_at = new Date();
     issue.signed_copy_uploaded_by_name = (uploader as any)?.name || '';
+    issue.activity.push({
+      action: 'signed_copy_uploaded', by_name: (uploader as any)?.name || '', by_role: actor.role,
+      detail: file.originalname || '', at: new Date(),
+    } as any);
     return issue.save();
   }
 
@@ -207,8 +230,10 @@ export class StockIssuesService {
       throw new BadRequestException('Only a challan with no reconciled items can be cancelled — check items in instead');
     }
     await this.inventoryService.releaseFromSalesIssue(issue.items.map(i => i.inventory_item_id.toString()));
+    const canceller = await this.usersService.findById(actor.userId).catch(() => null);
     issue.status = StockIssueStatus.CANCELLED;
     issue.cancelled_at = new Date();
+    issue.activity.push({ action: 'cancelled', by_name: (canceller as any)?.name || '', by_role: actor.role, detail: '', at: new Date() } as any);
     return issue.save();
   }
 

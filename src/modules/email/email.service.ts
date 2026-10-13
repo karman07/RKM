@@ -463,6 +463,43 @@ export class EmailService {
     });
   }
 
+  buildItemAttendanceMissedHtml(data: {
+    branchName: string;
+    dateLabel: string;
+    totalActive: number;
+    presentCount: number;
+    missing: { name: string; code: string }[];
+    missingCount: number;
+  }): string {
+    const notDone = data.presentCount === 0;
+    const rows =
+      this.detailRow('Branch', data.branchName) +
+      this.detailRow('Date', data.dateLabel) +
+      this.detailRow('Items to verify', String(data.totalActive)) +
+      this.detailRow('Scanned today', String(data.presentCount)) +
+      this.detailRow('NOT scanned', String(data.missingCount), true);
+    const list = data.missing
+      .map(m => `<li style="margin:0 0 4px;">${m.name} <span style="color:#9ca3af;">#${m.code}</span></li>`)
+      .join('');
+    const more = data.missingCount > data.missing.length ? `<p style="margin:8px 0 0;font-size:13px;color:#6b7280;">…and ${data.missingCount - data.missing.length} more. Open Item Attendance for the full list.</p>` : '';
+    return this.wrap({
+      eyebrow: 'RKM JEWELLERS — IMPORTANT',
+      heading: notDone ? 'Item Attendance NOT Done Today' : 'Item Attendance Incomplete',
+      intro: notDone
+        ? `No item was scanned at ${data.branchName} today. Daily item attendance is mandatory.`
+        : `${data.missingCount} item(s) at ${data.branchName} were not scanned today. Daily item attendance is mandatory.`,
+      bodyHtml: `
+        ${this.detailCard('Attendance Summary', rows)}
+        <p style="margin:0 0 8px;font-size:14px;color:#111827;font-weight:700;">Items not scanned</p>
+        <ul style="margin:0;padding-left:20px;font-size:14px;color:#111827;line-height:1.6;">${list}</ul>
+        ${more}
+        <p style="margin:16px 0 0;font-size:14px;color:#6b7280;line-height:1.7;">
+          Please locate and scan every item (or record its status) so the stock count is accounted for.
+        </p>`,
+      footerNote: 'This is an automated end-of-day reminder sent to all staff of this branch and the admins shortly before logout time.',
+    });
+  }
+
   async getLogs(page = 1, limit = 30, trigger?: string, status?: string) {
     const filter: Record<string, any> = {};
     if (trigger) filter.trigger = trigger;

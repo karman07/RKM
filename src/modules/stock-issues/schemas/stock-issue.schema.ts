@@ -51,8 +51,20 @@ export class StockIssueLine {
 
   @Prop({ type: Date, default: null }) outcome_at: Date | null;
   @Prop({ trim: true, default: '' }) outcome_note: string;
+  @Prop({ trim: true, default: '' }) outcome_by_name: string;
 }
 export const StockIssueLineSchema = SchemaFactory.createForClass(StockIssueLine);
+
+/** Append-only audit trail: who did what to the challan, and when. */
+@Schema({ _id: false })
+export class StockIssueActivity {
+  @Prop({ required: true }) action: string; // issued | signed_copy_uploaded | returned | sold | cancelled | closed
+  @Prop({ trim: true, default: '' }) by_name: string;
+  @Prop({ trim: true, default: '' }) by_role: string;
+  @Prop({ trim: true, default: '' }) detail: string;
+  @Prop({ type: Date, default: Date.now }) at: Date;
+}
+export const StockIssueActivitySchema = SchemaFactory.createForClass(StockIssueActivity);
 
 @Schema({ timestamps: true, collection: 'stock_issues' })
 export class StockIssue {
@@ -97,6 +109,9 @@ export class StockIssue {
 
   @Prop({ type: [StockIssueLineSchema], default: [] })
   items: StockIssueLine[];
+
+  @Prop({ type: [StockIssueActivitySchema], default: [] })
+  activity: StockIssueActivity[];
 
   @Prop({ type: Number, default: 0 }) total_items: number;
   @Prop({ type: Number, default: 0 }) total_gross_weight: number;
