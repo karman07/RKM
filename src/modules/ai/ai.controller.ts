@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { AiService } from './ai.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -12,6 +12,19 @@ const uid = (req: any) => req.user?.userId || req.user?.sub || req.user?._id;
 @Controller('ai')
 export class AiController {
   constructor(private readonly ai: AiService) {}
+
+  // ── Claude API key (admin-only; the key itself is never returned) ──────────────
+
+  @Get('key')
+  keyStatus() { return this.ai.getKeyStatus(); }
+
+  @Put('key')
+  saveKey(@Body() body: { api_key?: string }, @Req() req: any) {
+    return this.ai.saveKey(body?.api_key ?? '', req.user?.name || req.user?.email || '');
+  }
+
+  @Delete('key')
+  removeKey() { return this.ai.removeKey(); }
 
   @Post('chat')
   chat(@Body() body: { message: string; session_id?: string }, @Req() req: any) {

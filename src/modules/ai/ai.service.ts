@@ -1,8 +1,10 @@
-import { Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import Anthropic from '@anthropic-ai/sdk';
 import { AiSession, AiSessionDocument } from './schemas/ai-session.schema';
+import { AiConfig, AiConfigDocument } from './schemas/ai-config.schema';
+import { decryptSecret, encryptSecret } from './ai-key.util';
 import { ReportsService } from '../reports/reports.service';
 import { GstReportService } from '../reports/gst-report.service';
 import { AccountingService } from '../reports/accounting.service';
@@ -32,22 +34,84 @@ How to work:
 export class AiService {
   private readonly logger = new Logger(AiService.name);
   private client: Anthropic | null = null;
+  private clientKey = '';
 
   constructor(
     @InjectModel(AiSession.name) private sessionModel: Model<AiSessionDocument>,
+    @InjectModel(AiConfig.name) private configModel: Model<AiConfigDocument>,
     private readonly reports: ReportsService,
     private readonly gst: GstReportService,
     private readonly accounting: AccountingService,
     private readonly reconciliation: ReconciliationService,
   ) {}
 
-  private getClient(): Anthropic {
-    if (!process.env.ANTHROPIC_API_KEY) {
+  /** Key saved from the admin panel wins; ANTHROPIC_API_KEY in the environment is the fallback. */
+  private async resolveApiKey(): Promise<{ key: string; source: 'database' | 'env' | 'none' }> {
+    const doc = await this.configModel.findOne({ singleton_key: 'global' }).lean();
+    if (doc?.api_key_enc) {
+      try { return { key: decryptSecret(doc.api_key_enc), source: 'database' }; }
+      catch (e: any) { this.logger.error(`Could not decrypt the saved API key: ${e?.message}`); }
+    }
+    if (process.env.ANTHROPIC_API_KEY) return { key: process.env.ANTHROPIC_API_KEY, source: 'env' };
+    return { key: '', source: 'none' };
+  }
+
+  private async getClient(): Promise<Anthropic> {
+    const { key } = await this.resolveApiKey();
+    if (!key) {
       throw new ServiceUnavailableException(
-        'The AI assistant is not configured yet — set ANTHROPIC_API_KEY in the backend environment and restart.',
+        'The AI assistant is not configured yet — an admin can add the Claude API key from Analytics AI → API key.',
       );
     }
-    return (this.client ??= new Anthropic());
+    if (!this.client || this.clientKey !== key) {
+      this.client = new Anthropic({ apiKey: key });
+      this.clientKey = key;
+    }
+    return this.client;
+  }
+
+  async getKeyStatus() {
+    const doc = await this.configModel.findOne({ singleton_key: 'global' }).lean();
+    const { key, source } = await this.resolveApiKey();
+    return {
+      configured: !!key,
+      source,
+      last4: source === 'database' ? doc?.api_key_last4 ?? '' : source === 'env' ? key.slice(-4) : '',
+      updated_at: source === 'database' ? (doc as any)?.updatedAt ?? null : null,
+      updated_by: source === 'database' ? doc?.updated_by_name ?? '' : '',
+    };
+  }
+
+  /** Checks the key with a 1-token request before saving, so a typo never replaces a working key. */
+  async saveKey(rawKey: string, updatedBy: string) {
+    const key = (rawKey ?? '').trim();
+    if (!key.startsWith('sk-ant-') || key.length < 20) {
+      throw new BadRequestException('That does not look like an Anthropic API key (it should start with "sk-ant-").');
+    }
+    try {
+      await new Anthropic({ apiKey: key }).messages.create({
+        model: this.model, max_tokens: 1, messages: [{ role: 'user', content: 'ping' }],
+      });
+    } catch (e: any) {
+      if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) {
+        throw new BadRequestException('Anthropic rejected this key. Check it and try again.');
+      }
+      if (!(e instanceof Anthropic.APIError)) throw new ServiceUnavailableException(`Could not reach Anthropic to verify the key: ${e?.message}`);
+      // Any other API error (rate limit, overloaded, bad model) still proves the key itself was accepted.
+    }
+    await this.configModel.findOneAndUpdate(
+      { singleton_key: 'global' },
+      { $set: { api_key_enc: encryptSecret(key), api_key_last4: key.slice(-4), updated_by_name: updatedBy } },
+      { upsert: true },
+    );
+    this.client = null;
+    return this.getKeyStatus();
+  }
+
+  async removeKey() {
+    await this.configModel.findOneAndUpdate({ singleton_key: 'global' }, { $set: { api_key_enc: '', api_key_last4: '' } });
+    this.client = null;
+    return this.getKeyStatus();
   }
 
   private get model() { return process.env.AI_MODEL || 'claude-opus-5-5'; }
@@ -84,7 +148,7 @@ export class AiService {
   // ── Chat ─────────────────────────────────────────────────────────────────────
 
   async chat(userId: string, message: string, sessionId?: string) {
-    const client = this.getClient();
+    const client = await this.getClient();
     let session: AiSessionDocument | null = null;
     if (sessionId) session = await this.sessionModel.findOne({ _id: sessionId, user_id: new Types.ObjectId(userId) });
     if (!session) {
@@ -135,7 +199,7 @@ export class AiService {
       }
     } catch (e: any) {
       this.logger.error(`Claude request failed: ${e?.message}`);
-      if (e instanceof Anthropic.AuthenticationError) throw new ServiceUnavailableException('The AI service rejected the API key. Check ANTHROPIC_API_KEY.');
+      if (e instanceof Anthropic.AuthenticationError) throw new ServiceUnavailableException('The AI service rejected the API key. Update the key from Analytics AI → API key.');
       if (e instanceof Anthropic.RateLimitError) throw new ServiceUnavailableException('The AI service is busy right now. Please try again in a moment.');
       if (e instanceof Anthropic.APIError) throw new ServiceUnavailableException(`AI request failed (${e.status ?? 'error'}): ${e.message}`);
       throw e;
