@@ -1595,3 +1595,63 @@ export const uploadItemImages = async (files: File[]): Promise<string[]> => {
   }
   return (await res.json()).urls;
 };
+
+
+// ── Stock Issue Challans (sales-team allotments) ─────────────────────────────
+
+export interface StockIssueLine {
+  inventory_item_id: string;
+  name?: string; unique_item_code?: string; hallmark?: string;
+  gross_weight: number; net_weight: number; value: number;
+  outcome: 'out' | 'returned' | 'sold';
+  outcome_at?: string | null; outcome_note?: string; outcome_by_name?: string;
+}
+
+export interface StockIssue {
+  _id: string;
+  issue_number: string;
+  branch_name?: string;
+  sales_user_name?: string;
+  purpose: string; destination?: string; notes?: string;
+  expected_return_date?: string | null;
+  items: StockIssueLine[];
+  total_items: number; total_net_weight: number; total_value: number;
+  status: 'issued' | 'partially_closed' | 'closed' | 'cancelled';
+  issued_at: string;
+  signed_copy_url?: string; signed_copy_uploaded_at?: string | null; signed_copy_uploaded_by_name?: string;
+  activity?: { action: string; by_name?: string; by_role?: string; detail?: string; at: string }[];
+}
+
+export const getStockIssues = (page = 1, limit = 100, status?: string) =>
+  request<PaginatedResponse<StockIssue>>(`/stock-issues?page=${page}&limit=${limit}${status ? `&status=${status}` : ''}`);
+export const getStockIssue = (id: string) => request<StockIssue>(`/stock-issues/${id}`);
+export const getStockIssueSalesMembers = () =>
+  request<{ _id: string; name: string; employee_id?: string }[]>('/stock-issues/sales-members');
+export const createStockIssue = (payload: {
+  sales_user_id: string; inventory_item_ids: string[];
+  purpose?: string; destination?: string; expected_return_date?: string; notes?: string;
+}) => request<StockIssue>('/stock-issues', { method: 'POST', body: JSON.stringify(payload) });
+export const checkInStockIssue = (id: string, items: { inventory_item_id: string; outcome: 'returned' | 'sold'; note?: string }[]) =>
+  request<StockIssue>(`/stock-issues/${id}/check-in`, { method: 'POST', body: JSON.stringify({ items }) });
+export const cancelStockIssue = (id: string) => request<StockIssue>(`/stock-issues/${id}/cancel`, { method: 'POST' });
+
+export async function uploadStockIssueSignedCopy(id: string, file: File): Promise<StockIssue> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${API_BASE}/stock-issues/${id}/signed-copy`, { method: 'POST', headers: { Authorization: `Bearer ${getToken()}` }, body: form });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: 'Upload failed' }));
+    throw new Error((err as { message?: string }).message ?? 'Upload failed');
+  }
+  return res.json();
+}
+
+export async function downloadStockIssuePdf(id: string, filename: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/stock-issues/${id}/pdf`, { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (!res.ok) throw new Error('Failed to generate challan PDF');
+  const url = window.URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  window.URL.revokeObjectURL(url);
+}
