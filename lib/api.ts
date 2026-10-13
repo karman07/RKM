@@ -599,3 +599,51 @@ export const getMyNotifications = () => request<SentNotification[]>('/notificati
 
 export const markNotificationRead = (id: string) => request(`/notifications/${id}/read`, { method: 'POST' });
 export const markAllNotificationsRead = () => request('/notifications/read-all', { method: 'POST' });
+
+
+// ── Stock Issue Challans (material issued to me for field sales) ─────────────
+
+export interface StockIssueLine {
+  inventory_item_id: string;
+  name?: string; sku?: string; unique_item_code?: string; hallmark?: string;
+  metal_type?: string; purity?: string;
+  gross_weight: number; net_weight: number; value: number;
+  outcome: 'out' | 'returned' | 'sold';
+}
+
+export interface StockIssue {
+  _id: string;
+  issue_number: string;
+  branch_name?: string;
+  purpose: string; destination?: string; notes?: string;
+  expected_return_date?: string | null;
+  items: StockIssueLine[];
+  total_items: number; total_net_weight: number; total_value: number;
+  status: 'issued' | 'partially_closed' | 'closed' | 'cancelled';
+  issued_at: string;
+  signed_copy_url?: string; signed_copy_uploaded_at?: string | null;
+}
+
+export const getMyStockIssues = (page = 1, limit = 50) =>
+  request<{ data: StockIssue[]; meta: { total: number } }>(`/stock-issues?page=${page}&limit=${limit}`);
+
+export async function uploadStockIssueSignedCopy(id: string, file: File): Promise<StockIssue> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${API_BASE}/stock-issues/${id}/signed-copy`, { method: 'POST', headers: { Authorization: `Bearer ${getToken()}` }, body: form });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: 'Upload failed' }));
+    throw new Error((err as { message?: string }).message ?? 'Upload failed');
+  }
+  return res.json();
+}
+
+export async function downloadStockIssuePdf(id: string, filename: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/stock-issues/${id}/pdf`, { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (!res.ok) throw new Error('Failed to generate challan PDF');
+  const url = window.URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  window.URL.revokeObjectURL(url);
+}

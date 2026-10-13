@@ -30,6 +30,11 @@ const NAV_ITEMS = [
     sub: [],
   },
   {
+    id: 'allotments', label: 'My Allotments', href: '/dashboard/allotments',
+    icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z',
+    sub: [],
+  },
+  {
     id: 'plans', label: 'Investment Plans', href: '/dashboard/plans',
     icon: 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6',
     sub: [
