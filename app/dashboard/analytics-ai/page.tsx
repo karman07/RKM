@@ -4,6 +4,7 @@ import {
   analyticsChat, listAnalyticsSessions, getAnalyticsSession, deleteAnalyticsSession,
   staticUrl, type AnalyticsSession, type ChartConfig, type ChartDataPoint,
 } from '@/lib/api';
+import AiKeyModal from '@/components/AiKeyModal';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -348,6 +349,7 @@ export default function AnalyticsAIPage() {
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [deletingId, setDeletingId]   = useState<string | null>(null);
   const [clearingAll, setClearingAll] = useState(false);
+  const [keyModal, setKeyModal]       = useState(false);
 
   const bottomRef  = useRef<HTMLDivElement>(null);
   const inputRef   = useRef<HTMLTextAreaElement>(null);
@@ -570,6 +572,10 @@ export default function AnalyticsAIPage() {
             <h1 className="text-base font-black text-slate-900 leading-none">RKM AI Insights</h1>
             <p className="text-[11px] text-slate-400 font-medium mt-0.5">Ask anything about your business — sales, staff, branches, inventory</p>
           </div>
+          <button onClick={() => setKeyModal(true)} title="Add or change the Claude API key"
+            className="flex-shrink-0 px-3 py-2 rounded-xl border border-slate-200 bg-white text-[11px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-50">
+            API key
+          </button>
         </div>
 
         {/* Messages */}
@@ -663,6 +669,7 @@ export default function AnalyticsAIPage() {
           </p>
         </div>
       </div>
+      <AiKeyModal open={keyModal} onClose={() => setKeyModal(false)} />
     </div>
   );
 }

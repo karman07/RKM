@@ -3210,3 +3210,17 @@ export const uploadItemImages = async (files: File[]): Promise<string[]> => {
   }
   return (await res.json()).urls;
 };
+
+// ─── Claude API key (Analytics AI) ───────────────────────────────────────────
+
+export interface AiKeyStatus {
+  configured: boolean;
+  source: 'database' | 'env' | 'none';
+  last4: string;
+  updated_at: string | null;
+  updated_by: string;
+}
+export const getAiKeyStatus = () => aiRequest<AiKeyStatus>('/ai/key');
+export const saveAiKey = (api_key: string) =>
+  aiRequest<AiKeyStatus>('/ai/key', { method: 'PUT', body: JSON.stringify({ api_key }) });
+export const removeAiKey = () => aiRequest<AiKeyStatus>('/ai/key', { method: 'DELETE' });
