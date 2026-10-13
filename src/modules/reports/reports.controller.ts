@@ -3,6 +3,9 @@ import type { Response } from 'express';
 import { ReportsService } from './reports.service';
 import { ReportsPdfService } from './reports-pdf.service';
 import { ReportsExcelService } from './reports-excel.service';
+import { GstReportService } from './gst-report.service';
+import { AccountingService } from './accounting.service';
+import { ReconciliationService } from './reconciliation.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -34,6 +37,9 @@ export class ReportsController {
     private readonly reports: ReportsService,
     private readonly pdf: ReportsPdfService,
     private readonly excel: ReportsExcelService,
+    private readonly gst: GstReportService,
+    private readonly accounting: AccountingService,
+    private readonly reconciliation: ReconciliationService,
   ) {}
 
   @Get('overview')
@@ -104,7 +110,7 @@ export class ReportsController {
       columns: [
         { header: label, flex: 1.8, accessor: (r: any) => r.key },
         { header: 'Units Sold', flex: 1, align: 'right', accessor: (r: any) => String(r.count) },
-        { header: 'Revenue', flex: 1.2, align: 'right', accessor: (r: any) => inr(r.revenue) },
+        { header: 'Net Revenue (excl. GST)', flex: 1.2, align: 'right', accessor: (r: any) => inr(r.revenue) },
         { header: 'Cost', flex: 1.2, align: 'right', accessor: (r: any) => inr(r.cost) },
         { header: 'Profit', flex: 1.2, align: 'right', accessor: (r: any) => inr(r.profit) },
         { header: 'Margin %', flex: 0.9, align: 'right', accessor: (r: any) => pct(r.marginPct) },
@@ -131,7 +137,7 @@ export class ReportsController {
       columns: [
         { header: label, key: 'key', width: 28 },
         { header: 'Units Sold', key: 'count', width: 14 },
-        { header: 'Revenue (₹)', key: 'revenue', width: 16, numFmt: '#,##0' },
+        { header: 'Net Revenue excl. GST (₹)', key: 'revenue', width: 22, numFmt: '#,##0' },
         { header: 'Cost (₹)', key: 'cost', width: 16, numFmt: '#,##0' },
         { header: 'Profit (₹)', key: 'profit', width: 16, numFmt: '#,##0' },
         { header: 'Margin %', key: 'marginPct', width: 12, numFmt: '0.0"%"' },
@@ -140,6 +146,135 @@ export class ReportsController {
       totalsRow: { key: 'TOTAL', count: data.totals.count, revenue: data.totals.revenue, profit: data.totals.profit },
     });
     res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="sales-by-${groupBy}.xlsx"` });
+    res.send(buffer);
+  }
+
+  /** Cross-checks the reports against each other (see ReconciliationService). */
+  @Get('reconcile')
+  reconcile(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.reconciliation.run(from, to);
+  }
+
+  // ── Accounts: journal, trial balance, ledger ─────────────────────────────────────
+
+  @Get('journal')
+  getJournal(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.accounting.getJournalRegister(from, to);
+  }
+
+  @Get('journal/excel')
+  async getJournalExcel(@Query('from') from: string, @Query('to') to: string, @Res() res: Response) {
+    const d = await this.accounting.getJournalRegister(from, to);
+    const buffer = await this.excel.buildSheet({
+      title: 'Journal',
+      subtitle: (from && to ? `${shortDate(from)} — ${shortDate(to)}` : 'All Time') + ` — Double-entry journal (${d.totals.balanced ? 'balanced' : 'NOT balanced'})`,
+      columns: [
+        { header: 'Date', key: 'date', width: 14, numFmt: 'dd-mmm-yyyy', accessor: (r: any) => new Date(r.date) },
+        { header: 'Voucher', key: 'voucher', width: 24 },
+        { header: 'Type', key: 'source', width: 18 },
+        { header: 'Account', key: 'account', width: 38 },
+        { header: 'Debit (₹)', key: 'debit', width: 16, numFmt: '#,##0.00' },
+        { header: 'Credit (₹)', key: 'credit', width: 16, numFmt: '#,##0.00' },
+        { header: 'Narration', key: 'narration', width: 50 },
+      ],
+      rows: d.rows,
+      totalsRow: { account: 'TOTAL', debit: d.totals.debit, credit: d.totals.credit },
+    });
+    res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename="journal.xlsx"' });
+    res.send(buffer);
+  }
+
+  @Get('trial-balance')
+  getTrialBalance(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.accounting.getTrialBalance(from, to);
+  }
+
+  @Get('trial-balance/excel')
+  async getTrialBalanceExcel(@Query('from') from: string, @Query('to') to: string, @Res() res: Response) {
+    const d = await this.accounting.getTrialBalance(from, to);
+    const buffer = await this.excel.buildSheet({
+      title: 'Trial Balance',
+      subtitle: (from && to ? `${shortDate(from)} — ${shortDate(to)}` : 'All Time') + ` — ${d.totals.balanced ? 'balanced' : 'NOT balanced'}`,
+      columns: [
+        { header: 'Account', key: 'account', width: 40 },
+        { header: 'Type', key: 'type', width: 12 },
+        { header: 'Debits (₹)', key: 'debit', width: 16, numFmt: '#,##0.00' },
+        { header: 'Credits (₹)', key: 'credit', width: 16, numFmt: '#,##0.00' },
+        { header: 'Balance Dr (₹)', key: 'balanceDr', width: 16, numFmt: '#,##0.00' },
+        { header: 'Balance Cr (₹)', key: 'balanceCr', width: 16, numFmt: '#,##0.00' },
+      ],
+      rows: d.rows,
+      totalsRow: { account: 'TOTAL', balanceDr: d.totals.debit, balanceCr: d.totals.credit },
+    });
+    res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename="trial-balance.xlsx"' });
+    res.send(buffer);
+  }
+
+  @Get('ledger')
+  getLedger(@Query('account') account: string, @Query('from') from?: string, @Query('to') to?: string) {
+    return this.accounting.getLedger(account, from, to);
+  }
+
+  // ── GST ──────────────────────────────────────────────────────────────────────
+
+  @Get('gst')
+  getGst(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.gst.getReport(from, to);
+  }
+
+  /** Summary PDF: tax by rate, then by HSN, with period totals. */
+  @Get('gst/pdf')
+  async getGstPdf(@Query('from') from: string, @Query('to') to: string, @Res() res: Response) {
+    const d = await this.gst.getReport(from, to);
+    const cols = [
+      { header: 'Taxable Value', flex: 1.2, align: 'right' as const, accessor: (r: any) => inr(r.taxable) },
+      { header: 'CGST', flex: 1, align: 'right' as const, accessor: (r: any) => inr(r.cgst) },
+      { header: 'SGST', flex: 1, align: 'right' as const, accessor: (r: any) => inr(r.sgst) },
+      { header: 'IGST', flex: 1, align: 'right' as const, accessor: (r: any) => inr(r.igst) },
+      { header: 'Total GST', flex: 1.1, align: 'right' as const, accessor: (r: any) => inr(r.totalTax) },
+      { header: 'Invoice Value', flex: 1.2, align: 'right' as const, accessor: (r: any) => inr(r.invoiceValue) },
+    ];
+    const buffer = await this.pdf.renderItemizedTable({
+      title: 'GST Summary',
+      subtitle: (from && to ? `${shortDate(from)} — ${shortDate(to)}` : 'All Time') + ` · ${d.totals.invoices} invoices, ${d.totals.creditNotes} credit notes`,
+      columns: [{ header: 'GST Rate', flex: 1, accessor: (r: any) => `GST @ ${r.key}` }, ...cols],
+      rows: d.byRate,
+      totalsRow: ['TOTAL', inr(d.totals.taxable), inr(d.totals.cgst), inr(d.totals.sgst), inr(d.totals.igst), inr(d.totals.totalTax), inr(d.totals.invoiceValue)],
+      disclaimer: [d.basis, ...d.warnings].join(' '),
+    });
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename="gst-summary.pdf"' });
+    res.send(buffer);
+  }
+
+  /** Invoice-wise GST register (CGST / SGST / IGST per invoice) for the accountant. */
+  @Get('gst/excel')
+  async getGstExcel(@Query('from') from: string, @Query('to') to: string, @Res() res: Response) {
+    const d = await this.gst.getReport(from, to);
+    const buffer = await this.excel.buildSheet({
+      title: 'GST Register',
+      subtitle: (from && to ? `${shortDate(from)} — ${shortDate(to)}` : 'All Time') + ' — Invoice-wise tax register (net of returns)',
+      columns: [
+        { header: 'Date', key: 'date', width: 14, numFmt: 'dd-mmm-yyyy', accessor: (r: any) => new Date(r.date) },
+        { header: 'Invoice / Note No.', key: 'invoiceNo', width: 24 },
+        { header: 'Type', key: 'type', width: 12 },
+        { header: 'Customer', key: 'customer', width: 24 },
+        { header: 'Customer GSTIN', key: 'gstin', width: 18 },
+        { header: 'Branch', key: 'branch', width: 16 },
+        { header: 'Place of Supply', key: 'placeOfSupply', width: 16 },
+        { header: 'Supply Type', key: 'supplyType', width: 24 },
+        { header: 'GST Rate', key: 'rate', width: 10 },
+        { header: 'Items', key: 'items', width: 8 },
+        { header: 'Taxable Value (₹)', key: 'taxable', width: 16, numFmt: '#,##0.00' },
+        { header: 'CGST (₹)', key: 'cgst', width: 13, numFmt: '#,##0.00' },
+        { header: 'SGST (₹)', key: 'sgst', width: 13, numFmt: '#,##0.00' },
+        { header: 'IGST (₹)', key: 'igst', width: 13, numFmt: '#,##0.00' },
+        { header: 'Total GST (₹)', key: 'totalTax', width: 14, numFmt: '#,##0.00' },
+        { header: 'Invoice Value (₹)', key: 'invoiceValue', width: 16, numFmt: '#,##0.00' },
+      ],
+      rows: d.rows,
+      totalsRow: { invoiceNo: 'TOTAL', taxable: d.totals.taxable, cgst: d.totals.cgst, sgst: d.totals.sgst, igst: d.totals.igst, totalTax: d.totals.totalTax, invoiceValue: d.totals.invoiceValue },
+    });
+    res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename="gst-register.xlsx"' });
     res.send(buffer);
   }
 
@@ -162,12 +297,13 @@ export class ReportsController {
         { header: 'Customer', flex: 1.3, accessor: (r: any) => r.customerName },
         { header: 'Payment', flex: 0.8, accessor: (r: any) => r.paymentMode || '—' },
         { header: 'Cost', flex: 0.9, align: 'right', accessor: (r: any) => inr(r.cost) },
-        { header: 'Price', flex: 0.9, align: 'right', accessor: (r: any) => inr(r.sellingPrice) },
+        { header: 'Paid (incl. GST)', flex: 0.95, align: 'right', accessor: (r: any) => inr(r.sellingPrice) },
+        { header: 'Net Revenue', flex: 0.9, align: 'right', accessor: (r: any) => inr(r.netRevenue) },
         { header: 'Profit', flex: 0.9, align: 'right', accessor: (r: any) => inr(r.profit) },
         { header: 'Margin %', flex: 0.75, align: 'right', accessor: (r: any) => pct(r.marginPct) },
       ],
       rows: data.rows,
-      totalsRow: ['', 'TOTAL', '', '', '', '', inr(data.totals.cost), inr(data.totals.revenue), inr(data.totals.profit), pct(data.totals.marginPct)],
+      totalsRow: ['', 'TOTAL', '', '', '', '', inr(data.totals.cost), inr(data.totals.grossRevenue), inr(data.totals.revenue), inr(data.totals.profit), pct(data.totals.marginPct)],
       disclaimer: `${data.rows.length} of ${data.totalCount} sold item(s) in this period.`,
     });
     res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename="sales-register.pdf"' });
@@ -191,12 +327,14 @@ export class ReportsController {
         { header: 'Phone', key: 'customerPhone', width: 16 },
         { header: 'Payment Mode', key: 'paymentMode', width: 14 },
         { header: 'Cost (₹)', key: 'cost', width: 14, numFmt: '#,##0' },
-        { header: 'Selling Price (₹)', key: 'sellingPrice', width: 16, numFmt: '#,##0' },
+        { header: 'Paid incl. GST (₹)', key: 'sellingPrice', width: 18, numFmt: '#,##0' },
+        { header: 'GST (₹)', key: 'gst', width: 12, numFmt: '#,##0' },
+        { header: 'Net Revenue (₹)', key: 'netRevenue', width: 16, numFmt: '#,##0' },
         { header: 'Profit (₹)', key: 'profit', width: 14, numFmt: '#,##0' },
         { header: 'Margin %', key: 'marginPct', width: 12, numFmt: '0.0"%"' },
       ],
       rows: data.rows,
-      totalsRow: { itemName: 'TOTAL', cost: data.totals.cost, sellingPrice: data.totals.revenue, profit: data.totals.profit, marginPct: data.totals.marginPct },
+      totalsRow: { itemName: 'TOTAL', cost: data.totals.cost, sellingPrice: data.totals.grossRevenue, gst: data.totals.gst, netRevenue: data.totals.revenue, profit: data.totals.profit, marginPct: data.totals.marginPct },
     });
     res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename="sales-register.xlsx"' });
     res.send(buffer);

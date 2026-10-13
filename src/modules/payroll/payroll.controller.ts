@@ -22,7 +22,7 @@ export class PayrollController {
   }
 
   @Get('mine')
-  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER, UserRole.SALES, UserRole.CUSTOM)
   getMyPayroll(@Req() req: any, @Query('month') month: string, @Query('year') year: string) {
     const userId = req.user?.userId || req.user?.sub || req.user?._id;
     const now = new Date();
@@ -31,6 +31,33 @@ export class PayrollController {
       month !== undefined ? Number(month) : now.getMonth(),
       year  !== undefined ? Number(year)  : now.getFullYear(),
     );
+  }
+
+  /**
+   * POST /payroll/mine/payslip
+   * Body: { month?, year? } — any staff member (incl. custom roles) downloads their OWN payslip.
+   * Declared before ':userId/payslip' so 'mine' is never treated as a user id.
+   */
+  @Post('mine/payslip')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER, UserRole.SALES, UserRole.CUSTOM)
+  async generateMyPayslip(
+    @Req() req: any,
+    @Body() body: { month?: number; year?: number },
+    @Res() res: Response,
+  ) {
+    const userId = req.user?.userId || req.user?.sub || req.user?._id;
+    const now = new Date();
+    const m = body?.month ?? now.getMonth();
+    const y = body?.year ?? now.getFullYear();
+    const MONTHS = ['January','February','March','April','May','June',
+                    'July','August','September','October','November','December'];
+    const pdf = await this.payrollService.generatePayslipPdf(userId, m, y, {}, []);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="payslip-${MONTHS[m]}-${y}.pdf"`,
+      'Content-Length': pdf.length,
+    });
+    res.end(pdf);
   }
 
   /**

@@ -11,6 +11,7 @@ import { User, UserDocument } from '../../users/schemas/user.schema';
 import { Reimbursement, ReimbursementDocument, ReimbursementStatus } from '../hr/schemas/reimbursement.schema';
 import { Incentive, IncentiveDocument } from '../incentives/schemas/incentive.schema';
 import { CustomerAdvance, CustomerAdvanceDocument } from '../customers/schemas/customer-advance.schema';
+import { GstReportService } from './gst-report.service';
 
 const BALANCE_SHEET_DISCLAIMER =
   'Estimated from recorded transactions — this store does not maintain a formal double-entry ledger. ' +
@@ -76,6 +77,7 @@ export class ReportsService {
     @InjectModel(Reimbursement.name) private reimbursementModel: Model<ReimbursementDocument>,
     @InjectModel(Incentive.name) private incentiveModel: Model<IncentiveDocument>,
     @InjectModel(CustomerAdvance.name) private advanceModel: Model<CustomerAdvanceDocument>,
+    private readonly gst: GstReportService,
   ) {}
 
   // ── Staff & Miscellaneous Expenses ───────────────────────────────────────────────
@@ -172,26 +174,12 @@ export class ReportsService {
   // ── Business Overview ─────────────────────────────────────────────────────────
 
   async getOverview(from?: string, to?: string) {
-    const soldMatch = { is_deleted: { $ne: true }, status: InventoryStatus.SOLD, ...rangeMatch('sold_at', from, to) };
+    // Sales, returns and online revenue all come from the GST report's lines, so this screen, the
+    // P&L, the GST report and the sales reports agree to the rupee. Revenue is net of GST.
+    const basis = await this.gst.getSalesBasis(from, to);
+    const refunds = await this.refundsPaid(from, to);
 
-    const [salesAgg, trendAgg, oldGoldAgg, poAgg, investmentIn, investmentOut, inventoryValueAgg, onlineAgg] = await Promise.all([
-      this.inventoryModel.aggregate([
-        { $match: soldMatch },
-        { $group: { _id: null, revenue: { $sum: '$selling_price' }, cogs: { $sum: '$purchase_price' }, count: { $sum: 1 } } },
-      ]),
-      this.inventoryModel.aggregate([
-        { $match: soldMatch },
-        {
-          $group: {
-            _id: bucketExpr('sold_at', 'day'),
-            revenue: { $sum: '$selling_price' },
-            cogs: { $sum: '$purchase_price' },
-            count: { $sum: 1 },
-          },
-        },
-        { $addFields: { profit: { $subtract: ['$revenue', '$cogs'] } } },
-        { $sort: { _id: 1 } },
-      ]),
+    const [oldGoldAgg, poAgg, investmentIn, investmentOut, inventoryValueAgg] = await Promise.all([
       this.oldGoldModel.aggregate([
         { $match: { status: OGStatus.SETTLED, ...rangeMatch('settled_at', from, to) } },
         { $group: { _id: null, outflow: { $sum: '$settlement_amount' }, count: { $sum: 1 } } },
@@ -214,56 +202,72 @@ export class ReportsService {
         { $match: { is_deleted: { $ne: true }, status: { $in: [InventoryStatus.AVAILABLE, InventoryStatus.RESERVED] } } },
         { $group: { _id: null, costValue: { $sum: '$purchase_price' }, retailValue: { $sum: '$selling_price' }, count: { $sum: 1 } } },
       ]),
-      this.onlineOrderModel.aggregate([
-        { $match: { payment_status: 'paid', ...rangeMatch('createdAt', from, to) } },
-        { $group: { _id: null, revenue: { $sum: '$total' }, count: { $sum: 1 } } },
-      ]),
     ]);
 
-    const sales = salesAgg[0] ?? { revenue: 0, cogs: 0, count: 0 };
     const oldGold = oldGoldAgg[0] ?? { outflow: 0, count: 0 };
     const po = poAgg[0] ?? { outflow: 0, count: 0 };
     const invIn = investmentIn[0] ?? { total: 0, count: 0 };
     const invOut = investmentOut[0] ?? { total: 0, count: 0 };
     const invValue = inventoryValueAgg[0] ?? { costValue: 0, retailValue: 0, count: 0 };
-    const online = onlineAgg[0] ?? { revenue: 0, count: 0 };
 
-    const grossProfit = sales.revenue - sales.cogs;
-    const cashIn = sales.revenue + online.revenue + invIn.total;
-    const cashOut = oldGold.outflow + po.outflow + invOut.total;
+    const storeNet = basis.store.net - basis.returns.net;          // in-store sales net of GST and returns
+    const cogs = basis.store.cost - basis.returns.cost;            // returned goods go back to stock
+    const grossProfit = storeNet - cogs;
+
+    // Cash actually moving: GST-inclusive receipts, less refunds paid.
+    const cashIn = basis.store.gross + basis.online.gross + invIn.total;
+    const cashOut = oldGold.outflow + po.outflow + invOut.total + refunds;
+
+    // Daily trend (net of GST) from the same lines
+    const day = new Map<string, { _id: string; revenue: number; cogs: number; count: number }>();
+    for (const l of basis.lines.filter(x => x.type !== 'Online')) {
+      const k = new Date(l.date).toISOString().slice(0, 10);
+      const e = day.get(k) ?? { _id: k, revenue: 0, cogs: 0, count: 0 };
+      e.revenue += l.taxable; e.cogs += l.cost; e.count += l.qty;
+      day.set(k, e);
+    }
+    const trend = [...day.values()].sort((x, y) => x._id.localeCompare(y._id))
+      .map(d => ({ ...d, revenue: Math.round(d.revenue * 100) / 100, cogs: Math.round(d.cogs * 100) / 100, profit: Math.round((d.revenue - d.cogs) * 100) / 100 }));
 
     return {
       period: { from: from ?? null, to: to ?? null },
-      revenue: sales.revenue,
-      onlineRevenue: online.revenue,
-      cogs: sales.cogs,
+      basis: 'Revenue is net of GST (GST collected is a liability, not income) and net of approved returns.',
+      revenue: storeNet,
+      grossInvoiced: basis.store.gross - basis.returns.gross,
+      gstCollected: basis.store.gst + basis.online.gst - basis.returns.gst,
+      onlineRevenue: basis.online.net,
+      cogs,
       grossProfit,
-      grossMarginPct: sales.revenue ? (grossProfit / sales.revenue) * 100 : 0,
-      transactions: sales.count,
+      grossMarginPct: storeNet ? (grossProfit / storeNet) * 100 : 0,
+      transactions: basis.store.units - basis.returns.units,
+      returnsNet: basis.returns.net,
+      refundsPaid: refunds,
       oldGoldOutflow: oldGold.outflow,
       purchaseOrderOutflow: po.outflow,
       investmentInflow: invIn.total,
       investmentOutflow: invOut.total,
       netCashMovement: cashIn - cashOut,
       inventoryValue: invValue,
-      trend: trendAgg,
+      trend,
+      warnings: basis.warnings,
     };
+  }
+
+  /** Cash refunded to customers in the period: approved returns, for the amount approved. */
+  private async refundsPaid(from?: string, to?: string): Promise<number> {
+    const agg = await this.inventoryModel.aggregate([
+      { $match: { is_deleted: { $ne: true }, status: InventoryStatus.RETURNED, return_refund_status: 'approved', ...rangeMatch('returned_at', from, to) } },
+      { $group: { _id: null, total: { $sum: { $ifNull: ['$return_admin_approved_value', '$selling_price'] } } } },
+    ]);
+    return agg[0]?.total ?? 0;
   }
 
   // ── Profit & Loss ──────────────────────────────────────────────────────────────
 
   async getProfitLoss(from?: string, to?: string) {
-    const soldMatch = { is_deleted: { $ne: true }, status: InventoryStatus.SOLD, ...rangeMatch('sold_at', from, to) };
+    const basis = await this.gst.getSalesBasis(from, to);
 
-    const [salesAgg, onlineAgg, oldGoldAgg, forfeitureAgg] = await Promise.all([
-      this.inventoryModel.aggregate([
-        { $match: soldMatch },
-        { $group: { _id: null, revenue: { $sum: '$selling_price' }, cogs: { $sum: '$purchase_price' }, count: { $sum: 1 } } },
-      ]),
-      this.onlineOrderModel.aggregate([
-        { $match: { payment_status: 'paid', ...rangeMatch('createdAt', from, to) } },
-        { $group: { _id: null, revenue: { $sum: '$total' }, count: { $sum: 1 } } },
-      ]),
+    const [oldGoldAgg, forfeitureAgg] = await Promise.all([
       this.oldGoldModel.aggregate([
         { $match: { status: OGStatus.SETTLED, ...rangeMatch('settled_at', from, to) } },
         { $group: { _id: null, outflow: { $sum: '$settlement_amount' }, count: { $sum: 1 } } },
@@ -283,27 +287,32 @@ export class ReportsService {
       this.computeInventoryLoss(periodFrom, periodTo),
     ]);
 
-    const sales = salesAgg[0] ?? { revenue: 0, cogs: 0, count: 0 };
-    const online = onlineAgg[0] ?? { revenue: 0, count: 0 };
     const oldGold = oldGoldAgg[0] ?? { outflow: 0, count: 0 };
     const forfeiture = forfeitureAgg[0] ?? { total: 0, count: 0 };
 
-    const totalRevenue = sales.revenue + online.revenue + forfeiture.total;
-    const grossProfit = totalRevenue - sales.cogs;
+    // Revenue is NET of GST: the GST in a GST-inclusive invoice belongs to the government.
+    const cogsStore = basis.store.cost - basis.returns.cost;
+    const totalRevenue = basis.store.net + basis.online.net - basis.returns.net + forfeiture.total;
+    const totalCogs = cogsStore + basis.online.cost;
+    const grossProfit = totalRevenue - totalCogs;
     const totalExpenses = oldGold.outflow + staffExpense.total + miscExpense + inventoryLoss.total;
     const netProfit = grossProfit - totalExpenses;
 
     return {
       period: { from: from ?? null, to: to ?? null },
-      disclaimer: PROFIT_LOSS_DISCLAIMER,
+      disclaimer: PROFIT_LOSS_DISCLAIMER + ' Revenue is shown excluding GST and after approved sales returns; GST collected is reported separately and is not income. Input tax credit on purchases is not tracked.',
       revenue: [
-        { label: 'In-Store Sales', amount: sales.revenue, count: sales.count },
-        { label: 'Online Orders', amount: online.revenue, count: online.count },
+        { label: 'In-Store Sales (excl. GST)', amount: basis.store.net, count: basis.store.units },
+        { label: 'Online Orders (excl. GST)', amount: basis.online.net, count: basis.online.units },
+        { label: 'Less: Sales Returns (excl. GST)', amount: -basis.returns.net, count: basis.returns.units },
         { label: 'Pre-Booking Cancellation Fees', amount: forfeiture.total, count: forfeiture.count },
       ],
       totalRevenue,
-      costOfGoodsSold: [{ label: 'Cost of Items Sold', amount: sales.cogs }],
-      totalCogs: sales.cogs,
+      costOfGoodsSold: [
+        { label: 'Cost of Items Sold (net of returns)', amount: cogsStore },
+        { label: 'Cost of Online Items (catalogue cost)', amount: basis.online.cost },
+      ],
+      totalCogs,
       grossProfit,
       grossMarginPct: totalRevenue ? (grossProfit / totalRevenue) * 100 : 0,
       expenses: [
@@ -316,19 +325,24 @@ export class ReportsService {
       totalExpenses,
       netProfit,
       netMarginPct: totalRevenue ? (netProfit / totalRevenue) * 100 : 0,
+      memo: {
+        gstCollected: basis.store.gst + basis.online.gst - basis.returns.gst,
+        grossInvoiced: basis.store.gross + basis.online.gross - basis.returns.gross,
+      },
+      warnings: basis.warnings,
     };
   }
 
   // ── Cash Flow ───────────────────────────────────────────────────────────────────
 
   async getCashFlow(from?: string, to?: string, groupBy: 'day' | 'week' | 'month' = 'day') {
-    const [salesByBucket, onlineByBucket, investmentInByBucket, oldGoldByBucket, poByBucket, investmentOutByBucket] = await Promise.all([
+    const [salesByBucket, onlineByBucket, investmentInByBucket, oldGoldByBucket, poByBucket, investmentOutByBucket, refundsByBucket] = await Promise.all([
       this.inventoryModel.aggregate([
-        { $match: { is_deleted: { $ne: true }, status: InventoryStatus.SOLD, ...rangeMatch('sold_at', from, to) } },
+        { $match: { is_deleted: { $ne: true }, status: { $in: [InventoryStatus.SOLD, InventoryStatus.RETURNED] }, sold_at: { $ne: null }, ...rangeMatch('sold_at', from, to) } },
         { $group: { _id: bucketExpr('sold_at', groupBy), total: { $sum: '$selling_price' } } },
       ]),
       this.onlineOrderModel.aggregate([
-        { $match: { payment_status: 'paid', ...rangeMatch('createdAt', from, to) } },
+        { $match: { payment_status: 'paid', status: { $nin: ['cancelled', 'refunded'] }, ...rangeMatch('createdAt', from, to) } },
         { $group: { _id: bucketExpr('createdAt', groupBy), total: { $sum: '$total' } } },
       ]),
       this.subscriptionModel.aggregate([
@@ -349,6 +363,10 @@ export class ReportsService {
         { $match: rangeMatch('redemptionHistory.date', from, to) },
         { $group: { _id: bucketExpr('redemptionHistory.date', groupBy), total: { $sum: '$redemptionHistory.amount' } } },
       ]),
+      this.inventoryModel.aggregate([
+        { $match: { is_deleted: { $ne: true }, status: InventoryStatus.RETURNED, return_refund_status: 'approved', ...rangeMatch('returned_at', from, to) } },
+        { $group: { _id: bucketExpr('returned_at', groupBy), total: { $sum: { $ifNull: ['$return_admin_approved_value', '$selling_price'] } } } },
+      ]),
     ]);
 
     const buckets = new Map<string, { period: string; cashIn: number; cashOut: number }>();
@@ -363,7 +381,7 @@ export class ReportsService {
       buckets.set(r._id, e);
     });
     addIn(salesByBucket); addIn(onlineByBucket); addIn(investmentInByBucket);
-    addOut(oldGoldByBucket); addOut(poByBucket); addOut(investmentOutByBucket);
+    addOut(oldGoldByBucket); addOut(poByBucket); addOut(investmentOutByBucket); addOut(refundsByBucket);
 
     const series = [...buckets.values()]
       .sort((a, b) => a.period.localeCompare(b.period))
@@ -391,6 +409,7 @@ export class ReportsService {
           { label: 'Old Gold Buy-Back Payments', amount: oldGoldByBucket.reduce((s, r) => s + r.total, 0) },
           { label: 'Purchase Order Payments', amount: poByBucket.reduce((s, r) => s + r.total, 0) },
           { label: 'Gold Investment Redemptions', amount: investmentOutByBucket.reduce((s, r) => s + r.total, 0) },
+          { label: 'Customer Refunds (approved returns)', amount: refundsByBucket.reduce((s, r) => s + r.total, 0) },
         ],
       },
     };
@@ -409,11 +428,11 @@ export class ReportsService {
       investmentPayable, oldGoldPayable, prebookingReceivable,
     ] = await Promise.all([
       this.inventoryModel.aggregate([
-        { $match: { is_deleted: { $ne: true }, status: InventoryStatus.SOLD, ...upTo('sold_at') } },
+        { $match: { is_deleted: { $ne: true }, status: { $in: [InventoryStatus.SOLD, InventoryStatus.RETURNED] }, sold_at: { $ne: null }, ...upTo('sold_at') } },
         { $group: { _id: null, total: { $sum: '$selling_price' } } },
       ]),
       this.onlineOrderModel.aggregate([
-        { $match: { payment_status: 'paid', ...upTo('createdAt') } },
+        { $match: { payment_status: 'paid', status: { $nin: ['cancelled', 'refunded'] }, ...upTo('createdAt') } },
         { $group: { _id: null, total: { $sum: '$total' } } },
       ]),
       this.subscriptionModel.aggregate([
@@ -435,7 +454,8 @@ export class ReportsService {
         { $group: { _id: null, total: { $sum: '$redemptionHistory.amount' } } },
       ]),
       this.inventoryModel.aggregate([
-        { $match: { is_deleted: { $ne: true }, status: { $in: [InventoryStatus.AVAILABLE, InventoryStatus.RESERVED] } } },
+        // Items back from customers are physically in stock again (their cost was reversed out of COGS).
+        { $match: { is_deleted: { $ne: true }, status: { $in: [InventoryStatus.AVAILABLE, InventoryStatus.RESERVED, InventoryStatus.RETURNED] } } },
         { $group: { _id: null, total: { $sum: '$purchase_price' }, count: { $sum: 1 } } },
       ]),
       this.inventoryModel.aggregate([
@@ -491,13 +511,23 @@ export class ReportsService {
       this.computeInventoryLoss(null, asOfDate),
     ]);
 
+    const [refundsToDate, gstBasis] = await Promise.all([
+      this.refundsPaid(undefined, asOf),
+      this.gst.getSalesBasis(undefined, asOf),
+    ]);
+    // GST collected on sales (net of credit notes) is cash the business holds but owes to the government.
+    const gstPayableToDate = gstBasis.store.gst + gstBasis.online.gst - gstBasis.returns.gst;
+
     const cashPosition =
-      (cashInSales[0]?.total ?? 0) + (cashInOnline[0]?.total ?? 0) + (cashInInvestment[0]?.total ?? 0)
+      - refundsToDate
+      + (cashInSales[0]?.total ?? 0) + (cashInOnline[0]?.total ?? 0) + (cashInInvestment[0]?.total ?? 0)
       - (cashOutOldGold[0]?.total ?? 0) - (cashOutPo[0]?.total ?? 0) - (cashOutInvestment[0]?.total ?? 0)
       - staffExpense.total - miscExpense;
 
     const emiOutstandingTotal = emiOutstanding[0]?.total ?? 0;
-    const onlinePendingTotal = onlinePending[0]?.total ?? 0;
+    // Online orders awaiting payment are not receivables: nothing is owed until the customer pays and
+    // the order is confirmed (abandoned checkouts would otherwise inflate assets). Shown as 0 on purpose.
+    const onlinePendingTotal = 0;
     const prebookingDuesTotal = prebookingReceivable[0]?.total ?? 0;
 
     const assets = {
@@ -513,8 +543,11 @@ export class ReportsService {
     const liabilities = {
       goldInvestmentPayable: investmentPayable[0]?.total ?? 0,
       oldGoldPayable: oldGoldPayable[0]?.total ?? 0,
+      // Output GST collected to date. Payments to the government are not recorded in this system,
+      // so this is gross of any remittances already made.
+      gstPayable: Math.max(0, gstPayableToDate),
     };
-    const totalLiabilities = liabilities.goldInvestmentPayable + liabilities.oldGoldPayable;
+    const totalLiabilities = liabilities.goldInvestmentPayable + liabilities.oldGoldPayable + liabilities.gstPayable;
 
     const equity = totalAssets - totalLiabilities;
 
@@ -527,7 +560,7 @@ export class ReportsService {
         breakdown: {
           inventoryItemCount: inventoryAtCost[0]?.count ?? 0,
           emiOutstandingCount: emiOutstanding[0]?.count ?? 0,
-          onlinePendingCount: onlinePending[0]?.count ?? 0,
+          onlinePendingCount: 0,
           prebookingPendingCount: prebookingReceivable[0]?.count ?? 0,
         },
       },
@@ -559,129 +592,79 @@ export class ReportsService {
   // ── Sales ───────────────────────────────────────────────────────────────────────
 
   async getSales(from?: string, to?: string, groupBy: 'item' | 'customer' | 'salesperson' | 'branch' = 'item') {
-    const baseMatch = { is_deleted: { $ne: true }, status: InventoryStatus.SOLD, ...rangeMatch('sold_at', from, to) };
+    // In-store sales (and credit notes) from the shared GST lines: revenue is NET of GST, so profit is
+    // real profit. Returns are netted off in the group they belong to; online orders are excluded
+    // (they have no branch, salesperson or per-unit cost).
+    const { lines } = await this.gst.getSalesBasis(from, to);
+    const keyOf = (l: any) =>
+      groupBy === 'item' ? l.productName
+      : groupBy === 'customer' ? (l.phone || l.customer)
+      : groupBy === 'salesperson' ? l.salesperson
+      : l.branch;
 
-    const marginStage = {
-      $addFields: {
-        marginPct: { $cond: [{ $eq: ['$revenue', 0] }, 0, { $multiply: [{ $divide: ['$profit', '$revenue'] }, 100] }] },
-      },
-    };
-
-    const groupConfig: Record<string, any> = {
-      item: [
-        { $group: { _id: '$product_id', revenue: { $sum: '$selling_price' }, cost: { $sum: '$purchase_price' }, count: { $sum: 1 } } },
-        { $lookup: { from: 'products', localField: '_id', foreignField: '_id', as: 'product' } },
-        { $unwind: { path: '$product', preserveNullAndEmptyArrays: true } },
-        { $addFields: { 'product.category_id': { $convert: { input: '$product.category_id', to: 'objectId', onError: null, onNull: null } } } },
-        { $lookup: { from: 'categories', localField: 'product.category_id', foreignField: '_id', as: 'category' } },
-        { $unwind: { path: '$category', preserveNullAndEmptyArrays: true } },
-        { $project: { _id: 0, key: { $ifNull: ['$product.name', 'Unknown Item'] }, sku: { $ifNull: ['$product.sku', ''] }, category: { $ifNull: ['$category.name', 'Uncategorized'] }, revenue: 1, cost: 1, profit: { $subtract: ['$revenue', '$cost'] }, count: 1 } },
-        marginStage,
-      ],
-      customer: [
-        {
-          $group: {
-            _id: { $ifNull: [{ $cond: [{ $ne: ['$sold_customer_phone', ''] }, '$sold_customer_phone', null] }, '$sold_customer_name'] },
-            name: { $first: { $ifNull: ['$sold_customer_name', 'Walk-in Customer'] } },
-            revenue: { $sum: '$selling_price' },
-            cost: { $sum: '$purchase_price' },
-            count: { $sum: 1 },
-          },
-        },
-        { $project: { _id: 0, key: { $ifNull: ['$name', 'Walk-in Customer'] }, revenue: 1, cost: 1, profit: { $subtract: ['$revenue', '$cost'] }, count: 1 } },
-        marginStage,
-      ],
-      salesperson: [
-        { $group: { _id: '$sold_by_user_id', revenue: { $sum: '$selling_price' }, cost: { $sum: '$purchase_price' }, count: { $sum: 1 } } },
-        { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
-        { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
-        { $project: { _id: 0, key: { $ifNull: ['$user.name', 'Unassigned'] }, revenue: 1, cost: 1, profit: { $subtract: ['$revenue', '$cost'] }, count: 1 } },
-        marginStage,
-      ],
-      branch: [
-        { $group: { _id: '$sold_at_branch_id', revenue: { $sum: '$selling_price' }, cost: { $sum: '$purchase_price' }, count: { $sum: 1 } } },
-        { $lookup: { from: 'branches', localField: '_id', foreignField: '_id', as: 'branch' } },
-        { $unwind: { path: '$branch', preserveNullAndEmptyArrays: true } },
-        { $project: { _id: 0, key: { $ifNull: ['$branch.name', 'Unallocated'] }, revenue: 1, cost: 1, profit: { $subtract: ['$revenue', '$cost'] }, count: 1 } },
-        marginStage,
-      ],
-    };
-
-    const rows = await this.inventoryModel.aggregate([
-      { $match: baseMatch },
-      ...groupConfig[groupBy],
-      { $sort: { revenue: -1 } },
-      { $limit: 500 },
-    ]);
+    const groups = new Map<string, { key: string; sku: string; category: string; revenue: number; cost: number; count: number }>();
+    for (const l of lines.filter(x => x.type !== 'Online')) {
+      const k = keyOf(l) || 'Unknown';
+      const g = groups.get(k) ?? { key: groupBy === 'customer' ? l.customer : k, sku: l.sku, category: l.category, revenue: 0, cost: 0, count: 0 };
+      g.revenue += l.taxable; g.cost += l.cost; g.count += l.qty;
+      groups.set(k, g);
+    }
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const rows = [...groups.values()]
+      .map(g => {
+        const revenue = r2(g.revenue), cost = r2(g.cost), profit = r2(g.revenue - g.cost);
+        const base: any = { key: g.key, revenue, cost, profit, count: g.count, marginPct: revenue ? (profit / revenue) * 100 : 0 };
+        if (groupBy === 'item') { base.sku = g.sku; base.category = g.category; }
+        return base;
+      })
+      .sort((x, y) => y.revenue - x.revenue)
+      .slice(0, 500);
 
     const totals = rows.reduce(
       (acc: any, r: any) => ({ revenue: acc.revenue + r.revenue, profit: acc.profit + r.profit, count: acc.count + r.count }),
       { revenue: 0, profit: 0, count: 0 },
     );
 
-    return { period: { from: from ?? null, to: to ?? null }, groupBy, rows, totals };
+    return {
+      period: { from: from ?? null, to: to ?? null },
+      groupBy,
+      basis: 'Revenue is net of GST and approved returns; profit = net revenue − purchase cost.',
+      rows,
+      totals,
+    };
   }
 
   // ── Sales Register (every individual unit sold, not grouped) ───────────────────
 
   async getSalesRegister(from?: string, to?: string, limit?: number) {
-    const baseMatch = { is_deleted: { $ne: true }, status: InventoryStatus.SOLD, ...rangeMatch('sold_at', from, to) };
-
-    const pipeline: any[] = [
-      { $match: baseMatch },
-      { $sort: { sold_at: -1 } },
-      ...(limit ? [{ $limit: limit }] : []),
-      { $lookup: { from: 'products', localField: 'product_id', foreignField: '_id', as: 'product' } },
-      { $unwind: { path: '$product', preserveNullAndEmptyArrays: true } },
-      { $addFields: { 'product.category_id': { $convert: { input: '$product.category_id', to: 'objectId', onError: null, onNull: null } } } },
-      { $lookup: { from: 'categories', localField: 'product.category_id', foreignField: '_id', as: 'category' } },
-      { $unwind: { path: '$category', preserveNullAndEmptyArrays: true } },
-      { $lookup: { from: 'branches', localField: 'sold_at_branch_id', foreignField: '_id', as: 'branch' } },
-      { $unwind: { path: '$branch', preserveNullAndEmptyArrays: true } },
-      { $lookup: { from: 'users', localField: 'sold_by_user_id', foreignField: '_id', as: 'salesperson' } },
-      { $unwind: { path: '$salesperson', preserveNullAndEmptyArrays: true } },
-      {
-        $project: {
-          _id: 0,
-          itemCode: { $ifNull: ['$unique_item_code', '$barcode'] },
-          itemName: { $ifNull: ['$product.name', 'Unknown Item'] },
-          sku: { $ifNull: ['$product.sku', ''] },
-          category: { $ifNull: ['$category.name', 'Uncategorized'] },
-          branch: { $ifNull: ['$branch.name', 'Unallocated'] },
-          salesperson: { $ifNull: ['$salesperson.name', 'Unassigned'] },
-          customerName: { $ifNull: ['$sold_customer_name', 'Walk-in Customer'] },
-          customerPhone: { $ifNull: ['$sold_customer_phone', ''] },
-          paymentMode: { $ifNull: ['$payment_mode', ''] },
-          soldAt: '$sold_at',
-          cost: '$purchase_price',
-          sellingPrice: '$selling_price',
-          profit: { $subtract: ['$selling_price', '$purchase_price'] },
-        },
-      },
-      {
-        $addFields: {
-          marginPct: { $cond: [{ $eq: ['$sellingPrice', 0] }, 0, { $multiply: [{ $divide: ['$profit', '$sellingPrice'] }, 100] }] },
-        },
-      },
-    ];
-
-    const [rows, totalCountAgg] = await Promise.all([
-      this.inventoryModel.aggregate(pipeline),
-      this.inventoryModel.aggregate([{ $match: baseMatch }, { $count: 'count' }]),
-    ]);
-
-    const totalCount = totalCountAgg[0]?.count ?? 0;
-    const totals = rows.reduce(
-      (acc: any, r: any) => ({ revenue: acc.revenue + r.sellingPrice, cost: acc.cost + r.cost, profit: acc.profit + r.profit }),
-      { revenue: 0, cost: 0, profit: 0 },
-    );
+    const { lines, warnings } = await this.gst.getSalesBasis(from, to);
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    // Every unit sold in the period (store sales). `sellingPrice` is what the customer paid (GST included);
+    // revenue and profit are net of GST.
+    const all = lines
+      .filter(l => l.type === 'B2B' || l.type === 'B2C')
+      .sort((a, b) => +new Date(b.date) - +new Date(a.date))
+      .map(l => {
+        const net = r2(l.taxable), cost = r2(l.cost), profit = r2(l.taxable - l.cost);
+        return {
+          itemCode: l.invoiceNo, itemName: l.productName, sku: l.sku, category: l.category, branch: l.branch,
+          salesperson: l.salesperson, customerName: l.customer, customerPhone: l.phone, paymentMode: l.paymentMode,
+          soldAt: l.date, cost, sellingPrice: r2(l.total), netRevenue: net, gst: r2(l.total - l.taxable), profit,
+          marginPct: net ? (profit / net) * 100 : 0,
+        };
+      });
+    const rows = limit ? all.slice(0, limit) : all;
+    const sum = (k: 'netRevenue' | 'cost' | 'profit' | 'sellingPrice' | 'gst') => r2(rows.reduce((s, r) => s + r[k], 0));
+    const revenue = sum('netRevenue');
+    const profit = sum('profit');
 
     return {
       period: { from: from ?? null, to: to ?? null },
       rows,
-      totals: { ...totals, count: rows.length, marginPct: totals.revenue ? (totals.profit / totals.revenue) * 100 : 0 },
-      totalCount,
-      truncated: !!limit && totalCount > rows.length,
+      totals: { revenue, grossRevenue: sum('sellingPrice'), gst: sum('gst'), cost: sum('cost'), profit, count: rows.length, marginPct: revenue ? (profit / revenue) * 100 : 0 },
+      totalCount: all.length,
+      truncated: !!limit && all.length > rows.length,
+      warnings,
     };
   }
 
@@ -841,9 +824,11 @@ export class ReportsService {
   async getPurchases(from?: string, to?: string, groupBy: 'vendor' | 'status' = 'vendor') {
     const baseMatch = rangeMatch('purchase_date', from, to);
 
+    // Draft and voided orders are not purchases — "by vendor" counts published orders only.
+    // ("by status" keeps every status because the status split is the point.)
     const rows = groupBy === 'vendor'
       ? await this.poModel.aggregate([
-          { $match: baseMatch },
+          { $match: { ...baseMatch, status: PurchaseOrderStatus.PUBLISHED } },
           { $group: { _id: { $ifNull: ['$supplier_id', '$vendor_name'] }, total: { $sum: '$total_amount' }, count: { $sum: 1 }, name: { $first: '$vendor_name' } } },
           { $lookup: { from: 'suppliers', localField: '_id', foreignField: '_id', as: 'supplier' } },
           { $unwind: { path: '$supplier', preserveNullAndEmptyArrays: true } },
@@ -1007,6 +992,7 @@ export class ReportsService {
     const totalCount = sellable.reduce((s: number, r: any) => s + r.count, 0);
 
     return {
+      note: 'Retail value is the selling price stored on each item; it is not re-priced at today\'s gold rate, so treat it as indicative. Cost values are exact.',
       totalCost,
       totalRetail,
       potentialMargin: totalRetail - totalCost,
@@ -1026,11 +1012,8 @@ export class ReportsService {
         .select('unique_item_code barcode sold_customer_name sold_customer_phone selling_price emi_down_payment sold_at')
         .lean()
         .exec(),
-      this.onlineOrderModel
-        .find({ payment_status: 'pending' })
-        .select('order_number customer_name customer_phone total createdAt')
-        .lean()
-        .exec(),
+      // Unpaid online checkouts are deliberately not receivables (see balance sheet).
+      Promise.resolve([] as any[]),
       this.inventoryModel
         .find({ is_deleted: { $ne: true }, status: InventoryStatus.RESERVED, prebooking_advance_id: { $ne: null } })
         .select('unique_item_code barcode prebooking_customer_name prebooking_customer_phone selling_price prebooking_advance_amount prebooked_at')

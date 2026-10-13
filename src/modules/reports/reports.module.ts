@@ -15,6 +15,12 @@ import { User, UserSchema } from '../../users/schemas/user.schema';
 import { Reimbursement, ReimbursementSchema } from '../hr/schemas/reimbursement.schema';
 import { Incentive, IncentiveSchema } from '../incentives/schemas/incentive.schema';
 import { CustomerAdvance, CustomerAdvanceSchema } from '../customers/schemas/customer-advance.schema';
+import { Category, CategorySchema } from '../categories/schemas/category.schema';
+import { Product, ProductSchema } from '../products/schemas/product.schema';
+import { Customer, CustomerSchema } from '../customers/schemas/customer.schema';
+import { GstReportService } from './gst-report.service';
+import { AccountingService } from './accounting.service';
+import { ReconciliationService } from './reconciliation.service';
 import { SettingsModule } from '../settings/settings.module';
 
 @Module({
@@ -31,10 +37,14 @@ import { SettingsModule } from '../settings/settings.module';
       { name: Reimbursement.name, schema: ReimbursementSchema },
       { name: Incentive.name, schema: IncentiveSchema },
       { name: CustomerAdvance.name, schema: CustomerAdvanceSchema },
+      { name: Product.name, schema: ProductSchema },
+      { name: Category.name, schema: CategorySchema },
+      { name: Customer.name, schema: CustomerSchema },
     ]),
     SettingsModule,
   ],
   controllers: [ReportsController],
-  providers: [ReportsService, ReportsPdfService, ReportsExcelService],
+  providers: [ReportsService, ReportsPdfService, ReportsExcelService, GstReportService, AccountingService, ReconciliationService],
+  exports: [ReportsService, GstReportService, AccountingService, ReconciliationService],
 })
 export class ReportsModule {}

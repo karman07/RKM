@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Put,
   Body,
   Param,
   Query,
@@ -29,13 +30,13 @@ export class HrController {
   // ─── Leave Requests ──────────────────────────────────────────────────────────
 
   @Post('leaves')
-  @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.CASHIER, UserRole.SALES)
+  @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.CASHIER, UserRole.SALES, UserRole.CUSTOM)
   createLeave(@Body() data: any, @Req() req: any) {
     return this.hrService.createLeaveRequest(getUserId(req), data);
   }
 
   @Get('leaves/mine')
-  @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.CASHIER, UserRole.SALES)
+  @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.CASHIER, UserRole.SALES, UserRole.CUSTOM)
   getMyLeaves(@Req() req: any) {
     return this.hrService.getMyLeaves(getUserId(req));
   }
@@ -60,16 +61,61 @@ export class HrController {
     return this.hrService.reviewLeave(id, getUserId(req), body.status, body.admin_note);
   }
 
+  // ─── Leave policy & balances ─────────────────────────────────────────────────
+
+  @Get('leave-policy')
+  @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.CASHIER, UserRole.SALES, UserRole.CUSTOM)
+  getLeavePolicy(@Query('year') year?: string) {
+    return this.hrService.getPolicy(Number(year) || new Date().getFullYear());
+  }
+
+  @Put('leave-policy')
+  @Roles(UserRole.ADMIN)
+  setLeavePolicy(@Body() body: { year: number; allowances: Record<string, number | null> }, @Req() req: any) {
+    return this.hrService.setPolicy(Number(body.year) || new Date().getFullYear(), body.allowances, getUserId(req));
+  }
+
+  @Post('leave-policy/copy')
+  @Roles(UserRole.ADMIN)
+  copyLeavePolicy(@Body() body: { from_year: number; to_year: number }, @Req() req: any) {
+    return this.hrService.copyPolicy(Number(body.from_year), Number(body.to_year), getUserId(req));
+  }
+
+  /** The caller's own balances. */
+  @Get('leave-balance/mine')
+  @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.CASHIER, UserRole.SALES, UserRole.CUSTOM)
+  getMyLeaveBalance(@Req() req: any, @Query('year') year?: string) {
+    return this.hrService.getBalance(getUserId(req), Number(year) || new Date().getFullYear());
+  }
+
+  /** Everyone's balances (admin / HR). */
+  @Get('leave-balances')
+  @Roles(UserRole.ADMIN)
+  getAllLeaveBalances(@Query('year') year?: string) {
+    return this.hrService.getAllBalances(Number(year) || new Date().getFullYear());
+  }
+
+  /** Per-person override of the yearly policy. */
+  @Put('leave-balances/:userId')
+  @Roles(UserRole.ADMIN)
+  setLeaveEntitlement(
+    @Param('userId') userId: string,
+    @Body() body: { year: number; allowances: Record<string, number | null> },
+    @Req() req: any,
+  ) {
+    return this.hrService.setEntitlement(userId, Number(body.year) || new Date().getFullYear(), body.allowances, getUserId(req));
+  }
+
   // ─── Reimbursements ──────────────────────────────────────────────────────────
 
   @Post('reimbursements')
-  @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.CASHIER, UserRole.SALES)
+  @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.CASHIER, UserRole.SALES, UserRole.CUSTOM)
   createReimbursement(@Body() data: any, @Req() req: any) {
     return this.hrService.createReimbursement(getUserId(req), data);
   }
 
   @Get('reimbursements/mine')
-  @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.CASHIER, UserRole.SALES)
+  @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.CASHIER, UserRole.SALES, UserRole.CUSTOM)
   getMyReimbursements(@Req() req: any) {
     return this.hrService.getMyReimbursements(getUserId(req));
   }
@@ -89,7 +135,7 @@ export class HrController {
   @Roles(UserRole.ADMIN)
   createReimbursementForEmployee(
     @Param('employeeId') employeeId: string,
-    @Body() data: { category: string; amount: number; description: string; branch_id?: string; auto_approve?: boolean },
+    @Body() data: { category: string; amount: number; description: string; branch_id?: string; auto_approve?: boolean; receipt_url?: string },
     @Req() req: any,
   ) {
     return this.hrService.createReimbursementForEmployee(getUserId(req), employeeId, data);

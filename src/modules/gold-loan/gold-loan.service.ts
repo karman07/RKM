@@ -1,3 +1,4 @@
+import { cleanItemImages } from '../uploads/item-images.util';
 import {
   Injectable,
   NotFoundException,
@@ -386,6 +387,7 @@ export class GoldLoanService {
         estimated_value,
         stones,
         stones_value,
+        images: cleanItemImages(item, 'item'),
       };
     });
   }

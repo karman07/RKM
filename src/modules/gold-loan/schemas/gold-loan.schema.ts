@@ -78,6 +78,10 @@ export class GLItem {
   /** Sum of stone estimated values for this item */
   @Prop({ type: Number, default: 0 })
   stones_value: number;
+
+  /** Photos of the pledged item (server paths under /static/item-photos/) — at least one is required */
+  @Prop({ type: [String], default: [] })
+  images: string[];
 }
 const GLItemSchema = SchemaFactory.createForClass(GLItem);
 

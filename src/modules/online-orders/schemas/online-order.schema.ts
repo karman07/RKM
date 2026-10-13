@@ -24,6 +24,9 @@ export class OnlineOrder {
   @Prop({ type: [OrderItemSchema], default: [] }) items: OrderItem[];
   @Prop({ default: 0 }) subtotal: number;
   @Prop({ default: 0 }) delivery_charge: number;
+  /** Promo code applied at checkout, and the rupee amount it took off the subtotal */
+  @Prop({ default: '' }) coupon_code: string;
+  @Prop({ default: 0 }) discount_amount: number;
   @Prop({ default: 0 }) total: number;
   @Prop({ default: 'pending' }) status: OrderStatus;
   @Prop({ default: 'pending' }) payment_status: 'paid' | 'pending' | 'refunded';

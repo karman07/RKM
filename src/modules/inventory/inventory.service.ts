@@ -56,6 +56,8 @@ const STATUS_TRANSITIONS: Record<InventoryStatus, InventoryStatus[]> = {
   [InventoryStatus.STOLEN]: [InventoryStatus.AVAILABLE],
   // Normally only reached via a Vendor Return Order (raise/cancel), but allow manual recovery just in case.
   [InventoryStatus.RETURNED_TO_VENDOR]: [InventoryStatus.AVAILABLE],
+  // Enters/leaves via a Stock Issue Challan (issue / check-in / cancel); the only manual exit is reporting it lost.
+  [InventoryStatus.ISSUED_TO_SALES]: [InventoryStatus.STOLEN],
 };
 
 @Injectable()
@@ -702,6 +704,62 @@ export class InventoryService {
         },
       );
     }
+  }
+
+  // ─── Sales-team stock issue ────────────────────────────────────────────────
+
+  /**
+   * Fetches items (product populated) for a Stock Issue Challan and checks each one is in
+   * sellable stock (AVAILABLE), not deleted, and — when branchId is given — belongs to that branch.
+   */
+  async getItemsForStockIssue(ids: string[], branchId?: string) {
+    ids.forEach(id => this.validateObjectId(id));
+
+    const items = await this.inventoryModel
+      .find({ _id: { $in: ids } })
+      .populate({ path: 'product_id', select: 'name sku images metal_type purity category_id' })
+      .exec();
+
+    const found = new Map(items.map(i => [(i._id as Types.ObjectId).toString(), i]));
+    const ineligible: string[] = [];
+    for (const id of ids) {
+      const item = found.get(id);
+      const wrongBranch = branchId && item?.branch_id && item.branch_id.toString() !== branchId;
+      if (!item || item.is_deleted || item.status !== InventoryStatus.AVAILABLE || wrongBranch) {
+        ineligible.push(item?.barcode || id);
+      }
+    }
+    if (ineligible.length) {
+      throw new BadRequestException(
+        `These items cannot be issued (must be available stock of the selected branch): ${ineligible.join(', ')}`,
+      );
+    }
+    return items;
+  }
+
+  /** Flips items to ISSUED_TO_SALES atomically per item; fails if any was taken in the meantime. */
+  async markIssuedToSales(ids: string[], stockIssueId: string): Promise<void> {
+    const done: string[] = [];
+    for (const id of ids) {
+      const res = await this.inventoryModel.updateOne(
+        { _id: id, status: InventoryStatus.AVAILABLE, is_deleted: { $ne: true } },
+        { $set: { status: InventoryStatus.ISSUED_TO_SALES, stock_issue_id: new Types.ObjectId(stockIssueId) } },
+      );
+      if (res.modifiedCount !== 1) {
+        await this.releaseFromSalesIssue(done); // roll back the ones already flipped
+        throw new BadRequestException('One or more items were issued or sold by someone else — please reselect.');
+      }
+      done.push(id);
+    }
+  }
+
+  /** Puts issued items back into sellable stock (check-in or cancelled challan). */
+  async releaseFromSalesIssue(ids: string[]): Promise<void> {
+    if (!ids.length) return;
+    await this.inventoryModel.updateMany(
+      { _id: { $in: ids }, status: InventoryStatus.ISSUED_TO_SALES },
+      { $set: { status: InventoryStatus.AVAILABLE, stock_issue_id: null } },
+    );
   }
 
   // ─── Get Item Count for Product ────────────────────────────────────────────
@@ -1613,11 +1671,7 @@ export class InventoryService {
       }
       // Split payments — normalise and store.
       if (Array.isArray(dto.payment_splits) && dto.payment_splits.length > 0) {
-        (item as any).payment_splits = dto.payment_splits.map(s => ({
-          mode: s.mode?.trim() ?? 'cash',
-          amount: Number(s.amount) || 0,
-          reference: s.reference?.trim() ?? '',
-        }));
+        (item as any).payment_splits = this.normalisePaymentSplits(dto.payment_splits);
         // item.payment_mode was already set above from dto.payment_mode (required & validated) —
         // that's the customer's actual chosen method for the bill. Don't overwrite it with a
         // split's mode: investment/advance redemption splits are always listed first when
@@ -2961,5 +3015,26 @@ export class InventoryService {
     }
 
     throw new BadRequestException('Invalid channel — must be sms, whatsapp, or email');
+  }
+
+  /**
+   * Validates and normalises the payment methods recorded on a sale (e.g. part cash, part UPI):
+   * known modes only, no negative amounts, and zero-amount rows dropped. The admin / manager
+   * portals additionally insist on a reference / transaction ID for digital payments — that is
+   * enforced in their forms rather than here, because cashier sale-requests and sales-team
+   * enquiries reach this same path when they are approved.
+   */
+  private normalisePaymentSplits(splits: Array<{ mode: string; amount: number; reference?: string }>) {
+    const KNOWN = ['cash', 'card', 'upi', 'bank_transfer', 'cheque', 'emi', 'gold_exchange', 'other', 'investment_balance', 'advance_balance'];
+    const out = splits.map(s => ({
+      mode: (s.mode ?? 'cash').trim().toLowerCase(),
+      amount: Number(s.amount) || 0,
+      reference: s.reference?.trim() ?? '',
+    }));
+    for (const sp of out) {
+      if (!KNOWN.includes(sp.mode)) throw new BadRequestException(`Unknown payment mode '${sp.mode}'`);
+      if (sp.amount < 0) throw new BadRequestException('Payment amounts cannot be negative');
+    }
+    return out.filter(sp => sp.amount > 0);
   }
 }

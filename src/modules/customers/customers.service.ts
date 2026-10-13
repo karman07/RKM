@@ -263,6 +263,8 @@ export class CustomersService {
         items: order.items,
         subtotal: order.subtotal,
         delivery_charge: order.delivery_charge,
+        coupon_code: order.coupon_code || '',
+        discount_amount: order.discount_amount || 0,
         total: order.total,
         status: order.status,
         payment_status: order.payment_status,

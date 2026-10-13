@@ -415,6 +415,7 @@ export class ReportsPdfService {
     sectionHeading(doc, 'LIABILITIES');
     statementRow(doc, `Gold Investment Payable (${data.liabilities.breakdown.investmentSubscriptionCount} subscriptions)`, data.liabilities.goldInvestmentPayable);
     statementRow(doc, `Old Gold Payable — Melt Authorized (${data.liabilities.breakdown.oldGoldPendingCount})`, data.liabilities.oldGoldPayable);
+    statementRow(doc, 'GST Payable — output tax collected (remittances not recorded)', data.liabilities.gstPayable ?? 0);
     statementRow(doc, 'TOTAL LIABILITIES', data.totalLiabilities, { bold: true, color: NAVY, ruleAbove: true, ruleBelow: true });
 
     doc.moveDown(0.4);

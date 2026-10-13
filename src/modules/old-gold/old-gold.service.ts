@@ -1,3 +1,4 @@
+import { cleanItemImages } from '../uploads/item-images.util';
 import {
   Injectable,
   NotFoundException,
@@ -268,6 +269,7 @@ export class OldGoldService {
           hasOverride && item.override_value != null ? Number(item.override_value) : null,
         stones,
         stones_value,
+        images: cleanItemImages(item, 'item'),
       };
     });
   }

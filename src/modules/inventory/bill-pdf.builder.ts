@@ -16,7 +16,7 @@ function fmtDec(n: number, d = 3): string {
   return (n || 0).toFixed(d);
 }
 
-function inWords(n: number): string {
+export function inWords(n: number): string {
   const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
     'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
   const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
@@ -49,7 +49,7 @@ function friendlyPaymentMode(mode?: string | null): string {
   return mode.toUpperCase().replace(/_/g, ' ');
 }
 
-function esc(v: unknown): string {
+export function esc(v: unknown): string {
   if (v === null || v === undefined) return '';
   return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -101,7 +101,11 @@ export function buildBillPrintHtml(items: any[], date: string, customerRecordId:
       metalPrice, makingCharge,
       subtotal, discountAmt, taxable, grossPrice,
       taxBreakdown,
-      combinedDisAmt: parseFloat((((item.admin_discount ?? 0) + (item.manager_discount ?? 0)) * grossPrice / 100).toFixed(2)),
+      // Admin discount applies to the item's list price; the manager's % applies on what's left.
+      adminPct: Number(item.admin_discount) || 0,
+      mgrPct: Number(item.manager_discount) || 0,
+      adminDisAmt: parseFloat((grossPrice * (Number(item.admin_discount) || 0) / 100).toFixed(2)),
+      mgrDisAmt: parseFloat(((grossPrice - grossPrice * (Number(item.admin_discount) || 0) / 100) * (Number(item.manager_discount) || 0) / 100).toFixed(2)),
       finalSelling, payable,
       netWeight: product?.net_weight ?? 0,
       grossWeight: product?.gross_weight ?? 0,
@@ -123,7 +127,15 @@ export function buildBillPrintHtml(items: any[], date: string, customerRecordId:
   const totalGross = itemRows.reduce((a, r) => a + r.grossPrice, 0);
   const totalMaking = itemRows.reduce((a, r) => a + r.makingCharge, 0);
   const totalDisAmt = itemRows.reduce((a, r) => a + r.discountAmt, 0);
-  const totalMgrDis = itemRows.reduce((a, r) => a + r.combinedDisAmt, 0);
+  const totalAdminDis = itemRows.reduce((a, r) => a + r.adminDisAmt, 0);
+  const totalMgrDis = itemRows.reduce((a, r) => a + r.mgrDisAmt, 0);
+  // Show the % in the label only when every item on the bill carries the same one.
+  const uniformPct = (pick: (r: (typeof itemRows)[number]) => number) => {
+    const set = new Set(itemRows.map(pick));
+    return set.size === 1 ? ` (${fmtDec([...set][0], 2).replace(/\.?0+$/, '')}%)` : '';
+  };
+  const adminPctLabel = uniformPct(r => r.adminPct);
+  const mgrPctLabel = uniformPct(r => r.mgrPct);
   const taxTotals: Record<string, number> = {};
   allTaxNames.forEach(name => {
     taxTotals[name] = itemRows.reduce((s, r) => s + (r.taxBreakdown.find(t => t.name === name)?.amount ?? 0), 0);
@@ -139,9 +151,12 @@ export function buildBillPrintHtml(items: any[], date: string, customerRecordId:
   const totalAdvanceMakingDiscount = items.reduce((s, it) => s + (it.advance_making_charges_discount ?? 0), 0);
 
   const sharedPaymentSplits: { mode: string; amount: number; reference?: string }[] = customer?.payment_splits ?? [];
-  const totalPayable = sharedPaymentSplits.length > 0
+  const rawPayable = sharedPaymentSplits.length > 0
     ? sharedPaymentSplits.reduce((s, sp) => s + (sp.amount || 0), 0)
     : itemRows.reduce((a, r) => a + r.payable, 0);
+  // Bills are settled in whole rupees — round the payable off automatically and show the difference.
+  const totalPayable = Math.round(rawPayable);
+  const roundOff = totalPayable - rawPayable;
   const modeDisplay = sharedPaymentSplits.length > 1
     ? sharedPaymentSplits.map(sp => `${friendlyPaymentMode(sp.mode)} Rs.${fmt(sp.amount ?? 0)}`).join(' + ')
     : sharedPaymentSplits.length === 1
@@ -170,6 +185,11 @@ export function buildBillPrintHtml(items: any[], date: string, customerRecordId:
         <div style="color:#555;font-size:8px;margin-top:1px;">${esc(row.metalType.toUpperCase())} ${esc(row.purity)} &bull; SKU: ${esc(row.product?.sku ?? row.item.unique_item_code)}</div>
         <div style="color:#888;font-size:7.5px;">ID: ${esc(row.item.unique_item_code)}</div>
         ${row.item.hallmark ? `<div style="color:#888;font-size:7.5px;">Hallmark: ${esc(row.item.hallmark)}</div>` : ''}
+        ${(row.adminPct > 0 || row.mgrPct > 0 || row.discountAmt > 0) ? `<div style="color:#7A1C2A;font-size:7.5px;font-weight:600;">Discount: ${[
+          row.discountAmt > 0 ? `Scheme Rs.${fmt(row.discountAmt)}` : '',
+          row.adminPct > 0 ? `${row.adminPct}% admin (Rs.${fmt(row.adminDisAmt)})` : '',
+          row.mgrPct > 0 ? `${row.mgrPct}% manager (Rs.${fmt(row.mgrDisAmt)})` : '',
+        ].filter(Boolean).join(' + ')}</div>` : ''}
       </td>
       <td style="${cellR}text-align:left;font-size:8px;color:#444;">${row.hsn}</td>
       <td style="${cellR}text-align:center;font-weight:600;">1N</td>
@@ -194,16 +214,21 @@ export function buildBillPrintHtml(items: any[], date: string, customerRecordId:
       <td style="${cellR}font-weight:700;font-size:10px;padding-right:12px;">Rs.${fmt(row.grossPrice)}</td>
     </tr>`).join('');
 
+  // Everything knocked off the price: scheme + admin + manager discounts and the making-charge waivers.
+  const totalSavings = totalDisAmt + totalAdminDis + totalMgrDis + totalMakingDiscount + totalAdvanceMakingDiscount;
+
   const summaryRows = ([
     { label: 'Gross Product Value', value: `Rs.${fmt(totalSubtotal)}` },
-    totalDisAmt > 0 ? { label: 'Product Discount', value: `- Rs.${fmt(totalDisAmt)}` } : null,
-    totalMgrDis > 0 ? { label: 'Additional Discount (Manager)', value: `- Rs.${fmt(totalMgrDis)}` } : null,
+    totalDisAmt > 0 ? { label: 'Product / Scheme Discount', value: `- Rs.${fmt(totalDisAmt)}` } : null,
     { label: 'Taxable Value', value: `Rs.${fmt(totalTaxable)}` },
     { label: 'Total Tax (GST)', value: `Rs.${fmt(grandTotalTax)}` },
+    totalAdminDis > 0 ? { label: `Less: Admin Discount${adminPctLabel}`, value: `- Rs.${fmt(totalAdminDis)}`, color: '#7A1C2A' } : null,
+    totalMgrDis > 0 ? { label: `Less: Manager Discount${mgrPctLabel}`, value: `- Rs.${fmt(totalMgrDis)}`, color: '#7A1C2A' } : null,
     totalInvestmentRedeemed > 0 ? { label: 'Investment Balance Applied', value: `- Rs.${fmt(totalInvestmentRedeemed)}`, color: '#7A1C2A' } : null,
     totalMakingDiscount > 0 ? { label: 'Making Charges Discount (Scheme)', value: `- Rs.${fmt(totalMakingDiscount)}`, color: '#7A1C2A' } : null,
     totalAdvanceRedeemed > 0 ? { label: 'Advance Payment Applied', value: `- Rs.${fmt(totalAdvanceRedeemed)}`, color: '#7A1C2A' } : null,
     totalAdvanceMakingDiscount > 0 ? { label: 'Making Charges Discount (Advance)', value: `- Rs.${fmt(totalAdvanceMakingDiscount)}`, color: '#7A1C2A' } : null,
+    Math.abs(roundOff) >= 0.005 ? { label: 'Round Off', value: `${roundOff > 0 ? '+' : '-'} Rs.${Math.abs(roundOff).toFixed(2)}` } : null,
   ].filter(Boolean) as { label: string; value: string; color?: string }[])
     .map(row => `
       <div style="display:flex;justify-content:space-between;padding:2.5px 0;border-bottom:1px solid #eee;">
@@ -367,6 +392,7 @@ export function buildBillPrintHtml(items: any[], date: string, customerRecordId:
         </div>
         <div style="margin-top:4px;font-size:8px;color:#333;font-style:italic;">Rupees ${inWords(totalPayable)}</div>
       </div>
+      ${totalSavings > 0 ? `<div style="margin-top:6px;padding:5px 10px;border:1px dashed #7A1C2A;color:#7A1C2A;font-weight:700;font-size:9.5px;display:flex;justify-content:space-between;"><span>Total Discount / You Saved</span><span>Rs.${fmt(totalSavings)}</span></div>` : ''}
     </div>
   </div>
 
@@ -477,16 +503,23 @@ export function buildOnlineOrderInvoiceHtml(order: any): string {
       <div style="display:flex;justify-content:space-between;padding:2.5px 0;border-bottom:1px solid #eee;">
         <span>Subtotal</span><span>Rs.${fmt(order.subtotal)}</span>
       </div>
+      ${order.discount_amount > 0 ? `<div style="display:flex;justify-content:space-between;padding:2.5px 0;border-bottom:1px solid #eee;color:#7A1C2A;">
+        <span>Coupon${order.coupon_code ? ` (${esc(order.coupon_code)})` : ''}</span><span>- Rs.${fmt(order.discount_amount)}</span>
+      </div>` : ''}
       <div style="display:flex;justify-content:space-between;padding:2.5px 0;border-bottom:1px solid #eee;">
         <span>Delivery Charge</span><span>${order.delivery_charge > 0 ? `Rs.${fmt(order.delivery_charge)}` : 'Free'}</span>
       </div>
+      ${Math.abs(Math.round(order.total) - order.total) >= 0.005 ? `<div style="display:flex;justify-content:space-between;padding:2.5px 0;border-bottom:1px solid #eee;">
+        <span>Round Off</span><span>${Math.round(order.total) - order.total > 0 ? '+' : '-'} Rs.${Math.abs(Math.round(order.total) - order.total).toFixed(2)}</span>
+      </div>` : ''}
       <div style="margin-top:8px;padding:10px 14px;background:#fff;color:#000;border:1px solid #000;border-radius:2px;">
         <div style="display:flex;justify-content:space-between;font-weight:900;font-size:14px;">
           <span>Total Amount</span>
-          <span>Rs.${fmt(order.total)}</span>
+          <span>Rs.${fmt(Math.round(order.total))}</span>
         </div>
-        <div style="margin-top:4px;font-size:8px;color:#333;font-style:italic;">Rupees ${inWords(order.total)}</div>
+        <div style="margin-top:4px;font-size:8px;color:#333;font-style:italic;">Rupees ${inWords(Math.round(order.total))}</div>
       </div>
+      ${order.discount_amount > 0 ? `<div style="margin-top:6px;padding:5px 10px;border:1px dashed #7A1C2A;color:#7A1C2A;font-weight:700;font-size:9.5px;display:flex;justify-content:space-between;"><span>Total Discount / You Saved</span><span>Rs.${fmt(order.discount_amount)}</span></div>` : ''}
     </div>
   </div>
 

@@ -23,12 +23,11 @@ export class BarcodeService {
       // Dynamic import for bwip-js (ESM-first package)
       const bwipjs = await import('bwip-js');
       const png: Buffer = await bwipjs.default.toBuffer({
-        bcid: 'code128',
+        bcid: 'qrcode',
         text: barcodeText,
-        scale: 3,
-        height: 10,
-        includetext: true,
-        textxalign: 'center',
+        scale: 6,
+        paddingwidth: 2,
+        paddingheight: 2,
         backgroundcolor: 'ffffff',
       });
       writeFileSync(filepath, png);

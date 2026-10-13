@@ -13,6 +13,9 @@ export enum InventoryStatus {
   /** Sent back to the supplier via a Vendor Return Order — distinct from RETURNED,
    *  which is a customer-to-store return/refund. */
   RETURNED_TO_VENDOR = 'returned_to_vendor',
+  /** Handed to a sales-team member for on-ground selling under a Stock Issue Challan —
+   *  out of sellable counter stock until the challan is checked back in. */
+  ISSUED_TO_SALES = 'issued_to_sales',
 }
 
 export enum ItemLocation {
@@ -229,6 +232,11 @@ export class InventoryItem {
 
   @Prop({ type: Date, default: null })
   returned_to_vendor_at: Date | null;
+
+  // ─── Sales-Team Stock Issue ──────────────────────────────────────────────────
+  /** The Stock Issue Challan this item is currently out on (null when not issued) */
+  @Prop({ type: Types.ObjectId, ref: 'StockIssue', default: null })
+  stock_issue_id: Types.ObjectId | null;
 
   // ─── Damage Tracking ─────────────────────────────────────────────────────────
   @Prop({ trim: true, default: '' })

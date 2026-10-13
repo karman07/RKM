@@ -119,4 +119,30 @@ export class UploadsController {
     if (!file) throw new BadRequestException('No file uploaded');
     return this.uploadsService.buildFileResponse('user-docs', file);
   }
+
+  /**
+   * Upload a reimbursement receipt / bill (image or PDF, max 10 MB).
+   * Any staff role can attach one — every reimbursement claim must carry one.
+   */
+  @Post('reimbursement-receipts')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER, UserRole.SALES, UserRole.CUSTOM)
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FileInterceptor('file', multerDocConfig('reimbursement-receipts')))
+  uploadReimbursementReceipt(@UploadedFile() file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No file uploaded');
+    return this.uploadsService.buildFileResponse('reimbursement-receipts', file);
+  }
+
+  /**
+   * Upload photos of an old-gold / gold-loan item (images only, up to 6 per request).
+   * The returned paths are stored on the item's `images` array.
+   */
+  @Post('item-images')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER, UserRole.CUSTOM)
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FilesInterceptor('files', 6, multerConfig('item-photos')))
+  uploadItemImages(@UploadedFiles() files: Express.Multer.File[]) {
+    if (!files?.length) throw new BadRequestException('No images uploaded');
+    return { urls: files.map((f) => `/static/item-photos/${f.filename}`) };
+  }
 }

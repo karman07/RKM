@@ -84,6 +84,10 @@ export class OGLineItem {
   /** Sum of effective stone values (after refund %) for this item */
   @Prop({ type: Number, default: 0 })
   stones_value: number;
+
+  /** Photos of the item as received (server paths under /static/item-photos/) — at least one is required */
+  @Prop({ type: [String], default: [] })
+  images: string[];
 }
 const OGLineItemSchema = SchemaFactory.createForClass(OGLineItem);
 

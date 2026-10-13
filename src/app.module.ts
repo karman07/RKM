@@ -1,3 +1,4 @@
+import { AiModule } from './modules/ai/ai.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
@@ -18,6 +19,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { PurchaseOrdersModule } from './modules/purchase-orders/purchase-orders.module';
 import { VendorReturnsModule } from './modules/vendor-returns/vendor-returns.module';
+import { StockIssuesModule } from './modules/stock-issues/stock-issues.module';
 import { BranchesModule } from './modules/branches/branches.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { CustomersModule } from './modules/customers/customers.module';
@@ -67,6 +69,7 @@ import { MiscPaymentsModule } from './modules/misc-payments/misc-payments.module
     AnalyticsModule,
     PurchaseOrdersModule,
     VendorReturnsModule,
+    StockIssuesModule,
     SuppliersModule,
     BranchesModule,
     AttendanceModule,
@@ -82,6 +85,7 @@ import { MiscPaymentsModule } from './modules/misc-payments/misc-payments.module
     HolidaysModule,
     LocationViolationsModule,
     CustomRolesModule,
+    AiModule,
     CustomFieldsModule,
     OldGoldModule,
     PayrollModule,
