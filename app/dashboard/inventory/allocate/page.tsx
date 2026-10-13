@@ -1,9 +1,12 @@
 'use client';
 
+import BarcodeScannerModal from '@/components/BarcodeScannerModal';
+import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import { useCallback, useEffect, useState } from 'react';
 import {
   getBranches,
   getInventory,
+  getInventoryByBarcode,
   getProducts,
   assignInventoryBranch,
   staticUrl,
@@ -110,6 +113,23 @@ export default function BranchAllocationPage() {
 
   const totalPages = Math.max(1, Math.ceil(total / LIMIT));
   const selectedCount = selectedIds.length;
+  const [showQrScanner, setShowQrScanner] = useState(false);
+
+  // Camera scan: every QR code scanned is added to the selection (sold items are skipped).
+  async function handleQrScan(code: string) {
+    try {
+      const item = await getInventoryByBarcode(code);
+      if (!item) { showToast(`No item found for QR code ${code}`, 'error'); return; }
+      if (item.status === 'sold') { showToast(`${item.unique_item_code} is sold and cannot be reassigned`, 'error'); return; }
+      setSelectedIds(prev => prev.includes(item._id) ? prev : [...prev, item._id]);
+      showToast(`Selected ${item.unique_item_code}`, 'success');
+    } catch {
+      showToast(`No item found for QR code ${code}`, 'error');
+    }
+  }
+
+  // Hardware QR / barcode scanner (USB or Bluetooth, keyboard mode): every scan adds the item.
+  useHardwareScanner((code) => { void handleQrScan(code); });
 
   // Selection is kept across search/filter/page changes; "select all" only touches the rows on screen.
   function toggleAll() {
@@ -173,11 +193,25 @@ export default function BranchAllocationPage() {
             Select inventory items and assign them to a branch. Sold items cannot be reassigned.
           </p>
         </div>
+        <div className="flex items-end gap-4">
+        <button
+          type="button"
+          onClick={() => setShowQrScanner(true)}
+          className="px-5 py-3 rounded-xl bg-blue-50 text-blue-600 border border-blue-100 text-xs font-black uppercase tracking-widest hover:bg-blue-100 transition-all active:scale-95 inline-flex items-center gap-2"
+        >
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 14h2v2h-2zM14 18h2v2h-2zM18 18h2v2h-2z" /></svg>
+          Scan QR to select
+        </button>
         <div className="text-right">
           <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Matching</p>
           <p className="text-2xl font-black text-slate-900">{total}</p>
         </div>
+        </div>
       </div>
+
+      {showQrScanner && (
+        <BarcodeScannerModal continuous onScan={(code) => { void handleQrScan(code); }} onClose={() => setShowQrScanner(false)} />
+      )}
 
       {/* Assignment Panel */}
       <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">

@@ -968,6 +968,30 @@ function MyPayrollView({ month, year }: { month: number; year: number }) {
   const [data, setData] = useState<PayrollSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [downloading, setDownloading] = useState(false);
+
+  async function downloadMyPayslip() {
+    setDownloading(true);
+    try {
+      const token = localStorage.getItem('admin_token');
+      const res = await fetch(`${API_BASE}/payroll/mine/payslip`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month, year }),
+      });
+      if (!res.ok) throw new Error('Failed to generate payslip');
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `payslip-${MONTH_NAMES[month]}-${year}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setError(e.message || 'Could not generate payslip');
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   useEffect(() => {
     setLoading(true);
@@ -1014,7 +1038,15 @@ function MyPayrollView({ month, year }: { month: number; year: number }) {
             ))}
           </div>
         </div>
-        <div className="flex gap-5 text-sm text-slate-500 border-t border-slate-100 pt-4">
+        <div className="flex flex-wrap items-center gap-5 text-sm text-slate-500 border-t border-slate-100 pt-4">
+          <button
+            onClick={downloadMyPayslip}
+            disabled={downloading}
+            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-[11px] font-bold uppercase tracking-widest rounded-xl transition-all"
+          >
+            {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
+            Download Payslip
+          </button>
           <span>Daily rate: <strong className="text-slate-700 font-bold">₹{fmtFull(data.daily_rate)}</strong></span>
           <span>Working days: <strong className="text-slate-700 font-bold">{data.total_working_days}</strong></span>
         </div>
@@ -1212,7 +1244,10 @@ export default function PayrollPage() {
     if (stored) {
       try {
         const u = JSON.parse(stored);
-        setIsAdmin(!u?.customRole && (u?.role === 'admin'));
+        // Full admins, and custom roles granted the 'payroll' permission (e.g. HR), see all staff
+        // payroll and can generate payslips; everyone else sees only their own.
+        const perms: string[] | null = u?.customRole?.sidebar_permissions ?? null;
+        setIsAdmin(perms !== null ? perms.includes('payroll') : u?.role === 'admin');
       } catch (_) {}
     }
   }, []);

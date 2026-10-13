@@ -2,9 +2,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   getAllLeaves, getMyLeaves, createLeaveRequest, reviewLeave,
-  getBranches, staticUrl, type LeaveRequest, type Branch,
+  getBranches, staticUrl, getMyLeaveBalance, type LeaveRequest, type Branch, type LeaveBalance,
 } from '@/lib/api';
 import Modal from '@/components/Modal';
+import LeaveBalancesPanel from '@/components/LeaveBalancesPanel';
 import { CheckCircle2, XCircle, Clock, Search, Building2, Plus, FileText, User } from 'lucide-react';
 
 const LEAVE_TYPE_CONFIG: Record<string, { label: string; color: string }> = {
@@ -98,6 +99,8 @@ export default function LeavesPage() {
   // 'admin' | 'hr' (custom role with leaves perm)
   const [viewerType, setViewerType] = useState<'admin' | 'hr' | null>(null);
   const [activeTab, setActiveTab]   = useState<'staff' | 'mine'>('staff');
+  // Custom roles always get self-service (apply / track own); the staff-wide view needs the sidebar permission.
+  const [canViewStaff, setCanViewStaff] = useState(true);
 
   const [allLeaves,  setAllLeaves]  = useState<LeaveRequest[]>([]);
   const [myLeaves,   setMyLeaves]   = useState<LeaveRequest[]>([]);
@@ -116,6 +119,8 @@ export default function LeavesPage() {
 
   // Apply (hr only)
   const [showApply,   setShowApply]   = useState(false);
+  const [showBalances, setShowBalances] = useState(false);
+  const [myBalance, setMyBalance] = useState<LeaveBalance | null>(null);
   const [applyType,   setApplyType]   = useState('casual');
   const [applyFrom,   setApplyFrom]   = useState('');
   const [applyTo,     setApplyTo]     = useState('');
@@ -136,6 +141,7 @@ export default function LeavesPage() {
         const u = JSON.parse(stored);
         const perms: string[] | null = u?.customRole?.sidebar_permissions ?? null;
         setViewerType(perms === null ? 'admin' : 'hr');
+        if (perms !== null && !perms.includes('leaves')) { setCanViewStaff(false); setActiveTab('mine'); }
       } catch (_) { setViewerType('admin'); }
     } else {
       setViewerType('admin');
@@ -156,13 +162,14 @@ export default function LeavesPage() {
       } else {
         // HR: load all staff leaves (read-only) + their own leaves in parallel
         const [all, mine, b] = await Promise.all([
-          getAllLeaves({ branch_id: branchFilter || undefined }),
+          canViewStaff ? getAllLeaves({ branch_id: branchFilter || undefined }) : Promise.resolve([] as any[]),
           getMyLeaves(),
           getBranches(),
         ]);
         setAllLeaves(all);
         setMyLeaves(mine);
         setBranches(b);
+        getMyLeaveBalance(new Date().getFullYear()).then(setMyBalance).catch(() => {});
       }
     } catch (e: any) {
       showToast(e.message || 'Failed to load', 'danger');
@@ -171,7 +178,7 @@ export default function LeavesPage() {
     }
   }
 
-  useEffect(() => { load(); }, [viewerType, statusFilter, branchFilter]);
+  useEffect(() => { load(); }, [viewerType, canViewStaff, statusFilter, branchFilter]);
 
   async function handleReview() {
     if (!reviewTarget) return;
@@ -271,6 +278,14 @@ export default function LeavesPage() {
               {pendingCount} Pending Review
             </div>
           )}
+          {(isAdmin || canViewStaff) && (
+            <button
+              onClick={() => setShowBalances(true)}
+              className="flex items-center gap-2 px-5 py-3 bg-white border border-slate-200 text-slate-600 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:border-blue-300 hover:text-blue-600 transition-all"
+            >
+              <Clock className="w-4 h-4" /> Leave Balances
+            </button>
+          )}
           {!isAdmin && (
             <button
               onClick={() => setShowApply(true)}
@@ -283,7 +298,7 @@ export default function LeavesPage() {
       </div>
 
       {/* ── HR Tabs ── */}
-      {!isAdmin && (
+      {!isAdmin && canViewStaff && (
         <div className="flex bg-white p-1.5 rounded-[1.5rem] border border-slate-200 shadow-sm w-fit mb-8">
           <button
             onClick={() => setActiveTab('staff')}
@@ -459,6 +474,10 @@ export default function LeavesPage() {
         )}
       </Modal>
 
+      <Modal open={showBalances} onClose={() => setShowBalances(false)} title="Leave Balances & Policy" width="max-w-4xl">
+        {showBalances && <LeaveBalancesPanel />}
+      </Modal>
+
       {/* ── HR: Apply Modal ── */}
       <Modal open={showApply} onClose={() => setShowApply(false)} title="Apply for Leave">
         <div className="space-y-5">
@@ -469,6 +488,12 @@ export default function LeavesPage() {
                 <button key={k} onClick={() => setApplyType(k)}
                   className={`px-4 py-3 rounded-2xl text-[11px] font-black uppercase border transition-all ${applyType === k ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-600/20' : 'bg-white text-slate-500 border-slate-200 hover:border-blue-300'}`}>
                   {v.label}
+                  {(() => {
+                    const b = myBalance?.balances.find(x => x.type === k);
+                    return myBalance?.policy_configured && b && b.allowed !== null
+                      ? <span className="block text-[9px] font-bold normal-case opacity-80">{b.remaining} of {b.allowed} left</span>
+                      : null;
+                  })()}
                 </button>
               ))}
             </div>

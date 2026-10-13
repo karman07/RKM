@@ -27,6 +27,7 @@ export const metadata: Metadata = {
 
 import { Toaster } from "sonner";
 import NotificationsProvider from '@/components/NotificationsProvider';
+import DialogGuard from '../components/DialogGuard';
 
 export default function RootLayout({
   children,
@@ -38,6 +39,7 @@ export default function RootLayout({
       <body className={`${jakarta.variable} ${inter.variable} h-full app-theme`} suppressHydrationWarning>
         <AppThemeProvider>
           <NotificationsProvider />
+        <DialogGuard />
           {children}
           <Toaster position="top-center" richColors />
         </AppThemeProvider>

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import JsBarcode from 'jsbarcode';
+import QRCode from 'qrcode';
 import { toPng } from 'html-to-image';
 import Modal from '@/components/Modal';
 import type { InventoryItem, Product } from '@/lib/api';
@@ -20,21 +20,17 @@ interface AssetBarcodeModalProps {
 // driver — a mismatch there is what causes content to print across several physical labels
 // instead of one, since the driver has its own fixed page geometry that the browser's @page
 // size can't override on its own (see the print button's hint text below). No editor, no
-// drag/resize — the system-generated barcode plus value text and item details on the label.
+// drag/resize — the system-generated QR code plus value text and item details on the label.
 const LABEL_W_MM = 65;
 const LABEL_H_MM = 13;
 const PNG_EXPORT_DPI = 600;
 
 /**
- * Renders the barcode onto a canvas via jsbarcode, generated locally rather than fetched as a
- * raster image from an external service. Deliberately canvas, not SVG: jsbarcode's SVG
- * renderer sizes itself using getBBox(), which returns nothing on an element that's ever been
- * under `display:none` (exactly how the print wrapper below hides itself on screen) — the
- * barcode would render but come out with a zero-size viewBox, i.e. invisible. Canvas drawing
- * is plain pixel manipulation via the 2D context; it doesn't depend on layout/visibility at
- * all, so it can't go blank just because the element isn't currently on screen. Drawn at a
- * generously high native pixel size and scaled down with `object-fit: contain`, so it stays
- * crisp — same principle as a high source resolution mattering more than final display size.
+ * Renders the item's code as a QR code onto a canvas, generated locally rather than fetched as
+ * a raster image from an external service. Deliberately canvas, not SVG: canvas drawing is plain
+ * pixel manipulation and doesn't depend on layout/visibility, so it can't come out blank just
+ * because the element is hidden on screen (as the print wrapper below is). Drawn at a high
+ * native pixel size and scaled down with `object-fit: contain` so it stays crisp.
  */
 function BarcodeCanvas({ text }: { text: string }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -42,22 +38,26 @@ function BarcodeCanvas({ text }: { text: string }) {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    JsBarcode(canvas, text || ' ', {
-      format: 'CODE128',
-      displayValue: false,
-      margin: 10,
-      width: 6,   // module width in native canvas px
-      height: 150,
-      lineColor: '#000000',
-      background: '#ffffff',
-    });
+    QRCode.toCanvas(canvas, text || ' ', {
+      width: 600,
+      margin: 1,
+      errorCorrectionLevel: 'M',
+      color: { dark: '#000000', light: '#ffffff' },
+    }).then(() => {
+      // node-qrcode pins the canvas to its pixel size with inline styles — hand sizing back to CSS
+      // so the code scales to whatever square the label gives it.
+      canvas.style.width = '100%';
+      canvas.style.height = '100%';
+    }).catch(() => {});
   }, [text]);
 
-  return <canvas ref={canvasRef} className="w-full h-full block" style={{ objectFit: 'contain' }} />;
+  // Absolutely positioned inside a relative parent so the 600px bitmap can never dictate the
+  // layout — it always scales down to whatever square the label gives it.
+  return <canvas ref={canvasRef} className="absolute inset-0 w-full h-full block" style={{ objectFit: 'contain' }} />;
 }
 
 /** The label's contents, shared verbatim between the on-screen preview, print output and PNG
-    export — only the outer wrapper's size differs between them. Left: the scannable barcode with
+    export — only the outer wrapper's size differs between them. Left: the scannable QR code with
     its value printed underneath. Right: the item's tag details. All type is sized in `cqh`
     (percent of the label's own height) so it scales identically in the preview, print and PNG
     without touching the fixed LABEL_W_MM x LABEL_H_MM geometry. */
@@ -77,10 +77,10 @@ function LabelContents({ item }: { item: InventoryItem }) {
       className="w-full h-full px-[1.2mm] py-[0.8mm] box-border bg-white flex items-stretch gap-[2mm] text-black"
       style={{ containerType: 'size' }}
     >
-      <div className="flex flex-col min-w-0 justify-center" style={{ flex: '0 0 44%' }}>
-        <div className="flex-1 min-h-0"><BarcodeCanvas text={item.barcode} /></div>
+      <div className="flex flex-col min-w-0 justify-center" style={{ flex: '0 0 auto', width: '78cqh' }}>
+        <div className="flex-1 min-h-0 relative overflow-hidden"><BarcodeCanvas text={item.barcode} /></div>
         <div className="text-center font-semibold leading-none whitespace-nowrap overflow-hidden"
-          style={{ fontSize: '11.5cqh', letterSpacing: '0.01em', paddingTop: '3cqh' }}>
+          style={{ fontSize: '6.2cqh', letterSpacing: 0, paddingTop: '2cqh' }}>
           {item.barcode}
         </div>
       </div>
@@ -169,7 +169,7 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
       <Modal
         open={open}
         onClose={onClose}
-        title={mode === 'bulk' ? `Print Labels — ${bulkItems.length} Item${bulkItems.length !== 1 ? 's' : ''}` : 'Asset Barcode View'}
+        title={mode === 'bulk' ? `Print Labels — ${bulkItems.length} Item${bulkItems.length !== 1 ? 's' : ''}` : 'Asset QR Code View'}
       >
         {!previewItem ? (
           <p className="py-10 text-center text-sm font-bold text-slate-400">No item to preview.</p>
@@ -189,7 +189,7 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
             ) : (
               <>
                 <p className="mt-6 text-2xl font-black text-slate-900 tracking-widest uppercase">{previewItem.barcode}</p>
-                <p className="mt-2 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Scan using hardware scanner</p>
+                <p className="mt-2 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Scan the QR code</p>
               </>
             )}
 

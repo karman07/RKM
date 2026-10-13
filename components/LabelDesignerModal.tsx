@@ -58,10 +58,10 @@ const FIELD_META: Record<BuiltinFieldKind, string> = {
 };
 
 const BARCODE_TYPE_META: Record<BarcodeType, { label: string }> = {
+  qrcode:  { label: 'QR Code' },
   code128: { label: 'Barcode — Code128' },
   code39:  { label: 'Barcode — Code39' },
   ean13:   { label: 'Barcode — EAN-13' },
-  qrcode:  { label: 'QR Code' },
 };
 
 /** jsbarcode's own format identifiers for the 1D symbologies we support. */
@@ -225,7 +225,7 @@ function defaultElements(w: number, h: number): DesignElement[] {
   const barcode: DesignElement = {
     id: 'barcode', kind: 'barcode', visible: true,
     x: 1, y: 1, w: Math.max(10, w * 0.46), h: Math.max(5, h - 2),
-    bold: false, align: 'left', fontMm: null, text: '', barcodeType: 'code128',
+    bold: false, align: 'left', fontMm: null, text: '', barcodeType: 'qrcode',
     // Off by default for now — the same value is already visible as plain text elsewhere on
     // the label, and the extra text line under the bars was fighting for space with them.
     // Still available per-element via the "Show value text under bars" toggle.
@@ -241,7 +241,7 @@ function defaultElements(w: number, h: number): DesignElement[] {
     // Turn any of these back on from the Layers panel below.
     id: kind, kind, visible: false,
     x: fx, y: 0.5 + i * rowH, w: fw, h: rowH,
-    bold: true, align: 'left', fontMm: null, text: '', barcodeType: 'code128', showValueText: true,
+    bold: true, align: 'left', fontMm: null, text: '', barcodeType: 'qrcode', showValueText: true,
   }));
   return [barcode, ...fields];
 }
@@ -260,7 +260,7 @@ function defaultElementsStacked(w: number, h: number): DesignElement[] {
   const barcode: DesignElement = {
     id: 'barcode', kind: 'barcode', visible: true,
     x: margin, y: margin, w: Math.max(10, w - margin * 2), h: barcodeH,
-    bold: false, align: 'left', fontMm: null, text: '', barcodeType: 'code128', showValueText: false,
+    bold: false, align: 'left', fontMm: null, text: '', barcodeType: 'qrcode', showValueText: false,
   };
   const fieldKeys: BuiltinFieldKind[] = ['name', 'weight', 'stoneWt', 'grade', 'lmc'];
   const fy = margin + barcodeH + 0.5;
@@ -270,7 +270,7 @@ function defaultElementsStacked(w: number, h: number): DesignElement[] {
     // Hidden by default, same reasoning as the side-by-side layout above.
     id: kind, kind, visible: false,
     x: margin, y: fy + i * rowH, w: Math.max(8, w - margin * 2), h: rowH,
-    bold: true, align: 'left', fontMm: null, text: '', barcodeType: 'code128', showValueText: true,
+    bold: true, align: 'left', fontMm: null, text: '', barcodeType: 'qrcode', showValueText: true,
   }));
   return [barcode, ...fields];
 }
@@ -500,7 +500,7 @@ export default function LabelDesignerModal({ open, mode, singleItem, bulkItems, 
     const newEl: DesignElement = {
       id: uid(), kind: 'custom', visible: true,
       x: 2, y: 2, w: Math.max(8, labelW * 0.3), h: 3,
-      bold: false, align: 'left', fontMm: null, text: 'Custom text', barcodeType: 'code128', showValueText: true,
+      bold: false, align: 'left', fontMm: null, text: 'Custom text', barcodeType: 'qrcode', showValueText: true,
     };
     setElements(els => [...els, newEl]);
     setSelectedId(newEl.id);

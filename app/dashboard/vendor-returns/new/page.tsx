@@ -1,5 +1,7 @@
 'use client';
 
+import BarcodeScannerModal from '@/components/BarcodeScannerModal';
+import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -8,6 +10,7 @@ import {
   getSuppliers,
   getBranches,
   getInventory,
+  getInventoryByBarcode,
   getProducts,
   createVendorReturnOrder,
   raiseVendorReturnOrder,
@@ -124,6 +127,27 @@ export default function NewVendorReturnPage() {
   const selectedCount = selected.size;
   const selectedTotal = Array.from(selected.values()).reduce((s, i) => s + (Number(i.purchase_price) || 0), 0);
 
+  const [showQrScanner, setShowQrScanner] = useState(false);
+
+  // Camera scan: every QR code scanned is added to the return (only Available/Damaged stock qualifies).
+  async function handleQrScan(code: string) {
+    try {
+      const item = await getInventoryByBarcode(code);
+      if (!item) { showToast(`No item found for QR code ${code}`, 'error'); return; }
+      if (item.status !== 'available' && item.status !== 'damaged') {
+        showToast(`${item.unique_item_code} is ${item.status} — only Available/Damaged stock can be returned`, 'error');
+        return;
+      }
+      setSelected(prev => prev.has(item._id) ? prev : new Map(prev).set(item._id, item));
+      showToast(`Added ${item.unique_item_code}`, 'success');
+    } catch {
+      showToast(`No item found for QR code ${code}`, 'error');
+    }
+  }
+
+  // Hardware QR / barcode scanner (USB or Bluetooth, keyboard mode): every scan adds the item.
+  useHardwareScanner((code) => { void handleQrScan(code); });
+
   function toggleAllOnPage() {
     setSelected(prev => {
       const next = new Map(prev);
@@ -191,6 +215,19 @@ export default function NewVendorReturnPage() {
         <p className="text-sm text-slate-400 font-medium mt-1">
           Select the vendor, pick items below, then save as a draft or raise it immediately.
         </p>
+        <div className="mt-3">
+        <button
+          type="button"
+          onClick={() => setShowQrScanner(true)}
+          className="px-5 py-3 rounded-xl bg-blue-50 text-blue-600 border border-blue-100 text-xs font-black uppercase tracking-widest hover:bg-blue-100 transition-all active:scale-95 inline-flex items-center gap-2"
+        >
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 14h2v2h-2zM14 18h2v2h-2zM18 18h2v2h-2z" /></svg>
+          Scan QR to select
+        </button>
+        </div>
+        {showQrScanner && (
+          <BarcodeScannerModal continuous onScan={(code) => { void handleQrScan(code); }} onClose={() => setShowQrScanner(false)} />
+        )}
       </div>
 
       {/* Return Panel */}

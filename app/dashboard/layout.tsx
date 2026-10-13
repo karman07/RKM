@@ -7,6 +7,8 @@ import { useAppTheme } from '@/components/AppThemeContext';
 import { APP_THEME } from '@/lib/theme-constants';
 
 // Map route prefixes to their sidebar permission key
+const SELF_SERVICE_ROUTES = ['/dashboard/leaves', '/dashboard/reimbursements', '/dashboard/payroll'];
+
 const ROUTE_PERMISSION: Record<string, string> = {
   '/dashboard/analytics/branches': 'analytics.branches',
   '/dashboard/analytics-ai':       'analytics-ai',
@@ -21,6 +23,7 @@ const ROUTE_PERMISSION: Record<string, string> = {
   '/dashboard/inventory':          'inventory',
   '/dashboard/purchase-orders':    'purchase-orders',
   '/dashboard/suppliers':          'suppliers',
+  '/dashboard/stock-issues':       'stock-issues',
   '/dashboard/branches':           'branches',
   '/dashboard/refunds':            'refunds',
   '/dashboard/attendance':         'attendance',
@@ -84,6 +87,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       .sort((a, b) => b.length - a.length)[0]; // longest match wins
 
     if (!matchedKey) return; // no restriction on this route
+
+    // Self-service pages (apply for leave, claim reimbursements, view own payroll) are open to every
+    // custom role; the pages themselves show the staff-wide view only when the permission is granted.
+    if (SELF_SERVICE_ROUTES.includes(matchedKey)) return;
 
     const requiredPerm = ROUTE_PERMISSION[matchedKey];
 

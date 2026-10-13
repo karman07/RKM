@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import {
@@ -76,23 +76,36 @@ export default function BranchAnalyticsPage() {
   const [itemAttendanceMap,setItemAttendanceMap] = useState<Record<string, any>>({});
   const [holidays,         setHolidays]         = useState<Holiday[]>([]);
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  // Local calendar date (toISOString would give the UTC date, which is "yesterday" early in the morning in India).
+  const now0 = new Date();
+  const todayStr = `${now0.getFullYear()}-${String(now0.getMonth() + 1).padStart(2, '0')}-${String(now0.getDate()).padStart(2, '0')}`;
 
-  useEffect(() => {
-    async function load() {
+  // Which sections failed to load, and why — shown in a banner instead of silently rendering zeros.
+  const [loadErrors, setLoadErrors] = useState<string[]>([]);
+
+  const load = useCallback(async () => {
+      setLoading(true);
+      setLoadErrors([]);
+      const errors: string[] = [];
+      // Never let one slow request leave the page spinning forever.
+      const guarded = <T,>(label: string, p: Promise<T>, fallback: T, ms = 20000): Promise<T> =>
+        Promise.race([
+          p,
+          new Promise<T>((_, rej) => setTimeout(() => rej(new Error('timed out')), ms)),
+        ]).catch((e: any) => { errors.push(`${label}: ${e?.message || 'failed'}`); return fallback; });
       try {
         const [bRes, aRes, gRes, dRes, uRes, attRes, holRes] = await Promise.all([
-          getBranches().catch(() => []),
-          getAllBranchAnalytics().catch(() => null),
-          getInventoryStats().catch(() => null),
-          getDamagedInventory({ limit: '50' }).catch(() => ({ data: [] })),
-          getUsers(undefined, 1, 200).catch(() => ({ data: [] })),
-          getDailyAttendance(todayStr).catch(() => []),
-          getHolidays(new Date().getFullYear()).catch(() => []),
+          guarded('Branches', getBranches(), [] as Branch[]),
+          guarded('Branch analytics', getAllBranchAnalytics(), null as any),
+          guarded('Inventory stats', getInventoryStats(), null as any),
+          guarded('Damaged items', getDamagedInventory({ limit: '50' }), { data: [] } as any),
+          guarded('Staff', getUsers(undefined, 1, 200), { data: [] } as any),
+          guarded('Attendance', getDailyAttendance(todayStr), [] as Attendance[]),
+          guarded('Holidays', getHolidays(new Date().getFullYear()), [] as Holiday[]),
         ]);
 
         const itemAttPromises = bRes.map((b: Branch) =>
-          getItemAttendanceDailyStats(b._id, todayStr).catch(() => null)
+          guarded('Item attendance', getItemAttendanceDailyStats(b._id, todayStr), null as any)
         );
         const itemAttRes = await Promise.all(itemAttPromises);
         const itemAttMap: Record<string, any> = {};
@@ -108,12 +121,16 @@ export default function BranchAnalyticsPage() {
         setAttendance(attRes || []);
         setItemAttendanceMap(itemAttMap);
         setHolidays(holRes || []);
+      } catch (e: any) {
+        errors.push(e?.message || 'Unexpected error');
       } finally {
+        // De-duplicate (one "Item attendance" failure per branch is noise).
+        setLoadErrors([...new Set(errors)]);
         setLoading(false);
       }
-    }
-    load();
-  }, []);
+  }, [todayStr]);
+
+  useEffect(() => { load(); }, [load]);
 
   if (loading) {
     return (
@@ -205,6 +222,18 @@ export default function BranchAnalyticsPage() {
 
   return (
     <div className="space-y-8 pb-24">
+
+      {loadErrors.length > 0 && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-black text-red-700">Some branch analytics could not be loaded</p>
+            <ul className="mt-1 text-xs text-red-600 font-medium list-disc pl-4">
+              {loadErrors.map(e => <li key={e}>{e}</li>)}
+            </ul>
+          </div>
+          <button onClick={load} className="px-4 py-2 rounded-xl bg-red-600 text-white text-xs font-black uppercase tracking-widest hover:bg-red-700 whitespace-nowrap">Retry</button>
+        </div>
+      )}
 
       {/* ── Page header ─────────────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">

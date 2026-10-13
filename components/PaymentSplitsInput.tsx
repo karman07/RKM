@@ -27,14 +27,48 @@ interface Props {
 
 const fmt = (n: number) => Math.round(n).toLocaleString('en-IN');
 
-export default function PaymentSplitsInput({ splits, onChange, totalAmount, enforceTotal = true }: Props) {
+/** Modes that leave a trail outside the till — a UPI ref / card slip / UTR / cheque no. is required. */
+export const MODES_NEEDING_REFERENCE = ['upi', 'card', 'bank_transfer', 'cheque'];
+
+/**
+ * Validates the payment methods entered for a sale. Returns an error message, or null when
+ * the entries are good: every row has a positive amount, digital payments carry a reference,
+ * and (when `total` is given) the rows add up to the amount to collect.
+ */
+export function validatePaymentSplits(splits: PaymentSplit[], total?: number): string | null {
+  const filled = splits.filter(s => s.amount !== '' && s.amount != null);
+  if (total !== undefined && Math.round(total) > 0 && filled.length === 0) return 'Add at least one payment method with an amount.';
+  for (const s of filled) {
+    const amt = parseFloat(s.amount);
+    const label = PAYMENT_MODES.find(m => m.value === s.mode)?.label ?? s.mode;
+    if (!(amt > 0)) return `Enter an amount greater than zero for ${label}, or remove that row.`;
+    if (MODES_NEEDING_REFERENCE.includes(s.mode) && !s.reference.trim()) {
+      return `${label} payment of ₹${fmt(amt)} needs a reference / transaction ID.`;
+    }
+  }
+  if (total !== undefined) {
+    const paid = filled.reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0);
+    const diff = Math.round(total) - paid;
+    if (Math.abs(diff) >= 0.5) {
+      return diff > 0 ? `₹${fmt(diff)} of the bill is still unpaid — payments must add up to ₹${fmt(total)}.` : `Payments exceed the bill by ₹${fmt(-diff)}.`;
+    }
+  }
+  return null;
+}
+
+export default function PaymentSplitsInput({ splits, onChange, totalAmount: rawTotalAmount, enforceTotal = true }: Props) {
+  // Bills are settled in whole rupees — the amount to collect is always rounded off.
+  const totalAmount = Math.round(rawTotalAmount);
   const paidTotal = splits.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
   const remaining = totalAmount - paidTotal;
   const isBalanced = Math.abs(remaining) < 0.5;
 
   function addSplit() {
     const leftover = Math.max(0, totalAmount - paidTotal);
-    onChange([...splits, { mode: 'cash', amount: leftover > 0 ? String(Math.round(leftover)) : '', reference: '' }]);
+    // Suggest a method not used yet (cash + UPI is by far the commonest mix).
+    const used = new Set(splits.map(s => s.mode));
+    const mode = ['cash', 'upi', 'card', 'bank_transfer'].find(m => !used.has(m)) ?? 'cash';
+    onChange([...splits, { mode, amount: leftover > 0 ? String(Math.round(leftover)) : '', reference: '' }]);
   }
 
   function removeSplit(idx: number) {
@@ -42,7 +76,23 @@ export default function PaymentSplitsInput({ splits, onChange, totalAmount, enfo
   }
 
   function updateSplit(idx: number, field: keyof PaymentSplit, val: string) {
-    onChange(splits.map((s, i) => i === idx ? { ...s, [field]: val } : s));
+    let next = splits.map((s, i) => i === idx ? { ...s, [field]: val } : s);
+    // Typing an amount on any row but the last re-balances the last row automatically, so a
+    // "₹X in cash, rest on UPI" bill only needs the cash figure typed in.
+    if (field === 'amount' && enforceTotal && next.length > 1 && idx < next.length - 1) {
+      const last = next.length - 1;
+      const others = next.slice(0, last).reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0);
+      const rest = Math.max(0, totalAmount - others);
+      next = next.map((s, i) => i === last ? { ...s, amount: rest > 0 ? String(Math.round(rest)) : '' } : s);
+    }
+    onChange(next);
+  }
+
+  /** Sets a row to whatever is still uncovered by the other rows. */
+  function fillRest(idx: number) {
+    const others = splits.reduce((sum, s, i) => i === idx ? sum : sum + (parseFloat(s.amount) || 0), 0);
+    const rest = Math.max(0, totalAmount - others);
+    onChange(splits.map((s, i) => i === idx ? { ...s, amount: rest > 0 ? String(Math.round(rest)) : '' } : s));
   }
 
   return (
@@ -96,13 +146,30 @@ export default function PaymentSplitsInput({ splits, onChange, totalAmount, enfo
               />
             </div>
 
-            <input
-              type="text"
-              className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-slate-300"
-              placeholder="Ref / TXN ID (optional)"
-              value={split.reference}
-              onChange={e => updateSplit(idx, 'reference', e.target.value)}
-            />
+            {enforceTotal && splits.length > 1 && (
+              <button
+                type="button"
+                onClick={() => fillRest(idx)}
+                title="Put the uncovered balance on this method"
+                className="flex-shrink-0 px-2 py-1 rounded-lg bg-white border border-slate-200 text-[10px] font-black text-slate-500 hover:text-blue-600 hover:border-blue-300"
+              >
+                Rest
+              </button>
+            )}
+
+            {(() => {
+              const needsRef = MODES_NEEDING_REFERENCE.includes(split.mode);
+              const missing = needsRef && parseFloat(split.amount) > 0 && !split.reference.trim();
+              return (
+                <input
+                  type="text"
+                  className={`flex-1 min-w-0 px-2 py-1.5 rounded-lg border bg-white text-xs text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-slate-300 ${missing ? 'border-red-300' : 'border-slate-200'}`}
+                  placeholder={needsRef ? (split.mode === 'upi' ? 'UPI ref / UTR *' : split.mode === 'card' ? 'Card slip / approval code *' : split.mode === 'cheque' ? 'Cheque no. *' : 'UTR / TXN ID *') : 'Ref (optional)'}
+                  value={split.reference}
+                  onChange={e => updateSplit(idx, 'reference', e.target.value)}
+                />
+              );
+            })()}
 
             {splits.length > 1 && (
               <button

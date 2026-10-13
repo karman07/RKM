@@ -60,6 +60,9 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
   /** Returns true if the current user can see this nav item */
   function can(key: string): boolean {
     if (permissions === null) return true; // full admin
+    // Leaves, reimbursements and payroll are self-service for every custom role (apply / view own);
+    // the permission only widens them to the whole staff.
+    if (key === 'leaves' || key === 'reimbursements' || key === 'payroll') return true;
     return permissions.includes(key);
   }
 
@@ -173,6 +176,11 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
               {isCollapsed && pathname.startsWith('/dashboard/vendor-returns') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
               <NavIcon active={pathname.startsWith('/dashboard/vendor-returns')} color={pathname.startsWith('/dashboard/vendor-returns') ? colors.activeText : colors.textMuted}><path d="M3 7v6h6" /><path d="M3 13a9 9 0 1 0 2.6-6.4L3 9" /></NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] whitespace-nowrap font-bold">Vendor Returns</span>}
+            </Link>}
+            {can('stock-issues') && <Link href="/dashboard/stock-issues" onClick={onNavigate} title={isCollapsed ? "Sales Stock Issue" : ""} className={navClass(pathname.startsWith('/dashboard/stock-issues'))} style={getNavStyle(pathname.startsWith('/dashboard/stock-issues'))}>
+              {isCollapsed && pathname.startsWith('/dashboard/stock-issues') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname.startsWith('/dashboard/stock-issues')} color={pathname.startsWith('/dashboard/stock-issues') ? colors.activeText : colors.textMuted}><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" /><path d="M3 13h18" /></NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] whitespace-nowrap font-bold">Sales Stock Issue</span>}
             </Link>}
             {can('branches') && <Link href="/dashboard/branches" onClick={onNavigate} title={isCollapsed ? "Branches" : ""} className={navClass(pathname === '/dashboard/branches')} style={getNavStyle(pathname === '/dashboard/branches')}>
               {isCollapsed && pathname === '/dashboard/branches' && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}

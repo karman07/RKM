@@ -275,14 +275,14 @@ function Charts({ charts }: { charts: ChartConfig[] }) {
 // ── Suggestion chips ──────────────────────────────────────────────────────────
 
 const SUGGESTIONS = [
-  "How were sales today?",
-  "Who are the top 5 cashiers this week?",
-  "Which products sold the most this month?",
-  "Show me branch performance for the last 7 days",
-  "How many new customers joined this month?",
-  "What's the old gold buyback summary?",
-  "Show me the daily sales trend for 2 weeks",
-  "Which payment mode is most popular?",
+  "Show the journal entries for this month",
+  "Give me this month's trial balance and tell me if it balances",
+  "What is my GST liability for last month, split into CGST, SGST and IGST?",
+  "Profit and loss for this financial year",
+  "Which branch earned the most this month? Draw a chart",
+  "Show the cash ledger for the last 7 days",
+  "How much do I owe suppliers, and what are customers' outstanding receivables?",
+  "Summarise old gold buy-backs and gold investment scheme balances",
 ];
 
 // ── Spinner ───────────────────────────────────────────────────────────────────
@@ -379,6 +379,7 @@ export default function AnalyticsAIPage() {
         role: m.role as 'user' | 'assistant',
         content: m.content,
         ts: m.ts,
+        charts: m.charts ?? [],
       }));
       setMessages(msgs);
     } catch { setMessages([]); }

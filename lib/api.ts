@@ -1288,6 +1288,60 @@ export const raiseVendorReturnOrder = (id: string) =>
 export const cancelVendorReturnOrder = (id: string) =>
   request<VendorReturnOrder>(`/vendor-returns/${id}/cancel`, { method: 'POST' });
 
+// ─── Stock Issue Challans (sales-team outward gate pass) ─────────────────────
+
+export interface StockIssueLine {
+  inventory_item_id: string;
+  name?: string; sku?: string; barcode?: string; unique_item_code?: string; hallmark?: string;
+  metal_type?: string; purity?: string;
+  gross_weight: number; net_weight: number; stone_weight: number; value: number;
+  image?: string;
+  outcome: 'out' | 'returned' | 'sold';
+  outcome_at?: string | null; outcome_note?: string;
+}
+
+export interface StockIssue {
+  _id: string;
+  issue_number: string;
+  verification_code: string;
+  branch_id: string;
+  branch_name?: string; branch_code?: string;
+  sales_user_id: string; sales_user_name?: string; sales_user_employee_id?: string;
+  issued_by_name?: string; issued_by_role?: string;
+  purpose: string; destination?: string; notes?: string;
+  expected_return_date?: string | null;
+  items: StockIssueLine[];
+  total_items: number; total_gross_weight: number; total_net_weight: number; total_value: number;
+  status: 'issued' | 'partially_closed' | 'closed' | 'cancelled';
+  issued_at: string; closed_at?: string | null; cancelled_at?: string | null;
+}
+
+export const getStockIssues = (page = 1, limit = 20, params?: { status?: string; sales_user_id?: string; branch_id?: string }) => {
+  const clean = Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v)) as Record<string, string>;
+  const qs = new URLSearchParams({ page: String(page), limit: String(limit), ...clean }).toString();
+  return request<PaginatedResponse<StockIssue>>(`/stock-issues?${qs}`);
+};
+export const getStockIssue = (id: string) => request<StockIssue>(`/stock-issues/${id}`);
+export const createStockIssue = (payload: {
+  sales_user_id: string; branch_id?: string; inventory_item_ids: string[];
+  purpose?: string; destination?: string; expected_return_date?: string; notes?: string;
+}) => request<StockIssue>('/stock-issues', { method: 'POST', body: JSON.stringify(payload) });
+export const checkInStockIssue = (id: string, items: { inventory_item_id: string; outcome: 'returned' | 'sold'; note?: string }[]) =>
+  request<StockIssue>(`/stock-issues/${id}/check-in`, { method: 'POST', body: JSON.stringify({ items }) });
+export const cancelStockIssue = (id: string) => request<StockIssue>(`/stock-issues/${id}/cancel`, { method: 'POST' });
+export const verifyStockIssue = (code: string) => request<StockIssue>(`/stock-issues/verify/${encodeURIComponent(code)}`);
+
+/** Downloads the server-rendered challan PDF. */
+export async function downloadStockIssuePdf(id: string, filename: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/stock-issues/${id}/pdf`, { headers: authHeadersMultipart() });
+  if (!res.ok) throw new Error('Failed to generate challan PDF');
+  const url = window.URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  window.URL.revokeObjectURL(url);
+}
+
 // ─── Branches ─────────────────────────────────────────────────────────────────
 
 export const getBranches = () => request<Branch[]>('/branches');
@@ -2233,6 +2287,38 @@ export const createLeaveRequest = (data: {
   branch_id?: string;
 }) => request<LeaveRequest>('/hr/leaves', { method: 'POST', body: JSON.stringify(data) });
 
+// ─── HR: Leave policy & balances ──────────────────────────────────────────────
+
+export type LeaveTypeKey = 'sick' | 'casual' | 'earned' | 'other';
+export type LeaveAllowances = Partial<Record<LeaveTypeKey, number | null>>;
+
+export interface LeaveBalanceRow {
+  type: LeaveTypeKey;
+  /** null = unlimited / not tracked */
+  allowed: number | null;
+  taken: number;
+  pending: number;
+  remaining: number | null;
+  overridden: boolean;
+}
+export interface LeaveBalance { year: number; policy_configured: boolean; balances: LeaveBalanceRow[] }
+export interface LeavePolicy { year: number; configured: boolean; allowances: LeaveAllowances }
+export interface StaffLeaveBalances {
+  year: number;
+  policy: LeavePolicy;
+  rows: { user: { _id: string; name: string; email: string; role: string; branch?: string }; balances: LeaveBalanceRow[] }[];
+}
+
+export const getLeavePolicy = (year: number) => request<LeavePolicy>(`/hr/leave-policy?year=${year}`);
+export const setLeavePolicy = (year: number, allowances: LeaveAllowances) =>
+  request<LeavePolicy>('/hr/leave-policy', { method: 'PUT', body: JSON.stringify({ year, allowances }) });
+export const copyLeavePolicy = (from_year: number, to_year: number) =>
+  request<LeavePolicy>('/hr/leave-policy/copy', { method: 'POST', body: JSON.stringify({ from_year, to_year }) });
+export const getMyLeaveBalance = (year: number) => request<LeaveBalance>(`/hr/leave-balance/mine?year=${year}`);
+export const getAllLeaveBalances = (year: number) => request<StaffLeaveBalances>(`/hr/leave-balances?year=${year}`);
+export const setLeaveEntitlement = (userId: string, year: number, allowances: LeaveAllowances) =>
+  request<LeaveBalance>(`/hr/leave-balances/${userId}`, { method: 'PUT', body: JSON.stringify({ year, allowances }) });
+
 // ─── HR: Reimbursements ────────────────────────────────────────────────────────
 
 export interface ReimbursementRequest {
@@ -2270,7 +2356,25 @@ export const createReimbursementRequest = (data: {
   amount: number;
   description: string;
   branch_id?: string;
+  receipt_url: string;
 }) => request<ReimbursementRequest>('/hr/reimbursements', { method: 'POST', body: JSON.stringify(data) });
+
+/** Uploads a reimbursement receipt / bill (image or PDF, max 10 MB). Every claim must carry one. */
+export const uploadReimbursementReceipt = async (file: File): Promise<{ url: string }> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const token = getToken();
+  const res = await fetch(`${API_BASE}/uploads/reimbursement-receipts`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.message || 'Failed to upload receipt');
+  }
+  return res.json();
+};
 
 // Fetch leaves for a specific user (admin view)
 export const getUserLeaves = (userId: string) =>
@@ -2284,7 +2388,7 @@ export const getUserLeaves = (userId: string) =>
 // Admin creates a reimbursement on behalf of an employee
 export const adminCreateReimbursement = (
   employeeId: string,
-  data: { category: string; amount: number; description: string; branch_id?: string; auto_approve?: boolean },
+  data: { category: string; amount: number; description: string; branch_id?: string; auto_approve?: boolean; receipt_url: string },
 ) => request<ReimbursementRequest>(`/hr/reimbursements/for/${employeeId}`, {
   method: 'POST',
   body: JSON.stringify(data),
@@ -2527,6 +2631,8 @@ export interface OGStone {
 }
 
 export interface OGLineItem {
+  /** Photos of the item as received — at least one is required */
+  images?: string[];
   description: string;
   weight_grams: number;
   purity: string;
@@ -2657,6 +2763,8 @@ export interface GLStone {
 }
 
 export interface GLItem {
+  /** Photos of the pledged item — at least one is required */
+  images?: string[];
   description: string;
   weight_grams: number;
   purity: string;
@@ -2732,6 +2840,7 @@ export const getGoldLoansByCustomer = (customerId: string) =>
   request<GoldLoan[]>(`/gold-loan/customer/${customerId}`);
 
 type GLDraftItemInput = Pick<GLItem, 'description' | 'weight_grams' | 'purity'> & {
+  images?: string[];
   estimated_value?: number;
   stones?: Array<Pick<GLStone, 'stone_type' | 'description' | 'count' | 'weight' | 'weight_unit' | 'quality'> & { estimated_value?: number }>;
 };
@@ -2978,6 +3087,18 @@ export const getReportInventoryValuation = () =>
 export const getReportReceivables = () =>
   request<any>('/reports/receivables');
 
+export const getReportReconciliation = (p: DateRangeParams = {}) =>
+  request<any>(`/reports/reconcile${toQuery(p)}`);
+
+export const getReportJournal = (p: DateRangeParams = {}) =>
+  request<any>(`/reports/journal${toQuery(p)}`);
+
+export const getReportTrialBalance = (p: DateRangeParams = {}) =>
+  request<any>(`/reports/trial-balance${toQuery(p)}`);
+
+export const getReportGst = (p: DateRangeParams = {}) =>
+  request<any>(`/reports/gst${toQuery(p)}`);
+
 export const getReportSalesRegister = (p: DateRangeParams = {}) =>
   request<any>(`/reports/sales-register${toQuery(p)}`);
 
@@ -3003,16 +3124,15 @@ export async function downloadReportFile(path: string, params: Record<string, st
 
 // ── Analytics AI ──────────────────────────────────────────────────────────────
 
-const AI_BASE = process.env.NEXT_PUBLIC_AI_URL ?? 'http://localhost:8000';
-
+/** The accounts assistant runs inside the RKM backend (Claude API) — same host and login as every other call. */
 async function aiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${AI_BASE}${path}`, {
+  const res = await fetch(`${API_BASE}${path}`, {
     ...options,
-    headers: { 'Content-Type': 'application/json', ...((options.headers as Record<string, string>) ?? {}) },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}`, ...((options.headers as Record<string, string>) ?? {}) },
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as any).detail || `AI request failed: ${res.status}`);
+    const err: any = await res.json().catch(() => ({}));
+    throw new Error(Array.isArray(err.message) ? err.message.join(', ') : err.message || err.detail || `AI request failed: ${res.status}`);
   }
   return res.json();
 }
@@ -3022,7 +3142,7 @@ export interface AnalyticsSession {
   title: string;
   created_at: string;
   updated_at: string;
-  messages?: Array<{ role: 'user' | 'assistant'; content: string; ts: string }>;
+  messages?: Array<{ role: 'user' | 'assistant'; content: string; ts: string; charts?: ChartConfig[] }>;
 }
 
 export interface ChartDataPoint {
@@ -3050,16 +3170,32 @@ export interface AnalyticsChatResponse {
 }
 
 export const analyticsChat = (message: string, session_id?: string) =>
-  aiRequest<AnalyticsChatResponse>('/api/analytics/chat', {
+  aiRequest<AnalyticsChatResponse>('/ai/chat', {
     method: 'POST',
     body: JSON.stringify({ message, session_id }),
   });
 
 export const listAnalyticsSessions = (limit = 30) =>
-  aiRequest<AnalyticsSession[]>(`/api/analytics/sessions?limit=${limit}`);
+  aiRequest<AnalyticsSession[]>(`/ai/sessions?limit=${limit}`);
 
 export const getAnalyticsSession = (id: string) =>
-  aiRequest<AnalyticsSession>(`/api/analytics/sessions/${id}`);
+  aiRequest<AnalyticsSession>(`/ai/sessions/${id}`);
 
 export const deleteAnalyticsSession = (id: string) =>
-  aiRequest<{ deleted: boolean }>(`/api/analytics/sessions/${id}`, { method: 'DELETE' });
+  aiRequest<{ deleted: boolean }>(`/ai/sessions/${id}`, { method: 'DELETE' });
+
+/** Uploads photos of an old-gold / gold-loan item; returns their server paths. */
+export const uploadItemImages = async (files: File[]): Promise<string[]> => {
+  const formData = new FormData();
+  files.forEach(f => formData.append('files', f));
+  const res = await fetch(`${API_BASE}/uploads/item-images`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${getToken()}` },
+    body: formData,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.message || 'Failed to upload photos');
+  }
+  return (await res.json()).urls;
+};

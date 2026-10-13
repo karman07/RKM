@@ -1,12 +1,12 @@
 import {
-  Scale, TrendingUp, Landmark, ShoppingBag, Users, UserCog, Building2,
-  Gem, PiggyBank, Truck, Boxes, Wallet, Undo2, Receipt, type LucideIcon,
+  BookOpen, Scale, TrendingUp, Landmark, ShoppingBag, Users, UserCog, Building2,
+  Gem, PiggyBank, Truck, Boxes, Wallet, Undo2, Receipt, Percent, type LucideIcon,
 } from 'lucide-react';
 import {
   getReportProfitLoss, getReportCashFlow, getReportBalanceSheet,
   getReportSales, getReportOldGold, getReportGoldInvestment,
   getReportPurchases, getReportInventoryValuation, getReportReceivables,
-  getReportSalesRegister, getReportRefunds, getReportPurchaseRegister,
+  getReportSalesRegister, getReportRefunds, getReportPurchaseRegister, getReportGst, getReportJournal, getReportTrialBalance, getReportReconciliation,
 } from './api';
 
 export type DateMode = 'range' | 'asOf' | 'none';
@@ -65,12 +65,14 @@ export interface ReportConfig {
 }
 
 export const REPORT_CATEGORIES = [
-  'Business Overview', 'Sales', 'Old Gold', 'Gold Investment', 'Purchases', 'Inventory', 'Receivables', 'Refunds',
+  'Business Overview', 'Accounts', 'Sales', 'Tax / GST', 'Old Gold', 'Gold Investment', 'Purchases', 'Inventory', 'Receivables', 'Refunds',
 ] as const;
 
 export const CATEGORY_ICONS: Record<string, LucideIcon> = {
   'Business Overview': Landmark,
   'Sales': ShoppingBag,
+  'Tax / GST': Percent,
+  'Accounts': BookOpen,
   'Old Gold': Gem,
   'Gold Investment': PiggyBank,
   'Purchases': Truck,
@@ -81,7 +83,144 @@ export const CATEGORY_ICONS: Record<string, LucideIcon> = {
 
 const MARGIN_FIELD = { field: 'marginPct', label: 'Margin %', format: 'percent' as const };
 
+const GST_EXTRA = [
+  { field: 'taxable', label: 'Taxable Value', format: 'currency' as const },
+  { field: 'cgst', label: 'CGST', format: 'currency' as const },
+  { field: 'sgst', label: 'SGST', format: 'currency' as const },
+  { field: 'igst', label: 'IGST', format: 'currency' as const },
+  { field: 'totalTax', label: 'Total GST', format: 'currency' as const },
+];
+
 export const REPORTS: ReportConfig[] = [
+  {
+    slug: 'reconciliation',
+    category: 'Accounts',
+    title: 'Data Integrity Check',
+    description: 'Cross-checks the P&L, overview, journal, GST and sales reports against each other. Any mismatch means a number somewhere is wrong.',
+    icon: Scale,
+    mode: 'register',
+    dateMode: 'range',
+    fetch: ({ from, to }) => getReportReconciliation({ from, to }),
+    registerTitle: 'Checks',
+    registerKpis: [
+      { label: 'Checks Run', accessor: 'checks', format: 'number' },
+      { label: 'Passed', accessor: 'passed', format: 'number' },
+      { label: 'Mismatches', accessor: 'failed', format: 'number' },
+    ],
+    registerColumns: [
+      { header: 'Check', accessor: 'name' },
+      { header: 'What is compared', accessor: 'detail' },
+      { header: 'Expected', accessor: 'expected', format: 'currency' },
+      { header: 'Actual', accessor: 'actual', format: 'currency' },
+      { header: 'Difference', accessor: 'difference', format: 'currency' },
+      { header: 'Result', accessor: 'status' },
+    ],
+  },
+  {
+    slug: 'journal',
+    category: 'Accounts',
+    title: 'Journal',
+    description: 'Double-entry journal vouchers for sales, returns, online orders, old gold, purchases and reimbursements.',
+    icon: BookOpen,
+    mode: 'register',
+    dateMode: 'range',
+    fetch: ({ from, to }) => getReportJournal({ from, to }),
+    registerTitle: 'Journal Entries',
+    registerKpis: [
+      { label: 'Vouchers', accessor: 'entries', format: 'number' },
+      { label: 'Total Debit', accessor: 'debit', format: 'currency' },
+      { label: 'Total Credit', accessor: 'credit', format: 'currency' },
+    ],
+    registerColumns: [
+      { header: 'Date', accessor: 'date', format: 'date' },
+      { header: 'Voucher', accessor: 'voucher' },
+      { header: 'Type', accessor: 'source' },
+      { header: 'Account', accessor: 'account' },
+      { header: 'Debit', accessor: 'debit', format: 'currency' },
+      { header: 'Credit', accessor: 'credit', format: 'currency' },
+      { header: 'Narration', accessor: 'narration' },
+    ],
+    exportExcelPath: '/reports/journal/excel',
+  },
+  {
+    slug: 'trial-balance',
+    category: 'Accounts',
+    title: 'Trial Balance',
+    description: 'Debits, credits and closing balance for every account — with total income, expense and net profit.',
+    icon: Scale,
+    mode: 'register',
+    dateMode: 'range',
+    fetch: ({ from, to }) => getReportTrialBalance({ from, to }),
+    registerTitle: 'Accounts',
+    registerKpis: [
+      { label: 'Total Debit', accessor: 'debit', format: 'currency' },
+      { label: 'Total Credit', accessor: 'credit', format: 'currency' },
+      { label: 'Income', accessor: 'income', format: 'currency' },
+      { label: 'Net Profit', accessor: 'netProfit', format: 'currency' },
+    ],
+    registerColumns: [
+      { header: 'Account', accessor: 'account' },
+      { header: 'Type', accessor: 'type' },
+      { header: 'Debits', accessor: 'debit', format: 'currency' },
+      { header: 'Credits', accessor: 'credit', format: 'currency' },
+      { header: 'Balance Dr', accessor: 'balanceDr', format: 'currency' },
+      { header: 'Balance Cr', accessor: 'balanceCr', format: 'currency' },
+    ],
+    exportExcelPath: '/reports/trial-balance/excel',
+  },
+  {
+    slug: 'gst-summary',
+    category: 'Tax / GST',
+    title: 'GST Summary',
+    description: 'Output GST by rate, customer type, HSN and month — CGST / SGST / IGST, net of returns.',
+    icon: Percent,
+    mode: 'breakdown',
+    dateMode: 'range',
+    fetch: ({ from, to }) => getReportGst({ from, to }),
+    sections: [
+      { dataPath: 'byRate', label: 'By GST Rate', labelField: 'key', metricField: 'invoiceValue', metricLabel: 'Invoice Value', countField: 'count', extraFields: GST_EXTRA },
+      { dataPath: 'byType', label: 'By Customer Type', labelField: 'key', metricField: 'invoiceValue', metricLabel: 'Invoice Value', countField: 'count', extraFields: GST_EXTRA },
+      { dataPath: 'byHsn', label: 'By HSN Code', labelField: 'key', metricField: 'invoiceValue', metricLabel: 'Invoice Value', countField: 'count', extraFields: GST_EXTRA },
+      { dataPath: 'byMonth', label: 'By Month', labelField: 'key', metricField: 'invoiceValue', metricLabel: 'Invoice Value', countField: 'count', extraFields: GST_EXTRA },
+    ],
+    exportPdfPath: '/reports/gst/pdf',
+    exportExcelPath: '/reports/gst/excel',
+  },
+  {
+    slug: 'gst-register',
+    category: 'Tax / GST',
+    title: 'GST Invoice Register',
+    description: 'Invoice-wise taxable value and CGST / SGST / IGST — hand this to your accountant.',
+    icon: Receipt,
+    mode: 'register',
+    dateMode: 'range',
+    fetch: ({ from, to }) => getReportGst({ from, to }),
+    registerTitle: 'Invoices & Credit Notes',
+    registerKpis: [
+      { label: 'Taxable Value', accessor: 'taxable', format: 'currency' },
+      { label: 'CGST', accessor: 'cgst', format: 'currency' },
+      { label: 'SGST', accessor: 'sgst', format: 'currency' },
+      { label: 'IGST', accessor: 'igst', format: 'currency' },
+    ],
+    registerColumns: [
+      { header: 'Date', accessor: 'date', format: 'date' },
+      { header: 'Invoice No.', accessor: 'invoiceNo' },
+      { header: 'Type', accessor: 'type' },
+      { header: 'Customer', accessor: 'customer' },
+      { header: 'GSTIN', accessor: 'gstin' },
+      { header: 'Branch', accessor: 'branch' },
+      { header: 'Place of Supply', accessor: 'placeOfSupply' },
+      { header: 'Rate', accessor: 'rate' },
+      { header: 'Taxable', accessor: 'taxable', format: 'currency' },
+      { header: 'CGST', accessor: 'cgst', format: 'currency' },
+      { header: 'SGST', accessor: 'sgst', format: 'currency' },
+      { header: 'IGST', accessor: 'igst', format: 'currency' },
+      { header: 'Total GST', accessor: 'totalTax', format: 'currency' },
+      { header: 'Invoice Value', accessor: 'invoiceValue', format: 'currency' },
+    ],
+    exportPdfPath: '/reports/gst/pdf',
+    exportExcelPath: '/reports/gst/excel',
+  },
   {
     slug: 'profit-loss',
     category: 'Business Overview',
@@ -124,6 +263,12 @@ export const REPORTS: ReportConfig[] = [
     mode: 'register',
     dateMode: 'range',
     fetch: ({ from, to }) => getReportSalesRegister({ from, to }),
+    registerKpis: [
+      { label: 'Net Revenue (excl. GST)', accessor: 'revenue', format: 'currency' },
+      { label: 'GST Collected', accessor: 'gst', format: 'currency' },
+      { label: 'Cost', accessor: 'cost', format: 'currency' },
+      { label: 'Profit', accessor: 'profit', format: 'currency' },
+    ],
     registerColumns: [
       { header: 'Date', accessor: 'soldAt', format: 'date' },
       { header: 'Item', accessor: 'itemName' },
@@ -135,7 +280,9 @@ export const REPORTS: ReportConfig[] = [
       { header: 'Phone', accessor: 'customerPhone' },
       { header: 'Payment', accessor: 'paymentMode' },
       { header: 'Cost', accessor: 'cost', format: 'currency' },
-      { header: 'Price', accessor: 'sellingPrice', format: 'currency' },
+      { header: 'Paid (incl. GST)', accessor: 'sellingPrice', format: 'currency' },
+      { header: 'GST', accessor: 'gst', format: 'currency' },
+      { header: 'Net Revenue', accessor: 'netRevenue', format: 'currency' },
       { header: 'Profit', accessor: 'profit', format: 'currency' },
       { header: 'Margin %', accessor: 'marginPct', format: 'percent' },
     ],

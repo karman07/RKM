@@ -89,6 +89,7 @@ function buildStatementCsvRows(slug: string, data: any): StatementCsvRow[] {
       { label: 'Total Assets', amount: data.totalAssets },
       { label: 'Gold Investment Payable', amount: data.liabilities.goldInvestmentPayable },
       { label: 'Old Gold Payable', amount: data.liabilities.oldGoldPayable },
+      { label: 'GST Payable (output tax collected)', amount: data.liabilities.gstPayable ?? 0 },
       { label: 'Total Liabilities', amount: data.totalLiabilities },
       { label: "Owner's Equity", amount: data.equity },
       { label: 'Staff Base Payroll', amount: exp.staffBase ?? 0 },
@@ -277,6 +278,12 @@ export default function ReportDetailPage({ params: paramsPromise }: { params: Pr
         </div>
       ) : data ? (
         <>
+          {Array.isArray(data.warnings) && data.warnings.length > 0 && (
+            <div className="px-5 py-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs font-bold text-amber-800 space-y-1">
+              {data.warnings.map((w: string) => <p key={w}>⚠ {w}</p>)}
+              {data.basis && <p className="font-medium text-amber-700">{data.basis}</p>}
+            </div>
+          )}
           {config.mode === 'statement' && <StatementView slug={config.slug} data={data} colors={colors} />}
           {config.mode === 'breakdown' && (
             <BreakdownView config={config} data={data} colors={colors} activeTab={activeTab} setActiveTab={setActiveTab} />
@@ -424,6 +431,7 @@ function BalanceSheetView({ data, colors }: { data: any; colors: any }) {
           <h3 className="text-lg font-black text-slate-900 mb-4">Liabilities</h3>
           <StatementRow label="Gold Investment Payable" amount={data.liabilities.goldInvestmentPayable} sub={`${data.liabilities.breakdown.investmentSubscriptionCount} subscriptions`} />
           <StatementRow label="Old Gold Payable" amount={data.liabilities.oldGoldPayable} sub="Melt authorized, unsettled" />
+          <StatementRow label="GST Payable" amount={data.liabilities.gstPayable ?? 0} sub="Output GST collected, net of returns — remittances not recorded" />
           <StatementRow label="Total Liabilities" amount={data.totalLiabilities} bold color="#263a5e" />
         </Panel>
         <div className="p-8 rounded-[2.5rem] text-white shadow-2xl flex flex-col justify-center" style={{ backgroundColor: data.equity >= 0 ? '#10b981' : '#ef4444' }}>
@@ -670,6 +678,16 @@ function RegisterView({ config, data, colors }: { config: ReportConfig; data: an
 
   return (
     <div className="space-y-8">
+      {config.registerKpis ? (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
+          {config.registerKpis.map(k => (
+            <div key={k.label} className="p-6 rounded-[2rem] border shadow-lg shadow-slate-200/40" style={{ backgroundColor: colors.bg, borderColor: colors.border }}>
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1.5">{k.label}</p>
+              <p className="text-xl font-black text-slate-900">{formatValue(get(totals, k.accessor), k.format)}</p>
+            </div>
+          ))}
+        </div>
+      ) : (
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
         <div className="p-6 rounded-[2rem] border shadow-lg shadow-slate-200/40" style={{ backgroundColor: colors.bg, borderColor: colors.border }}>
           <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Revenue</p>
@@ -688,10 +706,11 @@ function RegisterView({ config, data, colors }: { config: ReportConfig; data: an
           <p className="text-xl font-black text-slate-900">{(totals.marginPct ?? 0).toFixed(1)}%</p>
         </div>
       </div>
+      )}
 
       <div className="rounded-[2.5rem] border shadow-2xl shadow-slate-200/40 overflow-hidden" style={{ backgroundColor: colors.bg, borderColor: colors.border }}>
         <div className="px-8 py-5 border-b flex items-center justify-between" style={{ borderColor: colors.border }}>
-          <h3 className="text-lg font-black text-slate-900">Every Unit Sold</h3>
+          <h3 className="text-lg font-black text-slate-900">{config.registerTitle ?? 'Every Unit Sold'}</h3>
           {data?.totalCount != null && (
             <p className="text-[11px] font-bold text-slate-400">
               Showing {rows.length} of {data.totalCount}{data?.truncated ? ' — narrow the date range or use PDF/Excel export for the full list' : ''}
@@ -709,7 +728,7 @@ function RegisterView({ config, data, colors }: { config: ReportConfig; data: an
             </thead>
             <tbody>
               {rows.length === 0 && (
-                <tr><td colSpan={columns.length} className="text-center text-sm text-slate-400 py-10 font-bold">No items sold in this period</td></tr>
+                <tr><td colSpan={columns.length} className="text-center text-sm text-slate-400 py-10 font-bold">Nothing to show in this period</td></tr>
               )}
               {rows.map((r, i) => (
                 <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60 transition-colors">

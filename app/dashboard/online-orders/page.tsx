@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { API_BASE, staticUrl } from '@/lib/api';
 
 type OrderStatus = 'pending' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded';
@@ -21,6 +22,8 @@ interface OnlineOrder {
   items: OrderItem[];
   subtotal: number;
   delivery_charge: number;
+  coupon_code?: string;
+  discount_amount?: number;
   total: number;
   status: OrderStatus;
   payment_status: 'paid' | 'pending' | 'refunded';
@@ -174,6 +177,10 @@ export default function OnlineOrdersPage() {
           <p className="text-sm text-slate-400 mt-1 font-medium">Customer orders placed through the online store</p>
         </div>
         <div className="flex items-center gap-2">
+          <Link href="/dashboard/online-orders/coupons"
+            className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-black uppercase tracking-widest text-slate-600 hover:border-blue-300 hover:text-blue-600 transition-all whitespace-nowrap">
+            Coupon Codes
+          </Link>
           <div className="relative">
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search orders…"
               className="pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:border-blue-500 w-64" />
@@ -352,6 +359,11 @@ export default function OnlineOrdersPage() {
               {/* Totals */}
               <div className="border border-slate-100 rounded-2xl p-5 space-y-2">
                 <div className="flex justify-between text-sm text-slate-600"><span>Subtotal</span><span>₹{(selected.subtotal || 0).toLocaleString('en-IN')}</span></div>
+                {(selected.discount_amount ?? 0) > 0 && (
+                  <div className="flex justify-between text-sm text-emerald-700 font-bold">
+                    <span>Coupon {selected.coupon_code}</span><span>− ₹{(selected.discount_amount || 0).toLocaleString('en-IN')}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-sm text-slate-600">
                   <span>Delivery</span>
                   <span>{selected.delivery_charge > 0 ? `₹${selected.delivery_charge.toLocaleString('en-IN')}` : <span className="text-emerald-600 font-bold">Free</span>}</span>

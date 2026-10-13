@@ -171,7 +171,7 @@ export default function ProductsPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(searchParams.get('search') ?? '');
   const [metalFilter, setMetalFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState(searchParams.get('category') ?? searchParams.get('jewellery_type') ?? '');
   const [filtersOpen, setFiltersOpen] = useState(true);
@@ -318,6 +318,12 @@ export default function ProductsPage() {
       })
       .catch(() => {});
   }, []);
+
+  // Arriving from a link (e.g. an SKU clicked in Inventory) pre-fills the search box.
+  useEffect(() => {
+    const q = searchParams.get('search');
+    if (q !== null) { setSearch(q); setPage(1); }
+  }, [searchParams]);
 
   useEffect(() => {
     const fromQuery = searchParams.get('category') ?? searchParams.get('jewellery_type') ?? '';

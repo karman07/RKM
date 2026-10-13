@@ -27,6 +27,7 @@ const PERMISSION_GROUPS = [
       { key: 'inventory.stolen',   label: 'Stolen Items' },
       { key: 'purchase-orders',    label: 'Purchase Orders' },
       { key: 'suppliers',          label: 'Supplier Network' },
+      { key: 'stock-issues',       label: 'Sales Stock Issue (Gate Pass)' },
       { key: 'branches',           label: 'Branch Network' },
       { key: 'analytics.branches', label: 'Branch Analytics' },
       { key: 'refunds',            label: 'Return Requests' },

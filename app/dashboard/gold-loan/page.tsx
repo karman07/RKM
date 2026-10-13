@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState, useCallback, useMemo, Fragment } from 'react';
+import ItemPhotosInput from '@/components/ItemPhotosInput';
 import {
   getGoldLoans,
   createGoldLoan,
@@ -229,7 +230,7 @@ function MarkEmiModal({ month, expectedAmount, onConfirm, onClose }: {
 // ── Create Loan Panel ──────────────────────────────────────────────────────────
 
 interface DraftStone { stone_type: string; description: string; count: string; weight: string; weight_unit: string; quality: string; estimated_value: string; }
-interface DraftItem { description: string; weight_grams: string; purity: string; estimated_value: string; stones: DraftStone[] }
+interface DraftItem { description: string; weight_grams: string; purity: string; estimated_value: string; stones: DraftStone[]; images: string[] }
 
 function CreatePanel({
   branches, customers, settings, purityLookups, stoneTypeLookups, onClose, onCreate,
@@ -250,7 +251,7 @@ function CreatePanel({
   const [customerId, setCustomerId] = useState('');
   const [branchId, setBranchId] = useState(branches[0]?._id ?? '');
   const [notes, setNotes] = useState('');
-  const [items, setItems] = useState<DraftItem[]>([{ description: '', weight_grams: '', purity: purities[0] ?? '', estimated_value: '', stones: [] }]);
+  const [items, setItems] = useState<DraftItem[]>([{ description: '', weight_grams: '', purity: purities[0] ?? '', estimated_value: '', stones: [], images: [] }]);
   const [customerSearch, setCustomerSearch] = useState('');
   const [loanAmount, setLoanAmount] = useState('');
   const [interestRate, setInterestRate] = useState('1.5');
@@ -331,6 +332,7 @@ function CreatePanel({
           weight_grams: parseFloat(i.weight_grams) || 0,
           purity: i.purity,
           estimated_value: parseFloat(i.estimated_value) || 0,
+          images: i.images,
           stones: i.stones.map(s => ({
             stone_type: s.stone_type,
             description: s.description,
@@ -402,7 +404,7 @@ function CreatePanel({
             <div className="flex items-center justify-between mb-3">
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Pledged Gold Items</p>
               <button
-                onClick={() => setItems(p => [...p, { description: '', weight_grams: '', purity: purities[0] ?? '', estimated_value: '', stones: [] }])}
+                onClick={() => setItems(p => [...p, { description: '', weight_grams: '', purity: purities[0] ?? '', estimated_value: '', stones: [], images: [] }])}
                 className="flex items-center gap-1.5 text-[11px] font-black text-blue-700 hover:text-blue-800 transition-colors"
               >
                 <Plus className="w-3.5 h-3.5" /> Add Item
@@ -452,6 +454,8 @@ function CreatePanel({
                         value={item.estimated_value} onChange={e => updateItem(i, 'estimated_value', e.target.value)}
                         className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
                     </div>
+
+                    <ItemPhotosInput value={item.images} onChange={urls => setItems(p => p.map((it, j) => j === i ? { ...it, images: urls } : it))} />
 
                     {/* Stones */}
                     <div className="col-span-2 mt-1">
@@ -600,7 +604,7 @@ function CreatePanel({
           </button>
           <button
             onClick={submit}
-            disabled={saving || !customerId || !loanAmount || items.every(i => !i.description)}
+            disabled={saving || !customerId || !loanAmount || items.every(i => !i.description) || items.some(i => i.images.length === 0)}
             className="flex-1 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-black transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
@@ -749,7 +753,17 @@ function LoanDetail({
               {loan.items.map((item, i) => (
                 <Fragment key={i}>
                   <tr className="bg-white border-b border-slate-50">
-                    <td className="px-4 py-3 font-semibold text-slate-800">{item.description || '—'}</td>
+                    <td className="px-4 py-3 font-semibold text-slate-800">{item.description || '—'}
+                      {(item.images?.length ?? 0) > 0 && (
+                        <div className="flex gap-1 mt-1.5">
+                          {item.images!.map((u, k) => (
+                            <a key={k} href={staticUrl(u)} target="_blank" rel="noreferrer" title="Open photo">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={staticUrl(u)} alt={`Item photo ${k + 1}`} className="w-10 h-10 rounded-lg object-cover border border-slate-200" />
+                            </a>
+                          ))}
+                        </div>
+                      )}</td>
                     <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{item.weight_grams}g</td>
                     <td className="px-4 py-3">
                       <span className="text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full">{item.purity}</span>

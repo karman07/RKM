@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   getAllReimbursements, getMyReimbursements, createReimbursementRequest,
-  reviewReimbursement, adminCreateReimbursement, getUsers, getUserById,
+  reviewReimbursement, adminCreateReimbursement, uploadReimbursementReceipt, getUsers, getUserById,
   getBranches, staticUrl, type ReimbursementRequest, type Branch, type User,
 } from '@/lib/api';
 import Modal from '@/components/Modal';
@@ -181,6 +181,8 @@ function ReimbRow({ item, onReview, canReview, onUserClick }: {
 export default function ReimbursementsPage() {
   const [viewerType, setViewerType] = useState<'admin' | 'hr' | null>(null);
   const [activeTab,  setActiveTab]  = useState<'staff' | 'mine'>('staff');
+  // Custom roles always get self-service (apply / track own); the staff-wide view needs the sidebar permission.
+  const [canViewStaff, setCanViewStaff] = useState(true);
 
   const [allItems,  setAllItems]  = useState<ReimbursementRequest[]>([]);
   const [myItems,   setMyItems]   = useState<ReimbursementRequest[]>([]);
@@ -239,6 +241,7 @@ export default function ReimbursementsPage() {
         const u = JSON.parse(stored);
         const perms: string[] | null = u?.customRole?.sidebar_permissions ?? null;
         setViewerType(perms === null ? 'admin' : 'hr');
+        if (perms !== null && !perms.includes('reimbursements')) { setCanViewStaff(false); setActiveTab('mine'); }
       } catch (_) { setViewerType('admin'); }
     } else { setViewerType('admin'); }
   }, []);
@@ -255,7 +258,7 @@ export default function ReimbursementsPage() {
         setAllItems(r); setBranches(b);
       } else {
         const [all, mine, b] = await Promise.all([
-          getAllReimbursements({ branch_id: bf || undefined }),
+          canViewStaff ? getAllReimbursements({ branch_id: bf || undefined }) : Promise.resolve([] as any[]),
           getMyReimbursements(),
           getBranches(),
         ]);
@@ -265,7 +268,7 @@ export default function ReimbursementsPage() {
     finally { setLoading(false); }
   }
 
-  useEffect(() => { load(statusFilter, branchFilter); }, [viewerType, statusFilter, branchFilter]);
+  useEffect(() => { load(statusFilter, branchFilter); }, [viewerType, canViewStaff, statusFilter, branchFilter]);
 
   async function handleReview() {
     if (!reviewTarget) return;
@@ -294,21 +297,27 @@ export default function ReimbursementsPage() {
       .finally(() => setAdminEmpLoading(false));
   }, [showAdminAdd, adminEmpSearch]);
 
+  const [adminReceipt, setAdminReceipt] = useState<File | null>(null);
+  const [applyReceipt, setApplyReceipt] = useState<File | null>(null);
+
   async function handleAdminAdd() {
     if (!adminEmpId)         { setAdminError('Select an employee'); return; }
     if (!adminDesc.trim())   { setAdminError('Description is required'); return; }
     const amt = Number(adminAmount);
     if (!amt || amt <= 0)    { setAdminError('Enter a valid amount'); return; }
+    if (!adminReceipt)       { setAdminError('Attach the receipt or bill'); return; }
     setAdminSaving(true); setAdminError('');
     try {
+      const { url: receipt_url } = await uploadReimbursementReceipt(adminReceipt);
       await adminCreateReimbursement(adminEmpId, {
+        receipt_url,
         category: adminCategory, amount: amt,
         description: adminDesc.trim(), auto_approve: adminAutoApprove,
       });
       showToast('Reimbursement added successfully', 'success');
       setShowAdminAdd(false);
       setAdminEmpId(''); setAdminEmpSearch(''); setAdminAmount(''); setAdminDesc('');
-      setAdminCategory('travel'); setAdminAutoApprove(true);
+      setAdminCategory('travel'); setAdminAutoApprove(true); setAdminReceipt(null);
       load();
     } catch (e: any) { setAdminError(e.message || 'Failed'); }
     finally { setAdminSaving(false); }
@@ -319,11 +328,13 @@ export default function ReimbursementsPage() {
     if (!amount || amount <= 0 || !applyDesc.trim()) {
       showToast('Please fill all required fields', 'danger'); return;
     }
+    if (!applyReceipt) { showToast('Please attach the receipt or bill', 'danger'); return; }
     setApplying(true);
     try {
-      await createReimbursementRequest({ category: applyCategory, amount, description: applyDesc });
+      const { url: receipt_url } = await uploadReimbursementReceipt(applyReceipt);
+      await createReimbursementRequest({ category: applyCategory, amount, description: applyDesc, receipt_url });
       showToast('Reimbursement submitted', 'success');
-      setShowApply(false); setApplyAmount(''); setApplyDesc(''); setApplyCategory('travel');
+      setShowApply(false); setApplyAmount(''); setApplyDesc(''); setApplyCategory('travel'); setApplyReceipt(null);
       load();
     } catch (e: any) { showToast(e.message || 'Failed', 'danger'); }
     finally { setApplying(false); }
@@ -427,7 +438,7 @@ export default function ReimbursementsPage() {
       )}
 
       {/* HR Tabs */}
-      {!isAdmin && (
+      {!isAdmin && canViewStaff && (
         <div className="flex bg-white p-1.5 rounded-[1.5rem] border border-slate-200 shadow-sm w-fit mb-8">
           <button onClick={() => setActiveTab('staff')}
             className={`flex items-center gap-2 px-6 py-2.5 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${activeTab === 'staff' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-400 hover:text-blue-600'}`}>
@@ -653,6 +664,13 @@ export default function ReimbursementsPage() {
             />
           </div>
 
+          <div>
+            <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Receipt / Bill * <span className="normal-case tracking-normal font-semibold">(photo or PDF, max 10 MB)</span></label>
+            <input type="file" accept="image/*,.pdf,application/pdf" onChange={e => setAdminReceipt(e.target.files?.[0] ?? null)}
+              className="w-full text-sm text-slate-600 file:mr-3 file:px-4 file:py-2.5 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700 file:cursor-pointer border border-slate-200 rounded-2xl bg-slate-50" />
+            {adminReceipt && <p className="text-[11px] text-slate-500 mt-1.5 truncate">Selected: {adminReceipt.name}</p>}
+          </div>
+
           {/* Auto-approve toggle */}
           <button type="button" onClick={() => setAdminAutoApprove(v => !v)}
             className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl border transition-all ${adminAutoApprove ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
@@ -707,6 +725,13 @@ export default function ReimbursementsPage() {
               placeholder="Briefly describe the expense..."
               className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 resize-none transition-all"
             />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Receipt / Bill * <span className="normal-case tracking-normal font-semibold">(photo or PDF, max 10 MB)</span></label>
+            <input type="file" accept="image/*,.pdf,application/pdf" onChange={e => setApplyReceipt(e.target.files?.[0] ?? null)}
+              className="w-full text-sm text-slate-600 file:mr-3 file:px-4 file:py-2.5 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700 file:cursor-pointer border border-slate-200 rounded-2xl bg-slate-50" />
+            {applyReceipt && <p className="text-[11px] text-slate-500 mt-1.5 truncate">Selected: {applyReceipt.name}</p>}
           </div>
           <div className="flex gap-4">
             <button onClick={() => setShowApply(false)}

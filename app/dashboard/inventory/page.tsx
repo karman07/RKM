@@ -33,8 +33,10 @@ import {
 import Link from 'next/link';
 import Modal from '@/components/Modal';
 import AssetBarcodeModal from '@/components/AssetBarcodeModal';
+import BarcodeScannerModal from '@/components/BarcodeScannerModal';
+import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import CustomerSearchPanel, { type CustomerDraft } from '@/components/CustomerSearchPanel';
-import PaymentSplitsInput, { type PaymentSplit } from '@/components/PaymentSplitsInput';
+import PaymentSplitsInput, { validatePaymentSplits, type PaymentSplit } from '@/components/PaymentSplitsInput';
 import PreBookModal from '@/components/PreBookModal';
 import { Bookmark, CheckCircle2, AlertTriangle } from 'lucide-react';
 import CompletePreBookingModal from '@/components/CompletePreBookingModal';
@@ -220,31 +222,17 @@ export default function InventoryPage() {
   const cartModeRef = useRef(false);
   useEffect(() => { cartModeRef.current = cartMode; }, [cartMode]);
 
-  // Hardware barcode scanner listener — while Multi-Item Bill mode is on, a fast
-  // burst of keystrokes ending in Enter (typical HID scanner behavior) looks the
-  // item up and adds it straight to the cart, so staff can scan item after item.
-  useEffect(() => {
-    let buffer = '';
-    let lastKeyTime = Date.now();
-    function handleKeyDown(e: KeyboardEvent) {
-      if (!cartModeRef.current) return;
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      const now = Date.now();
-      if (now - lastKeyTime > 50) buffer = '';
-      if (e.key === 'Enter') {
-        if (buffer.length > 3) void handleBarcodeAddToCart(buffer);
-        buffer = '';
-      } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        buffer += e.key;
-      }
-      lastKeyTime = now;
-    }
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  // Hardware QR / barcode scanner (USB or Bluetooth, keyboard mode): works anywhere on the page.
+  // In Multi-Item Bill mode a scan adds the item to the bill; otherwise it selects the item.
+  useHardwareScanner((code) => { void handleQrScan(code); });
 
   // ── Selection & Bulk Delete ───────────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  // Items picked by scanning their QR code that aren't on the current page — kept so bulk
+  // actions (labels, return to vendor) still have the full record for them.
+  const [scannedItems, setScannedItems] = useState<InventoryItem[]>([]);
+  const [showQrScanner, setShowQrScanner] = useState(false);
+  const selectableItems = [...items, ...scannedItems.filter(s => !items.some(i => i._id === s._id))];
   const [bulkDeleteModal, setBulkDeleteModal] = useState(false);
   const [bulkDeleteForm, setBulkDeleteForm] = useState({ reason: '', notes: '' });
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -265,7 +253,8 @@ export default function InventoryPage() {
 
   // ── Cart derived ──────────────────────────────────────────────────────────
   const cartTotal = useMemo(
-    () => cart.reduce((sum, it) => sum + (Number(it.live_selling_price ?? it.selling_price) || 0), 0),
+    // Whole rupees — bills are rounded off automatically.
+    () => Math.round(cart.reduce((sum, it) => sum + (Number(it.live_selling_price ?? it.selling_price) || 0), 0)),
     [cart]
   );
 
@@ -457,6 +446,24 @@ export default function InventoryPage() {
     }
   }
 
+  // Camera scan: in Multi-Item Bill mode the item goes to the bill, otherwise it is added to the
+  // bulk selection — scan as many QR codes as needed, then use Print Labels / Return / Change Vendor.
+  async function handleQrScan(code: string) {
+    if (cartModeRef.current) { void handleBarcodeAddToCart(code); return; }
+    try {
+      const item = await getInventoryByBarcode(code);
+      if (!item) { showToast(`No item found for QR code ${code}`, 'danger'); return; }
+      setScannedItems(prev => prev.some(p => p._id === item._id) ? prev : [...prev, item]);
+      setSelectedIds(prev => {
+        if (prev.includes(item._id)) { showToast(`${item.unique_item_code} is already selected`, 'info'); return prev; }
+        showToast(`Selected ${item.unique_item_code}`, 'success');
+        return [...prev, item._id];
+      });
+    } catch {
+      showToast(`No item found for QR code ${code}`, 'danger');
+    }
+  }
+
   function toggleSelect(id: string) {
     setSelectedIds(prev =>
       prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
@@ -518,6 +525,9 @@ export default function InventoryPage() {
       if (!cartCustomerDraft.name.trim()) throw new Error('Customer name is required.');
       if (!cartCustomerDraft.phone.trim()) throw new Error('Customer phone is required.');
       if (!cartSoldAtBranchId) throw new Error('Sale branch is required.');
+
+      const cartSplitError = validatePaymentSplits(cartPaymentSplits, cartTotal);
+      if (cartSplitError) throw new Error(cartSplitError);
 
       const splits = cartPaymentSplits
         .filter(s => parseFloat(s.amount) > 0)
@@ -676,6 +686,14 @@ export default function InventoryPage() {
         </div>
         <div className="flex items-center gap-4 self-start md:self-auto">
           <button
+            onClick={() => setShowQrScanner(true)}
+            title="Scan item QR codes with the camera to select several at once"
+            className="px-6 py-3.5 rounded-2xl bg-blue-50 text-blue-600 border border-blue-100 text-xs font-bold uppercase tracking-widest shadow-sm hover:bg-blue-100 transition-all active:scale-95 flex items-center gap-2"
+          >
+            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 14h2v2h-2zM14 18h2v2h-2zM18 18h2v2h-2z" /></svg>
+            Scan QR
+          </button>
+          <button
             onClick={() => setCartMode(m => !m)}
             title="Toggle multi-item bill mode"
             className={`px-6 py-3.5 rounded-2xl text-xs font-bold uppercase tracking-widest shadow-sm transition-all active:scale-95 flex items-center gap-2 border ${cartMode ? 'bg-blue-600 text-white border-blue-600 shadow-lg' : 'bg-blue-50 text-blue-600 border-blue-100 hover:bg-blue-100'}`}
@@ -766,7 +784,7 @@ export default function InventoryPage() {
             </button>
             <button
               onClick={() => {
-                const eligible = items.filter(i => selectedIds.includes(i._id) && (i.status === 'available' || i.status === 'damaged'));
+                const eligible = selectableItems.filter(i => selectedIds.includes(i._id) && (i.status === 'available' || i.status === 'damaged'));
                 const skipped = selectedIds.length - eligible.length;
                 if (eligible.length === 0) {
                   showToast('Selected items must be Available or Damaged to return to a vendor', 'danger');
@@ -881,7 +899,7 @@ export default function InventoryPage() {
                                 onClick={() => setBarcodeModal(item)}
                                 className="p-0.5 px-1 bg-white border border-slate-200 inline-block rounded shadow-sm hover:scale-[1.1] transition-transform duration-300 cursor-pointer"
                               >
-                                 <img suppressHydrationWarning src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${item.barcode}&scale=3&height=6&includetext`} className="h-4 object-contain" alt={item.barcode} />
+                                 <img suppressHydrationWarning src={`https://bwipjs-api.metafloor.com/?bcid=qrcode&text=${encodeURIComponent(item.barcode)}&scale=3`} className="h-4 object-contain" alt={item.barcode} />
                               </div>
                             </div>
                           </div>
@@ -892,7 +910,11 @@ export default function InventoryPage() {
                       <td className="px-4 py-3">
                         {product?.sku ? (
                           <div className="flex flex-col gap-1">
-                            <span className="inline-block w-fit px-2 py-1 rounded-lg bg-slate-100 border border-slate-200 text-[10px] font-black font-mono text-slate-700 tracking-tight">{product.sku}</span>
+                            <Link
+                              href={`/dashboard/products?search=${encodeURIComponent(product.sku)}`}
+                              title="Open this product in the Product Catalog"
+                              className="inline-block w-fit px-2 py-1 rounded-lg bg-slate-100 border border-slate-200 text-[10px] font-black font-mono text-slate-700 tracking-tight hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700 transition-colors"
+                            >{product.sku}</Link>
                             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">{[product.metal_type, product.purity].filter(Boolean).join(' · ')}</span>
                           </div>
                         ) : (
@@ -1651,6 +1673,10 @@ export default function InventoryPage() {
                 if (newStatus === 'sold' && !soldAtBranchId) {
                   throw new Error('Sale branch is required.');
                 }
+                if (newStatus === 'sold') {
+                  const splitError = validatePaymentSplits(paymentSplits, parseFloat(newSellingPrice) || (statusModal?.selling_price ?? 0));
+                  if (splitError) throw new Error(splitError);
+                }
                 const splits = paymentSplits.filter(s => parseFloat(s.amount) > 0).map(s => ({
                   mode: s.mode, amount: parseFloat(s.amount), reference: s.reference || undefined,
                 }));
@@ -1755,11 +1781,14 @@ export default function InventoryPage() {
       </Modal>
 
       {/* Barcode Wide Visor Modal — plain barcode + details view, print or download PNG */}
+      {showQrScanner && (
+        <BarcodeScannerModal continuous onScan={(code) => { void handleQrScan(code); }} onClose={() => setShowQrScanner(false)} />
+      )}
       <AssetBarcodeModal
         open={!!barcodeModal || bulkLabelPreview}
         mode={bulkLabelPreview ? 'bulk' : 'single'}
         singleItem={barcodeModal}
-        bulkItems={bulkLabelPreview ? items.filter(i => selectedIds.includes(i._id)) : []}
+        bulkItems={bulkLabelPreview ? selectableItems.filter(i => selectedIds.includes(i._id)) : []}
         onClose={() => { setBarcodeModal(null); setBulkLabelPreview(false); }}
       />
 
