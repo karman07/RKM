@@ -46,6 +46,31 @@ export class WhatsAppApiService {
     return cleaned;
   }
 
+  /** Number of distinct {{n}} placeholders in a template body. */
+  private countPlaceholders(text: string): number {
+    const nums = [...text.matchAll(/\{\{\s*(\d+)\s*\}\}/g)].map((m) => Number(m[1]));
+    return nums.length ? Math.max(...nums) : 0;
+  }
+
+  /**
+   * Airtel/Meta reject empty variables, newlines/tabs and 4+ consecutive spaces
+   * (-3 VALIDATION_ERROR, 131008, 132012), and require the count to match the
+   * template exactly (132000). Normalize every value and pad/truncate to `expected`.
+   */
+  private buildVariables(params: unknown[], expected: number): string[] {
+    const clean = (v: unknown): string => {
+      const s = String(v ?? '')
+        .replace(/[\r\n\t]+/g, ' ')
+        .replace(/ {2,}/g, ' ')
+        .trim();
+      return s || '-';
+    };
+    const vars = (params ?? []).map(clean);
+    if (expected === 0) return [];
+    while (vars.length < expected) vars.push('-');
+    return vars.slice(0, expected);
+  }
+
   /**
    * Sends a WhatsApp template message via Airtel IQ.
    * Returns a structured SendResult — never throws, so callers can log outcomes cleanly.
@@ -74,14 +99,24 @@ export class WhatsAppApiService {
       return { success: false, error: errMsg };
     }
 
+    const bodyText = template.components?.find((c: any) => c.type === 'BODY')?.text ?? '';
+    const expected = this.countPlaceholders(bodyText);
+    const variables = this.buildVariables(params, expected);
+    if (params.length !== expected) {
+      this.logger.warn(
+        `Template '${templateName}' expects ${expected} variable(s) but got ${params.length}; adjusted to ${variables.length}`,
+      );
+    }
+
     const payload = {
       templateId: template.metaTemplateId,
       to: normalized.replace('+', ''),
-      from: this.waConfig.airtelFromNumber,
+      from: this.waConfig.airtelFromNumber.replace(/\D/g, ''),
       filterBlacklistNumbers: false,
       // Airtel IQ: body {{1}}, {{2}}… go in `message.variables` (`payload` is for button payloads).
-      ...(params.length ? { message: { variables: params.map(String) } } : {}),
+      ...(variables.length ? { message: { variables } } : {}),
     };
+    this.logger.debug(`Airtel send payload: ${JSON.stringify(payload)}`);
 
     try {
       const { data } = await this.http.post(SEND_TEMPLATE_PATH, payload, {
