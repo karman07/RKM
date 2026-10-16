@@ -33,7 +33,7 @@ export default function CheckoutPage() {
   const dispatch = useAppDispatch();
   const customer = useAppSelector((s) => s.auth.customer);
   const cartItems = useAppSelector((s) => s.cart.items);
-  const subtotal = cartItems.reduce((acc, i) => acc + (i.pricing_breakdown?.final_price || 0) * i.quantity, 0);
+  const subtotal = cartItems.reduce((acc, i) => acc + Math.round((i.pricing_breakdown?.final_price || 0) * i.quantity), 0);
 
   const [form, setForm] = useState({ name: "", email: "", phone: "", address: "", city: "", state: "Punjab", pincode: "", notes: "" });
   const [locating, setLocating] = useState(false);
