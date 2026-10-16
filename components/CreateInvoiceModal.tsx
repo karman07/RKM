@@ -303,9 +303,9 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
   // When an investment redemption option is locked in, its GST-recomputed payable amount
   // (subtotal minus redemption benefit, tax reapplied) replaces cartTotal as the bill's base —
   // advances (a separate, unchanged scheme) are then subtracted from that as before.
-  const baseAmountAfterInvestment = chosenRedemptionOption ? chosenRedemptionOption.finalPayableAmount : cartTotal;
+  const baseAmountAfterInvestment = chosenRedemptionOption ? Math.round(chosenRedemptionOption.finalPayableAmount) : cartTotal;
   // What's left to collect via real payment methods (cash/card/etc.) after redemptions
-  const rawAmountDue = Math.max(0, baseAmountAfterInvestment - totalAdvanceApplied - advanceMakingChargesDiscount);
+  const rawAmountDue = Math.max(0, baseAmountAfterInvestment - Math.round(totalAdvanceApplied) - advanceMakingChargesDiscount);
   // Bills are settled in whole rupees: the amount due is rounded off automatically and the
   // difference is shown as a Round Off line.
   const amountDue = Math.round(rawAmountDue);
@@ -805,7 +805,7 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
         </div>
 
         {/* ── Payment ──────────────────────────────────────────────────── */}
-        {((investmentSubId && investmentAmount > 0) || totalAdvanceApplied > 0 || Math.abs(roundOff) >= 0.005) && (
+        {((investmentSubId && investmentAmount > 0) || totalAdvanceApplied > 0 || Math.abs(roundOff) >= 1) && (
           <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 space-y-1.5 text-xs">
             <div className="flex justify-between font-bold text-slate-500"><span>Bill Total</span><span>₹{fmt(cartTotal)}</span></div>
             {chosenRedemptionOption && (
@@ -826,8 +826,8 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
             {advanceMakingChargesDiscount > 0 && (
               <div className="flex justify-between font-bold text-blue-700"><span>Making Charges Waived (Advance)</span><span>− ₹{fmt(advanceMakingChargesDiscount)}</span></div>
             )}
-            {Math.abs(roundOff) >= 0.005 && (
-              <div className="flex justify-between font-bold text-slate-500"><span>Round Off</span><span>{roundOff > 0 ? '+' : '−'} ₹{Math.abs(roundOff).toFixed(2)}</span></div>
+            {Math.abs(roundOff) >= 1 && (
+              <div className="flex justify-between font-bold text-slate-500"><span>Round Off</span><span>{roundOff > 0 ? '+' : '−'} ₹{Math.round(Math.abs(roundOff))}</span></div>
             )}
             <div className="flex justify-between font-black text-slate-900 pt-1.5 border-t border-slate-200"><span>Amount Due</span><span>₹{fmt(amountDue)}</span></div>
           </div>

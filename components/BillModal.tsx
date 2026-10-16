@@ -363,6 +363,8 @@ ${billEl.outerHTML}
     };
   };
   const fmt = (n: number) => Math.round(n).toLocaleString('en-IN');
+  // Bills are in whole rupees — every amount is rounded once, here, so line items and totals always agree.
+  const rs = (n: unknown): number => Math.round(Number(n) || 0);
   const fmtDec = (n: number, d = 3) => n.toFixed(d);
 
   // ── Per-item computed rows ─────────────────────────────────────────────────
@@ -370,14 +372,14 @@ ${billEl.outerHTML}
     const product = typeof item.product_id === 'object' ? item.product_id : null;
     const pb = (item as any).pricing_breakdown ?? product?.pricing_breakdown;
 
-    const metalPrice   = pb?.metal_price ?? 0;
-    const stonePrice   = pb?.stone_price ?? 0;
-    const makingCharge = pb?.making_charges ?? 0;
-    const extraTotal   = (pb as any)?.extra_charges_total ?? 0;
-    const subtotal     = pb?.subtotal ?? (metalPrice + stonePrice + makingCharge + extraTotal);
-    const discountAmt  = pb?.discount_amount ?? 0;
-    const taxable      = pb?.taxable_amount ?? (subtotal - discountAmt);
-    const grossPrice   = pb?.final_price ?? item.selling_price ?? 0;
+    const metalPrice   = rs(pb?.metal_price);
+    const stonePrice   = rs(pb?.stone_price);
+    const makingCharge = rs(pb?.making_charges);
+    const extraTotal   = rs((pb as any)?.extra_charges_total);
+    const subtotal     = pb?.subtotal != null ? rs(pb.subtotal) : (metalPrice + stonePrice + makingCharge + extraTotal);
+    const discountAmt  = rs(pb?.discount_amount);
+    const taxable      = pb?.taxable_amount != null ? rs(pb.taxable_amount) : (subtotal - discountAmt);
+    const grossPrice   = rs(pb?.final_price ?? item.selling_price);
 
     // Dynamic taxes from product
     const rawTaxes: TaxEntry[] =
@@ -392,11 +394,11 @@ ${billEl.outerHTML}
     const taxBreakdown = rawTaxes.map(t => ({
       name: t.name.toUpperCase(),
       percentage: t.percentage,
-      amount: parseFloat(((taxable * t.percentage) / 100).toFixed(2)),
+      amount: rs((taxable * t.percentage) / 100),
     }));
 
     const totalTaxAmt = taxBreakdown.reduce((s, t) => s + t.amount, 0);
-    const finalSelling = item.selling_price ?? grossPrice;
+    const finalSelling = rs(item.selling_price ?? grossPrice);
 
     // What was actually collected for this item. Different sale flows store
     // `selling_price` differently (some net out investment/making-charge
@@ -404,10 +406,10 @@ ${billEl.outerHTML}
     // record of what was actually charged, so prefer it when present.
     const itemSplits = (item as any).payment_splits;
     const payable = Array.isArray(itemSplits) && itemSplits.length > 0
-      ? itemSplits.reduce((s: number, sp: any) => s + (sp.amount || 0), 0)
+      ? itemSplits.reduce((s: number, sp: any) => s + rs(sp.amount), 0)
       : Math.max(0, finalSelling
-          - ((item as any).investment_redeemed ?? 0) - ((item as any).making_charges_discount ?? 0)
-          - ((item as any).advance_redeemed ?? 0) - ((item as any).advance_making_charges_discount ?? 0));
+          - rs((item as any).investment_redeemed) - rs((item as any).making_charges_discount)
+          - rs((item as any).advance_redeemed) - rs((item as any).advance_making_charges_discount));
 
     return {
       item, product, pb,
@@ -417,8 +419,8 @@ ${billEl.outerHTML}
       // Admin discount applies to the item's list price; the manager's % applies on what's left.
       adminPct: Number((item as any).admin_discount) || 0,
       mgrPct: Number((item as any).manager_discount) || 0,
-      adminDisAmt: parseFloat((grossPrice * (Number((item as any).admin_discount) || 0) / 100).toFixed(2)),
-      mgrDisAmt: parseFloat(((grossPrice - grossPrice * (Number((item as any).admin_discount) || 0) / 100) * (Number((item as any).manager_discount) || 0) / 100).toFixed(2)),
+      adminDisAmt: rs(grossPrice * (Number((item as any).admin_discount) || 0) / 100),
+      mgrDisAmt: rs((grossPrice - grossPrice * (Number((item as any).admin_discount) || 0) / 100) * (Number((item as any).manager_discount) || 0) / 100),
       finalSelling,
       payable,
       netWeight:   product?.net_weight ?? 0,
@@ -473,14 +475,14 @@ ${billEl.outerHTML}
   const billNo   = invoiceNumber ?? `DOC/SAL/${saleRef}`;
 
   // Investment redemption totals across all items
-  const totalInvestmentRedeemed = items.reduce((s, it) => s + ((it as any).investment_redeemed ?? 0), 0);
-  const totalMakingDiscount = items.reduce((s, it) => s + ((it as any).making_charges_discount ?? 0), 0);
+  const totalInvestmentRedeemed = items.reduce((s, it) => s + rs((it as any).investment_redeemed), 0);
+  const totalMakingDiscount = items.reduce((s, it) => s + rs((it as any).making_charges_discount), 0);
   const investmentRedemptionType = (items.find(it => (it as any).investment_redemption_type) as any)?.investment_redemption_type ?? null;
   const investmentRedemptionLabel = investmentRedemptionType === 'cash_benefit' ? 'Cash Benefit'
     : investmentRedemptionType === 'making_charge_waiver' ? 'Making Charge Waiver' : null;
   // Advance redemption totals across all items
-  const totalAdvanceRedeemed = items.reduce((s, it) => s + ((it as any).advance_redeemed ?? 0), 0);
-  const totalAdvanceMakingDiscount = items.reduce((s, it) => s + ((it as any).advance_making_charges_discount ?? 0), 0);
+  const totalAdvanceRedeemed = items.reduce((s, it) => s + rs((it as any).advance_redeemed), 0);
+  const totalAdvanceMakingDiscount = items.reduce((s, it) => s + rs((it as any).advance_making_charges_discount), 0);
   // Everything knocked off the price: scheme + admin + manager discounts and the making-charge waivers.
   const totalSavings = totalDisAmt + totalAdminDis + totalMgrDis + totalMakingDiscount + totalAdvanceMakingDiscount;
   const paymentSplits: { mode: string; amount: number; reference?: string }[] = (customer as any)?.payment_splits ?? [];
@@ -490,7 +492,7 @@ ${billEl.outerHTML}
   // item count. Only fall back to each item's own computed payable when no splits exist at all
   // (older records sold before payment_splits was recorded).
   const rawPayable = paymentSplits.length > 0
-    ? paymentSplits.reduce((s, sp) => s + (sp.amount || 0), 0)
+    ? paymentSplits.reduce((s, sp) => s + rs(sp.amount), 0)
     : itemRows.reduce((a, r) => a + r.payable, 0);
   // Bills are settled in whole rupees — round the payable off automatically and show the difference.
   const totalPayable = Math.round(rawPayable);
@@ -883,7 +885,7 @@ ${billEl.outerHTML}
                 totalMakingDiscount > 0 && { label: 'Making Charges Waived (Investment)', value: `- ₹${fmt(totalMakingDiscount)}`, bold: false, color: '#7A1C2A' },
                 totalAdvanceRedeemed > 0 && { label: 'Advance Payment Applied', value: `- ₹${fmt(totalAdvanceRedeemed)}`, bold: false, color: '#7A1C2A' },
                 totalAdvanceMakingDiscount > 0 && { label: 'Making Charges Discount (Advance)', value: `- ₹${fmt(totalAdvanceMakingDiscount)}`, bold: false, color: '#7A1C2A' },
-                Math.abs(roundOff) >= 0.005 && { label: 'Round Off', value: `${roundOff > 0 ? '+' : '-'} ₹${Math.abs(roundOff).toFixed(2)}`, bold: false },
+                Math.abs(roundOff) >= 1 && { label: 'Round Off', value: `${roundOff > 0 ? '+' : '-'} ₹${fmt(Math.abs(roundOff))}`, bold: false },
               ].filter(Boolean).map((row: any, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '2.5px 0', borderBottom: '1px solid #eee' }}>
                   <span style={{ color: row.color ?? '#555' }}>{row.label}</span>
