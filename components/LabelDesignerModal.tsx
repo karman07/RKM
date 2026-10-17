@@ -5,7 +5,7 @@ import { getSettings, updateSettings, type InventoryItem, type Product } from '@
 import Modal from '@/components/Modal';
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
-import bwipjs from 'bwip-js';
+import bwipjs from 'bwip-js/browser';
 import { toPng } from 'html-to-image';
 import {
   Barcode as BarcodeIcon, ZoomIn, ZoomOut, Magnet, Grid3x3, LayoutGrid, Rows,

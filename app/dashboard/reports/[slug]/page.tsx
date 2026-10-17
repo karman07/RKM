@@ -138,6 +138,7 @@ export default function ReportDetailPage({ params: paramsPromise }: { params: Pr
   const [error, setError] = useState('');
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
+  const [exportingItems, setExportingItems] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
 
   useEffect(() => {
@@ -180,6 +181,22 @@ export default function ReportDetailPage({ params: paramsPromise }: { params: Pr
       setError(e.message || 'Excel export failed');
     } finally {
       setExportingExcel(false);
+    }
+  }
+
+  async function handleItemListExport() {
+    const ex = config?.itemListExport;
+    if (!ex || exportingItems) return;
+    setExportingItems(true);
+    setError('');
+    try {
+      const { rows } = await ex.fetch();
+      if (!rows?.length) { setError('There are no items to export.'); return; }
+      downloadCsv(ex.filename, rows, ex.columns.map(c => ({ header: c.header, accessor: c.accessor })));
+    } catch (e: any) {
+      setError(e.message || 'Could not download the item list');
+    } finally {
+      setExportingItems(false);
     }
   }
 
@@ -251,6 +268,16 @@ export default function ReportDetailPage({ params: paramsPromise }: { params: Pr
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-emerald-500/20 transition-all disabled:opacity-60"
             >
               {exportingExcel ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSpreadsheet className="w-3.5 h-3.5" />} Excel
+            </button>
+          )}
+          {config.itemListExport && (
+            <button
+              onClick={handleItemListExport}
+              disabled={exportingItems}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-blue-500/20 transition-all disabled:opacity-60"
+              title="Download every piece in stock, one row per item, grouped by branch"
+            >
+              {exportingItems ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />} {config.itemListExport.label}
             </button>
           )}
           {(config.mode === 'list' || config.mode === 'breakdown' || config.mode === 'register' || config.mode === 'statement') && (

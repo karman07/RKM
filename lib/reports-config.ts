@@ -5,7 +5,7 @@ import {
 import {
   getReportProfitLoss, getReportCashFlow, getReportBalanceSheet,
   getReportSales, getReportOldGold, getReportGoldInvestment,
-  getReportPurchases, getReportInventoryValuation, getReportReceivables,
+  getReportPurchases, getReportInventoryValuation, getReportInventoryByBranchItems, getReportReceivables,
   getReportSalesRegister, getReportRefunds, getReportPurchaseRegister, getReportGst, getReportJournal, getReportTrialBalance, getReportReconciliation,
 } from './api';
 
@@ -62,6 +62,13 @@ export interface ReportConfig {
   exportExcelPath?: string;
   /** Extra fixed query params merged into export requests (e.g. { groupBy: 'item' }) */
   extraExportParams?: Record<string, string>;
+  /** Optional second CSV with one row per record (e.g. every piece in stock), fetched on click rather than on page load. */
+  itemListExport?: {
+    label: string;
+    filename: string;
+    fetch: () => Promise<{ rows: any[] }>;
+    columns: { header: string; accessor: (row: any) => unknown }[];
+  };
 }
 
 export const REPORT_CATEGORIES = [
@@ -441,6 +448,31 @@ export const REPORTS: ReportConfig[] = [
     mode: 'breakdown',
     dateMode: 'none',
     fetch: () => getReportInventoryValuation(),
+    // Itemised version of the "By Branch" tab: every piece in stock, one row each, grouped by branch.
+    itemListExport: {
+      label: 'All Items CSV',
+      filename: 'inventory-by-branch-all-items',
+      fetch: () => getReportInventoryByBranchItems(),
+      columns: [
+        { header: 'Branch', accessor: r => r.branch },
+        { header: 'Item Code', accessor: r => r.item_code },
+        { header: 'Barcode', accessor: r => r.barcode },
+        { header: 'HUID', accessor: r => r.huid },
+        { header: 'Product', accessor: r => r.product_name },
+        { header: 'SKU', accessor: r => r.sku },
+        { header: 'Category', accessor: r => r.category },
+        { header: 'Metal', accessor: r => r.metal },
+        { header: 'Purity', accessor: r => r.purity },
+        { header: 'Gross Wt (g)', accessor: r => Number(r.gross_weight ?? 0).toFixed(3) },
+        { header: 'Net Wt (g)', accessor: r => Number(r.net_weight ?? 0).toFixed(3) },
+        { header: 'Stone Wt (g)', accessor: r => Number(r.stone_weight ?? 0).toFixed(3) },
+        { header: 'Status', accessor: r => r.status },
+        { header: 'Location', accessor: r => r.location },
+        { header: 'Cost Price', accessor: r => Math.round(Number(r.cost_price) || 0) },
+        { header: 'Selling Price', accessor: r => Math.round(Number(r.selling_price) || 0) },
+        { header: 'Added On', accessor: r => (r.added_on ? new Date(r.added_on).toLocaleDateString('en-IN') : '') },
+      ],
+    },
     sections: [
       { dataPath: 'byCategory', label: 'By Category', labelField: 'key', metricField: 'costValue', metricLabel: 'Cost Value', countField: 'count', extraFields: [{ field: 'retailValue', label: 'Retail Value', format: 'currency' }] },
       { dataPath: 'byBranch', label: 'By Branch', labelField: 'key', metricField: 'costValue', metricLabel: 'Cost Value', countField: 'count', extraFields: [{ field: 'retailValue', label: 'Retail Value', format: 'currency' }] },

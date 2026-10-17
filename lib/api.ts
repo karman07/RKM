@@ -3095,6 +3095,10 @@ export const getReportVendorItems = (p: DateRangeParams & { supplierId: string }
 export const getReportInventoryValuation = () =>
   request<any>('/reports/inventory-valuation');
 
+/** Every piece currently in stock, one row per item, sorted by branch. */
+export const getReportInventoryByBranchItems = () =>
+  request<{ totalCount: number; rows: any[] }>('/reports/inventory-by-branch-items');
+
 export const getReportReceivables = () =>
   request<any>('/reports/receivables');
 
