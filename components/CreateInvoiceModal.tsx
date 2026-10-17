@@ -13,6 +13,7 @@ import VerifiedCustomerPanel, { type CustomerDraft } from './VerifiedCustomerPan
 import PaymentSplitsInput, { validatePaymentSplits, type PaymentSplit } from './PaymentSplitsInput';
 import RedemptionComparisonPanel from './RedemptionComparisonPanel';
 import { toast } from 'sonner';
+import DiscountField from '@/components/DiscountField';
 
 const SearchIcon = ({ size = 14 }: { size?: number }) => (
   <svg width={size} height={size} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
@@ -565,20 +566,14 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
                           </span>
                         </div>
                       </div>
-                      <div className="flex-shrink-0 w-20">
-                        <label className="block text-[8px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Discount</label>
-                        <div className="relative">
-                          <input
-                            type="number"
-                            min={0}
-                            max={maxManagerDiscount}
-                            value={discountPct}
-                            onChange={e => updateDiscount(item._id, e.target.value)}
-                            className={`w-full pl-2 pr-5 py-2 bg-slate-50 border rounded-xl text-sm font-black focus:outline-none focus:ring-2 ${overCap ? 'border-red-300 text-red-600 focus:ring-red-400' : 'border-slate-200 text-slate-900 focus:ring-blue-500'}`}
-                          />
-                          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">%</span>
-                        </div>
-                      </div>
+                      <DiscountField
+                        className="flex-shrink-0 w-32"
+                        value={discountPct}
+                        base={afterAdmin}
+                        maxPct={maxManagerDiscount}
+                        invalid={overCap}
+                        onChange={v => updateDiscount(item._id, v)}
+                      />
                       <div className="flex-shrink-0 w-28 text-right">
                         <label className="block text-[8px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Sale Price</label>
                         <p className="text-sm font-black text-slate-900 py-2">₹{fmt(linePrice)}</p>

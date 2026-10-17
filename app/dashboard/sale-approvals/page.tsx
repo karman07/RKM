@@ -12,6 +12,7 @@ import {
 } from '@/lib/api';
 import BillModal from '@/components/BillModal';
 import RedemptionComparisonPanel from '@/components/RedemptionComparisonPanel';
+import DiscountField from '@/components/DiscountField';
 
 const fmt = (n: number) => Math.round(n).toLocaleString('en-IN');
 
@@ -765,16 +766,18 @@ function ApproveSaleModal({ items, onClose, onApproved, onRejected }: ApproveSal
 
             {/* ── Manager Discount ── */}
             <div>
-              <label className="block text-[10px] font-black uppercase tracking-widest text-[#7A1C2A] mb-2">
+              <p className="block text-[10px] font-black uppercase tracking-widest text-[#7A1C2A] mb-2">
                 Manager Discount (Max {maxDiscount}%)
-              </label>
-              <div className="flex items-center gap-4">
-                <input
-                  type="number" min={0} max={maxDiscount} value={managerDiscount}
-                  onChange={e => setManagerDiscount(Math.min(Math.max(0, Number(e.target.value)), maxDiscount))}
-                  className="w-24 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-black text-center text-[#5A0F1A] focus:outline-[#7A1C2A] shadow-sm"
+              </p>
+              <div className="flex items-start gap-4">
+                <DiscountField
+                  className="w-36"
+                  value={managerDiscount}
+                  base={basePrice}
+                  maxPct={maxDiscount}
+                  onChange={v => setManagerDiscount(Math.min(Math.max(0, Number(v) || 0), maxDiscount))}
                 />
-                <span className="text-[11px] font-bold text-slate-400">Lowers the Final Sale Price dynamically based on margin rules.</span>
+                <span className="text-[11px] font-bold text-slate-400 pt-5">Lowers the Final Sale Price dynamically based on margin rules. Enter a percentage or a rupee amount — the amount can't exceed the maximum allowed.</span>
               </div>
             </div>
 

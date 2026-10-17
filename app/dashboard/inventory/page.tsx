@@ -22,6 +22,7 @@ import {
 import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth';
 import { auth } from '../../../lib/firebase';
 import { toast } from 'sonner';
+import DiscountField from '@/components/DiscountField';
 
 const COUNTRY_CODES = [
   { code: '+91', name: 'India', flag: '🇮🇳' },
@@ -1951,14 +1952,18 @@ export function InventoryPageContent() {
               </div>
 
               <div className="pb-4">
-                <label className="block text-[10px] font-black uppercase tracking-widest text-[#7A1C2A] mb-2">
+                <p className="block text-[10px] font-black uppercase tracking-widest text-[#7A1C2A] mb-2">
                   Manager Discount (Max {sellItem.max_manager_discount}%)
-                </label>
-                <div className="flex items-center gap-4">
-                  <input type="number" min={0} max={sellItem.max_manager_discount} value={sellForm.discount} onChange={(e) => setSellForm({ ...sellForm, discount: Math.min(Number(e.target.value), sellItem.max_manager_discount) })}
-                    className="w-24 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-black text-center text-[#5A0F1A] focus:outline-[#7A1C2A] shadow-sm"
+                </p>
+                <div className="flex items-start gap-4">
+                  <DiscountField
+                    className="w-36"
+                    value={sellForm.discount}
+                    base={Math.round(sellItem.selling_price || sellItem.live_selling_price || 0)}
+                    maxPct={sellItem.max_manager_discount}
+                    onChange={(v) => setSellForm({ ...sellForm, discount: Math.min(Math.max(0, Number(v) || 0), sellItem.max_manager_discount) })}
                   />
-                  <span className="text-[11px] font-bold text-slate-400 max-w-[200px]">Lowers the Final Sale Price dynamically based on margin rules.</span>
+                  <span className="text-[11px] font-bold text-slate-400 max-w-[220px] pt-5">Lowers the Final Sale Price dynamically based on margin rules. Enter a percentage or a rupee amount — the amount can't exceed the maximum allowed.</span>
                 </div>
               </div>
 
