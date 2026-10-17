@@ -5,6 +5,7 @@ import { getSettings, updateSettings, type InventoryItem, type Product } from '@
 import Modal from '@/components/Modal';
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
+import bwipjs from 'bwip-js';
 import { toPng } from 'html-to-image';
 import {
   Barcode as BarcodeIcon, ZoomIn, ZoomOut, Magnet, Grid3x3, LayoutGrid, Rows,
@@ -14,9 +15,9 @@ import {
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-type BuiltinFieldKind = 'name' | 'weight' | 'stoneWt' | 'grade' | 'lmc';
+type BuiltinFieldKind = 'name' | 'weight' | 'stoneWt' | 'grade' | 'lmc' | 'huid' | 'code';
 type ElementKind = 'barcode' | BuiltinFieldKind | 'custom';
-type BarcodeType = 'code128' | 'qrcode' | 'code39' | 'ean13';
+type BarcodeType = 'code128' | 'qrcode' | 'datamatrix' | 'code39' | 'ean13';
 type Align = 'left' | 'center' | 'right';
 type SheetMode = 'roll' | 'grid';
 
@@ -31,6 +32,7 @@ interface DesignElement {
   text: string;          // literal text — only meaningful for kind === 'custom'
   barcodeType: BarcodeType; // only meaningful for kind === 'barcode'
   showValueText: boolean;   // only meaningful for kind === 'barcode' — print the human-readable value under the bars
+  split?: boolean;          // built-in fields only — label pinned left, value pinned right (e.g. "NAME ........ G.STDS")
 }
 
 interface LabelPreset { label: string; w: number; h: number; }
@@ -46,6 +48,7 @@ interface LabelDesignerModalProps {
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const LABEL_PRESETS: LabelPreset[] = [
+  { label: 'Fold tag — 100 × 15mm (35 | 35 | 30)', w: 100, h: 15 },
   { label: 'Jewellery roll — 65 × 13mm', w: 65, h: 13 },
   { label: 'Wide tag — 50 × 25mm', w: 50, h: 25 },
   { label: 'Small tag — 40 × 20mm', w: 40, h: 20 },
@@ -54,10 +57,19 @@ const LABEL_PRESETS: LabelPreset[] = [
 ];
 
 const FIELD_META: Record<BuiltinFieldKind, string> = {
-  name: 'Name', weight: 'GWT/NWT', stoneWt: 'ST. WT', grade: 'Grade', lmc: 'LMC/DIS',
+  name: 'Name', weight: 'GWT/NWT', stoneWt: 'ST. WT', grade: 'Grade', lmc: 'LMC/DIS', huid: 'HUID', code: 'Item code',
 };
 
+/**
+ * Fold tag: a 100 × 15mm strip that folds into three panels —
+ *   1) 35mm  QR + item code      2) 35mm  item details      3) 30mm  blank (still part of the tag).
+ * Nothing is ever placed across a fold line, so the creases always fall between panels.
+ */
+const FOLD_TAG = { w: 100, h: 15, zones: [35, 35, 30] as const };
+const isFoldTag = (w: number, h: number) => w === FOLD_TAG.w && h === FOLD_TAG.h;
+
 const BARCODE_TYPE_META: Record<BarcodeType, { label: string }> = {
+  datamatrix: { label: 'Data Matrix' },
   qrcode:  { label: 'QR Code' },
   code128: { label: 'Barcode — Code128' },
   code39:  { label: 'Barcode — Code39' },
@@ -87,7 +99,22 @@ function getLabelFields(item: InventoryItem) {
     grade: product?.purity || '—',
     lmc: product?.making_charge_rate ?? product?.fixed_making_charge ?? 0,
     dis: product?.discount_percentage ?? item.admin_discount ?? 0,
+    huid: (item as any).hallmark || '—',
   };
+}
+
+/** Label + value pair for the split ("label left, value right") row style. */
+function fieldParts(item: InventoryItem, kind: BuiltinFieldKind): { label: string; value: string } {
+  const f = getLabelFields(item);
+  switch (kind) {
+    case 'name':    return { label: 'NAME', value: String(f.name) };
+    case 'weight':  return { label: 'GWT/NWT', value: `${Number(f.gwt).toFixed(3)}gm/${Number(f.nwt).toFixed(3)}gm` };
+    case 'stoneWt': return { label: 'ST.WT', value: `${Number(f.stoneWt).toFixed(3)}gm` };
+    case 'grade':   return { label: 'GRADE', value: String(f.grade) };
+    case 'lmc':     return { label: 'LMC/DIS', value: `${f.lmc}/${f.dis}` };
+    case 'huid':    return { label: 'HUID', value: String(f.huid) };
+    case 'code':    return { label: '', value: item.barcode };
+  }
 }
 
 function fieldText(item: InventoryItem, kind: BuiltinFieldKind) {
@@ -98,6 +125,8 @@ function fieldText(item: InventoryItem, kind: BuiltinFieldKind) {
     case 'stoneWt': return `ST.WT ${f.stoneWt}g`;
     case 'grade':   return `GRADE ${f.grade}`;
     case 'lmc':     return `LMC/DIS ${f.lmc}/${f.dis}`;
+    case 'huid':    return `HUID ${f.huid}`;
+    case 'code':    return item.barcode;
   }
 }
 
@@ -114,6 +143,7 @@ function estimateModuleCount(type: BarcodeType, text: string) {
     case 'code39':  return (len + 2) * 13;      // each char incl. start/stop ≈ 13 modules incl. gap
     case 'ean13':   return 95;                  // fixed-width symbology
     case 'qrcode':  return 0;                   // 2D — module-width heuristic doesn't apply
+    case 'datamatrix': return 0;                // 2D — module-width heuristic doesn't apply
   }
 }
 
@@ -146,7 +176,7 @@ function BarcodeGraphic({ text, type, showValueText }: { text: string; type: Bar
   const [invalid, setInvalid] = useState(false);
 
   useEffect(() => {
-    if (type === 'qrcode') return;
+    if (type === 'qrcode' || type === 'datamatrix') return;
     const svg = svgRef.current;
     if (!svg) return;
     // Start from a completely clean node every render: a leftover viewBox/width/height from
@@ -202,6 +232,32 @@ function BarcodeGraphic({ text, type, showValueText }: { text: string; type: Bar
     return () => { cancelled = true; };
   }, [text, type]);
 
+  // Data Matrix: the compact square dot-matrix used on hallmarked jewellery tags. bwip-js emits
+  // vector SVG (pure black modules, crisp edges), padded by a 1-module quiet zone on every side —
+  // the 2D equivalent of the margins the 1D barcodes get above.
+  useEffect(() => {
+    if (type !== 'datamatrix') return;
+    try {
+      const svg = bwipjs.toSVG({
+        bcid: 'datamatrix', text: text || ' ', scale: 1,
+        paddingwidth: 1, paddingheight: 1, backgroundcolor: 'ffffff', barcolor: '000000', includetext: false,
+      });
+      setQrSvg(svg.replace('<svg', '<svg shape-rendering="crispEdges" preserveAspectRatio="xMidYMid meet"'));
+      setInvalid(false);
+    } catch {
+      setQrSvg('');
+      setInvalid(true);
+    }
+  }, [text, type]);
+
+  if (type === 'datamatrix') {
+    return qrSvg ? (
+      <div className="w-full h-full [&>svg]:w-full [&>svg]:h-full" dangerouslySetInnerHTML={{ __html: qrSvg }} />
+    ) : invalid ? (
+      <div className="w-full h-full flex items-center justify-center bg-red-50/90 text-[7px] font-bold text-red-500 text-center px-1 leading-tight">Not valid Data Matrix</div>
+    ) : null;
+  }
+
   if (type === 'qrcode') {
     return qrSvg ? (
       <div className="w-full h-full [&>svg]:w-full [&>svg]:h-full" dangerouslySetInnerHTML={{ __html: qrSvg }} />
@@ -244,6 +300,37 @@ function defaultElements(w: number, h: number): DesignElement[] {
     bold: true, align: 'left', fontMm: null, text: '', barcodeType: 'qrcode', showValueText: true,
   }));
   return [barcode, ...fields];
+}
+
+/** Fold tag layout — QR + code in the first 35mm, the five detail rows in the second 35mm, third 30mm left blank. */
+function defaultElementsFoldTag(): DesignElement[] {
+  const { h, zones } = FOLD_TAG;
+  const pad = 1;                               // keeps text off the crease
+  const qr = 10;                               // QR side, mm
+  const qrBlock: DesignElement = {
+    id: 'barcode', kind: 'barcode', visible: true,
+    x: (zones[0] - qr) / 2, y: 0.8, w: qr, h: qr,
+    bold: false, align: 'center', fontMm: null, text: '', barcodeType: 'datamatrix', showValueText: false,
+  };
+  const code: DesignElement = {
+    id: 'code', kind: 'code', visible: true,
+    x: pad, y: 0.8 + qr + 0.4, w: zones[0] - pad * 2, h: h - (0.8 + qr + 0.4) - 0.4,
+    bold: true, align: 'center', fontMm: null, text: '', barcodeType: 'qrcode', showValueText: false,
+  };
+  const rows: BuiltinFieldKind[] = ['name', 'weight', 'huid', 'grade', 'lmc'];
+  const rowH = (h - 1) / rows.length;
+  const fields: DesignElement[] = rows.map((kind, i) => ({
+    id: kind, kind, visible: true,
+    x: zones[0] + pad, y: 0.5 + i * rowH, w: zones[1] - pad * 2, h: rowH,
+    bold: true, align: 'left', fontMm: null, text: '', barcodeType: 'qrcode', showValueText: false, split: true,
+  }));
+  // stoneWt isn't part of this tag, but stays available (hidden) so it can be switched on from Layers.
+  const spare: DesignElement = {
+    id: 'stoneWt', kind: 'stoneWt', visible: false,
+    x: zones[0] + pad, y: 0.5, w: zones[1] - pad * 2, h: rowH,
+    bold: true, align: 'left', fontMm: null, text: '', barcodeType: 'qrcode', showValueText: false, split: true,
+  };
+  return [qrBlock, code, ...fields, spare];
 }
 
 /**
@@ -337,9 +424,9 @@ export default function LabelDesignerModal({ open, mode, singleItem, bulkItems, 
   // Starts from the built-in default and swaps in the admin's saved layout (fetched from
   // their account, below) as soon as it arrives — can't await a network call inside a
   // useState initializer, so the very first paint is briefly the default before that lands.
-  const [labelW, setLabelW] = useState(65);
-  const [labelH, setLabelH] = useState(13);
-  const [elements, setElements] = useState<DesignElement[]>(() => defaultElements(65, 13));
+  const [labelW, setLabelW] = useState(FOLD_TAG.w);
+  const [labelH, setLabelH] = useState(FOLD_TAG.h);
+  const [elements, setElements] = useState<DesignElement[]>(() => defaultElementsFoldTag());
   // Guards the auto-save effect below from firing — with a default value, before we've even
   // checked the account for a saved template — which would otherwise overwrite it.
   const [templateReady, setTemplateReady] = useState(false);
@@ -492,7 +579,7 @@ export default function LabelDesignerModal({ open, mode, singleItem, bulkItems, 
   function applyPreset(p: LabelPreset) {
     setLabelW(p.w);
     setLabelH(p.h);
-    setElements(defaultElements(p.w, p.h));
+    setElements(isFoldTag(p.w, p.h) ? defaultElementsFoldTag() : defaultElements(p.w, p.h));
     setSelectedId(null);
   }
 
@@ -539,6 +626,7 @@ export default function LabelDesignerModal({ open, mode, singleItem, bulkItems, 
 
     const text = el.kind === 'custom' ? el.text : fieldText(item, el.kind);
     const fontMm = el.fontMm ?? clampNum(el.h * 0.62, 1.1, 6);
+    const parts = el.split && el.kind !== 'custom' ? fieldParts(item, el.kind) : null;
 
     return (
       <div
@@ -551,16 +639,28 @@ export default function LabelDesignerModal({ open, mode, singleItem, bulkItems, 
         }}
         className={opts.interactive ? `rounded ${selected ? 'ring-2 ring-emerald-500' : 'hover:ring-1 hover:ring-emerald-300'}` : undefined}
       >
-        <span
-          style={{
-            display: 'block', width: '100%',
-            fontSize: unit(fontMm), lineHeight: 1.15, fontWeight: el.bold ? 800 : 500,
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-            color: '#0f172a', textAlign: el.align,
-          }}
-        >
-          {text || (el.kind === 'custom' ? 'Double text…' : '')}
-        </span>
+        {parts ? (
+          <div
+            style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: unit(0.8), width: '100%',
+              fontSize: unit(fontMm), lineHeight: 1.15, fontWeight: el.bold ? 800 : 500, color: '#0f172a', whiteSpace: 'nowrap',
+            }}
+          >
+            <span style={{ flexShrink: 0 }}>{parts.label}</span>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', textAlign: 'right' }}>{parts.value}</span>
+          </div>
+        ) : (
+          <span
+            style={{
+              display: 'block', width: '100%',
+              fontSize: unit(fontMm), lineHeight: 1.15, fontWeight: el.bold ? 800 : 500,
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              color: '#0f172a', textAlign: el.align,
+            }}
+          >
+            {text || (el.kind === 'custom' ? 'Double text…' : '')}
+          </span>
+        )}
         {opts.interactive && (
           <div
             onPointerDown={e => { e.stopPropagation(); startResize(e, el); }}
@@ -781,6 +881,17 @@ export default function LabelDesignerModal({ open, mode, singleItem, bulkItems, 
                     }}
                   >
                     {elements.filter(e => e.visible).map(el => renderElement(el, previewItem, { pxPerMm: zoom, interactive: true }))}
+                    {isFoldTag(labelW, labelH) && (
+                      <>
+                        {/* Editor-only fold guides (never printed): creases at 35mm and 70mm */}
+                        {[FOLD_TAG.zones[0], FOLD_TAG.zones[0] + FOLD_TAG.zones[1]].map(x => (
+                          <div key={x} className="absolute top-0 bottom-0 pointer-events-none border-l-2 border-dashed border-red-400/70" style={{ left: x * zoom }} />
+                        ))}
+                        <span className="absolute -bottom-5 left-0 text-[9px] font-bold text-slate-400 pointer-events-none" style={{ width: FOLD_TAG.zones[0] * zoom, textAlign: 'center' }}>QR · 35mm</span>
+                        <span className="absolute -bottom-5 text-[9px] font-bold text-slate-400 pointer-events-none" style={{ left: FOLD_TAG.zones[0] * zoom, width: FOLD_TAG.zones[1] * zoom, textAlign: 'center' }}>Details · 35mm</span>
+                        <span className="absolute -bottom-5 text-[9px] font-bold text-slate-400 pointer-events-none" style={{ left: (FOLD_TAG.zones[0] + FOLD_TAG.zones[1]) * zoom, width: FOLD_TAG.zones[2] * zoom, textAlign: 'center' }}>Blank · 30mm</span>
+                      </>
+                    )}
                   </div>
                 </div>
                 <p className="mt-3 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">
@@ -826,7 +937,7 @@ export default function LabelDesignerModal({ open, mode, singleItem, bulkItems, 
                             </select>
                           </div>
 
-                          {selectedEl.barcodeType !== 'qrcode' && (
+                          {selectedEl.barcodeType !== 'qrcode' && selectedEl.barcodeType !== 'datamatrix' && (
                             <label className="flex items-center gap-2 cursor-pointer select-none">
                               <input
                                 type="checkbox"
@@ -838,7 +949,7 @@ export default function LabelDesignerModal({ open, mode, singleItem, bulkItems, 
                             </label>
                           )}
 
-                          {previewItem && selectedEl.barcodeType !== 'qrcode' && (() => {
+                          {previewItem && selectedEl.barcodeType !== 'qrcode' && selectedEl.barcodeType !== 'datamatrix' && (() => {
                             const modules = estimateModuleCount(selectedEl.barcodeType, previewItem.barcode);
                             const moduleMm = modules > 0 ? selectedEl.w / modules : 0;
                             if (!moduleMm || moduleMm >= MIN_SAFE_MODULE_MM) return null;

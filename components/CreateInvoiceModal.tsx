@@ -14,6 +14,7 @@ import PaymentSplitsInput, { validatePaymentSplits, type PaymentSplit } from './
 import RedemptionComparisonPanel from './RedemptionComparisonPanel';
 import { Search, Trash2, Receipt, ScanBarcode, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
+import DiscountField from '@/components/DiscountField';
 
 interface CartLine {
   item: InventoryItem;
@@ -538,20 +539,13 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
                           )}
                         </div>
                       </div>
-                      <div className="flex-shrink-0 w-20">
-                        <label className="block text-[8px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Discount</label>
-                        <div className="relative">
-                          <input
-                            type="number"
-                            min={0}
-                            max={100}
-                            value={discountPct}
-                            onChange={e => updateDiscount(item._id, e.target.value)}
-                            className="w-full pl-2 pr-5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">%</span>
-                        </div>
-                      </div>
+                      <DiscountField
+                        className="flex-shrink-0 w-32"
+                        value={discountPct}
+                        base={afterAdmin}
+                        maxPct={null}
+                        onChange={v => updateDiscount(item._id, v)}
+                      />
                       <div className="flex-shrink-0 w-28 text-right">
                         <label className="block text-[8px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Sale Price</label>
                         <p className="text-sm font-black text-slate-900 py-2">₹{fmt(linePrice)}</p>
