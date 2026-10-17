@@ -1003,6 +1003,48 @@ export class ReportsService {
     };
   }
 
+  /**
+   * Every piece currently in stock, one row per item, grouped by branch — the itemised version of the
+   * "By Branch" tab (same filter: AVAILABLE + RESERVED, not deleted, so the row count per branch
+   * always matches the count shown there).
+   */
+  async getInventoryByBranchItems() {
+    const rows = await this.inventoryModel.aggregate([
+      { $match: { is_deleted: { $ne: true }, status: { $in: [InventoryStatus.AVAILABLE, InventoryStatus.RESERVED] } } },
+      { $lookup: { from: 'branches', localField: 'branch_id', foreignField: '_id', as: 'branch' } },
+      { $unwind: { path: '$branch', preserveNullAndEmptyArrays: true } },
+      { $lookup: { from: 'products', localField: 'product_id', foreignField: '_id', as: 'product' } },
+      { $unwind: { path: '$product', preserveNullAndEmptyArrays: true } },
+      { $addFields: { 'product.category_id': { $convert: { input: '$product.category_id', to: 'objectId', onError: null, onNull: null } } } },
+      { $lookup: { from: 'categories', localField: 'product.category_id', foreignField: '_id', as: 'category' } },
+      { $unwind: { path: '$category', preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          _id: 0,
+          branch: { $ifNull: ['$branch.name', 'Unallocated / Warehouse'] },
+          item_code: '$unique_item_code',
+          barcode: '$barcode',
+          huid: '$hallmark',
+          product_name: { $ifNull: ['$product.name', ''] },
+          sku: { $ifNull: ['$product.sku', ''] },
+          category: { $ifNull: ['$category.name', 'Uncategorized'] },
+          metal: { $ifNull: ['$product.metal_type', ''] },
+          purity: { $ifNull: ['$product.purity', ''] },
+          gross_weight: { $ifNull: ['$product.gross_weight', 0] },
+          net_weight: { $ifNull: ['$product.net_weight', 0] },
+          stone_weight: { $ifNull: ['$product.stone_weight', 0] },
+          status: '$status',
+          location: '$location',
+          cost_price: { $ifNull: ['$purchase_price', 0] },
+          selling_price: { $ifNull: ['$selling_price', 0] },
+          added_on: '$createdAt',
+        },
+      },
+      { $sort: { branch: 1, item_code: 1 } },
+    ]);
+    return { totalCount: rows.length, rows };
+  }
+
   // ── Receivables ──────────────────────────────────────────────────────────────────
 
   async getReceivables() {

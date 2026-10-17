@@ -482,6 +482,12 @@ export class ReportsController {
     return this.reports.getInventoryValuation();
   }
 
+  /** One row per piece in stock, grouped by branch — for the "All Items CSV" download. */
+  @Get('inventory-by-branch-items')
+  getInventoryByBranchItems() {
+    return this.reports.getInventoryByBranchItems();
+  }
+
   @Get('receivables')
   getReceivables() {
     return this.reports.getReceivables();
