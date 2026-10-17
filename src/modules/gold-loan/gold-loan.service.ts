@@ -116,7 +116,7 @@ export class GoldLoanService {
     if (!branchId) throw new BadRequestException('branch_id is required');
 
     const customer = await this.customerModel.findById(customer_id).lean().exec();
-    if (!customer) throw new NotFoundException('Customer not found');
+    if (!customer || customer.is_deleted) throw new NotFoundException('Customer not found');
 
     const computedItems = await this.mapItems(items);
     const total_weight_grams = computedItems.reduce((s: number, i: any) => s + i.weight_grams, 0);

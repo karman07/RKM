@@ -167,11 +167,11 @@ export class CustomersService {
   }
 
   async countByRelationshipManager(relationshipManagerId: string) {
-    return this.customerModel.countDocuments({ relationship_manager: relationshipManagerId }).exec();
+    return this.customerModel.countDocuments({ relationship_manager: relationshipManagerId, is_deleted: { $ne: true } }).exec();
   }
 
   async findByPhone(phone: string) {
-    return this.customerModel.findOne({ phone }).exec();
+    return this.customerModel.findOne({ phone, is_deleted: { $ne: true } }).exec();
   }
 
   async findAll(page: number = 1, limit: number = 20, relationshipManagerId?: string, search?: string, deletedOnly = false) {

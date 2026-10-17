@@ -24,7 +24,7 @@ export class SalesService {
 
   async createEnquiry(salesAgentId: string, dto: CreateSaleEnquiryDto): Promise<SaleEnquiryDocument> {
     const customer = await this.customersService.findById(dto.customer_id);
-    if (!customer) throw new NotFoundException('Customer not found');
+    if (!customer || (customer as any).is_deleted) throw new NotFoundException('Customer not found');
 
     if (dto.type === SaleEnquiryType.PRE_BOOKING) {
       if (!dto.mode?.trim()) {
@@ -66,7 +66,7 @@ export class SalesService {
 
     void this.notificationsService.notifyAdmins(
       'New Sales Enquiry',
-      `${customer.name} — ${dto.description} (₹${dto.amount.toLocaleString('en-IN')})`,
+      `${customer.name} — ${dto.description} (₹${Math.round(dto.amount).toLocaleString('en-IN')})`,
       { type: 'sale_enquiry', enquiry_id: String(doc._id) },
     );
 

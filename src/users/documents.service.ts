@@ -43,7 +43,7 @@ function fmtShort(dt?: string | Date | null): string {
   });
 }
 function inr(n: number): string {
-  return `INR ${n.toLocaleString('en-IN')}`;
+  return `INR ${Math.round(Number(n) || 0).toLocaleString('en-IN')}`;
 }
 function titleCase(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);

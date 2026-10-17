@@ -232,7 +232,7 @@ export class EmailService {
     paymentMode?: string;
     fromName: string;
   }): string {
-    const amount = data.amount ? `Rs. ${data.amount.toLocaleString('en-IN')}` : '-';
+    const amount = data.amount ? `Rs. ${Math.round(data.amount).toLocaleString('en-IN')}` : '-';
     const paymentLabel = (data.paymentMode ?? 'store').replace(/_/g, ' ').toUpperCase();
     const rows =
       (data.saleReference ? this.detailRow('Order Reference', data.saleReference) : '') +

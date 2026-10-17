@@ -11,7 +11,7 @@ import { WhatsAppQueueProducer, SingleMessageJob } from '../queue/whatsapp-queue
 import { WhatsAppLogService } from './whatsapp-log.service';
 import { WhatsAppApiService } from './whatsapp-api.service';
 import { WhatsAppConfig } from '../config/whatsapp.config';
-import { getTemplate, TemplateContext } from '../templates/whatsapp-templates.registry';
+import { getTemplate, TemplateContext, WHATSAPP_TEMPLATES } from '../templates/whatsapp-templates.registry';
 import { SendToCustomerDto, BulkSendDto } from '../dto/send-message.dto';
 import { Customer, CustomerDocument } from '../../customers/schemas/customer.schema';
 import { MessageCategory } from '../schemas/whatsapp-message.schema';
@@ -29,6 +29,26 @@ export class WhatsAppService {
     @InjectModel(Customer.name) private readonly customerModel: Model<CustomerDocument>,
   ) {}
 
+  /**
+   * Builds the ordered body variables for one recipient. Values typed in the admin form
+   * (`provided`) win per position; blanks are filled from the registry's builder using
+   * this customer's own record, so bulk sends never reuse one customer's name for all.
+   */
+  private resolveParams(templateName: string, provided: string[] | undefined, customer: any): string[] {
+    const def = getTemplate(templateName) ?? Object.values(WHATSAPP_TEMPLATES).find((t) => t.templateName === templateName);
+    const ctx: TemplateContext = {
+      customerName: customer?.name,
+      storeName: 'RKM Jewellers',
+    };
+    const fallback = def ? def.buildParams(ctx) : [];
+    const given = provided ?? [];
+    const len = Math.max(given.length, fallback.length);
+    return Array.from({ length: len }, (_, i) => {
+      const v = String(given[i] ?? '').trim();
+      return v || String(fallback[i] ?? '').trim();
+    });
+  }
+
   // ─── Opt-in management ────────────────────────────────────────────────────
 
   /** Records (or withdraws) a customer's consent to receive WhatsApp messages. */
@@ -43,7 +63,7 @@ export class WhatsAppService {
 
   /** Marks every customer as opted in to WhatsApp (existing records were created with the old opt-in default of false). */
   async optInAllCustomers(): Promise<{ updated: number }> {
-    const res = await this.customerModel.updateMany({ whatsappOptIn: { $ne: true } }, { $set: { whatsappOptIn: true } }).exec();
+    const res = await this.customerModel.updateMany({ whatsappOptIn: { $ne: true }, is_deleted: { $ne: true } },{ $set: { whatsappOptIn: true } }).exec();
     return { updated: res.modifiedCount ?? 0 };
   }
 
@@ -54,7 +74,7 @@ export class WhatsAppService {
     dto: SendToCustomerDto,
   ): Promise<{ queued: boolean; message: string }> {
     const customer = await this.customersService.findById(customerId);
-    if (!customer) throw new NotFoundException(`Customer ${customerId} not found`);
+    if (!customer || (customer as any).is_deleted) throw new NotFoundException(`Customer ${customerId} not found`);
 
     if (!(customer as any).whatsappOptIn) {
       return { queued: false, message: 'Customer has not opted in to WhatsApp messages' };
@@ -90,7 +110,7 @@ export class WhatsAppService {
       phoneNumber:  normalized,
       templateName: templateDef.templateName,
       language:     templateDef.language,
-      params:       dto.params ?? [],
+      params:       this.resolveParams(dto.templateName, dto.params, customer),
       category:     dto.category ?? MessageCategory.UTILITY,
       customerId,
       triggerEvent: dto.triggerEvent,
@@ -169,6 +189,7 @@ export class WhatsAppService {
         .find({
           purchase_history: new Types.ObjectId(dto.productId),
           whatsappOptIn: true,
+          is_deleted: { $ne: true },
         })
         .select('_id')
         .lean();
@@ -187,7 +208,7 @@ export class WhatsAppService {
 
     for (const cid of customerIds) {
       const customer = await this.customersService.findById(cid);
-      if (!customer || !(customer as any).whatsappOptIn || !customer.phone) {
+      if (!customer || (customer as any).is_deleted || !(customer as any).whatsappOptIn || !customer.phone) {
         skipped++;
         continue;
       }
@@ -199,7 +220,7 @@ export class WhatsAppService {
         phoneNumber:  normalized,
         templateName: templateDef.templateName,
         language:     templateDef.language,
-        params:       dto.params ?? [],
+        params:       this.resolveParams(dto.templateName, dto.params, customer),
         category:     MessageCategory.MARKETING,
         customerId:   cid,
         triggerEvent: 'marketing.bulk',

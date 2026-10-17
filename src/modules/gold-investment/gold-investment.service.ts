@@ -1113,7 +1113,7 @@ export class GoldInvestmentService {
     const displayAmount = submittedAmount ?? this.effectiveMonthlyAmount(sub, plan);
     this.notificationsService.notifyAdmins(
       'Investment Payment Awaiting Approval',
-      `${salesUser.name} collected month ${dto.month} (₹${displayAmount.toLocaleString('en-IN')}) from ${sub.customerName} for "${plan?.name || 'a gold plan'}". Review it from Investment Approvals.`,
+      `${salesUser.name} collected month ${dto.month} (₹${Math.round(displayAmount).toLocaleString('en-IN')}) from ${sub.customerName} for "${plan?.name || 'a gold plan'}". Review it from Investment Approvals.`,
       { type: 'gold_sales_payment_pending', subscriptionId: String(sub._id), month: String(dto.month) },
     ).catch(err => this.logger.error('Admin notify on sales payment submission failed', err));
 
@@ -1347,7 +1347,7 @@ export class GoldInvestmentService {
     return (
       `Dear ${name},\n\n` +
       `Your RKM Jewellers Gold Savings Plan *${planName}* requires your attention.\n\n` +
-      `Monthly payment due: *₹${amount.toLocaleString('en-IN')}*\n` +
+      `Monthly payment due: *₹${Math.round(amount).toLocaleString('en-IN')}*\n` +
       `Months remaining: *${pendingMonths}*\n\n` +
       `You can pay online using this secure link:\n${link}\n\n` +
       `Alternatively, visit any RKM Jewellers store and submit cash to the manager who will mark your payment.\n\n` +
@@ -1359,7 +1359,7 @@ export class GoldInvestmentService {
     return (
       `Dear ${name},\n\n` +
       `Your RKM Jewellers Gold Savings Plan *${planName}* needs a new autopay authorization — your previous mandate was cancelled or halted by your bank.\n\n` +
-      `Monthly amount: *₹${amount.toLocaleString('en-IN')}*\n\n` +
+      `Monthly amount: *₹${Math.round(amount).toLocaleString('en-IN')}*\n\n` +
       `Please authorize your new autopay mandate here:\n${link}\n\n` +
       `Your accumulated balance and payment history carry over — this only sets up future payments.\n\n` +
       `_RKM Jewellers – Building your gold future, one month at a time._`
@@ -1642,7 +1642,7 @@ export class GoldInvestmentService {
 
     // Option 1 — Cash Benefit: investment amount + cash benefit both reduce the taxable subtotal.
     const cashBenefitAmount = Math.round(dto.amount * cashBenefitPercent / 100);
-    const cashRemainingAmount = Math.max(0, dto.jewelrySubtotal - dto.amount - cashBenefitAmount);
+    const cashRemainingAmount = Math.round(Math.max(0, dto.jewelrySubtotal - dto.amount - cashBenefitAmount));
     const cashGst = Math.round(cashRemainingAmount * dto.taxPercentage / 100);
     const cashBenefitOption = {
       redemptionType: RedemptionType.CASH_BENEFIT as const,
@@ -1666,8 +1666,8 @@ export class GoldInvestmentService {
     const eligibleGoldGramsUsed = Math.min(goldGramsAccumulated, jewelryGoldWeightGrams);
     const waiverRatio = jewelryGoldWeightGrams > 0 ? eligibleGoldGramsUsed / jewelryGoldWeightGrams : 0;
     const waivedMakingCharges = Math.round(makingChargesOnJewelry * waiverRatio * (makingChargeDiscountPercent / 100));
-    const remainingMakingCharges = makingChargesOnJewelry - waivedMakingCharges;
-    const waiverRemainingAmount = Math.max(0, dto.jewelrySubtotal - waivedMakingCharges - dto.amount);
+    const remainingMakingCharges = Math.round(makingChargesOnJewelry - waivedMakingCharges);
+    const waiverRemainingAmount = Math.round(Math.max(0, dto.jewelrySubtotal - waivedMakingCharges - dto.amount));
     const waiverGst = Math.round(waiverRemainingAmount * dto.taxPercentage / 100);
     const makingChargeWaiverOption = {
       redemptionType: RedemptionType.MAKING_CHARGE_WAIVER as const,

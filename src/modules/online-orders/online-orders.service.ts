@@ -52,6 +52,14 @@ export class OnlineOrdersService {
       throw new BadRequestException(`We do not deliver beyond ${settings.max_delivery_radius_km} km.`);
     }
 
+    // Orders are settled in whole rupees — normalise every amount before anything is stored.
+    dto.subtotal = Math.round(Number(dto.subtotal) || 0);
+    dto.delivery_charge = Math.round(Number(dto.delivery_charge) || 0);
+    dto.total = Math.max(0, Math.round(Number(dto.total) || 0));
+    if (Array.isArray(dto.items)) {
+      dto.items = dto.items.map((it: any) => ({ ...it, price: it?.price != null ? Math.round(Number(it.price) || 0) : it?.price }));
+    }
+
     // Coupon: re-validated on the server against the order subtotal; the order total is then
     // recomputed here so a tampered client can't claim a bigger discount than the code allows.
     if (dto.coupon_code) {
@@ -160,7 +168,7 @@ export class OnlineOrdersService {
     let discount = c.discount_type === 'percent' ? (subtotal * c.discount_value) / 100 : c.discount_value;
     if (c.discount_type === 'percent' && c.max_discount != null) discount = Math.min(discount, c.max_discount);
     discount = Math.max(0, Math.min(Math.round(discount), Math.floor(subtotal)));
-    return { valid: true, message: `${code} applied — you save ₹${discount.toLocaleString('en-IN')}`, code, discount, description: c.description };
+    return { valid: true, message: `${code} applied — you save ₹${Math.round(discount).toLocaleString('en-IN')}`, code, discount, description: c.description };
   }
 
   private cleanCoupon(dto: any) {

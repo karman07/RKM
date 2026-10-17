@@ -22,6 +22,12 @@ export interface TemplateContext {
   [key: string]: string | number | boolean | undefined;
 }
 
+/** Whole-rupee string for a template variable (no paise, no thousands separators — keeps Airtel's format simple). */
+const rupees = (v: unknown): string => {
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) ? String(n) : '';
+};
+
 export interface TemplateDefinition {
   /** Must match exactly the approved template name in Meta Business Manager */
   templateName: string;
@@ -44,7 +50,7 @@ export const WHATSAPP_TEMPLATES: Record<string, TemplateDefinition> = {
       ctx.customerName ?? 'Customer',
       ctx.saleReference ?? ctx.itemCode ?? '',
       ctx.itemName ?? '',
-      String(ctx.amount ?? ''),
+      rupees(ctx.amount),
     ],
   },
 
@@ -75,8 +81,8 @@ export const WHATSAPP_TEMPLATES: Record<string, TemplateDefinition> = {
     language: 'en_US',
     buildParams: (ctx) => [
       ctx.customerName ?? 'Customer',
-      String(ctx.amount ?? ''),
-      String(ctx.availableBalance ?? ''),
+      rupees(ctx.amount),
+      rupees(ctx.availableBalance),
     ],
   },
 

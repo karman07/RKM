@@ -32,7 +32,7 @@ function fmtShort(dt: Date): string {
   return dt.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 function inr(n: number): string {
-  return `Rs. ${(n ?? 0).toLocaleString('en-IN')}`;
+  return `Rs. ${Math.round(Number(n) || 0).toLocaleString('en-IN')}`;
 }
 function urlToFilePath(url: string): string {
   if (!url) return '';

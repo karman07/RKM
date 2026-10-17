@@ -12,6 +12,8 @@ interface TaxEntry { name: string; percentage: number }
 function fmt(n: number): string {
   return Math.round(n || 0).toLocaleString('en-IN');
 }
+/** Bills are in whole rupees — every amount is rounded once, here, so line items and totals always agree. */
+const rs = (n: unknown): number => Math.round(Number(n) || 0);
 function fmtDec(n: number, d = 3): string {
   return (n || 0).toFixed(d);
 }
@@ -64,14 +66,14 @@ export function buildBillPrintHtml(items: any[], date: string, customerRecordId:
     const product = typeof item.product_id === 'object' ? item.product_id : null;
     const pb = item.pricing_breakdown ?? product?.pricing_breakdown;
 
-    const metalPrice = pb?.metal_price ?? 0;
-    const stonePrice = pb?.stone_price ?? 0;
-    const makingCharge = pb?.making_charges ?? 0;
-    const extraTotal = pb?.extra_charges_total ?? 0;
-    const subtotal = pb?.subtotal ?? (metalPrice + stonePrice + makingCharge + extraTotal);
-    const discountAmt = pb?.discount_amount ?? 0;
-    const taxable = pb?.taxable_amount ?? (subtotal - discountAmt);
-    const grossPrice = pb?.final_price ?? item.selling_price ?? 0;
+    const metalPrice = rs(pb?.metal_price);
+    const stonePrice = rs(pb?.stone_price);
+    const makingCharge = rs(pb?.making_charges);
+    const extraTotal = rs(pb?.extra_charges_total);
+    const subtotal = pb?.subtotal != null ? rs(pb.subtotal) : (metalPrice + stonePrice + makingCharge + extraTotal);
+    const discountAmt = rs(pb?.discount_amount);
+    const taxable = pb?.taxable_amount != null ? rs(pb.taxable_amount) : (subtotal - discountAmt);
+    const grossPrice = rs(pb?.final_price ?? item.selling_price);
 
     const rawTaxes: TaxEntry[] =
       Array.isArray(product?.taxes) && product.taxes.length > 0
@@ -85,16 +87,16 @@ export function buildBillPrintHtml(items: any[], date: string, customerRecordId:
     const taxBreakdown = rawTaxes.map(t => ({
       name: t.name.toUpperCase(),
       percentage: t.percentage,
-      amount: parseFloat(((taxable * t.percentage) / 100).toFixed(2)),
+      amount: rs((taxable * t.percentage) / 100),
     }));
 
-    const finalSelling = item.selling_price ?? grossPrice;
+    const finalSelling = rs(item.selling_price ?? grossPrice);
     const itemSplits = item.payment_splits;
     const payable = Array.isArray(itemSplits) && itemSplits.length > 0
-      ? itemSplits.reduce((s: number, sp: any) => s + (sp.amount || 0), 0)
+      ? itemSplits.reduce((s: number, sp: any) => s + rs(sp.amount), 0)
       : Math.max(0, finalSelling
-          - (item.investment_redeemed ?? 0) - (item.making_charges_discount ?? 0)
-          - (item.advance_redeemed ?? 0) - (item.advance_making_charges_discount ?? 0));
+          - rs(item.investment_redeemed) - rs(item.making_charges_discount)
+          - rs(item.advance_redeemed) - rs(item.advance_making_charges_discount));
 
     return {
       item, product, pb,
@@ -104,8 +106,8 @@ export function buildBillPrintHtml(items: any[], date: string, customerRecordId:
       // Admin discount applies to the item's list price; the manager's % applies on what's left.
       adminPct: Number(item.admin_discount) || 0,
       mgrPct: Number(item.manager_discount) || 0,
-      adminDisAmt: parseFloat((grossPrice * (Number(item.admin_discount) || 0) / 100).toFixed(2)),
-      mgrDisAmt: parseFloat(((grossPrice - grossPrice * (Number(item.admin_discount) || 0) / 100) * (Number(item.manager_discount) || 0) / 100).toFixed(2)),
+      adminDisAmt: rs(grossPrice * (Number(item.admin_discount) || 0) / 100),
+      mgrDisAmt: rs((grossPrice - grossPrice * (Number(item.admin_discount) || 0) / 100) * (Number(item.manager_discount) || 0) / 100),
       finalSelling, payable,
       netWeight: product?.net_weight ?? 0,
       grossWeight: product?.gross_weight ?? 0,
@@ -145,14 +147,14 @@ export function buildBillPrintHtml(items: any[], date: string, customerRecordId:
   const totalTaxable = itemRows.reduce((a, r) => a + r.taxable, 0);
 
   const customer = items[0];
-  const totalInvestmentRedeemed = items.reduce((s, it) => s + (it.investment_redeemed ?? 0), 0);
-  const totalMakingDiscount = items.reduce((s, it) => s + (it.making_charges_discount ?? 0), 0);
-  const totalAdvanceRedeemed = items.reduce((s, it) => s + (it.advance_redeemed ?? 0), 0);
-  const totalAdvanceMakingDiscount = items.reduce((s, it) => s + (it.advance_making_charges_discount ?? 0), 0);
+  const totalInvestmentRedeemed = items.reduce((s, it) => s + rs(it.investment_redeemed), 0);
+  const totalMakingDiscount = items.reduce((s, it) => s + rs(it.making_charges_discount), 0);
+  const totalAdvanceRedeemed = items.reduce((s, it) => s + rs(it.advance_redeemed), 0);
+  const totalAdvanceMakingDiscount = items.reduce((s, it) => s + rs(it.advance_making_charges_discount), 0);
 
   const sharedPaymentSplits: { mode: string; amount: number; reference?: string }[] = customer?.payment_splits ?? [];
   const rawPayable = sharedPaymentSplits.length > 0
-    ? sharedPaymentSplits.reduce((s, sp) => s + (sp.amount || 0), 0)
+    ? sharedPaymentSplits.reduce((s, sp) => s + rs(sp.amount), 0)
     : itemRows.reduce((a, r) => a + r.payable, 0);
   // Bills are settled in whole rupees — round the payable off automatically and show the difference.
   const totalPayable = Math.round(rawPayable);
@@ -228,7 +230,7 @@ export function buildBillPrintHtml(items: any[], date: string, customerRecordId:
     totalMakingDiscount > 0 ? { label: 'Making Charges Discount (Scheme)', value: `- Rs.${fmt(totalMakingDiscount)}`, color: '#7A1C2A' } : null,
     totalAdvanceRedeemed > 0 ? { label: 'Advance Payment Applied', value: `- Rs.${fmt(totalAdvanceRedeemed)}`, color: '#7A1C2A' } : null,
     totalAdvanceMakingDiscount > 0 ? { label: 'Making Charges Discount (Advance)', value: `- Rs.${fmt(totalAdvanceMakingDiscount)}`, color: '#7A1C2A' } : null,
-    Math.abs(roundOff) >= 0.005 ? { label: 'Round Off', value: `${roundOff > 0 ? '+' : '-'} Rs.${Math.abs(roundOff).toFixed(2)}` } : null,
+    Math.abs(roundOff) >= 1 ? { label: 'Round Off', value: `${roundOff > 0 ? '+' : '-'} Rs.${fmt(Math.abs(roundOff))}` } : null,
   ].filter(Boolean) as { label: string; value: string; color?: string }[])
     .map(row => `
       <div style="display:flex;justify-content:space-between;padding:2.5px 0;border-bottom:1px solid #eee;">
@@ -509,8 +511,8 @@ export function buildOnlineOrderInvoiceHtml(order: any): string {
       <div style="display:flex;justify-content:space-between;padding:2.5px 0;border-bottom:1px solid #eee;">
         <span>Delivery Charge</span><span>${order.delivery_charge > 0 ? `Rs.${fmt(order.delivery_charge)}` : 'Free'}</span>
       </div>
-      ${Math.abs(Math.round(order.total) - order.total) >= 0.005 ? `<div style="display:flex;justify-content:space-between;padding:2.5px 0;border-bottom:1px solid #eee;">
-        <span>Round Off</span><span>${Math.round(order.total) - order.total > 0 ? '+' : '-'} Rs.${Math.abs(Math.round(order.total) - order.total).toFixed(2)}</span>
+      ${Math.abs(rs(order.total) - (rs(order.subtotal) - rs(order.discount_amount) + rs(order.delivery_charge))) >= 1 ? `<div style="display:flex;justify-content:space-between;padding:2.5px 0;border-bottom:1px solid #eee;">
+        <span>Round Off</span><span>${rs(order.total) - (rs(order.subtotal) - rs(order.discount_amount) + rs(order.delivery_charge)) > 0 ? '+' : '-'} Rs.${fmt(Math.abs(rs(order.total) - (rs(order.subtotal) - rs(order.discount_amount) + rs(order.delivery_charge))))}</span>
       </div>` : ''}
       <div style="margin-top:8px;padding:10px 14px;background:#fff;color:#000;border:1px solid #000;border-radius:2px;">
         <div style="display:flex;justify-content:space-between;font-weight:900;font-size:14px;">

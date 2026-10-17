@@ -150,7 +150,8 @@ export class InventoryService {
     // Apply manager discount if present
     const managerDiscount = item?.manager_discount || 0;
     const discountedPrice = formulaPrice * (1 - managerDiscount / 100);
-    return parseFloat(discountedPrice.toFixed(2));
+    // Selling prices are whole rupees — no paise on bills.
+    return Math.round(discountedPrice);
   }
 
   async enrichItemsWithPricing(items: any[]) {
@@ -1536,7 +1537,7 @@ export class InventoryService {
       const needsDiscountReset = item.admin_discount > 0 && item.admin_discount === (product.discount_percentage ?? 0);
 
       if (needsPriceUpdate || needsDiscountReset) {
-        item.selling_price = newPrice;
+        item.selling_price = Math.round(newPrice);
         if (needsDiscountReset) item.admin_discount = 0;
         await item.save();
         updated++;
@@ -1655,14 +1656,15 @@ export class InventoryService {
       item.emi_tenure_months = dto.payment_mode === 'emi' ? Number(dto.emi_tenure_months) || 0 : 0;
       item.emi_down_payment = dto.payment_mode === 'emi' ? Number(dto.emi_down_payment) || 0 : 0;
       if (dto.selling_price != null) {
-        item.selling_price = dto.selling_price;
+        // Sale prices are whole rupees — never store paise.
+        item.selling_price = Math.round(Number(dto.selling_price) || 0);
       }
       // Discount % applied at sale time, recorded on the item for the bill/reports — admins
       // are uncapped, managers are capped at the item's max_manager_discount (same rule as
       // the standalone /discount endpoint in updateDiscount()).
       if (dto.manager_discount != null) {
         const proposedDiscount = Number(dto.manager_discount) || 0;
-        if (requestingUserRole === 'manager' && proposedDiscount > (item.max_manager_discount || 0)) {
+        if (requestingUserRole === 'manager' && proposedDiscount > (item.max_manager_discount || 0) + 1e-6) {
           throw new ForbiddenException(
             `Manager cannot set discount above ${item.max_manager_discount}%. Contact an admin.`,
           );
@@ -1883,7 +1885,7 @@ export class InventoryService {
       if (dto.status === InventoryStatus.SOLD) {
         void this.notificationsService.notifyAdmins(
           '💰 Item Sold',
-          `${itemName} sold to ${savedItem.sold_customer_name} at ${branchName} for ₹${savedItem.selling_price?.toLocaleString('en-IN')}.`,
+          `${itemName} sold to ${savedItem.sold_customer_name} at ${branchName} for ₹${Math.round(savedItem.selling_price ?? 0).toLocaleString('en-IN')}.`,
           { type: 'item_sold', item_id: savedItem._id?.toString() ?? '', url: '/dashboard/inventory/sold' },
         );
       } else if (dto.status === InventoryStatus.DAMAGED) {
@@ -2053,7 +2055,7 @@ export class InventoryService {
     const branchIdStr = (saved as any).branch_id?._id?.toString() ?? saved.branch_id?.toString();
     try {
       const notifTitle = '🛒 Sale Request Submitted';
-      const notifBody = `${requestingUserName} requested to sell "${itemName}" at ${branchName} for ₹${(requestData.selling_price ?? saved.selling_price)?.toLocaleString('en-IN')}.`;
+      const notifBody = `${requestingUserName} requested to sell "${itemName}" at ${branchName} for ₹${Math.round(requestData.selling_price ?? saved.selling_price ?? 0).toLocaleString('en-IN')}.`;
       const notifData = { type: 'sale_request', item_id: saved._id?.toString() ?? '', url: '/dashboard/sale-approvals' };
       void this.notificationsService.notifyAdmins(notifTitle, notifBody, notifData);
       if (branchIdStr) {
@@ -2408,7 +2410,7 @@ export class InventoryService {
       
       // Managers must respect their max discount limit
       if (dto.manager_discount !== undefined) {
-        if (dto.manager_discount > item.max_manager_discount) {
+        if (dto.manager_discount > item.max_manager_discount + 1e-6) {
           throw new ForbiddenException(
             `Manager cannot set discount above ${item.max_manager_discount}%. Contact an admin.`,
           );
@@ -2514,7 +2516,7 @@ export class InventoryService {
 
       void this.notificationsService.notifyAdmins(
         '📌 Item Pre-Booked',
-        `${saved.unique_item_code} pre-booked for ${advance.customerName} with ₹${dto.advance_amount.toLocaleString('en-IN')} advance.`,
+        `${saved.unique_item_code} pre-booked for ${advance.customerName} with ₹${Math.round(dto.advance_amount).toLocaleString('en-IN')} advance.`,
         { type: 'item_prebooked', item_id: saved._id?.toString() ?? '', url: '/dashboard/inventory' },
       );
 
@@ -3028,7 +3030,7 @@ export class InventoryService {
     const KNOWN = ['cash', 'card', 'upi', 'bank_transfer', 'cheque', 'emi', 'gold_exchange', 'other', 'investment_balance', 'advance_balance'];
     const out = splits.map(s => ({
       mode: (s.mode ?? 'cash').trim().toLowerCase(),
-      amount: Number(s.amount) || 0,
+      amount: Math.round(Number(s.amount) || 0),
       reference: s.reference?.trim() ?? '',
     }));
     for (const sp of out) {

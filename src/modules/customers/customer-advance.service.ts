@@ -59,7 +59,7 @@ export class CustomerAdvanceService {
 
   async createAdvance(customerId: string, dto: CreateAdvanceDto, staffId?: string) {
     const customer = await this.customerModel.findById(customerId).exec();
-    if (!customer) throw new NotFoundException('Customer not found');
+    if (!customer || customer.is_deleted) throw new NotFoundException('Customer not found');
     if (!dto.amount || dto.amount <= 0) throw new BadRequestException('amount must be greater than 0');
 
     const lockInDays = Number(dto.lock_in_days) || 0;
