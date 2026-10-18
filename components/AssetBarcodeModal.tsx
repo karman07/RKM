@@ -15,15 +15,48 @@ interface AssetBarcodeModalProps {
   onClose: () => void;
 }
 
-// Fixed label layout — matches the LP 46 Lite's actual die-cut stock (65 x 13mm). This has to
-// match both the physical label and whatever media size is configured in the printer's OS
+// Label layout — a 13 mm tall die-cut tag for the LP 46 Lite. The width is NOT fixed any more:
+// the tag is folded in half (QR code on one side, details on the other) so the admin sets the
+// fold gap and edge margins in the print window and the width follows (see labelWidthMm). That width
+// has to match both the physical stock and whatever media size is configured in the printer's OS
 // driver — a mismatch there is what causes content to print across several physical labels
 // instead of one, since the driver has its own fixed page geometry that the browser's @page
-// size can't override on its own (see the print button's hint text below). No editor, no
-// drag/resize — the system-generated QR code plus value text and item details on the label.
-const LABEL_W_MM = 65;
+// size can't override on its own (see the print button's hint text below). No drag/resize editor —
+// the system-generated QR code plus value text and item details on the label.
 const LABEL_H_MM = 13;
 const PNG_EXPORT_DPI = 600;
+
+// The fold zone and edge margins are adjustable in the print window (see "Fold & margins" below);
+// the tag's total width follows from them, with the QR block and the text block kept constant so
+// widening the gap never squeezes the details.
+interface LabelLayout {
+  foldGapMm: number;    // total width of the blank fold zone between the QR block and the text
+  edgeMarginMm: number; // blank margin at the left and right edges of the tag
+}
+const DEFAULT_LAYOUT: LabelLayout = { foldGapMm: 20, edgeMarginMm: 2 };
+const FOLD_GAP_RANGE = { min: 0, max: 40, step: 1 };
+const EDGE_MARGIN_RANGE = { min: 0, max: 6, step: 0.5 };
+const QR_BLOCK_MM = LABEL_H_MM * 0.78;
+const TEXT_BLOCK_MM = 48.9;
+const LAYOUT_STORAGE_KEY = 'rkm-asset-label-layout';
+
+const clampTo = (v: number, r: { min: number; max: number }) => Math.min(r.max, Math.max(r.min, v));
+function loadSavedLayout(): LabelLayout {
+  if (typeof window === 'undefined') return DEFAULT_LAYOUT;
+  try {
+    const raw = window.localStorage.getItem(LAYOUT_STORAGE_KEY);
+    if (!raw) return DEFAULT_LAYOUT;
+    const p = JSON.parse(raw);
+    return {
+      foldGapMm: clampTo(Number.isFinite(Number(p.foldGapMm)) ? Number(p.foldGapMm) : DEFAULT_LAYOUT.foldGapMm, FOLD_GAP_RANGE),
+      edgeMarginMm: clampTo(Number.isFinite(Number(p.edgeMarginMm)) ? Number(p.edgeMarginMm) : DEFAULT_LAYOUT.edgeMarginMm, EDGE_MARGIN_RANGE),
+    };
+  } catch {
+    return DEFAULT_LAYOUT; // unreadable or unavailable storage
+  }
+}
+const labelWidthMm = (l: LabelLayout) =>
+  Math.round((2 * l.edgeMarginMm + QR_BLOCK_MM + l.foldGapMm + TEXT_BLOCK_MM) * 10) / 10;
 
 /**
  * Renders the item's code as a QR code onto a canvas, generated locally rather than fetched as
@@ -60,8 +93,8 @@ function BarcodeCanvas({ text }: { text: string }) {
     export — only the outer wrapper's size differs between them. Left: the scannable QR code with
     its value printed underneath. Right: the item's tag details. All type is sized in `cqh`
     (percent of the label's own height) so it scales identically in the preview, print and PNG
-    without touching the fixed LABEL_W_MM x LABEL_H_MM geometry. */
-function LabelContents({ item }: { item: InventoryItem }) {
+    without touching the label's geometry (width from the layout, fixed LABEL_H_MM height). */
+function LabelContents({ item, layout }: { item: InventoryItem; layout: LabelLayout }) {
   const product = typeof item.product_id === 'object' ? (item.product_id as Product) : null;
   const lmc = product?.making_charge_rate ?? product?.fixed_making_charge ?? 0;
   const dis = product?.discount_percentage ?? item.admin_discount ?? 0;
@@ -74,8 +107,8 @@ function LabelContents({ item }: { item: InventoryItem }) {
   ];
   return (
     <div
-      className="w-full h-full px-[1.2mm] py-[0.8mm] box-border bg-white flex items-stretch gap-[2mm] text-black"
-      style={{ containerType: 'size' }}
+      className="w-full h-full py-[0.8mm] box-border bg-white flex items-stretch text-black"
+      style={{ containerType: 'size', paddingLeft: `${layout.edgeMarginMm}mm`, paddingRight: `${layout.edgeMarginMm}mm` }}
     >
       <div className="flex flex-col min-w-0 justify-center" style={{ flex: '0 0 auto', width: '78cqh' }}>
         <div className="flex-1 min-h-0 relative overflow-hidden"><BarcodeCanvas text={item.barcode} /></div>
@@ -84,8 +117,12 @@ function LabelContents({ item }: { item: InventoryItem }) {
           {item.barcode}
         </div>
       </div>
-      <div className="flex-1 min-w-0 flex flex-col justify-center border-l border-black font-bold uppercase"
-        style={{ paddingLeft: '2mm', fontSize: '13cqh', lineHeight: 1.22 }}>
+      {/* Fold zone: blank space either side of a centred crease line */}
+      <div className="flex justify-center" style={{ flex: '0 0 auto', width: `${layout.foldGapMm}mm` }} aria-hidden="true">
+        <div className="h-full border-l border-black" />
+      </div>
+      <div className="flex-1 min-w-0 flex flex-col justify-center font-bold uppercase"
+        style={{ fontSize: '13cqh', lineHeight: 1.22 }}>
         {rows.map(([k, v]) => (
           <div key={k} className="flex justify-between gap-[1.5mm] whitespace-nowrap">
             <span className="shrink-0">{k}</span>
@@ -97,14 +134,14 @@ function LabelContents({ item }: { item: InventoryItem }) {
   );
 }
 
-function LabelCard({ item, cardRef }: { item: InventoryItem; cardRef?: React.Ref<HTMLDivElement> }) {
+function LabelCard({ item, layout, cardRef }: { item: InventoryItem; layout: LabelLayout; cardRef?: React.Ref<HTMLDivElement> }) {
   return (
     <div
       ref={cardRef}
       className="single-label-card relative"
-      style={{ width: `${LABEL_W_MM}mm`, height: `${LABEL_H_MM}mm` }}
+      style={{ width: `${labelWidthMm(layout)}mm`, height: `${LABEL_H_MM}mm` }}
     >
-      <LabelContents item={item} />
+      <LabelContents item={item} layout={layout} />
     </div>
   );
 }
@@ -112,8 +149,24 @@ function LabelCard({ item, cardRef }: { item: InventoryItem; cardRef?: React.Ref
 export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, onClose }: AssetBarcodeModalProps) {
   const exportRef = useRef<HTMLDivElement | null>(null);
   const [downloading, setDownloading] = useState(false);
+  // The admin's fold/margin choice is remembered on this computer. Nothing is rendered until the
+  // modal opens, so reading it at startup can't cause a server/client mismatch.
+  const [layout, setLayout] = useState<LabelLayout>(loadSavedLayout);
+
+  function updateLayout(patch: Partial<LabelLayout>) {
+    setLayout(prev => {
+      const next = {
+        foldGapMm: clampTo(patch.foldGapMm ?? prev.foldGapMm, FOLD_GAP_RANGE),
+        edgeMarginMm: clampTo(patch.edgeMarginMm ?? prev.edgeMarginMm, EDGE_MARGIN_RANGE),
+      };
+      try { window.localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }
 
   if (!open) return null;
+
+  const labelW = labelWidthMm(layout);
 
   const previewItem = mode === 'single' ? singleItem : bulkItems[0] ?? null;
   const canPrint = mode === 'single' ? !!singleItem : bulkItems.length > 0;
@@ -139,7 +192,7 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
     <>
       <style jsx global>{`
         @media print {
-          @page { size: ${LABEL_W_MM}mm ${LABEL_H_MM}mm; margin: 0; }
+          @page { size: ${labelW}mm ${LABEL_H_MM}mm; margin: 0; }
           /* The print sheet is portaled to be a direct child of <body> (see below) specifically
              so this can be a plain display:none on every OTHER direct child — no visibility or
              height tricks needed. Those were tried first and both failed for real reasons: a
@@ -158,7 +211,7 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
             print-color-adjust: exact !important;
           }
           .single-label-card {
-            width: ${LABEL_W_MM}mm !important; height: ${LABEL_H_MM}mm !important; position: relative !important;
+            width: ${labelW}mm !important; height: ${LABEL_H_MM}mm !important; position: relative !important;
             overflow: hidden !important; margin: 0 !important; padding: 0 !important; border: none !important;
             break-after: page; page-break-after: always; break-inside: avoid; page-break-inside: avoid;
           }
@@ -170,16 +223,67 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
         open={open}
         onClose={onClose}
         title={mode === 'bulk' ? `Print Labels — ${bulkItems.length} Item${bulkItems.length !== 1 ? 's' : ''}` : 'Asset QR Code View'}
+        width="max-w-3xl"
       >
         {!previewItem ? (
           <p className="py-10 text-center text-sm font-bold text-slate-400">No item to preview.</p>
         ) : (
-          <div className="flex flex-col items-center justify-center p-8 md:p-12 bg-slate-50/50 rounded-[2rem] border border-slate-100">
-            <div
-              className="bg-white border border-slate-200 rounded-md shadow-inner overflow-hidden"
-              style={{ width: LABEL_W_MM * 6, height: LABEL_H_MM * 6 }}
-            >
-              <LabelContents item={previewItem} />
+          <div className="flex flex-col items-center justify-center p-5 md:p-8 bg-slate-50/50 rounded-[2rem] border border-slate-100">
+            {/* mx-auto (not justify-center) so a preview wider than the window scrolls instead of clipping its left edge */}
+            <div className="w-full overflow-x-auto pb-1">
+              <div
+                className="mx-auto bg-white border border-slate-200 rounded-md shadow-inner overflow-hidden"
+                style={{ width: labelW * 6, height: LABEL_H_MM * 6 }}
+              >
+                <LabelContents item={previewItem} layout={layout} />
+              </div>
+            </div>
+
+            {/* Fold & margins editor — everything below (preview, print size, PNG) follows these. */}
+            <div className="w-full mt-6 bg-white border border-slate-200 rounded-2xl px-4 py-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Fold &amp; margins</p>
+                <p className="text-[11px] font-black text-slate-900">Tag width {labelW} mm × {LABEL_H_MM} mm</p>
+              </div>
+              {([
+                { key: 'foldGapMm' as const, label: 'Gap between QR and text (fold zone)', range: FOLD_GAP_RANGE },
+                { key: 'edgeMarginMm' as const, label: 'Left / right edge margin', range: EDGE_MARGIN_RANGE },
+              ]).map(({ key, label, range }) => (
+                <div key={key} className="flex items-center gap-3 mb-2.5">
+                  <label className="flex-1 min-w-[9rem] text-[11px] font-bold text-slate-600 leading-tight">{label}</label>
+                  <input
+                    type="range"
+                    min={range.min} max={range.max} step={range.step}
+                    value={layout[key]}
+                    onChange={e => updateLayout({ [key]: Number(e.target.value) })}
+                    className="w-32 md:w-44 accent-blue-600"
+                    aria-label={label}
+                  />
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min={range.min} max={range.max} step={range.step}
+                      value={layout[key]}
+                      onChange={e => updateLayout({ [key]: Number(e.target.value) })}
+                      className="w-16 px-2 py-1.5 rounded-lg border border-slate-200 text-[12px] font-bold text-slate-900 text-right"
+                      aria-label={`${label} in millimetres`}
+                    />
+                    <span className="text-[10px] font-bold text-slate-400">mm</span>
+                  </div>
+                </div>
+              ))}
+              <div className="flex items-center justify-between mt-3">
+                <p className="text-[10px] font-bold text-slate-400 leading-snug pr-3">
+                  The line in the middle of the gap is the crease — fold there. Changing these changes the tag width, so set the same size in the printer&apos;s paper settings.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => updateLayout(DEFAULT_LAYOUT)}
+                  className="shrink-0 px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-widest hover:bg-slate-200 transition-all"
+                >
+                  Reset
+                </button>
+              </div>
             </div>
 
             {mode === 'bulk' ? (
@@ -194,7 +298,7 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
             )}
 
             <p className="mt-6 text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-center leading-relaxed">
-              First time printing on this printer? Click <span className="font-black">&quot;Print using system dialog…&quot;</span> in the print window (not Chrome&apos;s quick print), then under Paper Size choose <span className="font-black">Manage Custom Sizes…</span> and add an exact {LABEL_W_MM}mm × {LABEL_H_MM}mm size for this printer. Without that, the printer driver may use its own default page length and print one label&apos;s content across several physical labels.
+              First time printing on this printer? Click <span className="font-black">&quot;Print using system dialog…&quot;</span> in the print window (not Chrome&apos;s quick print), then under Paper Size choose <span className="font-black">Manage Custom Sizes…</span> and add an exact {labelW}mm × {LABEL_H_MM}mm size for this printer. Without that, the printer driver may use its own default page length and print one label&apos;s content across several physical labels.
             </p>
 
             <div className="w-full mt-3 flex flex-wrap gap-3">
@@ -234,9 +338,9 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
       {createPortal(
         <div className="print-labels-sheet" style={{ position: 'fixed', left: -99999, top: 0 }} aria-hidden="true">
           {mode === 'single' && singleItem ? (
-            <LabelCard item={singleItem} />
+            <LabelCard item={singleItem} layout={layout} />
           ) : (
-            bulkItems.map(item => <LabelCard key={item._id} item={item} />)
+            bulkItems.map(item => <LabelCard key={item._id} item={item} layout={layout} />)
           )}
         </div>,
         document.body
@@ -246,7 +350,7 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
           flow (shifted off the visible page, not display:none) since html-to-image needs the
           node to actually be laid out to rasterize it. */}
       <div style={{ position: 'fixed', left: -99999, top: 0, pointerEvents: 'none' }} aria-hidden="true">
-        {previewItem && <LabelCard item={previewItem} cardRef={exportRef} />}
+        {previewItem && <LabelCard item={previewItem} layout={layout} cardRef={exportRef} />}
       </div>
     </>
   );
