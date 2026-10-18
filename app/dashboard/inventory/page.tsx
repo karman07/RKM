@@ -38,6 +38,7 @@ import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import CustomerSearchPanel, { type CustomerDraft } from '@/components/CustomerSearchPanel';
 import PaymentSplitsInput, { validatePaymentSplits, type PaymentSplit } from '@/components/PaymentSplitsInput';
 import PreBookModal from '@/components/PreBookModal';
+import DiscountField from '@/components/DiscountField';
 import { Bookmark, CheckCircle2, AlertTriangle } from 'lucide-react';
 import CompletePreBookingModal from '@/components/CompletePreBookingModal';
 import CancelPreBookingModal from '@/components/CancelPreBookingModal';
@@ -219,6 +220,8 @@ export default function InventoryPage() {
   const [cartPaymentSplits, setCartPaymentSplits] = useState<PaymentSplit[]>([{ mode: 'cash', amount: '', reference: '' }]);
   const [cartSubmitting, setCartSubmitting] = useState(false);
   const [cartError, setCartError] = useState('');
+  // Per-item discount % on the bill (item id -> percent). Unset = whatever manager discount the item already carries.
+  const [cartDiscounts, setCartDiscounts] = useState<Record<string, string>>({});
   const cartModeRef = useRef(false);
   useEffect(() => { cartModeRef.current = cartMode; }, [cartMode]);
 
@@ -252,11 +255,29 @@ export default function InventoryPage() {
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
   // ── Cart derived ──────────────────────────────────────────────────────────
-  const cartTotal = useMemo(
-    // Whole rupees — bills are rounded off automatically.
-    () => Math.round(cart.reduce((sum, it) => sum + (Number(it.live_selling_price ?? it.selling_price) || 0), 0)),
-    [cart]
-  );
+  // The price a line is quoted at BEFORE any manager discount (the live price has a previously saved one baked in),
+  // so the discount box always works from the same base — same rule as the invoice modal.
+  const cartBasePrice = (it: InventoryItem) => {
+    const current = Number(it.live_selling_price ?? it.selling_price) || 0;
+    const mgr = Number(it.manager_discount) || 0;
+    return Math.round(mgr > 0 && mgr < 100 ? current / (1 - mgr / 100) : current);
+  };
+  const cartDiscountPct = (it: InventoryItem) => {
+    const v = cartDiscounts[it._id];
+    return v === undefined ? (Number(it.manager_discount) || 0) : (parseFloat(v) || 0);
+  };
+  // Whole rupees — bills are rounded off automatically.
+  const cartLinePrice = (it: InventoryItem) => Math.max(0, Math.round(cartBasePrice(it) * (1 - cartDiscountPct(it) / 100)));
+  function setCartDiscount(id: string, pct: string) {
+    setCartDiscounts(prev => ({ ...prev, [id]: pct === '' ? '' : String(Math.max(0, Math.min(100, Number(pct) || 0))) }));
+  }
+  const cartTotal = Math.round(cart.reduce((sum, it) => sum + cartLinePrice(it), 0));
+
+  // With a single payment split, keep it equal to the (discounted) bill total while the checkout is open.
+  useEffect(() => {
+    if (!cartModal) return;
+    setCartPaymentSplits(prev => (prev.length === 1 ? [{ ...prev[0], amount: cartTotal > 0 ? String(cartTotal) : '' }] : prev));
+  }, [cartTotal, cartModal]);
 
   const stats = useMemo(() => ({
     totalAsset: dbStats.totalValue,
@@ -535,7 +556,7 @@ export default function InventoryPage() {
       if (splits.length === 0) throw new Error('At least one payment method with an amount is required.');
 
       const updated = await sellItemsBatch({
-        items: cart.map(it => ({ id: it._id, selling_price: Number(it.live_selling_price ?? it.selling_price) || undefined })),
+        items: cart.map(it => ({ id: it._id, selling_price: cartLinePrice(it) || undefined, manager_discount: cartDiscountPct(it) })),
         sold_at_branch_id: cartSoldAtBranchId,
         sold_by_user_id: cartSoldByUserId || undefined,
         sold_customer_name: cartCustomerDraft.name,
@@ -553,6 +574,7 @@ export default function InventoryPage() {
 
       setItems(prev => prev.map(it => updated.find(u => u._id === it._id) || it));
       setCart([]);
+      setCartDiscounts({});
       setCartExpanded(false);
       setCartModal(false);
       showToast(`${updated.length} items sold in one bill`, 'success');
@@ -625,7 +647,7 @@ export default function InventoryPage() {
       )}
 
       {/* Floating Multi-Item Bill Cart */}
-      {cartMode && cart.length > 0 && (
+      {cartMode && cart.length > 0 && !cartModal && (
         <div className="fixed bottom-8 right-8 z-[150] w-full max-w-sm animate-[fadeRise_300ms_ease-out]">
           <div className="bg-white rounded-3xl shadow-2xl border border-blue-100 overflow-hidden">
             <button
@@ -646,7 +668,7 @@ export default function InventoryPage() {
               <div className="max-h-64 overflow-y-auto divide-y divide-slate-50">
                 {cart.map(it => {
                   const product = typeof it.product_id === 'object' ? it.product_id as any : null;
-                  const price = Number(it.live_selling_price ?? it.selling_price) || 0;
+                  const price = cartLinePrice(it);
                   return (
                     <div key={it._id} className="flex items-center justify-between gap-3 px-5 py-3">
                       <div className="min-w-0">
@@ -1720,14 +1742,25 @@ export default function InventoryPage() {
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{cart.length} Item{cart.length !== 1 ? 's' : ''} in Bill</span>
               <span className="text-xl font-black text-blue-700">₹{fmt(cartTotal)}</span>
             </div>
-            <div className="max-h-40 overflow-y-auto divide-y divide-slate-50 border-t border-slate-50">
+            <div className="max-h-80 overflow-y-auto divide-y divide-slate-50 border-t border-slate-50">
               {cart.map(it => {
                 const product = typeof it.product_id === 'object' ? it.product_id as any : null;
-                const price = Number(it.live_selling_price ?? it.selling_price) || 0;
+                const base = cartBasePrice(it);
+                const line = cartLinePrice(it);
                 return (
-                  <div key={it._id} className="flex items-center justify-between gap-3 py-2 text-xs">
-                    <span className="font-bold text-slate-700 truncate">{product?.name || 'Item'} <span className="text-slate-400 font-medium">#{it.unique_item_code}</span></span>
-                    <span className="font-black text-slate-900">₹{fmt(price)}</span>
+                  <div key={it._id} className="flex items-center gap-3 py-2.5 text-xs">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold text-slate-700 truncate">{product?.name || 'Item'} <span className="text-slate-400 font-medium">#{it.unique_item_code}</span></p>
+                      <p className="text-[10px] font-black text-emerald-600">₹{fmt(base)}{line !== base ? ` → ₹${fmt(line)}` : ''}</p>
+                    </div>
+                    <DiscountField
+                      className="flex-shrink-0 w-36"
+                      value={cartDiscounts[it._id] ?? String(Number(it.manager_discount) || 0)}
+                      base={base}
+                      maxPct={null}
+                      onChange={v => setCartDiscount(it._id, v)}
+                    />
+                    <span className="flex-shrink-0 w-24 text-right font-black text-slate-900">₹{fmt(line)}</span>
                   </div>
                 );
               })}

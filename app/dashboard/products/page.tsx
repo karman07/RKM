@@ -145,6 +145,50 @@ const emptyForm: ProductForm = {
   max_manager_discount: '0',
 };
 
+/** Turns a saved product into form values — used for editing, and for starting a new product from an existing one. */
+function productToForm(p: Product): ProductForm {
+  return {
+    name: p.name, sku: p.sku,
+    category_id: typeof p.category_id === 'string' ? p.category_id : (p.category_id?._id || ''),
+    description: p.description ?? '',
+    gender: p.gender ?? '', occasion: p.occasion ?? '',
+    metal_type: p.metal_type, purity: p.purity, metal_color: p.metal_color ?? '',
+    dimensions: p.dimensions ?? '',
+    gross_weight: String(p.gross_weight), net_weight: String(p.net_weight),
+    stone_weight: String(p.stone_weight ?? ''),
+    wastage_percentage: String((p as any).wastage_percentage ?? '0'),
+    has_stones: p.has_stones,
+    in_stock: (p as any).in_stock ?? true,
+    stone_type: p.stone_type ?? '',
+    stones: ((p as any).stones ?? []).map((s: any) => ({
+      stone_type: s.stone_type,
+      weight: String(s.weight ?? ''),
+      price_override: s.price_override ? String(s.price_override) : '',
+    })),
+    making_charge_type: p.making_charge_type,
+    making_charge_rate: String(p.making_charge_rate ?? ''),
+    making_charge_percentage: String((p as any).making_charge_percentage ?? ''),
+    fixed_making_charge: String(p.fixed_making_charge ?? ''),
+    tax_percentage: String(p.tax_percentage),
+    taxes: Array.isArray((p as any).taxes) && (p as any).taxes.length > 0
+      ? ((p as any).taxes).map((t: any) => ({
+          name: t.name || '',
+          percentage: t.percentage ? String(t.percentage) : '',
+        }))
+      : DEFAULT_TAXES,
+    discount_percentage: String(p.discount_percentage ?? '0'),
+    price_override: String(p.price_override ?? ''),
+    purchase_price: String(p.purchase_price ?? ''),
+    extra_charges: Array.isArray((p as any).extra_charges) 
+      ? ((p as any).extra_charges).map((e: any) => ({
+          reason: e.reason || '',
+          charge: e.charge ? String(e.charge) : '',
+        }))
+      : [],
+    max_manager_discount: String(p.max_manager_discount ?? '0'),
+};
+}
+
 const statusBadge: Record<string, { wrap: string; dot: string }> = {
   active:       { wrap: 'badge-status-active', dot: 'bg-emerald-500' },
   inactive:     { wrap: 'badge-status-inactive', dot: 'bg-slate-400' },
@@ -184,6 +228,13 @@ export default function ProductsPage() {
   const [pendingImages, setPendingImages] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  // "Start from an existing product" (template) — Add Product only
+  const [templateSource, setTemplateSource] = useState<Product | null>(null);
+  const [templateQuery, setTemplateQuery] = useState('');
+  const [templateResults, setTemplateResults] = useState<Product[]>([]);
+  const [templateSearching, setTemplateSearching] = useState(false);
+  const [templateNote, setTemplateNote] = useState('');
+  const [copyImages, setCopyImages] = useState(true);
 
   const [imagesModal, setImagesModal] = useState<Product | null>(null);
   const [productImages, setProductImages] = useState<string[]>([]);
@@ -333,6 +384,7 @@ export default function ProductsPage() {
   }, [searchParams, categories]);
 
   function openCreate() {
+    setTemplateSource(null); setTemplateQuery(''); setTemplateResults([]); setTemplateNote('');
     setEditTarget(null);
     setProductImages([]);
     setPendingImages([]);
@@ -344,53 +396,87 @@ export default function ProductsPage() {
   }
 
   function openEdit(p: Product) {
+    setTemplateSource(null); setTemplateQuery(''); setTemplateResults([]); setTemplateNote('');
     setNetWeightManual(true); // loaded from DB — treat as manually set
     setEditTarget(p);
     setProductImages(p.images ?? []);
-    setForm({
-      name: p.name, sku: p.sku,
-      category_id: typeof p.category_id === 'string' ? p.category_id : (p.category_id?._id || ''),
-      description: p.description ?? '',
-      gender: p.gender ?? '', occasion: p.occasion ?? '',
-      metal_type: p.metal_type, purity: p.purity, metal_color: p.metal_color ?? '',
-      dimensions: p.dimensions ?? '',
-      gross_weight: String(p.gross_weight), net_weight: String(p.net_weight),
-      stone_weight: String(p.stone_weight ?? ''),
-      wastage_percentage: String((p as any).wastage_percentage ?? '0'),
-      has_stones: p.has_stones,
-      in_stock: (p as any).in_stock ?? true,
-      stone_type: p.stone_type ?? '',
-      stones: ((p as any).stones ?? []).map((s: any) => ({
-        stone_type: s.stone_type,
-        weight: String(s.weight ?? ''),
-        price_override: s.price_override ? String(s.price_override) : '',
-      })),
-      making_charge_type: p.making_charge_type,
-      making_charge_rate: String(p.making_charge_rate ?? ''),
-      making_charge_percentage: String((p as any).making_charge_percentage ?? ''),
-      fixed_making_charge: String(p.fixed_making_charge ?? ''),
-      tax_percentage: String(p.tax_percentage),
-      taxes: Array.isArray((p as any).taxes) && (p as any).taxes.length > 0
-        ? ((p as any).taxes).map((t: any) => ({
-            name: t.name || '',
-            percentage: t.percentage ? String(t.percentage) : '',
-          }))
-        : DEFAULT_TAXES,
-      discount_percentage: String(p.discount_percentage ?? '0'),
-      price_override: String(p.price_override ?? ''),
-      purchase_price: String(p.purchase_price ?? ''),
-      extra_charges: Array.isArray((p as any).extra_charges) 
-        ? ((p as any).extra_charges).map((e: any) => ({
-            reason: e.reason || '',
-            charge: e.charge ? String(e.charge) : '',
-          }))
-        : [],
-      max_manager_discount: String(p.max_manager_discount ?? '0'),
-    });
+    setForm(productToForm(p));
     setFormError('');
     setActiveTab(0);
     setModalOpen(true);
   }
+
+  /** Fills the Add Product form from an existing product. A new SKU is generated (never the template's), the
+      name gets a "(Copy)" suffix to prompt a rename, and — optionally — its images are copied as new uploads. */
+  async function applyTemplate(p: Product) {
+    setEditTarget(null);
+    setNetWeightManual(true);
+    setFormError('');
+    setActiveTab(0);
+    setTemplateSource(p);
+    setTemplateQuery('');
+    setTemplateResults([]);
+    setTemplateNote('');
+    setProductImages([]);
+    setPendingImages([]);
+    const base = productToForm(p);
+    setForm({ ...base, name: `${p.name} (Copy)`, sku: '' });
+    try {
+      const res = await getSkuPreview(base.category_id || undefined, base.metal_type || undefined);
+      setForm(f => ({ ...f, sku: res.sku }));
+    } catch { /* the SKU effect will retry when category/metal change */ }
+
+    if (copyImages && p.images && p.images.length > 0) {
+      // Copy whichever images can still be fetched; a missing file shouldn't stop the others.
+      const results = await Promise.allSettled(p.images.map(async (url, i) => {
+        const r = await fetch(staticUrl(url));
+        if (!r.ok) throw new Error('image fetch failed');
+        const blob = await r.blob();
+        const ext = (url.split('?')[0].split('.').pop() || 'jpg').toLowerCase();
+        return new File([blob], `${p.sku || 'product'}-copy-${i + 1}.${ext}`, { type: blob.type || 'image/jpeg' });
+      }));
+      const files = results.flatMap(r => (r.status === 'fulfilled' ? [r.value] : []));
+      setPendingImages(files);
+      const total = p.images.length;
+      setTemplateNote(
+        files.length === total
+          ? `${files.length} image${files.length === 1 ? '' : 's'} copied.`
+          : files.length === 0
+            ? 'Images could not be copied — add them in the Images tab.'
+            : `${files.length} of ${total} images copied (the rest could not be loaded).`
+      );
+    }
+  }
+
+  function openDuplicate(p: Product) {
+    setModalOpen(true);
+    void applyTemplate(p);
+  }
+
+  function clearTemplate() {
+    setTemplateSource(null);
+    setTemplateNote('');
+    setPendingImages([]);
+    setForm(getDefaultForm());
+    setNetWeightManual(false);
+    setFormError('');
+  }
+
+  // Search for a template product while the Add Product form is open (name or SKU).
+  useEffect(() => {
+    if (!modalOpen || editTarget || templateSource) return;
+    const q = templateQuery.trim();
+    if (q.length < 2) { setTemplateResults([]); return; }
+    let active = true;
+    setTemplateSearching(true);
+    const t = setTimeout(() => {
+      getProducts({ search: q, limit: '8', page: '1' })
+        .then(r => { if (active) setTemplateResults(r.data); })
+        .catch(() => { if (active) setTemplateResults([]); })
+        .finally(() => { if (active) setTemplateSearching(false); });
+    }, 300);
+    return () => { active = false; clearTimeout(t); };
+  }, [templateQuery, modalOpen, editTarget, templateSource]);
 
   function validateRequiredFields(): string | null {
     if (!form.name.trim()) return 'Name is required.';
@@ -969,6 +1055,9 @@ export default function ProductsPage() {
                           <button onClick={() => openBarcodePreview(p)} title="Identify Asset" className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 transition-all active:scale-90">
                             <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M3 5h2v14H3zM7 5h1v14H7zM10 5h2v14h-2zM14 5h1v14h-1zM17 5h2v14h-2zM21 5h1v14h-1z" /></svg>
                           </button>
+                          <button onClick={() => openDuplicate(p)} title="Duplicate as a new product" className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-400 hover:bg-violet-50 hover:text-violet-600 transition-all active:scale-90">
+                            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                          </button>
                           <button onClick={() => openEdit(p)} title="Modify Provenance" className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-all active:scale-90">
                             <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
                           </button>
@@ -1013,6 +1102,60 @@ export default function ProductsPage() {
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editTarget ? 'Edit Product' : 'Add Product'} width="max-w-2xl">
         <div className="space-y-5">
           {formError && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">{formError}</div>}
+
+          {/* Start from an existing product (Add Product only) */}
+          {!editTarget && (
+            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/60 px-4 py-3">
+              {templateSource ? (
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Copied from <span className="font-bold text-slate-900">{templateSource.name}</span> ({templateSource.sku}). Change anything you need in the tabs below —
+                    a new SKU and barcode are created for this product. {templateNote}
+                  </p>
+                  <button type="button" onClick={clearTemplate}
+                    className="shrink-0 px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-[11px] font-bold text-slate-600 hover:bg-slate-100">
+                    Start blank
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1.5">Start from an existing product <span className="font-medium text-slate-400">(optional)</span></label>
+                  <div className="relative">
+                    <input
+                      value={templateQuery}
+                      onChange={e => setTemplateQuery(e.target.value)}
+                      placeholder="Search a product by name or SKU to copy its details…"
+                      className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    {templateSearching && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-slate-400">Searching…</span>}
+                    {templateResults.length > 0 && (
+                      <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-64 overflow-y-auto">
+                        {templateResults.map(r => (
+                          <button key={r._id} type="button" onClick={() => void applyTemplate(r)}
+                            className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0">
+                            {r.images?.[0]
+                              ? <img src={staticUrl(r.images[0])} alt="" className="w-9 h-9 rounded-lg object-cover border border-slate-100" />
+                              : <div className="w-9 h-9 rounded-lg bg-slate-100" />}
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-sm font-semibold text-slate-800 truncate">{r.name}</span>
+                              <span className="block text-[11px] text-slate-400 truncate">{r.sku} · {r.metal_type} {r.purity} · {r.net_weight} g</span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {templateQuery.trim().length >= 2 && !templateSearching && templateResults.length === 0 && (
+                      <p className="mt-1.5 text-[11px] text-slate-400">No product found for &ldquo;{templateQuery.trim()}&rdquo;.</p>
+                    )}
+                  </div>
+                  <label className="mt-2 flex items-center gap-2 text-[11px] font-medium text-slate-500 cursor-pointer select-none">
+                    <input type="checkbox" className="accent-blue-600" checked={copyImages} onChange={e => setCopyImages(e.target.checked)} />
+                    Also copy its images
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Tab Nav */}
           {(() => {
