@@ -408,10 +408,30 @@ export function InventoryPageContent() {
   const [checkingOut, setCheckingOut] = useState(false);
   const [showCartCustomerPicker, setShowCartCustomerPicker] = useState(false);
   const [cartPhoneVerified, setCartPhoneVerified] = useState(false);
+  // Per-item discount % on the bill (item id -> percent). Unset = whatever manager discount the item already carries.
+  const [cartDiscounts, setCartDiscounts] = useState<Record<string, string>>({});
   const cartModeRef = useRef(false);
   useEffect(() => { cartModeRef.current = cartMode; }, [cartMode]);
 
-  const cartItemPrice = (item: InventoryItem) => item.live_selling_price ?? item.selling_price ?? 0;
+  // The price a line is quoted at BEFORE any manager discount (the live price has a previously saved one baked in),
+  // so the discount box always works from the same base — same rule as the invoice modal.
+  const cartBasePrice = (item: InventoryItem) => {
+    const current = Number(item.live_selling_price ?? item.selling_price) || 0;
+    const mgr = Number(item.manager_discount) || 0;
+    return Math.round(mgr > 0 && mgr < 100 ? current / (1 - mgr / 100) : current);
+  };
+  const cartMaxPct = (item: InventoryItem) => Number(item.max_manager_discount) || 0;
+  const cartDiscountPct = (item: InventoryItem) => {
+    const v = cartDiscounts[item._id];
+    return v === undefined ? (Number(item.manager_discount) || 0) : (parseFloat(v) || 0);
+  };
+  function setCartDiscount(item: InventoryItem, pct: string) {
+    // Managers can't go past the item's max_manager_discount (the server enforces the same cap).
+    const clamped = Math.max(0, Math.min(cartMaxPct(item), Number(pct) || 0));
+    setCartDiscounts(prev => ({ ...prev, [item._id]: pct === '' ? '' : String(clamped) }));
+  }
+  // Whole rupees, after the item's discount — drives the bill total, payment splits and the sale price sent.
+  const cartItemPrice = (item: InventoryItem) => Math.max(0, Math.round(cartBasePrice(item) * (1 - cartDiscountPct(item) / 100)));
 
   // Looks up a scanned barcode and adds the matching item straight to the cart —
   // lets staff build a multi-item bill by scanning one item after another.
@@ -528,9 +548,15 @@ export function InventoryPageContent() {
   const CART_TOLERANCE = 1; // rupee rounding tolerance
 
   // Pre-fill the single default cart payment row with the amount due until staff edit it.
+  // Follows the amount due (e.g. when a per-item discount changes it) while the row is untouched.
+  const prevCartDue = useRef(0);
   useEffect(() => {
+    const last = prevCartDue.current;
+    prevCartDue.current = cartAmountDue;
     setCheckoutSplits((prev) =>
-      prev.length === 1 && !prev[0].amount && cartAmountDue > 0 ? [{ ...prev[0], amount: cartAmountDue }] : prev,
+      prev.length === 1 && (!prev[0].amount || Number(prev[0].amount) === last) && cartAmountDue > 0
+        ? [{ ...prev[0], amount: cartAmountDue }]
+        : prev,
     );
   }, [cartAmountDue]);
 
@@ -596,6 +622,11 @@ export function InventoryPageContent() {
       toast.error('Customer name, phone and shipping address are required');
       return;
     }
+    const overCap = cart.find((i) => cartDiscountPct(i) > cartMaxPct(i) + 1e-6);
+    if (overCap) {
+      toast.error(`The maximum discount on ${overCap.unique_item_code} is ${cartMaxPct(overCap)}%.`);
+      return;
+    }
     if (Math.abs(cartRemaining) > CART_TOLERANCE) {
       toast.error('Payment splits must add up to the cart total before checkout');
       return;
@@ -631,7 +662,7 @@ export function InventoryPageContent() {
       // sellItemsBatch, using the exact same breakdown shown on the comparison screen — the
       // sale fails outright if the redemption fails, instead of silently under-deducting.
       const updated = await sellItemsBatch({
-        items: cart.map((i) => ({ id: i._id, selling_price: cartItemPrice(i) })),
+        items: cart.map((i) => ({ id: i._id, selling_price: cartItemPrice(i), manager_discount: cartDiscountPct(i) })),
         sale_reference: saleInvoiceNumber,
         sold_by_user_id: checkoutForm.sold_by_user_id || undefined,
         sold_at_branch_id: (user?.branch as any)?._id || undefined,
@@ -670,6 +701,7 @@ export function InventoryPageContent() {
       }));
       toast.success(`Sale completed for ${updated.length} item${updated.length === 1 ? '' : 's'}`);
       setCart([]);
+      setCartDiscounts({});
       setCartExpanded(false);
       setShowCheckout(false);
       resetCheckout();
@@ -2516,17 +2548,27 @@ export function InventoryPageContent() {
             <div className="space-y-6">
               {/* Cart items list */}
               <div className="rounded-2xl border border-slate-100 overflow-hidden">
-                <div className="max-h-48 overflow-y-auto divide-y divide-slate-50">
+                <div className="max-h-80 overflow-y-auto divide-y divide-slate-50">
                   {cart.map((item) => {
                     const product = item.product_id as any;
                     const price = cartItemPrice(item);
+                    const base = cartBasePrice(item);
                     return (
-                      <div key={item._id} className="flex items-center justify-between gap-3 px-5 py-3 bg-white">
-                        <div className="min-w-0">
+                      <div key={item._id} className="flex items-center gap-3 px-5 py-3 bg-white">
+                        <div className="min-w-0 flex-1">
                           <p className="text-sm font-black text-slate-900 truncate">{product?.name ?? 'Unknown Item'}</p>
                           <p className="text-[10px] text-slate-400 font-bold">Code: {item.unique_item_code} · Barcode: {item.barcode}</p>
+                          <p className="text-[10px] font-black text-emerald-600">₹{base.toLocaleString('en-IN')}{price !== base ? ` → ₹${price.toLocaleString('en-IN')}` : ''}</p>
                         </div>
-                        <span className="text-sm font-black text-[#7A1C2A] flex-shrink-0">₹{price.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+                        <DiscountField
+                          className="flex-shrink-0 w-36"
+                          value={cartDiscounts[item._id] ?? String(Number(item.manager_discount) || 0)}
+                          base={base}
+                          maxPct={cartMaxPct(item)}
+                          invalid={cartDiscountPct(item) > cartMaxPct(item) + 1e-6}
+                          onChange={v => setCartDiscount(item, v)}
+                        />
+                        <span className="text-sm font-black text-[#7A1C2A] flex-shrink-0 w-24 text-right">₹{price.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
                       </div>
                     );
                   })}
