@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { MessageCircle, BarChart3, Send, Layers, Inbox, DollarSign, Layout } from 'lucide-react';
+import { MessageCircle, BarChart3, Send, Layers, Inbox, DollarSign, Layout, Activity } from 'lucide-react';
 
 const NAV = [
   { href: '/dashboard/whatsapp',          label: 'Analytics',    icon: BarChart3,      exact: true },
@@ -10,6 +10,7 @@ const NAV = [
   { href: '/dashboard/whatsapp/send',     label: 'Send Message', icon: Send,           exact: false },
   { href: '/dashboard/whatsapp/bulk',     label: 'Bulk Send',    icon: Layers,         exact: false },
   { href: '/dashboard/whatsapp/history',  label: 'History',      icon: Inbox,          exact: false },
+  { href: '/dashboard/whatsapp/logs',     label: 'Delivery Log', icon: Activity,       exact: false },
   { href: '/dashboard/whatsapp/rates',    label: 'Rate Card',    icon: DollarSign,     exact: false },
 ] as const;
 

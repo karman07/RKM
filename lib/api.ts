@@ -1799,6 +1799,68 @@ export const waGetHistory = (customerId: string, page = 1, limit = 30) =>
     `/whatsapp/history/${customerId}?page=${page}&limit=${limit}`
   );
 
+// ─── Delivery log (Airtel IQ callbacks) ───────────────────────────────────────
+
+export interface WaLogMessage extends Omit<WaMessage, 'customerId'> {
+  customerId?: { _id: string; name?: string; phone?: string } | null;
+  readAt?: string;
+  errorCode?: number;
+  statusUpdatedAt?: string;
+}
+
+export interface WaCallbackEvent {
+  _id: string;
+  waMessageId?: string;
+  messageId?: string;
+  status: string;
+  stream?: string;
+  sort?: string;
+  from?: string;
+  to?: string;
+  errorCode?: number;
+  errorTitle?: string;
+  errorMessage?: string;
+  errorDetails?: string;
+  fbtraceId?: string;
+  eventTime?: string;
+  matched: boolean;
+  raw?: unknown;
+  createdAt: string;
+}
+
+export interface WaLogSummary {
+  callbackUrl: string;
+  tokenRequired: boolean;
+  lastCallbackAt: string | null;
+  lastCallbackStatus: string | null;
+  callbacksLast24h: number;
+  callbacksLast7dByStatus: Record<string, number>;
+  unmatchedLast7d: number;
+  messagesAwaitingConfirmation: number;
+}
+
+type WaPage = { total: number; page: number; limit: number; total_pages: number };
+
+export const waGetLogSummary = () => request<WaLogSummary>('/whatsapp/logs/summary');
+
+export const waGetLogMessages = (p: { status?: string; search?: string; page?: number; limit?: number; days?: number }) => {
+  const qs = new URLSearchParams();
+  if (p.status && p.status !== 'all') qs.set('status', p.status);
+  if (p.search?.trim()) qs.set('search', p.search.trim());
+  qs.set('page', String(p.page ?? 1));
+  qs.set('limit', String(p.limit ?? 25));
+  if (p.days) qs.set('days', String(p.days));
+  return request<{ data: WaLogMessage[]; meta: WaPage & { days: number }; byStatus: Record<string, number> }>(`/whatsapp/logs/messages?${qs}`);
+};
+
+export const waGetLogCallbacks = (p: { status?: string; page?: number; limit?: number }) => {
+  const qs = new URLSearchParams();
+  if (p.status && p.status !== 'all') qs.set('status', p.status);
+  qs.set('page', String(p.page ?? 1));
+  qs.set('limit', String(p.limit ?? 25));
+  return request<{ data: WaCallbackEvent[]; meta: WaPage }>(`/whatsapp/logs/callbacks?${qs}`);
+};
+
 export const waGetCostSummary = (startDate?: string, endDate?: string) => {
   const qs = new URLSearchParams();
   if (startDate) qs.append('startDate', startDate);
