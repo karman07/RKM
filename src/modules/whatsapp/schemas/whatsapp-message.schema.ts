@@ -70,6 +70,18 @@ export class WhatsAppMessage {
   @Prop()
   deliveredAt: Date;
 
+  /** When the "read" receipt arrived */
+  @Prop()
+  readAt: Date;
+
+  /** Meta/Airtel error code when the message failed (e.g. 132000), from the delivery callback */
+  @Prop()
+  errorCode: number;
+
+  /** Last time Airtel's callback changed this message's status */
+  @Prop()
+  statusUpdatedAt: Date;
+
   /**
    * Cost of this message in USD (based on Meta pricing tiers).
    * Stored at write-time so historical analytics remain accurate

@@ -68,6 +68,20 @@ export class WhatsAppConfig {
     return this.config.getOrThrow<string>('WHATSAPP_WEBHOOK_VERIFY_TOKEN');
   }
 
+  /**
+   * Optional shared secret for Airtel's delivery callback. When WHATSAPP_CALLBACK_TOKEN is set, POSTs to
+   * /whatsapp/webhook must carry it (`?token=…` on the URL registered with Airtel, or an `x-callback-token`
+   * header). Left unset, the endpoint stays open — Airtel's docs describe no signature scheme.
+   */
+  get callbackToken(): string {
+    return this.config.get<string>('WHATSAPP_CALLBACK_TOKEN') ?? '';
+  }
+
+  /** Public URL Airtel should call (shown in the admin dashboard). Defaults to the request's own host. */
+  get callbackUrlOverride(): string {
+    return this.config.get<string>('WHATSAPP_CALLBACK_URL') ?? '';
+  }
+
   // ─── Messaging Behaviour ─────────────────────────────────────────────────
 
   get throttleWindowMs(): number {

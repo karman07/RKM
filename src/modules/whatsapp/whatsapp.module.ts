@@ -5,6 +5,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 
 import { WhatsAppMessage, WhatsAppMessageSchema } from './schemas/whatsapp-message.schema';
 import { WhatsAppTemplate, WhatsAppTemplateSchema } from './schemas/whatsapp-template.schema';
+import { WhatsAppCallbackEvent, WhatsAppCallbackEventSchema } from './schemas/whatsapp-callback-event.schema';
 import { WhatsAppConfig } from './config/whatsapp.config';
 import { WhatsAppService } from './services/whatsapp.service';
 import { WhatsAppApiService } from './services/whatsapp-api.service';
@@ -29,6 +30,7 @@ import { SettingsModule } from '../settings/settings.module';
     MongooseModule.forFeature([
       { name: WhatsAppMessage.name,  schema: WhatsAppMessageSchema },
       { name: WhatsAppTemplate.name, schema: WhatsAppTemplateSchema },
+      { name: WhatsAppCallbackEvent.name, schema: WhatsAppCallbackEventSchema },
       { name: Customer.name,         schema: CustomerSchema },
     ]),
 

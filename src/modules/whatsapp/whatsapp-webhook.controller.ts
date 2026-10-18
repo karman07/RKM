@@ -4,11 +4,14 @@ import {
   Post,
   Query,
   Body,
+  Headers,
+  HttpCode,
+  UnauthorizedException,
   Logger,
 } from '@nestjs/common';
 import { WhatsAppLogService } from './services/whatsapp-log.service';
 import { WhatsAppConfig } from './config/whatsapp.config';
-import { MessageStatus } from './schemas/whatsapp-message.schema';
+import { parseAirtelCallback } from './services/whatsapp-callback.parser';
 
 @Controller('whatsapp/webhook')
 export class WhatsAppWebhookController {
@@ -41,49 +44,45 @@ export class WhatsAppWebhookController {
   }
 
   /**
-   * POST /whatsapp/webhook
-   * Receives Airtel IQ's delivery-status callback (see "Sample Callback" in the Airtel IQ
-   * WhatsApp API Documentation) — a flat JSON body per message, not Meta's nested
-   * entry[0].changes[0].value shape. The docs don't show a distinct inbound-reply payload
-   * shape, so only outbound delivery-status handling is wired up here for now.
-   * Always returns 200 — never throw, or Airtel will retry endlessly.
+   * POST /whatsapp/webhook  — Airtel IQ delivery callback.
+   *
+   * Body is the flat JSON from "Sample Callback" in the Airtel IQ WhatsApp API Documentation
+   * (one object per event, or an array of them): messageId / vendorAckId, msgStatus / messageStatus
+   * (SENT | DELIVERED | READ | FAILED), msgStream, from/to, and an `error` block on failures.
+   *
+   * Every event is stored (visible under Admin → WhatsApp → Delivery Log) and the matching message's
+   * status is moved forward. Always answers 200 so Airtel doesn't retry endlessly — the only
+   * exception is a wrong token, when WHATSAPP_CALLBACK_TOKEN is configured.
    */
   @Post()
-  async receive(@Body() body: any): Promise<{ status: string }> {
-    try {
-      // Airtel may batch callbacks as an array, or send one object per request.
-      const events: any[] = Array.isArray(body) ? body : [body];
-
-      for (const event of events) {
-        // The send API returns the bare UUID (== callback `vendorAckId`); the callback's `messageId`
-        // is that UUID with the recipient number appended — try both so the log row is found.
-        const waIds = [event?.vendorAckId, event?.messageId].filter(Boolean).map((v: string) => String(v).trim());
-        const waId = waIds[0];
-        const statusType: string = String(event?.messageStatus ?? event?.msgStatus ?? '').toUpperCase();
-        if (!waId || !statusType) continue;
-
-        let mappedStatus: MessageStatus;
-        if (statusType === 'DELIVERED') mappedStatus = MessageStatus.DELIVERED;
-        else if (statusType === 'READ') mappedStatus = MessageStatus.READ;
-        else if (statusType === 'FAILED') mappedStatus = MessageStatus.FAILED;
-        else mappedStatus = MessageStatus.SENT;
-
-        const failure: string | undefined = mappedStatus === MessageStatus.FAILED
-          ? (event?.error?.message?.error?.message ?? event?.error?.title ?? 'Delivery failed')
-          : undefined;
-        await this.logService.updateStatusByWaId(
-          waIds,
-          mappedStatus,
-          statusType === 'DELIVERED' ? new Date() : undefined,
-          failure,
-        );
-        this.logger.log(`Delivery update → waId: ${waId}, status: ${statusType}${failure ? ` (${failure})` : ''}`);
-      }
-
-      return { status: 'ok' };
-    } catch (err) {
-      this.logger.error(`Webhook processing error: ${err.message}`);
-      return { status: 'ok' };
+  @HttpCode(200)
+  async receive(
+    @Body() body: any,
+    @Query('token') queryToken?: string,
+    @Headers('x-callback-token') headerToken?: string,
+  ): Promise<{ status: string; received: number }> {
+    const required = this.waConfig.callbackToken;
+    if (required && queryToken !== required && headerToken !== required) {
+      this.logger.warn('Rejected WhatsApp callback — missing/incorrect token');
+      throw new UnauthorizedException('Invalid callback token');
     }
+
+    let received = 0;
+    try {
+      const events: any[] = Array.isArray(body) ? body : Array.isArray(body?.events) ? body.events : [body];
+      for (const raw of events) {
+        const ev = parseAirtelCallback(raw);
+        if (!ev || (!ev.waIds.length && !ev.rawStatus)) continue;
+        const { matched, updated } = await this.logService.applyCallback(ev, raw);
+        received++;
+        this.logger.log(
+          `Airtel callback → ${ev.waMessageId || ev.messageId} ${ev.rawStatus || '-'} ${ev.stream || ''}`.trim() +
+            `${ev.failureText ? ` (${ev.failureText})` : ''} [matched: ${matched}, updated: ${updated}]`,
+        );
+      }
+    } catch (err: any) {
+      this.logger.error(`Webhook processing error: ${err.message}`);
+    }
+    return { status: 'ok', received };
   }
 }

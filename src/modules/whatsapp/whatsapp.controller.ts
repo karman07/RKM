@@ -10,7 +10,10 @@ import {
   ParseIntPipe,
   DefaultValuePipe,
   Logger,
+  UseGuards,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { WhatsAppService } from './services/whatsapp.service';
 import { WhatsAppLogService } from './services/whatsapp-log.service';
 import { WhatsAppAnalyticsService } from './services/whatsapp-analytics.service';
@@ -20,7 +23,18 @@ import { WhatsAppConfig } from './config/whatsapp.config';
 import { SendToCustomerDto, BulkSendDto } from './dto/send-message.dto';
 import { TemplateStatus } from './schemas/whatsapp-template.schema';
 import { MessageCategory } from './schemas/whatsapp-message.schema';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
+import { Roles } from '../../auth/decorators/roles.decorator';
+import { UserRole } from '../../users/schemas/user.schema';
 
+/**
+ * Admin-only. These endpoints send customer messages, manage templates and expose customer phone
+ * numbers and message history, so they must never be reachable without a login. (Airtel's delivery
+ * callback lives on its own public controller: whatsapp-webhook.controller.ts.)
+ */
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.ADMIN)
 @Controller('whatsapp')
 export class WhatsAppController {
   private readonly logger = new Logger(WhatsAppController.name);
@@ -142,6 +156,46 @@ export class WhatsAppController {
         ])
       ) as Record<MessageCategory, number>,
     };
+  }
+
+  // ─── Delivery log (Airtel callbacks) ───────────────────────────────────────
+
+  /**
+   * GET /whatsapp/logs/summary
+   * Is Airtel calling our webhook? Plus the URL to register with Airtel.
+   */
+  @Get('logs/summary')
+  async logSummary(@Req() req: Request) {
+    const proto = (req.headers['x-forwarded-proto'] as string)?.split(',')[0] || req.protocol;
+    const host = (req.headers['x-forwarded-host'] as string) || req.get('host');
+    const callbackUrl = this.waConfig.callbackUrlOverride || `${proto}://${host}/whatsapp/webhook`;
+    return {
+      callbackUrl: this.waConfig.callbackToken ? `${callbackUrl}?token=<your WHATSAPP_CALLBACK_TOKEN>` : callbackUrl,
+      tokenRequired: !!this.waConfig.callbackToken,
+      ...(await this.logService.callbackSummary()),
+    };
+  }
+
+  /** GET /whatsapp/logs/messages?status=&search=&page=&limit=&days= — every outbound message, newest first. */
+  @Get('logs/messages')
+  async logMessages(
+    @Query('status') status?: string,
+    @Query('search') search?: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page?: number,
+    @Query('limit', new DefaultValuePipe(25), ParseIntPipe) limit?: number,
+    @Query('days', new DefaultValuePipe(30), ParseIntPipe) days?: number,
+  ) {
+    return this.logService.listMessages({ status, search, page, limit, days });
+  }
+
+  /** GET /whatsapp/logs/callbacks?status=&page=&limit= — raw callbacks received from Airtel. */
+  @Get('logs/callbacks')
+  async logCallbacks(
+    @Query('status') status?: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page?: number,
+    @Query('limit', new DefaultValuePipe(25), ParseIntPipe) limit?: number,
+  ) {
+    return this.logService.listCallbacks({ status, page, limit });
   }
 
   // ─── Template Management ───────────────────────────────────────────────────
