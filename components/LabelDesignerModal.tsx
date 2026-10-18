@@ -155,6 +155,84 @@ const MIN_SAFE_MODULE_MM = 0.25;
     on a thermal-transfer or laser printer, well above what a browser renders on screen. */
 const PNG_EXPORT_DPI = 600;
 
+// ─── 2D symbols (QR / Data Matrix) drawn in whole printer dots ───────────────
+
+type Matrix = { size: number; get: (row: number, col: number) => boolean };
+
+/** Module matrix for a 2D symbol, or null if the text can't be encoded. */
+function build2DMatrix(type: 'qrcode' | 'datamatrix', text: string): Matrix | null {
+  try {
+    if (type === 'qrcode') {
+      const q = QRCode.create(text || ' ', { errorCorrectionLevel: 'M' });
+      return { size: q.modules.size, get: (r, c) => !!q.modules.get(r, c) };
+    }
+    const raw = bwipjs.raw('datamatrix', text || ' ', {}) as any[];
+    const o = raw[0];
+    return { size: o.pixx, get: (r, c) => o.pixs[r * o.pixx + c] === 1 };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Sizes a 2D symbol so every module is a WHOLE number of printer dots. A thermal printer can only
+ * print full dots — scale a code to, say, 4.2 dots per module and some modules print 4 dots wide and
+ * some 5, which wrecks the symbol's geometry and is the usual reason a printed code won't scan.
+ * `k` = dots per module, chosen as large as fits in the box.
+ */
+function layout2D(modules: number, type: 'qrcode' | 'datamatrix', boxW: number, boxH: number, dpi: number) {
+  const dotMm = 25.4 / dpi;
+  const quiet = type === 'datamatrix' ? 1 : 2;       // white border (in modules) kept inside the symbol
+  const total = modules + quiet * 2;
+  const avail = Math.min(boxW, boxH);
+  const kFit = Math.floor(avail / (total * dotMm));
+  const k = Math.max(1, kFit);
+  const moduleMm = k * dotMm;
+  return { dotMm, quiet, total, k, moduleMm, sizeMm: total * moduleMm, overflows: kFit < 1, tooSmall: moduleMm < MIN_SAFE_MODULE_MM };
+}
+
+function Matrix2D({ text, type, box, dpi, unit }: {
+  text: string; type: 'qrcode' | 'datamatrix';
+  box: { x: number; y: number; w: number; h: number }; dpi: number; unit: (mm: number) => string;
+}) {
+  const m = useMemo(() => build2DMatrix(type, text), [type, text]);
+  if (!m) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-red-50/90 text-[7px] font-bold text-red-500 text-center px-1 leading-tight">
+        Not valid {type === 'datamatrix' ? 'Data Matrix' : 'QR'}
+      </div>
+    );
+  }
+  const L = layout2D(m.size, type, box.w, box.h, dpi);
+  // Centre the symbol in its box, then snap its top-left corner to the printer's dot grid
+  // (label coordinates, origin = top-left of the stock) so the first module starts on a dot boundary.
+  const snap = (abs: number) => Math.round(abs / L.dotMm) * L.dotMm;
+  const left = snap(box.x + (box.w - L.sizeMm) / 2) - box.x;
+  const top = snap(box.y + (box.h - L.sizeMm) / 2) - box.y;
+
+  let d = '';
+  for (let r = 0; r < m.size; r++) {
+    let c = 0;
+    while (c < m.size) {
+      if (!m.get(r, c)) { c++; continue; }
+      let len = 1;
+      while (c + len < m.size && m.get(r, c + len)) len++;
+      d += `M${c + L.quiet} ${r + L.quiet}h${len}v1h-${len}z`;
+      c += len;
+    }
+  }
+  return (
+    <svg
+      width={unit(L.sizeMm)} height={unit(L.sizeMm)} viewBox={`0 0 ${L.total} ${L.total}`}
+      shapeRendering="crispEdges" xmlns="http://www.w3.org/2000/svg"
+      style={{ position: 'absolute', left: unit(left), top: unit(top), display: 'block', background: '#fff' }}
+    >
+      <rect width={L.total} height={L.total} fill="#ffffff" />
+      <path d={d} fill="#000000" />
+    </svg>
+  );
+}
+
 /**
  * Renders the barcode/QR as native vector markup (SVG) instead of a fetched raster image.
  * A bitmap barcode has to be scaled to fit whatever physical box the label editor produces,
@@ -170,9 +248,11 @@ const PNG_EXPORT_DPI = 600;
  * the browser never lightens the fill for "ink saving", and a quiet zone that's mostly
  * horizontal (scanners are far more sensitive to left/right quiet zone than vertical margin).
  */
-function BarcodeGraphic({ text, type, showValueText }: { text: string; type: BarcodeType; showValueText: boolean }) {
+function BarcodeGraphic({ text, type, showValueText, box, dpi, unit }: {
+  text: string; type: BarcodeType; showValueText: boolean;
+  box: { x: number; y: number; w: number; h: number }; dpi: number; unit: (mm: number) => string;
+}) {
   const svgRef = useRef<SVGSVGElement | null>(null);
-  const [qrSvg, setQrSvg] = useState('');
   const [invalid, setInvalid] = useState(false);
 
   useEffect(() => {
@@ -223,45 +303,10 @@ function BarcodeGraphic({ text, type, showValueText }: { text: string; type: Bar
     svg.setAttribute('shape-rendering', 'crispEdges');
   }, [text, type, showValueText]);
 
-  useEffect(() => {
-    if (type !== 'qrcode') return;
-    let cancelled = false;
-    QRCode.toString(text || ' ', { type: 'svg', margin: 2, color: { dark: '#000000ff', light: '#ffffffff' } })
-      .then(svg => { if (!cancelled) setQrSvg(svg); })
-      .catch(() => { if (!cancelled) setQrSvg(''); });
-    return () => { cancelled = true; };
-  }, [text, type]);
 
-  // Data Matrix: the compact square dot-matrix used on hallmarked jewellery tags. bwip-js emits
-  // vector SVG (pure black modules, crisp edges), padded by a 1-module quiet zone on every side —
-  // the 2D equivalent of the margins the 1D barcodes get above.
-  useEffect(() => {
-    if (type !== 'datamatrix') return;
-    try {
-      const svg = bwipjs.toSVG({
-        bcid: 'datamatrix', text: text || ' ', scale: 1,
-        paddingwidth: 1, paddingheight: 1, backgroundcolor: 'ffffff', barcolor: '000000', includetext: false,
-      });
-      setQrSvg(svg.replace('<svg', '<svg shape-rendering="crispEdges" preserveAspectRatio="xMidYMid meet"'));
-      setInvalid(false);
-    } catch {
-      setQrSvg('');
-      setInvalid(true);
-    }
-  }, [text, type]);
-
-  if (type === 'datamatrix') {
-    return qrSvg ? (
-      <div className="w-full h-full [&>svg]:w-full [&>svg]:h-full" dangerouslySetInnerHTML={{ __html: qrSvg }} />
-    ) : invalid ? (
-      <div className="w-full h-full flex items-center justify-center bg-red-50/90 text-[7px] font-bold text-red-500 text-center px-1 leading-tight">Not valid Data Matrix</div>
-    ) : null;
-  }
-
-  if (type === 'qrcode') {
-    return qrSvg ? (
-      <div className="w-full h-full [&>svg]:w-full [&>svg]:h-full" dangerouslySetInnerHTML={{ __html: qrSvg }} />
-    ) : null;
+  // 2D symbols (QR / Data Matrix) are drawn by Matrix2D in whole printer dots — see layout2D().
+  if (type === 'qrcode' || type === 'datamatrix') {
+    return <Matrix2D text={text} type={type} box={box} dpi={dpi} unit={unit} />;
   }
 
   return (
@@ -302,33 +347,38 @@ function defaultElements(w: number, h: number): DesignElement[] {
   return [barcode, ...fields];
 }
 
-/** Fold tag layout — QR + code in the first 35mm, the five detail rows in the second 35mm, third 30mm left blank. */
+/**
+ * Fold tag layout — QR / Data Matrix + item code in the first 35mm, the five detail rows in the second
+ * 35mm, the third 30mm left blank. No margins on the tag's outer edges (top, bottom, left, right): the
+ * code and rows start at the very edge; only a small inset from the two fold lines keeps text off the crease.
+ */
 function defaultElementsFoldTag(): DesignElement[] {
   const { h, zones } = FOLD_TAG;
-  const pad = 1;                               // keeps text off the crease
-  const qr = 10;                               // QR side, mm
+  const creaseInset = 0.5;                      // mm kept clear on each side of a fold line (not an outer margin)
+  const codeH = 2.4;                            // item-code line under the symbol
+  const symbol = h - codeH;                     // symbol box: full height above the code line, starts at y = 0
   const qrBlock: DesignElement = {
     id: 'barcode', kind: 'barcode', visible: true,
-    x: (zones[0] - qr) / 2, y: 0.8, w: qr, h: qr,
+    x: (zones[0] - symbol) / 2, y: 0, w: symbol, h: symbol,
     bold: false, align: 'center', fontMm: null, text: '', barcodeType: 'datamatrix', showValueText: false,
   };
   const code: DesignElement = {
     id: 'code', kind: 'code', visible: true,
-    x: pad, y: 0.8 + qr + 0.4, w: zones[0] - pad * 2, h: h - (0.8 + qr + 0.4) - 0.4,
-    bold: true, align: 'center', fontMm: null, text: '', barcodeType: 'qrcode', showValueText: false,
+    x: 0, y: symbol, w: zones[0], h: codeH,
+    bold: true, align: 'center', fontMm: 1.9, text: '', barcodeType: 'datamatrix', showValueText: false,
   };
   const rows: BuiltinFieldKind[] = ['name', 'weight', 'huid', 'grade', 'lmc'];
-  const rowH = (h - 1) / rows.length;
+  const rowH = h / rows.length;                 // rows fill the whole height: 3mm each
   const fields: DesignElement[] = rows.map((kind, i) => ({
     id: kind, kind, visible: true,
-    x: zones[0] + pad, y: 0.5 + i * rowH, w: zones[1] - pad * 2, h: rowH,
-    bold: true, align: 'left', fontMm: null, text: '', barcodeType: 'qrcode', showValueText: false, split: true,
+    x: zones[0] + creaseInset, y: i * rowH, w: zones[1] - creaseInset * 2, h: rowH,
+    bold: true, align: 'left', fontMm: null, text: '', barcodeType: 'datamatrix', showValueText: false, split: true,
   }));
   // stoneWt isn't part of this tag, but stays available (hidden) so it can be switched on from Layers.
   const spare: DesignElement = {
     id: 'stoneWt', kind: 'stoneWt', visible: false,
-    x: zones[0] + pad, y: 0.5, w: zones[1] - pad * 2, h: rowH,
-    bold: true, align: 'left', fontMm: null, text: '', barcodeType: 'qrcode', showValueText: false, split: true,
+    x: zones[0] + creaseInset, y: 0, w: zones[1] - creaseInset * 2, h: rowH,
+    bold: true, align: 'left', fontMm: null, text: '', barcodeType: 'datamatrix', showValueText: false, split: true,
   };
   return [qrBlock, code, ...fields, spare];
 }
@@ -376,7 +426,7 @@ function elementLabel(el: DesignElement) {
     doesn't have to be redone before every print run. Saved on `Settings.label_template`,
     the same singleton document metal rates etc. already live on, so it's tied to the
     account rather than one browser — it follows the admin to any device they sign in on. */
-interface SavedLabelTemplate { labelW: number; labelH: number; elements: DesignElement[]; }
+interface SavedLabelTemplate { labelW: number; labelH: number; elements: DesignElement[]; printerDpi?: number; }
 
 function isValidTemplate(v: unknown): v is SavedLabelTemplate {
   const t = v as Partial<SavedLabelTemplate> | null | undefined;
@@ -427,6 +477,8 @@ export default function LabelDesignerModal({ open, mode, singleItem, bulkItems, 
   const [labelW, setLabelW] = useState(FOLD_TAG.w);
   const [labelH, setLabelH] = useState(FOLD_TAG.h);
   const [elements, setElements] = useState<DesignElement[]>(() => defaultElementsFoldTag());
+  // Resolution of the label printer (dots per inch) — 2D codes are sized in whole dots of this grid.
+  const [printerDpi, setPrinterDpi] = useState(203);
   // Guards the auto-save effect below from firing — with a default value, before we've even
   // checked the account for a saved template — which would otherwise overwrite it.
   const [templateReady, setTemplateReady] = useState(false);
@@ -457,6 +509,7 @@ export default function LabelDesignerModal({ open, mode, singleItem, bulkItems, 
       if (t) {
         setLabelW(t.labelW);
         setLabelH(t.labelH);
+        if (t.printerDpi && [203, 300, 600].includes(t.printerDpi)) setPrinterDpi(t.printerDpi);
         setElements(t.elements);
       }
       setTemplateReady(true);
@@ -471,9 +524,9 @@ export default function LabelDesignerModal({ open, mode, singleItem, bulkItems, 
   // stomp on a real saved template while the initial load is still in flight.
   useEffect(() => {
     if (!templateReady) return;
-    const t = setTimeout(() => persistTemplate({ labelW, labelH, elements }), 400);
+    const t = setTimeout(() => persistTemplate({ labelW, labelH, elements, printerDpi }), 400);
     return () => clearTimeout(t);
-  }, [templateReady, labelW, labelH, elements]);
+  }, [templateReady, labelW, labelH, elements, printerDpi]);
 
   // Canva-style keyboard shortcuts for the selected element: arrow-key nudge,
   // delete for custom text, escape to deselect.
@@ -611,7 +664,7 @@ export default function LabelDesignerModal({ open, mode, singleItem, bulkItems, 
           className={opts.interactive ? `rounded ${selected ? 'ring-2 ring-blue-500' : 'hover:ring-1 hover:ring-blue-300'}` : undefined}
         >
           <div className="w-full h-full pointer-events-none select-none">
-            <BarcodeGraphic text={item.barcode} type={el.barcodeType} showValueText={el.showValueText} />
+            <BarcodeGraphic text={item.barcode} type={el.barcodeType} showValueText={el.showValueText} box={{ x: el.x, y: el.y, w: el.w, h: el.h }} dpi={printerDpi} unit={unit} />
           </div>
           {opts.interactive && (
             <div
@@ -730,7 +783,7 @@ export default function LabelDesignerModal({ open, mode, singleItem, bulkItems, 
   // right before closing is never dropped. Guarded on templateReady for the same reason as
   // the debounced save above — never write the pre-fetch defaults over a real saved template.
   function handleClose() {
-    if (templateReady) persistTemplate({ labelW, labelH, elements });
+    if (templateReady) persistTemplate({ labelW, labelH, elements, printerDpi });
     onClose();
   }
 
@@ -741,6 +794,7 @@ export default function LabelDesignerModal({ open, mode, singleItem, bulkItems, 
       <style jsx global>{`
         @media print {
           @page { margin: 0; }
+          html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
           /* Hide everything except the print sheet, WITHOUT touching height on the sheet's own
              subtree (unlike the old "zero everything, then un-zero the sheet" approach) — forcing
              height:0 then height:auto back on a barcode's own ancestor chain left the SVG's used
@@ -819,6 +873,19 @@ export default function LabelDesignerModal({ open, mode, singleItem, bulkItems, 
                   className="w-14 px-2 py-2 rounded-lg border border-slate-200 text-xs font-black text-slate-900 text-center outline-none focus:border-blue-400"
                 />
                 <span className="text-[9px] font-bold text-slate-400 uppercase">mm</span>
+              </div>
+
+              <div className="flex items-center gap-2" title="Resolution of your label printer. The QR / Data Matrix is sized in whole printer dots so it prints crisp and scans.">
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.15em]">Printer</span>
+                <select
+                  value={printerDpi}
+                  onChange={e => setPrinterDpi(Number(e.target.value))}
+                  className="px-2.5 py-2 rounded-lg border border-slate-200 bg-white text-[10px] font-bold uppercase tracking-wide text-slate-600 outline-none focus:ring-2 focus:ring-blue-200"
+                >
+                  <option value={203}>203 dpi (8 dots/mm)</option>
+                  <option value={300}>300 dpi (12 dots/mm)</option>
+                  <option value={600}>600 dpi (24 dots/mm)</option>
+                </select>
               </div>
 
               <div className="h-6 w-px bg-slate-200" />
@@ -936,6 +1003,20 @@ export default function LabelDesignerModal({ open, mode, singleItem, bulkItems, 
                               ))}
                             </select>
                           </div>
+
+                          {previewItem && (selectedEl.barcodeType === 'qrcode' || selectedEl.barcodeType === 'datamatrix') && (() => {
+                            const m = build2DMatrix(selectedEl.barcodeType, previewItem.barcode);
+                            if (!m) return <p className="text-[9px] font-bold text-red-600 bg-red-50 border border-red-200 rounded-lg px-2.5 py-2">This value can&apos;t be encoded as {BARCODE_TYPE_META[selectedEl.barcodeType].label}.</p>;
+                            const L = layout2D(m.size, selectedEl.barcodeType, selectedEl.w, selectedEl.h, printerDpi);
+                            const bad = L.overflows || L.tooSmall;
+                            return (
+                              <p className={`text-[9px] font-bold rounded-lg px-2.5 py-2 leading-snug border ${bad ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-emerald-700 bg-emerald-50 border-emerald-200'}`}>
+                                {m.size}×{m.size} modules · each module {L.k} dot{L.k > 1 ? 's' : ''} ({L.moduleMm.toFixed(2)}mm) @ {printerDpi}dpi · prints {L.sizeMm.toFixed(1)}mm square
+                                {L.overflows && ' — too big for this box, enlarge the box or shorten the code.'}
+                                {!L.overflows && L.tooSmall && ' — modules this small may not scan; make the box bigger.'}
+                              </p>
+                            );
+                          })()}
 
                           {selectedEl.barcodeType !== 'qrcode' && selectedEl.barcodeType !== 'datamatrix' && (
                             <label className="flex items-center gap-2 cursor-pointer select-none">
