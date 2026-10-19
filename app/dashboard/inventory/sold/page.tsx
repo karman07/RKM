@@ -601,6 +601,7 @@ export default function SoldInventoryPage() {
                       <td className="px-8 py-6">
                         <div className="flex flex-col">
                           <p className="text-sm font-black text-slate-800">{item.sold_customer_name || '—'}</p>
+                          {item.old_gold_reference && <p className="text-[10px] font-black text-amber-700 mt-0.5">Old Gold Ref: {item.old_gold_reference}</p>}
                           <div className="flex items-center gap-2 mt-1">
                             <span className="text-[11px] font-medium text-slate-500">{item.sold_customer_phone || item.sold_customer_email || 'No contact'}</span>
                             {item.sold_at && (

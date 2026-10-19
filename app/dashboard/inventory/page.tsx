@@ -1,5 +1,6 @@
 'use client';
 
+import OldGoldRefInput from '@/components/OldGoldRefInput';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -217,6 +218,8 @@ export default function InventoryPage() {
   });
   const [cartSoldAtBranchId, setCartSoldAtBranchId] = useState('');
   const [cartSoldByUserId, setCartSoldByUserId] = useState('');
+  const [oldGoldRef, setOldGoldRef] = useState('');
+  const [cartOldGoldRef, setCartOldGoldRef] = useState('');
   const [cartPaymentSplits, setCartPaymentSplits] = useState<PaymentSplit[]>([{ mode: 'cash', amount: '', reference: '' }]);
   const [cartSubmitting, setCartSubmitting] = useState(false);
   const [cartError, setCartError] = useState('');
@@ -532,6 +535,7 @@ export default function InventoryPage() {
     if (cart.length === 0) return;
     setCartError('');
     setCartCustomerDraft({ name: '', phone: '', email: '', address: '', city: '', state: '', pincode: '', country: 'India' });
+    setCartOldGoldRef('');
     setCartSoldAtBranchId((user as any)?.branch_id || '');
     setCartSoldByUserId('');
     setCartPaymentSplits([{ mode: 'cash', amount: cartTotal > 0 ? String(Math.round(cartTotal)) : '', reference: '' }]);
@@ -562,6 +566,7 @@ export default function InventoryPage() {
         sold_customer_name: cartCustomerDraft.name,
         sold_customer_phone: cartCustomerDraft.phone,
         sold_customer_email: cartCustomerDraft.email || undefined,
+        old_gold_reference: cartOldGoldRef.trim() || undefined,
         shipping_address: cartCustomerDraft.address || 'Store Collection',
         shipping_city: cartCustomerDraft.city || undefined,
         shipping_state: cartCustomerDraft.state || undefined,
@@ -1619,6 +1624,8 @@ export default function InventoryPage() {
                 totalAmount={parseFloat(newSellingPrice) || (statusModal?.selling_price ?? 0)}
               />
 
+              <OldGoldRefInput value={oldGoldRef} onChange={setOldGoldRef} phone={customerDraft.phone} />
+
               {/* Cashier attribution */}
               <div className="p-4 rounded-2xl border-2 border-blue-100 bg-gradient-to-r from-blue-50/60 to-blue-100/40 space-y-2.5">
                 <label className="text-[10px] font-black text-blue-700 uppercase tracking-widest flex items-center gap-2">
@@ -1708,6 +1715,7 @@ export default function InventoryPage() {
                     sold_customer_name: customerDraft.name || undefined,
                     sold_customer_phone: customerDraft.phone || undefined,
                     sold_customer_email: customerDraft.email || undefined,
+                    old_gold_reference: oldGoldRef.trim() || undefined,
                     shipping_address: customerDraft.address || 'Store Collection',
                     shipping_city: customerDraft.city || undefined,
                     shipping_state: customerDraft.state || undefined,
@@ -1782,6 +1790,7 @@ export default function InventoryPage() {
                 {branches.map(b => <option key={b._id} value={b._id}>{b.name} ({b.code})</option>)}
               </select>
             </div>
+            <OldGoldRefInput value={cartOldGoldRef} onChange={setCartOldGoldRef} phone={cartCustomerDraft.phone} />
             <div className="space-y-1.5">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cashier Attribution</label>
               <select className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-bold appearance-none focus:ring-2 focus:ring-blue-500" value={cartSoldByUserId} onChange={e => setCartSoldByUserId(e.target.value)}>

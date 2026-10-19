@@ -351,6 +351,7 @@ export interface InventoryItem {
   sold_customer_name?: string;
   sold_customer_phone?: string;
   sold_customer_email?: string;
+  old_gold_reference?: string;
   shipping_address?: string;
   shipping_city?: string;
   shipping_state?: string;
@@ -1112,6 +1113,7 @@ export const sellItemsBatch = (payload: {
   sold_customer_name: string;
   sold_customer_phone: string;
   sold_customer_email?: string;
+  old_gold_reference?: string;
   shipping_address?: string;
   shipping_city?: string;
   shipping_state?: string;
