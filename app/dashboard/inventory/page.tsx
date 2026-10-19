@@ -745,7 +745,7 @@ export function InventoryPageContent() {
       setUser(profile);
       if (profile.branch?._id) {
         fetchInventory(profile.branch._id, 1);
-        getCashiers(profile.branch._id).then(res => setCashiers(res.data));
+        getCashiers(profile.branch._id, 1, 100, true).then(res => setCashiers(res.data));
       }
     }).catch(() => { localStorage.removeItem('manager_session'); router.replace('/login'); });
   }, [router]);

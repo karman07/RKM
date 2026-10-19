@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-import { getProfile, getMyStats, checkSessionExpiry, type UserProfile, type MyStats } from '../../../../lib/api';
+import { getProfile, getMyStats, getMyIncentive, type MyIncentive, checkSessionExpiry, type UserProfile, type MyStats } from '../../../../lib/api';
 
 function fmt(n: number) { return `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`; }
 function fmtL(n: number) { return `₹${(n / 100000).toFixed(2)}L`; }
@@ -65,6 +65,9 @@ export default function MyPersonalSalesPage() {
       .finally(() => setLoading(false));
   }, [router]);
 
+  const [inc, setInc] = useState<MyIncentive | null>(null);
+  useEffect(() => { getMyIncentive().then(setInc).catch(() => {}); }, []);
+
   const trend7d = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(); d.setDate(d.getDate() - (6 - i));
     const ds = d.toISOString().split('T')[0];
@@ -102,6 +105,40 @@ export default function MyPersonalSalesPage() {
             </svg>
           </button>
         </div>
+
+        {/* Monthly target & incentive */}
+        {inc && (
+          <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <h2 className="text-base font-black text-slate-900">My Incentive — {new Date(inc.year, inc.month).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}</h2>
+                <p className="text-[11px] text-slate-400 font-medium mt-0.5">
+                  {inc.has_plan
+                    ? `Earn ${inc.target_rate_pct}% on the month's sales once you reach your ${fmt(inc.monthly_target)} target — nothing is paid below it`
+                    : 'Admin has not set a sales target for you yet'}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-2xl font-black text-emerald-600 tracking-tight">{fmt(inc.amount)}</p>
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Earned so far</p>
+              </div>
+            </div>
+            {inc.has_plan && inc.monthly_target > 0 && (
+              <div className="mt-4">
+                <div className="flex justify-between text-[11px] font-bold text-slate-500 mb-1.5">
+                  <span>{fmt(inc.sales_amount)} sold · {inc.sales_count} items</span>
+                  <span>{inc.achieved_pct}% of target{inc.target_reached ? ' ✓' : ''}</span>
+                </div>
+                <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                  <div className={`h-full rounded-full ${inc.target_reached ? 'bg-emerald-500' : 'bg-[#2563EB]'}`} style={{ width: `${Math.min(100, inc.achieved_pct ?? 0)}%` }} />
+                </div>
+                {!inc.target_reached && (
+                  <p className="text-[11px] text-slate-400 mt-2">{fmt(inc.monthly_target - inc.sales_amount)} more to reach the target and start earning {inc.target_rate_pct}%.</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* KPI Row */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

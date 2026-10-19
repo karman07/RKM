@@ -336,10 +336,18 @@ export const uploadUserAvatar = async (file: File): Promise<{ url: string }> => 
   return res.json();
 };
 
-export const getCashiers = (branchId: string, page = 1, limit = 50) =>
+export const getCashiers = (branchId: string, page = 1, limit = 50, includeSales = false) =>
   request<PaginatedResponse<Cashier>>(
-    `/users/cashiers?branch_id=${branchId}&page=${page}&limit=${limit}`
+    `/users/cashiers?branch_id=${branchId}&page=${page}&limit=${limit}${includeSales ? '&include_sales=1' : ''}`
   );
+
+export interface MyIncentive {
+  month: number; year: number; sales_count: number; sales_amount: number;
+  monthly_target: number; base_rate_pct: number; target_rate_pct: number;
+  target_reached: boolean; achieved_pct: number | null; applied_rate_pct: number;
+  amount: number; has_plan: boolean;
+}
+export const getMyIncentive = () => request<MyIncentive>('/incentives/my');
 
 export const createCashier = (data: object) =>
   request<Cashier>('/users', { method: 'POST', body: JSON.stringify(data) });
