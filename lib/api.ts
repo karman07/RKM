@@ -637,11 +637,11 @@ export const uploadUserAvatar = async (file: File): Promise<{ url: string }> => 
 };
 
 
-/** Fetch cashiers filtered by branch — used in sell modal */
+/** Fetch cashiers + sales-team members filtered by branch — used for the seller picker in sell modals */
 export const getCashiersByBranch = (branchId?: string, limit = 100) => {
   const qs = branchId
-    ? `?branch_id=${branchId}&page=1&limit=${limit}`
-    : `?page=1&limit=${limit}`;
+    ? `?branch_id=${branchId}&page=1&limit=${limit}&include_sales=1`
+    : `?page=1&limit=${limit}&include_sales=1`;
   return request<PaginatedResponse<UserApiResponse>>(`/users/cashiers${qs}`).then((res) => ({
     data: res.data.map(normalizeUser),
     meta: res.meta,
@@ -1713,6 +1713,32 @@ export const addIncentive = (data: { user_id: string; month: number; year: numbe
 
 export const deleteIncentive = (id: string) =>
   request<{ deleted: boolean }>(`/incentives/${id}`, { method: 'DELETE' });
+
+// ─── Sales target & slab incentives ──────────────────────────────────────────
+
+export interface SalesIncentive {
+  user_id: string; month: number; year: number;
+  sales_count: number; sales_amount: number;
+  monthly_target: number; base_rate_pct: number; target_rate_pct: number;
+  target_reached: boolean; achieved_pct: number | null; applied_rate_pct: number;
+  amount: number; has_plan: boolean;
+  name?: string; role?: string; branch?: string;
+}
+export interface IncentivePlan {
+  _id: string; user_id: string | { _id: string; name: string; role: string };
+  monthly_target: number; base_rate_pct: number; target_rate_pct: number; active: boolean;
+}
+
+export const getIncentiveReport = (month: number, year: number) =>
+  request<SalesIncentive[]>(`/incentives/report?month=${month}&year=${year}`);
+
+export const getIncentivePlans = () => request<IncentivePlan[]>('/incentives/plans');
+
+export const saveIncentivePlan = (userId: string, data: { monthly_target: number; base_rate_pct: number; target_rate_pct: number; active?: boolean }) =>
+  request<IncentivePlan>(`/incentives/plans/${userId}`, { method: 'POST', body: JSON.stringify(data) });
+
+export const deleteIncentivePlan = (userId: string) =>
+  request<{ deleted: boolean }>(`/incentives/plans/${userId}`, { method: 'DELETE' });
 
 // ─── Customers ────────────────────────────────────────────────────────────────
 
