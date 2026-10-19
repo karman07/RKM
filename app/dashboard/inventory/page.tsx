@@ -1,4 +1,5 @@
 'use client';
+import OldGoldRefInput from '../../../components/OldGoldRefInput';
 import { useEffect, useState, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
@@ -57,6 +58,7 @@ interface SellFormData {
   payment_mode: string;
   discount: number;
   sold_by_user_id: string;
+  old_gold_reference?: string;
 }
 
 interface DamageFormData {
@@ -79,6 +81,7 @@ interface CheckoutFormData {
   shipping_state: string;
   shipping_pincode: string;
   sold_by_user_id: string;
+  old_gold_reference?: string;
 }
 
 const EMPTY_CHECKOUT_FORM: CheckoutFormData = {
@@ -665,6 +668,7 @@ export function InventoryPageContent() {
         items: cart.map((i) => ({ id: i._id, selling_price: cartItemPrice(i), manager_discount: cartDiscountPct(i) })),
         sale_reference: saleInvoiceNumber,
         sold_by_user_id: checkoutForm.sold_by_user_id || undefined,
+        old_gold_reference: checkoutForm.old_gold_reference?.trim() || undefined,
         sold_at_branch_id: (user?.branch as any)?._id || undefined,
         sold_customer_name: checkoutForm.customer_name,
         sold_customer_phone: `${checkoutForm.customer_country_code}${checkoutForm.customer_phone}`,
@@ -970,6 +974,7 @@ export function InventoryPageContent() {
           sale_channel: 'store',
           sale_reference: saleInvoiceNumber,
           sold_by_user_id: sellForm.sold_by_user_id || undefined,
+          old_gold_reference: sellForm.old_gold_reference?.trim() || undefined,
           sold_at_branch_id: (user?.branch as any)?._id || undefined,
           razorpay_order_id: razorpayOrderId,
           razorpay_payment_id: razorpayPaymentId,
@@ -1961,6 +1966,7 @@ export function InventoryPageContent() {
                 </div>
               </div>
 
+              <OldGoldRefInput className="mb-4" value={sellForm.old_gold_reference ?? ''} onChange={(v) => setSellForm({ ...sellForm, old_gold_reference: v })} phone={sellForm.customer_phone} />
               <div className="mb-4 p-4 rounded-2xl border-2 border-indigo-100 bg-gradient-to-r from-indigo-50/60 to-purple-50/40 space-y-2.5">
                 <label className="block text-[10px] font-black text-indigo-700 uppercase tracking-widest flex items-center gap-2">
                   <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
@@ -2879,6 +2885,7 @@ export function InventoryPageContent() {
                 );
               })()}
 
+              <OldGoldRefInput className="mb-4" value={checkoutForm.old_gold_reference ?? ''} onChange={(v) => setCheckoutForm({ ...checkoutForm, old_gold_reference: v })} phone={checkoutForm.customer_phone} />
               <div className="p-4 rounded-2xl border-2 border-indigo-100 bg-gradient-to-r from-indigo-50/60 to-purple-50/40 space-y-2.5">
                 <label className="block text-[10px] font-black text-indigo-700 uppercase tracking-widest flex items-center gap-2">
                   <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>

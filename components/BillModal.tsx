@@ -685,6 +685,7 @@ ${billEl.outerHTML}
               {customerRecordId && <div>Customer ID: <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>RKM{customerRecordId.slice(-8).toUpperCase()}</span></div>}
               {customer?.sold_customer_phone && <div>Phone: {customer.sold_customer_phone}</div>}
               {customer?.sold_customer_email && <div>Email: {customer.sold_customer_email}</div>}
+              {(customer as any)?.old_gold_reference && <div>Old Gold Ref: <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{(customer as any).old_gold_reference}</span></div>}
               {customer?.shipping_address
                 ? <div>{customer.shipping_address}, {customer.shipping_city}, {customer.shipping_state} - {customer.shipping_pincode}</div>
                 : <div style={{ color: '#777' }}>Store Collection</div>}
