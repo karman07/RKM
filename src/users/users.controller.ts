@@ -62,9 +62,12 @@ export class UsersController {
   getCashiers(
     @Query('page') page?: number,
     @Query('limit') limit?: number,
-    @Query('branch_id') branchId?: string
+    @Query('branch_id') branchId?: string,
+    @Query('include_sales') includeSales?: string,
   ) {
-    return this.usersService.findByRole(UserRole.CASHIER, Number(page) || 1, Number(limit) || 20, branchId);
+    // include_sales=1 → the seller picker also lists sales-team members, not just cashiers
+    const roles = includeSales === '1' || includeSales === 'true' ? [UserRole.CASHIER, UserRole.SALES] : UserRole.CASHIER;
+    return this.usersService.findByRole(roles, Number(page) || 1, Number(limit) || 20, branchId);
   }
 
   // ─── Admin & Manager: Get non-login workers (sweeper, cleaner, etc.) ────────

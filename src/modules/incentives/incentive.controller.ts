@@ -48,6 +48,52 @@ export class IncentiveController {
     );
   }
 
+  // ── Sales target & slab incentives ──────────────────────────────────────────
+
+  /** Admin: every person's target/slab */
+  @Get('plans')
+  @Roles(UserRole.ADMIN)
+  listPlans() {
+    return this.incentiveService.listPlans();
+  }
+
+  /** Admin: set/update one person's monthly target and commission slab */
+  @Post('plans/:userId')
+  @Roles(UserRole.ADMIN)
+  async savePlan(@Param('userId') userId: string, @Body() body: any) {
+    const monthly_target = Number(body.monthly_target);
+    const base_rate_pct = 0; // no incentive below target
+    const target_rate_pct = Number(body.target_rate_pct);
+    if (![monthly_target, base_rate_pct, target_rate_pct].every(n => Number.isFinite(n) && n >= 0)) {
+      throw new BadRequestException('monthly_target and target_rate_pct must be non-negative numbers');
+    }
+    if (base_rate_pct > 100 || target_rate_pct > 100) throw new BadRequestException('Rates cannot exceed 100%');
+    return this.incentiveService.upsertPlan(userId, { monthly_target, base_rate_pct, target_rate_pct, active: body.active });
+  }
+
+  @Delete('plans/:userId')
+  @Roles(UserRole.ADMIN)
+  async removePlan(@Param('userId') userId: string) {
+    await this.incentiveService.deletePlan(userId);
+    return { deleted: true };
+  }
+
+  /** Admin: sales-incentive report for everyone for a month */
+  @Get('report')
+  @Roles(UserRole.ADMIN)
+  report(@Query('month') month?: string, @Query('year') year?: string) {
+    const now = new Date();
+    return this.incentiveService.report(month !== undefined ? Number(month) : now.getMonth(), year !== undefined ? Number(year) : now.getFullYear());
+  }
+
+  /** Any logged-in staff member: my own target progress & earned incentive */
+  @Get('my')
+  my(@Req() req: any, @Query('month') month?: string, @Query('year') year?: string) {
+    const uid = req.user?.userId || req.user?.sub || req.user?._id;
+    const now = new Date();
+    return this.incentiveService.salesIncentiveForUser(uid, month !== undefined ? Number(month) : now.getMonth(), year !== undefined ? Number(year) : now.getFullYear());
+  }
+
   /** Admin: delete an incentive */
   @Delete(':id')
   @Roles(UserRole.ADMIN)

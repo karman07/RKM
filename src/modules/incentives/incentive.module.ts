@@ -1,11 +1,19 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Incentive, IncentiveSchema } from './schemas/incentive.schema';
+import { IncentivePlan, IncentivePlanSchema } from './schemas/incentive-plan.schema';
+import { InventoryItem, InventoryItemSchema } from '../inventory/schemas/inventory-item.schema';
+import { User, UserSchema } from '../../users/schemas/user.schema';
 import { IncentiveService } from './incentive.service';
 import { IncentiveController } from './incentive.controller';
 
 @Module({
-  imports: [MongooseModule.forFeature([{ name: Incentive.name, schema: IncentiveSchema }])],
+  imports: [MongooseModule.forFeature([
+    { name: Incentive.name, schema: IncentiveSchema },
+    { name: IncentivePlan.name, schema: IncentivePlanSchema },
+    { name: InventoryItem.name, schema: InventoryItemSchema },
+    { name: User.name, schema: UserSchema },
+  ])],
   controllers: [IncentiveController],
   providers: [IncentiveService],
   exports: [IncentiveService],

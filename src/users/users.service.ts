@@ -115,9 +115,9 @@ export class UsersService implements OnModuleInit {
     };
   }
 
-  async findByRole(role: UserRole, page: number = 1, limit: number = 20, branchId?: string, status?: string): Promise<{ data: UserDocument[]; meta: any }> {
+  async findByRole(role: UserRole | UserRole[], page: number = 1, limit: number = 20, branchId?: string, status?: string): Promise<{ data: UserDocument[]; meta: any }> {
     const skip = (page - 1) * limit;
-    const query: any = { role, ...this.deletionFilter(status) };
+    const query: any = { role: Array.isArray(role) ? { $in: role } : role, ...this.deletionFilter(status) };
     if (branchId) query.branch = branchId;
     
     const [data, total] = await Promise.all([

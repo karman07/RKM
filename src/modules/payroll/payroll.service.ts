@@ -232,7 +232,7 @@ export class PayrollService {
     const startDate = new Date(year, month, 1);
     const endDate   = new Date(year, month + 1, 0);
 
-    const [user, attendanceRecords, leaveRequests, holidays, settings, incentives, commissions] = await Promise.all([
+    const [user, attendanceRecords, leaveRequests, holidays, settings, manualIncentives, commissions, salesIncentive] = await Promise.all([
       this.userModel.findById(userId).select('-password').populate('branch').exec(),
       this.attendanceModel.find({ user_id: new Types.ObjectId(userId), date: { $gte: startDate, $lte: endDate } }).exec(),
       this.leaveModel.find({ manager_id: new Types.ObjectId(userId), status: LeaveStatus.APPROVED }).exec(),
@@ -240,7 +240,9 @@ export class PayrollService {
       this.settingsService.get(),
       this.incentiveService.findForUserMonth(userId, month, year),
       this.salesService.findApprovedCommissionsForUserMonth(userId, month, year),
+      this.incentiveService.salesIncentiveForUser(userId, month, year),
     ]);
+    const incentives = [...manualIncentives, ...this.incentiveService.asPayrollEntry(salesIncentive)] as IncentiveDocument[];
 
     if (!user) throw new Error('User not found');
     const holidayMap = buildHolidaySet(holidays, year, month);
@@ -806,7 +808,7 @@ export class PayrollService {
     const startDate = new Date(year, month, 1);
     const endDate   = new Date(year, month + 1, 0);
 
-    const [users, allAttendance, allLeaves, holidays, settings, incentiveMap, commissionMap] = await Promise.all([
+    const [users, allAttendance, allLeaves, holidays, settings, incentiveMap, commissionMap, salesIncMap] = await Promise.all([
       this.userModel.find({ isActive: true }).select('-password').populate('branch').exec(),
       this.attendanceModel.find({ date: { $gte: startDate, $lte: endDate } }).exec(),
       this.leaveModel.find({ status: LeaveStatus.APPROVED }).exec(),
@@ -814,6 +816,7 @@ export class PayrollService {
       this.settingsService.get(),
       this.incentiveService.findAllForMonth(month, year),
       this.salesService.findApprovedCommissionsAllForMonth(month, year),
+      this.incentiveService.salesIncentiveAllForMonth(month, year),
     ]);
 
     const holidayMap   = buildHolidaySet(holidays, year, month);
@@ -823,7 +826,7 @@ export class PayrollService {
       const uid       = (user as any)._id.toString();
       const records   = allAttendance.filter(a => a.user_id.toString() === uid);
       const leaves    = allLeaves.filter(l => l.manager_id.toString() === uid);
-      const incentives = incentiveMap.get(uid) ?? [];
+      const incentives = [...(incentiveMap.get(uid) ?? []), ...this.incentiveService.asPayrollEntry(salesIncMap.get(uid))] as IncentiveDocument[];
       const commissions = commissionMap.get(uid) ?? [];
       const payroll   = calcPayroll(user, records, leaves, holidayMap, year, month, today, shiftEndTime, incentives, commissions);
       return { user, ...payroll };
