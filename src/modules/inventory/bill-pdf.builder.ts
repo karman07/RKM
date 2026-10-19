@@ -302,6 +302,7 @@ export function buildBillPrintHtml(items: any[], date: string, customerRecordId:
         ${customerIdLine}
         ${customer?.sold_customer_phone ? `<div>Phone: ${esc(customer.sold_customer_phone)}</div>` : ''}
         ${customer?.sold_customer_email ? `<div>Email: ${esc(customer.sold_customer_email)}</div>` : ''}
+        ${customer?.old_gold_reference ? `<div>Old Gold Ref: <span style="font-family:monospace;font-weight:700;">${esc(customer.old_gold_reference)}</span></div>` : ''}
         ${customer?.shipping_address
           ? `<div>${esc(customer.shipping_address)}, ${esc(customer.shipping_city)}, ${esc(customer.shipping_state)} - ${esc(customer.shipping_pincode)}</div>`
           : `<div style="color:#777;">Store Collection</div>`}

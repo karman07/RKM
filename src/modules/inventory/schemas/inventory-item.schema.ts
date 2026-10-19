@@ -146,6 +146,10 @@ export class InventoryItem {
   @Prop({ trim: true, default: '' })
   sold_customer_email: string;
 
+  /** Customer's old-gold exchange reference (e.g. OG-… transaction number) mentioned at sale time — shown on the bill */
+  @Prop({ trim: true, default: '' })
+  old_gold_reference: string;
+
   @Prop({ trim: true, default: '' })
   shipping_address: string;
 

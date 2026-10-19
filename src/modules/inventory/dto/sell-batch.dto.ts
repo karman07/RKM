@@ -61,6 +61,11 @@ export class SellBatchDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(120)
+  old_gold_reference?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(300)
   shipping_address?: string;
 

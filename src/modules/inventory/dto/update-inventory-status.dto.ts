@@ -65,6 +65,11 @@ export class UpdateInventoryStatusDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(120)
+  old_gold_reference?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(100)
   shipping_state?: string;
 

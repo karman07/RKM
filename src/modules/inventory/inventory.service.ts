@@ -1628,6 +1628,7 @@ export class InventoryService {
       item.sold_customer_name = dto.sold_customer_name?.trim() ?? '';
       item.sold_customer_phone = dto.sold_customer_phone?.trim() ?? '';
       item.sold_customer_email = dto.sold_customer_email?.trim() ?? '';
+      item.old_gold_reference = dto.old_gold_reference?.trim() ?? '';
       item.shipping_address = shippingAddress;
       item.shipping_city = dto.shipping_city?.trim() ?? '';
       item.shipping_state = dto.shipping_state?.trim() ?? '';
@@ -1940,6 +1941,7 @@ export class InventoryService {
         sold_customer_name: dto.sold_customer_name,
         sold_customer_phone: dto.sold_customer_phone,
         sold_customer_email: dto.sold_customer_email,
+        old_gold_reference: dto.old_gold_reference,
         shipping_address: dto.shipping_address,
         shipping_city: dto.shipping_city,
         shipping_state: dto.shipping_state,
@@ -2103,6 +2105,7 @@ export class InventoryService {
       sold_customer_name: saleData.sold_customer_name,
       sold_customer_phone: saleData.sold_customer_phone,
       sold_customer_email: saleData.sold_customer_email,
+      old_gold_reference: saleData.old_gold_reference,
       shipping_address: saleData.shipping_address || 'Store Collection',
       shipping_city: saleData.shipping_city,
       shipping_state: saleData.shipping_state,
