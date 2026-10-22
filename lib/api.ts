@@ -491,6 +491,8 @@ export interface FullCustomer {
   gst_treatment?: (typeof GST_TREATMENTS)[number]['value'] | null;
   gst_no?: string;
   place_of_supply?: string;
+  source?: 'field' | 'walk_in' | null;
+  source_employee?: string | { _id: string; name: string; role?: string } | null;
 }
 
 /** Zoho-style optional profile fields shared by createCustomer/updateCustomer */
@@ -520,6 +522,8 @@ export interface CustomerProfileFields {
   gst_treatment?: (typeof GST_TREATMENTS)[number]['value'] | null;
   gst_no?: string;
   place_of_supply?: string;
+  source?: 'field' | 'walk_in' | null;
+  source_employee?: string | null;
 }
 
 export const getCustomers = (page = 1, limit = 24) =>
@@ -530,6 +534,9 @@ export const getCustomers = (page = 1, limit = 24) =>
 export const searchCustomerByPhone = (phone: string) =>
   request<{ data: FullCustomer[] }>(`/customers/search?phone=${encodeURIComponent(phone)}`);
 
+export interface SourceEmployee { _id: string; name: string; role: string }
+/** Staff who can be picked as "from whose contact" when a customer's source is Field */
+export const getCustomerSourceEmployees = () => request<{ data: SourceEmployee[] }>('/customers/source-employees');
 export const createCustomer = (data: CustomerProfileFields & { name: string; phone: string }) =>
   request<FullCustomer>('/customers', { method: 'POST', body: JSON.stringify(data) });
 export const updateCustomer = (id: string, data: CustomerProfileFields & { name?: string }) =>

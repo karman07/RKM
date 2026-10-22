@@ -7,6 +7,7 @@ import {
   getCustomerCustomFields, uploadUserAvatar, generateCertificate, staticUrl,
   type FullCustomer, type InventoryItem, type GoldBalance, type GoldLoan, type CustomerAdvance, type EmployeeCustomField, type ContactPerson,
 } from '../../../lib/api';
+import CustomerSourceField, { type CustomerSource } from '../../../components/CustomerSourceField';
 import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from 'firebase/auth';
 import { auth } from '../../../lib/firebase';
 
@@ -85,6 +86,8 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const searchTimer               = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [name, setName]           = useState('');
+  const [source, setSource] = useState<CustomerSource>('');
+  const [sourceEmployee, setSourceEmployee] = useState('');
   const [email, setEmail]         = useState('');
   const [gender, setGender]       = useState('');
   const [address, setAddress]     = useState('');
@@ -173,6 +176,8 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
 
   async function handleSave() {
     if (!name.trim()) { setErr('Customer name is required'); return; }
+    if (!source) { setErr('Select the customer source'); return; }
+    if (source === 'field' && !sourceEmployee) { setErr('Select the employee this customer came from'); return; }
     const missingDefined = definedFields.filter(f => f.required && !definedFieldValues[f.key]?.trim());
     if (missingDefined.length) { setErr(`Missing required field(s): ${missingDefined.map(f => f.label).join(', ')}`); return; }
     setErr(''); setSaving(true);
@@ -201,6 +206,8 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
         gst_treatment: (gstTreatment || undefined) as any,
         gst_no: gstNo.trim() || undefined,
         place_of_supply: placeOfSupply.trim() || undefined,
+        source: source || undefined,
+        source_employee: source === 'field' ? sourceEmployee : undefined,
       });
       onCreated(customer);
     } catch (e: any) { setErr(e.message || 'Failed to create customer'); }
@@ -355,6 +362,9 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
               </div>
 
               <div className="space-y-3">
+                <CustomerSourceField source={source} employeeId={sourceEmployee} accent={PRIMARY}
+                  onChange={(s, e) => { setSource(s); setSourceEmployee(e); }} />
+
                 <div>
                   <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Customer Type</label>
                   <div className="flex gap-2">
