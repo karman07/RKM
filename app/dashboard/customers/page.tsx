@@ -8,6 +8,7 @@ import {
   type UserProfile, type FullCustomer, type EmployeeCustomField,
 } from '../../../lib/api';
 import Modal from '../../../components/Modal';
+import CustomerSourceField, { type CustomerSource } from '../../../components/CustomerSourceField';
 
 function fmt(d: string) {
   return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -18,6 +19,8 @@ function initials(name: string) {
 
 function AddCustomerModal({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (c: FullCustomer) => void }) {
   const [name, setName] = useState('');
+  const [source, setSource] = useState<CustomerSource>('');
+  const [sourceEmployee, setSourceEmployee] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [city, setCity] = useState('');
@@ -55,6 +58,7 @@ function AddCustomerModal({ open, onClose, onCreated }: { open: boolean; onClose
 
   function reset() {
     setName(''); setPhone(''); setEmail(''); setCity(''); setAddress(''); setErr('');
+    setSource(''); setSourceEmployee('');
     setDefinedFieldValues({});
     setShowMore(false); setCustomerSubType('individual'); setCompanyName('');
     setSalutation(''); setFirstName(''); setLastName(''); setWorkPhone(''); setWebsite('');
@@ -64,6 +68,8 @@ function AddCustomerModal({ open, onClose, onCreated }: { open: boolean; onClose
 
   async function handleSave() {
     if (!name.trim()) { setErr('Customer name is required'); return; }
+    if (!source) { setErr('Select the customer source'); return; }
+    if (source === 'field' && !sourceEmployee) { setErr('Select the employee this customer came from'); return; }
     if (phone.replace(/\D/g, '').length !== 10) { setErr('Enter a valid 10-digit mobile number'); return; }
     const missingDefined = definedFields.filter(f => f.required && !definedFieldValues[f.key]?.trim());
     if (missingDefined.length) { setErr(`Missing required field(s): ${missingDefined.map(f => f.label).join(', ')}`); return; }
@@ -89,6 +95,8 @@ function AddCustomerModal({ open, onClose, onCreated }: { open: boolean; onClose
         gst_treatment: (gstTreatment || undefined) as any,
         gst_no: gstNo.trim() || undefined,
         place_of_supply: placeOfSupply.trim() || undefined,
+        source: source || undefined,
+        source_employee: source === 'field' ? sourceEmployee : undefined,
         gender: gender || undefined,
         state: state.trim() || undefined,
         pincode: pincode.trim() || undefined,
@@ -110,6 +118,9 @@ function AddCustomerModal({ open, onClose, onCreated }: { open: boolean; onClose
   return (
     <Modal open={open} onClose={() => { reset(); onClose(); }} title="Add Customer">
       <div className="space-y-4">
+        <CustomerSourceField source={source} employeeId={sourceEmployee} accent={'#5A0F1A'}
+          onChange={(s, e) => { setSource(s); setSourceEmployee(e); }} />
+
         <div>
           <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">Customer Type</label>
           <div className="flex gap-2">
