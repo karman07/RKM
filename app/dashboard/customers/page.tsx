@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import CustomerSourceField, { type CustomerSource } from '@/components/CustomerSourceField';
 import { getCustomers, restoreCustomer, searchCustomersByPhone, createCustomer, GST_TREATMENTS, type Customer, staticUrl } from '@/lib/api';
 import { useAppTheme } from '@/components/AppThemeContext';
 import { APP_THEME } from '@/lib/theme-constants';
@@ -42,6 +43,8 @@ function AddClientModal({ onClose, onCreated }: { onClose: () => void; onCreated
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [name, setName] = useState('');
+  const [source, setSource] = useState<CustomerSource>('');
+  const [sourceEmployee, setSourceEmployee] = useState('');
   const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
   const [city, setCity] = useState('');
@@ -127,6 +130,8 @@ function AddClientModal({ onClose, onCreated }: { onClose: () => void; onCreated
 
   async function handleSave() {
     if (!name.trim()) { setErr('Client name is required'); return; }
+    if (!source) { setErr('Select the customer source'); return; }
+    if (source === 'field' && !sourceEmployee) { setErr('Select the employee this customer came from'); return; }
     setErr('');
     setSaving(true);
     try {
@@ -149,6 +154,8 @@ function AddClientModal({ onClose, onCreated }: { onClose: () => void; onCreated
         gst_treatment: (gstTreatment || undefined) as any,
         gst_no: gstNo.trim() || undefined,
         place_of_supply: placeOfSupply.trim() || undefined,
+        source: source || undefined,
+        source_employee: source === 'field' ? sourceEmployee : undefined,
       });
       onCreated(customer);
     } catch (e: any) {
@@ -276,6 +283,9 @@ function AddClientModal({ onClose, onCreated }: { onClose: () => void; onCreated
                 <CheckCircle2 size={14} />
                 +91 {phone} verified successfully
               </div>
+
+              <CustomerSourceField source={source} employeeId={sourceEmployee} accent={'#2563EB'}
+                onChange={(s, e) => { setSource(s); setSourceEmployee(e); }} />
 
               <div>
                 <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Customer Type</label>

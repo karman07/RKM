@@ -483,6 +483,8 @@ export interface Customer {
   gst_treatment?: (typeof GST_TREATMENTS)[number]['value'] | null;
   gst_no?: string;
   place_of_supply?: string;
+  source?: 'field' | 'walk_in' | null;
+  source_employee?: string | { _id: string; name: string; role?: string } | null;
 }
 
 /** Zoho-style optional profile fields shared by createCustomer/updateCustomer */
@@ -517,6 +519,8 @@ export interface CustomerProfileFields {
   gst_treatment?: (typeof GST_TREATMENTS)[number]['value'] | null;
   gst_no?: string;
   place_of_supply?: string;
+  source?: 'field' | 'walk_in' | null;
+  source_employee?: string | null;
 }
 
 export interface PaginatedResponse<T> {
@@ -1724,11 +1728,17 @@ export interface SalesIncentive {
   monthly_target: number; base_rate_pct: number; target_rate_pct: number;
   target_reached: boolean; achieved_pct: number | null; applied_rate_pct: number;
   amount: number; has_plan: boolean;
+  sales_incentive: number;
+  gold_count: number; gold_amount: number;
+  gold_monthly_target: number; gold_target_rate_pct: number;
+  gold_target_reached: boolean; gold_achieved_pct: number | null; gold_applied_rate_pct: number;
+  gold_incentive: number; total_incentive: number;
   name?: string; role?: string; branch?: string;
 }
 export interface IncentivePlan {
   _id: string; user_id: string | { _id: string; name: string; role: string };
-  monthly_target: number; base_rate_pct: number; target_rate_pct: number; active: boolean;
+  monthly_target: number; base_rate_pct: number; target_rate_pct: number;
+  gold_monthly_target?: number; gold_target_rate_pct?: number; active: boolean;
 }
 
 export const getIncentiveReport = (month: number, year: number) =>
@@ -1736,7 +1746,7 @@ export const getIncentiveReport = (month: number, year: number) =>
 
 export const getIncentivePlans = () => request<IncentivePlan[]>('/incentives/plans');
 
-export const saveIncentivePlan = (userId: string, data: { monthly_target: number; base_rate_pct: number; target_rate_pct: number; active?: boolean }) =>
+export const saveIncentivePlan = (userId: string, data: { monthly_target: number; base_rate_pct: number; target_rate_pct: number; gold_monthly_target?: number; gold_target_rate_pct?: number; active?: boolean }) =>
   request<IncentivePlan>(`/incentives/plans/${userId}`, { method: 'POST', body: JSON.stringify(data) });
 
 export const deleteIncentivePlan = (userId: string) =>
@@ -1755,6 +1765,9 @@ export const searchCustomersByPhone = (phone: string) =>
 /** Searches customers by partial name, phone, or email */
 export const searchCustomers = (q: string) =>
   request<{ data: Customer[] }>(`/customers/search?q=${encodeURIComponent(q)}`);
+export interface SourceEmployee { _id: string; name: string; role: string }
+/** Staff who can be picked as "from whose contact" when a customer's source is Field */
+export const getCustomerSourceEmployees = () => request<{ data: SourceEmployee[] }>('/customers/source-employees');
 export const createCustomer = (data: CustomerProfileFields & { name: string; phone: string }) =>
   request<Customer>('/customers', { method: 'POST', body: JSON.stringify(data) });
 export const updateCustomer = (id: string, data: CustomerProfileFields & { name?: string; relationship_manager?: string | null }) =>

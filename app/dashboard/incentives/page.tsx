@@ -10,7 +10,7 @@ const MONTHS = ['January','February','March','April','May','June','July','August
 const rs = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
 
 interface Staff { _id: string; name: string; role: string; branch?: any }
-interface Draft { monthly_target: string; base_rate_pct: string; target_rate_pct: string }
+interface Draft { monthly_target: string; base_rate_pct: string; target_rate_pct: string; gold_monthly_target: string; gold_target_rate_pct: string }
 
 export default function IncentivesPage() {
   const now = new Date();
@@ -39,7 +39,7 @@ export default function IncentivesPage() {
       for (const r of rep) rm[r.user_id] = r;
       setReport(rm);
       const d: Record<string, Draft> = {};
-      for (const [id, p] of Object.entries(pm)) d[id] = { monthly_target: String(p.monthly_target), base_rate_pct: '', target_rate_pct: String(p.target_rate_pct) };
+      for (const [id, p] of Object.entries(pm)) d[id] = { monthly_target: String(p.monthly_target), base_rate_pct: '', target_rate_pct: String(p.target_rate_pct), gold_monthly_target: String(p.gold_monthly_target ?? 0), gold_target_rate_pct: String(p.gold_target_rate_pct ?? 0) };
       setDrafts(d);
     } catch (e: any) { setError(e?.message || 'Failed to load'); }
     finally { setLoading(false); }
@@ -51,14 +51,17 @@ export default function IncentivesPage() {
     const d = new Date(year, month + delta, 1);
     setMonth(d.getMonth()); setYear(d.getFullYear());
   }
-  const draftOf = (id: string): Draft => drafts[id] ?? { monthly_target: '', base_rate_pct: '', target_rate_pct: '' };
+  const draftOf = (id: string): Draft => drafts[id] ?? { monthly_target: '', base_rate_pct: '', target_rate_pct: '', gold_monthly_target: '', gold_target_rate_pct: '' };
   const setDraft = (id: string, k: keyof Draft, v: string) => setDrafts(p => ({ ...p, [id]: { ...draftOf(id), [k]: v } }));
 
   async function save(id: string) {
     const d = draftOf(id);
     setSavingId(id); setError('');
     try {
-      await saveIncentivePlan(id, { monthly_target: Number(d.monthly_target) || 0, base_rate_pct: 0, target_rate_pct: Number(d.target_rate_pct) || 0 });
+      await saveIncentivePlan(id, {
+        monthly_target: Number(d.monthly_target) || 0, base_rate_pct: 0, target_rate_pct: Number(d.target_rate_pct) || 0,
+        gold_monthly_target: Number(d.gold_monthly_target) || 0, gold_target_rate_pct: Number(d.gold_target_rate_pct) || 0,
+      });
       await load();
     } catch (e: any) { setError(e?.message || 'Save failed'); }
     finally { setSavingId(''); }
@@ -73,7 +76,7 @@ export default function IncentivesPage() {
   const rows = staff
     .map(u => ({ u, r: report[u._id] }))
     .sort((a, b) => (b.r?.sales_amount ?? 0) - (a.r?.sales_amount ?? 0));
-  const totalPayout = Object.values(report).reduce((s, r) => s + r.amount, 0);
+  const totalPayout = Object.values(report).reduce((s, r) => s + r.total_incentive, 0);
 
   const input = 'w-full px-2.5 py-2 rounded-lg border border-slate-200 bg-white text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500';
 
@@ -84,8 +87,8 @@ export default function IncentivesPage() {
           <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600">Sales Incentives</span>
           <h1 className="text-3xl font-black text-slate-900 tracking-tight mt-1 flex items-center gap-2"><Target size={26} /> Targets &amp; Commission</h1>
           <p className="text-sm text-slate-500 mt-1 max-w-2xl">
-            Set a monthly sales target and two commission rates per person. Every item sold counts for both the seller (cashier / sales person) and the branch manager on the bill.
-            <b>No incentive is paid until the target is hit.</b> Once the month&apos;s sales reach the target, all of that month&apos;s sales earn the commission %. Earned incentive is added to payroll automatically.
+            Set a monthly sales target and a separate gold investment target per person, each with its own commission %. Every item sold counts for both the seller (cashier / sales person) and the branch manager on the bill; gold investment payments count for the person who submitted them and their reporting manager.
+            <b>No incentive is paid until a target is hit.</b> Once the month&apos;s sales (or gold investment collections) reach the target, all of that month&apos;s amount earns the commission %. Earned incentive is added to payroll automatically.
           </p>
         </div>
         <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-2 py-1.5 shadow-sm self-start">
@@ -107,7 +110,7 @@ export default function IncentivesPage() {
         {loading ? (
           <div className="flex justify-center py-20"><Loader2 className="animate-spin text-slate-400" /></div>
         ) : (
-          <table className="w-full text-sm min-w-[1000px]">
+          <table className="w-full text-sm min-w-[1500px]">
             <thead>
               <tr className="text-left text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100">
                 <th className="px-4 py-3">Person</th>
@@ -115,6 +118,10 @@ export default function IncentivesPage() {
                 <th className="px-3 py-3 w-28">Commission %</th>
                 <th className="px-3 py-3">Sold ({MONTHS[month].slice(0, 3)})</th>
                 <th className="px-3 py-3">Progress</th>
+                <th className="px-3 py-3 w-36">Gold inv. target ₹</th>
+                <th className="px-3 py-3 w-28">Gold comm. %</th>
+                <th className="px-3 py-3">Gold collected ({MONTHS[month].slice(0, 3)})</th>
+                <th className="px-3 py-3">Gold progress</th>
                 <th className="px-3 py-3 text-right">Incentive</th>
                 <th className="px-3 py-3 w-28" />
               </tr>
@@ -124,7 +131,8 @@ export default function IncentivesPage() {
                 const d = draftOf(u._id);
                 const hasPlan = !!plans[u._id];
                 const saved = plans[u._id];
-                const dirty = !saved || String(saved.monthly_target) !== d.monthly_target || String(saved.target_rate_pct) !== d.target_rate_pct;
+                const dirty = !saved || String(saved.monthly_target) !== d.monthly_target || String(saved.target_rate_pct) !== d.target_rate_pct
+                  || String(saved.gold_monthly_target ?? 0) !== (d.gold_monthly_target || '0') || String(saved.gold_target_rate_pct ?? 0) !== (d.gold_target_rate_pct || '0');
                 return (
                   <tr key={u._id} className="border-b border-slate-50 last:border-0 align-middle">
                     <td className="px-4 py-3">
@@ -142,10 +150,24 @@ export default function IncentivesPage() {
                         </>
                       ) : <span className="text-[11px] text-slate-300">no target</span>}
                     </td>
-                    <td className="px-3 py-3 text-right font-black text-emerald-600">{r ? rs(r.amount) : '₹0'}</td>
+                    <td className="px-3 py-3"><input className={input} inputMode="numeric" value={d.gold_monthly_target} onChange={e => setDraft(u._id, 'gold_monthly_target', e.target.value.replace(/[^\d.]/g, ''))} placeholder="e.g. 200000" /></td>
+                    <td className="px-3 py-3"><input className={input} inputMode="decimal" value={d.gold_target_rate_pct} onChange={e => setDraft(u._id, 'gold_target_rate_pct', e.target.value.replace(/[^\d.]/g, ''))} placeholder="1" /></td>
+                    <td className="px-3 py-3 font-bold text-slate-700">{r && r.gold_count > 0 ? <>{rs(r.gold_amount)}<span className="block text-[10px] text-slate-400">{r.gold_count} payments</span></> : '—'}</td>
+                    <td className="px-3 py-3 w-44">
+                      {r && r.gold_monthly_target > 0 ? (
+                        <>
+                          <div className="h-2 rounded-full bg-slate-100 overflow-hidden"><div className={`h-full ${r.gold_target_reached ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${Math.min(100, r.gold_achieved_pct ?? 0)}%` }} /></div>
+                          <p className="text-[10px] font-bold text-slate-500 mt-1">{r.gold_achieved_pct}%{r.gold_target_reached ? ` · target reached @ ${r.gold_applied_rate_pct}%` : ' · below target, no incentive'}</p>
+                        </>
+                      ) : <span className="text-[11px] text-slate-300">no target</span>}
+                    </td>
+                    <td className="px-3 py-3 text-right font-black text-emerald-600">
+                      {r ? rs(r.total_incentive) : '₹0'}
+                      {r && r.gold_incentive > 0 && r.sales_incentive > 0 && <span className="block text-[10px] font-bold text-slate-400">sales {rs(r.sales_incentive)} + gold {rs(r.gold_incentive)}</span>}
+                    </td>
                     <td className="px-3 py-3">
                       <div className="flex items-center justify-end gap-1.5">
-                        <button disabled={savingId === u._id || !dirty || !d.monthly_target} onClick={() => save(u._id)} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-blue-600 text-white text-xs font-black disabled:opacity-30">
+                        <button disabled={savingId === u._id || !dirty || (!d.monthly_target && !d.gold_monthly_target)} onClick={() => save(u._id)} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-blue-600 text-white text-xs font-black disabled:opacity-30">
                           {savingId === u._id ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Save
                         </button>
                         {hasPlan && <button onClick={() => remove(u._id)} className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50"><Trash2 size={14} /></button>}
@@ -154,7 +176,7 @@ export default function IncentivesPage() {
                   </tr>
                 );
               })}
-              {rows.length === 0 && <tr><td colSpan={7} className="text-center text-slate-400 py-12">No managers, cashiers or sales people found.</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={11} className="text-center text-slate-400 py-12">No managers, cashiers or sales people found.</td></tr>}
             </tbody>
           </table>
         )}
