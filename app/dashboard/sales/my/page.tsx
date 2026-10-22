@@ -119,7 +119,7 @@ export default function MyPersonalSalesPage() {
                 </p>
               </div>
               <div className="text-right">
-                <p className="text-2xl font-black text-emerald-600 tracking-tight">{fmt(inc.amount)}</p>
+                <p className="text-2xl font-black text-emerald-600 tracking-tight">{fmt(inc.total_incentive ?? inc.amount)}</p>
                 <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Earned so far</p>
               </div>
             </div>
@@ -134,6 +134,20 @@ export default function MyPersonalSalesPage() {
                 </div>
                 {!inc.target_reached && (
                   <p className="text-[11px] text-slate-400 mt-2">{fmt(inc.monthly_target - inc.sales_amount)} more to reach the target and start earning {inc.target_rate_pct}%.</p>
+                )}
+              </div>
+            )}
+            {inc.has_plan && inc.gold_monthly_target > 0 && (
+              <div className="mt-4">
+                <div className="flex justify-between text-[11px] font-bold text-slate-500 mb-1.5">
+                  <span>Gold investment: {fmt(inc.gold_amount)} collected · {inc.gold_count} payments</span>
+                  <span>{inc.gold_achieved_pct}% of {fmt(inc.gold_monthly_target)}{inc.gold_target_reached ? ' ✓' : ''}</span>
+                </div>
+                <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                  <div className={`h-full rounded-full ${inc.gold_target_reached ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${Math.min(100, inc.gold_achieved_pct ?? 0)}%` }} />
+                </div>
+                {!inc.gold_target_reached && (
+                  <p className="text-[11px] text-slate-400 mt-2">{fmt(inc.gold_monthly_target - inc.gold_amount)} more gold investment to reach the target and start earning {inc.gold_target_rate_pct}%.</p>
                 )}
               </div>
             )}

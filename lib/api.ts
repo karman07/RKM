@@ -347,6 +347,10 @@ export interface MyIncentive {
   monthly_target: number; base_rate_pct: number; target_rate_pct: number;
   target_reached: boolean; achieved_pct: number | null; applied_rate_pct: number;
   amount: number; has_plan: boolean;
+  gold_count: number; gold_amount: number;
+  gold_monthly_target: number; gold_target_rate_pct: number;
+  gold_target_reached: boolean; gold_achieved_pct: number | null;
+  gold_incentive: number; total_incentive: number;
 }
 export const getMyIncentive = () => request<MyIncentive>('/incentives/my');
 
@@ -1045,6 +1049,8 @@ export interface FullCustomer {
   gst_treatment?: (typeof GST_TREATMENTS)[number]['value'] | null;
   gst_no?: string;
   place_of_supply?: string;
+  source?: 'field' | 'walk_in' | null;
+  source_employee?: string | { _id: string; name: string; role?: string } | null;
 }
 
 /** Zoho-style optional profile fields shared by createCustomer/updateCustomer */
@@ -1079,6 +1085,8 @@ export interface CustomerProfileFields {
   gst_treatment?: (typeof GST_TREATMENTS)[number]['value'] | null;
   gst_no?: string;
   place_of_supply?: string;
+  source?: 'field' | 'walk_in' | null;
+  source_employee?: string | null;
 }
 
 export const getCustomers = (page = 1, limit = 20) =>
@@ -1092,6 +1100,9 @@ export const searchCustomerByPhone = (phone: string) =>
 export const searchCustomers = (q: string) =>
   request<{ data: FullCustomer[] }>(`/customers/search?q=${encodeURIComponent(q)}`);
 
+export interface SourceEmployee { _id: string; name: string; role: string }
+/** Staff who can be picked as "from whose contact" when a customer's source is Field */
+export const getCustomerSourceEmployees = () => request<{ data: SourceEmployee[] }>('/customers/source-employees');
 export const createCustomer = (data: CustomerProfileFields & { name: string; phone: string }) =>
   request<FullCustomer>('/customers', { method: 'POST', body: JSON.stringify(data) });
 export const updateCustomer = (id: string, data: CustomerProfileFields & { name?: string }) =>

@@ -8,6 +8,7 @@ import {
   getCustomerCustomFields, uploadUserAvatar, generateCertificate, staticUrl,
   type FullCustomer, type InventoryItem, type GoldSubscription, type CustomerAdvance, type GoldLoan, type EmployeeCustomField, type ContactPerson,
 } from '../../../lib/api';
+import CustomerSourceField, { type CustomerSource } from '../../../components/CustomerSourceField';
 import AdvanceReceiptModal from '../../../components/AdvanceReceiptModal';
 
 const PRIMARY   = '#7A1C2A';
@@ -93,6 +94,8 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
 
   // Customer form fields
   const [name, setName] = useState('');
+  const [source, setSource] = useState<CustomerSource>('');
+  const [sourceEmployee, setSourceEmployee] = useState('');
   const [email, setEmail] = useState('');
   const [gender, setGender] = useState('');
   const [address, setAddress] = useState('');
@@ -157,6 +160,8 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
 
   async function handleSave() {
     if (!name.trim()) { setErr('Customer name is required'); return; }
+    if (!source) { setErr('Select the customer source'); return; }
+    if (source === 'field' && !sourceEmployee) { setErr('Select the employee this customer came from'); return; }
     const missingDefined = definedFields.filter(f => f.required && !definedFieldValues[f.key]?.trim());
     if (missingDefined.length) { setErr(`Missing required field(s): ${missingDefined.map(f => f.label).join(', ')}`); return; }
     setErr('');
@@ -192,6 +197,8 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
         gst_treatment: (gstTreatment || undefined) as any,
         gst_no: gstNo.trim() || undefined,
         place_of_supply: placeOfSupply.trim() || undefined,
+        source: source || undefined,
+        source_employee: source === 'field' ? sourceEmployee : undefined,
       });
       onCreated(customer);
     } catch (e: any) {
@@ -322,6 +329,9 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
           {step === 'details' && (
             <>
               <div className="space-y-4">
+
+                <CustomerSourceField source={source} employeeId={sourceEmployee} accent={PRIMARY}
+                  onChange={(s, e) => { setSource(s); setSourceEmployee(e); }} />
 
                 {/* Business Details */}
                 <div className="space-y-3">
