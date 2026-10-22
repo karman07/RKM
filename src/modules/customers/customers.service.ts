@@ -3,7 +3,8 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import * as admin from 'firebase-admin';
 import { JwtService } from '@nestjs/jwt';
-import { Customer, CustomerDocument, CustomerProfileFields } from './schemas/customer.schema';
+import { Customer, CustomerDocument, CustomerProfileFields, CUSTOMER_SOURCES } from './schemas/customer.schema';
+import { User, UserDocument, UserRole } from '../../users/schemas/user.schema';
 import { RegisterCustomerDto, LoginCustomerDto } from './dto/register-customer.dto';
 import { InventoryItem, InventoryItemDocument } from '../inventory/schemas/inventory-item.schema';
 import { OnlineOrder, OnlineOrderDocument } from '../online-orders/schemas/online-order.schema';
@@ -65,6 +66,7 @@ export class CustomersService {
     @InjectModel(Customer.name) private customerModel: Model<CustomerDocument>,
     @InjectModel(InventoryItem.name) private inventoryModel: Model<InventoryItemDocument>,
     @InjectModel(OnlineOrder.name) private onlineOrderModel: Model<OnlineOrderDocument>,
+    @InjectModel(User.name) private userModel: Model<UserDocument>,
     private jwtService: JwtService,
   ) {}
 
@@ -91,7 +93,7 @@ export class CustomersService {
     if (!decodedToken.phone_number) throw new UnauthorizedException('A verified mobile number is strictly required for authentication');
 
     const customer = await this.customerModel.findOne({ phone: decodedToken.phone_number })
-      .populate('relationship_manager', 'name email mobile_number role');
+      .populate([{ path: 'relationship_manager', select: 'name email mobile_number role' }, { path: 'source_employee', select: 'name role' }]);
 
     if (!customer) {
       // Frontend needs to register
@@ -163,7 +165,7 @@ export class CustomersService {
   }
 
   async findById(id: string) {
-    return this.customerModel.findById(id).populate('relationship_manager', 'name email mobile_number role').exec();
+    return this.customerModel.findById(id).populate([{ path: 'relationship_manager', select: 'name email mobile_number role' }, { path: 'source_employee', select: 'name role' }]).exec();
   }
 
   async countByRelationshipManager(relationshipManagerId: string) {
@@ -185,7 +187,7 @@ export class CustomersService {
     }
     const [data, total] = await Promise.all([
       this.customerModel.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit)
-        .populate('relationship_manager', 'name email mobile_number role').exec(),
+        .populate([{ path: 'relationship_manager', select: 'name email mobile_number role' }, { path: 'source_employee', select: 'name role' }]).exec(),
       this.customerModel.countDocuments(filter).exec()
     ]);
 
@@ -366,21 +368,51 @@ export class CustomersService {
     return { deleted: true, customer_id: id };
   }
 
+  /** Staff who can be credited as a customer's source, for the "from whose contact" picker. */
+  listSourceEmployees() {
+    return this.userModel
+      .find({ role: { $in: [UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER, UserRole.SALES] }, is_deleted: { $ne: true }, isActive: { $ne: false } })
+      .select('name role')
+      .sort({ name: 1 })
+      .lean()
+      .exec();
+  }
+
+  /**
+   * Validates the customer-source pair. 'field' must name an existing staff member (the employee whose contact the
+   * customer came through); 'walk_in' never carries an employee. Returns null when the caller sent neither field.
+   */
+  private async resolveSource(data: { source?: string | null; source_employee?: string | null }): Promise<{ source: 'field' | 'walk_in' | null; source_employee: Types.ObjectId | null } | null> {
+    if (data.source === undefined && data.source_employee === undefined) return null;
+    const source = data.source ?? null;
+    if (source === null) return { source: null, source_employee: null };
+    if (!(CUSTOMER_SOURCES as readonly string[]).includes(source)) throw new BadRequestException("source must be 'field' or 'walk_in'");
+    if (source === 'walk_in') return { source: 'walk_in', source_employee: null };
+    const employeeId = data.source_employee;
+    if (!employeeId || !Types.ObjectId.isValid(employeeId)) throw new BadRequestException('Select the employee this customer came from');
+    const employee = await this.userModel.exists({ _id: employeeId, is_deleted: { $ne: true } });
+    if (!employee) throw new BadRequestException('Selected employee was not found');
+    return { source: 'field', source_employee: new Types.ObjectId(employeeId) };
+  }
+
   async createByManager(data: CustomerProfileFields & {
     name: string;
     phone: string;
   }, createdByUserId?: string) {
     const existing = await this.customerModel.findOne({ phone: data.phone });
     if (existing) throw new ConflictException('A customer with this phone number already exists');
+    const { source: _source, source_employee: _sourceEmployee, ...profile } = data;
+    const sourceFields = await this.resolveSource(data);
     const customer = new this.customerModel({
-      ...data,
+      ...profile,
+      ...(sourceFields ?? {}),
       isPhoneVerified: true,
       isEmailVerified: !!data.email,
       isActive: true,
       relationship_manager: createdByUserId && Types.ObjectId.isValid(createdByUserId) ? createdByUserId : null,
     });
     await customer.save();
-    return customer.populate('relationship_manager', 'name email mobile_number role');
+    return customer.populate([{ path: 'relationship_manager', select: 'name email mobile_number role' }, { path: 'source_employee', select: 'name role' }]);
   }
 
   /** Edit an existing customer's record — used by admin/manager/cashier/sales staff apps. Phone is intentionally excluded (it's the OTP-verified identifier). `relationship_manager` is only ever passed by the controller when the caller is an admin. */
@@ -390,15 +422,16 @@ export class CustomersService {
   }) {
     const customer = await this.customerModel.findById(id);
     if (!customer) throw new NotFoundException('Customer not found');
-    const { relationship_manager, ...rest } = data;
-    Object.assign(customer, rest);
+    const { relationship_manager, source: _source, source_employee: _sourceEmployee, ...rest } = data;
+    const sourceFields = await this.resolveSource(data);
+    Object.assign(customer, rest, sourceFields ?? {});
     if (relationship_manager !== undefined) {
       customer.relationship_manager = relationship_manager && Types.ObjectId.isValid(relationship_manager)
         ? new Types.ObjectId(relationship_manager)
         : null;
     }
     await customer.save();
-    return customer.populate('relationship_manager', 'name email mobile_number role');
+    return customer.populate([{ path: 'relationship_manager', select: 'name email mobile_number role' }, { path: 'source_employee', select: 'name role' }]);
   }
 
   async ensureCustomerExists(details: {

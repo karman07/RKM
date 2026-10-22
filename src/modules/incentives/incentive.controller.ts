@@ -57,7 +57,7 @@ export class IncentiveController {
     return this.incentiveService.listPlans();
   }
 
-  /** Admin: set/update one person's monthly target and commission slab */
+  /** Admin: set/update one person's monthly sales target, gold investment target and commission slabs */
   @Post('plans/:userId')
   @Roles(UserRole.ADMIN)
   async savePlan(@Param('userId') userId: string, @Body() body: any) {
@@ -68,7 +68,17 @@ export class IncentiveController {
       throw new BadRequestException('monthly_target and target_rate_pct must be non-negative numbers');
     }
     if (base_rate_pct > 100 || target_rate_pct > 100) throw new BadRequestException('Rates cannot exceed 100%');
-    return this.incentiveService.upsertPlan(userId, { monthly_target, base_rate_pct, target_rate_pct, active: body.active });
+
+    // Gold investment target & rate are optional so older clients that only send the sales fields keep working.
+    const goldTargetGiven = body.gold_monthly_target !== undefined && body.gold_monthly_target !== null && body.gold_monthly_target !== '';
+    const goldRateGiven = body.gold_target_rate_pct !== undefined && body.gold_target_rate_pct !== null && body.gold_target_rate_pct !== '';
+    const gold_monthly_target = goldTargetGiven ? Number(body.gold_monthly_target) : undefined;
+    const gold_target_rate_pct = goldRateGiven ? Number(body.gold_target_rate_pct) : undefined;
+    for (const n of [gold_monthly_target, gold_target_rate_pct]) {
+      if (n !== undefined && !(Number.isFinite(n) && n >= 0)) throw new BadRequestException('gold_monthly_target and gold_target_rate_pct must be non-negative numbers');
+    }
+    if ((gold_target_rate_pct ?? 0) > 100) throw new BadRequestException('Rates cannot exceed 100%');
+    return this.incentiveService.upsertPlan(userId, { monthly_target, base_rate_pct, target_rate_pct, gold_monthly_target, gold_target_rate_pct, active: body.active });
   }
 
   @Delete('plans/:userId')

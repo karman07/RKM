@@ -12,6 +12,7 @@ import { PassportModule } from '@nestjs/passport';
 import { CustomerJwtStrategy } from './customer-jwt.strategy';
 import { InventoryItem, InventoryItemSchema } from '../inventory/schemas/inventory-item.schema';
 import { OnlineOrder, OnlineOrderSchema } from '../online-orders/schemas/online-order.schema';
+import { User, UserSchema } from '../../users/schemas/user.schema';
 import { CustomFieldsModule } from '../custom-fields/custom-fields.module';
 import { EmailModule } from '../email/email.module';
 
@@ -22,6 +23,7 @@ import { EmailModule } from '../email/email.module';
       { name: CustomerAdvance.name, schema: CustomerAdvanceSchema },
       { name: InventoryItem.name, schema: InventoryItemSchema },
       { name: OnlineOrder.name, schema: OnlineOrderSchema },
+      { name: User.name, schema: UserSchema },
     ]),
     JwtModule.registerAsync({
       imports: [ConfigModule],

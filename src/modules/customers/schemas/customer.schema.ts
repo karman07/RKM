@@ -35,6 +35,10 @@ export const GST_TREATMENTS = [
   'deemed_export',
 ] as const;
 
+/** How a customer came to us: via an employee's field contact, or by walking into the shop */
+export const CUSTOMER_SOURCES = ['field', 'walk_in'] as const;
+export type CustomerSource = (typeof CUSTOMER_SOURCES)[number];
+
 /** Optional Zoho-style profile fields accepted by both the create and edit staff endpoints */
 export interface CustomerProfileFields {
   email?: string;
@@ -68,6 +72,9 @@ export interface CustomerProfileFields {
   gst_treatment?: (typeof GST_TREATMENTS)[number] | null;
   gst_no?: string;
   place_of_supply?: string;
+  /** 'field' needs `source_employee` (the employee whose contact the customer came through); 'walk_in' has none */
+  source?: CustomerSource | null;
+  source_employee?: string | null;
 }
 
 @Schema({ timestamps: true })
@@ -229,6 +236,14 @@ export class Customer {
   /** Staff member (admin/manager/cashier) who registered this customer — set once at creation, never reassigned automatically */
   @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null })
   relationship_manager: mongoose.Types.ObjectId | null;
+
+  /** Customer source — 'field' (came through an employee's contact) or 'walk_in'. Null for customers added before this existed. */
+  @Prop({ type: String, enum: [...CUSTOMER_SOURCES, null], default: null })
+  source: CustomerSource | null;
+
+  /** For source = 'field': the employee from whose contact the customer came */
+  @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null })
+  source_employee: mongoose.Types.ObjectId | null;
 
   /** Soft-delete flag — hides the customer from listings/search while preserving referential
    *  integrity for existing advances, sales, loans, and investment records that reference them. */

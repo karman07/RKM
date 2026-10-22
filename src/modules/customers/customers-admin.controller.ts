@@ -38,6 +38,12 @@ export class CustomersAdminController {
     return { data };
   }
 
+  /** Staff list for the "customer came from whose contact" picker on the add-customer forms (any staff role) */
+  @Get('source-employees')
+  async sourceEmployees() {
+    return { data: await this.customersService.listSourceEmployees() };
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string) {
     return this.customersService.findById(id);

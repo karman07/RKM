@@ -69,6 +69,18 @@ const TEMPLATES: CreateTemplateDto[] = [
     ],
     sampleBodyValues: ['Rohan', 'RKM Jewellers'],
   },
+  {
+    name: 'advance_received',
+    category: TemplateCategory.UTILITY,
+    language: 'en_US',
+    components: [
+      {
+        type: 'BODY',
+        text: 'Hi {{1}}, we have received your advance payment of ₹{{2}}. Your available balance is ₹{{3}}. Thank you for choosing RKM Jewellers.',
+      },
+    ],
+    sampleBodyValues: ['Rohan', '10000', '25000'],
+  },
 ];
 
 async function run() {
