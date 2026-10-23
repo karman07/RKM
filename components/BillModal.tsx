@@ -518,6 +518,7 @@ ${billEl.outerHTML}
 
   const shopName    = 'RKM JEWELLERS';
   const shopTagline = 'FINE JEWELLERY • EST. 2005';
+  const shopCertificateNo = 'HM/C-9790227910';
 
   // Build full address from actual branch fields — no hardcoded fallback
   const shopBranchName = branchData?.name ?? '';
@@ -658,6 +659,7 @@ ${billEl.outerHTML}
                 {shopPhone && shopGstin && <span> | </span>}
                 {shopGstin && <span>GSTIN: {shopGstin}</span>}
               </div>
+              <div>Certificate No: {shopCertificateNo}</div>
             </div>
           </div>
           <div style={{ textAlign: 'right' }}>
@@ -921,6 +923,7 @@ ${billEl.outerHTML}
             {shopPhone && <div>Ph: {shopPhone}</div>}
             {shopEmail && <div>Email: {shopEmail}</div>}
             {shopGstin && <div>GSTIN: {shopGstin}</div>}
+            <div>Certificate No: {shopCertificateNo}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontWeight: 700, fontSize: '9.5px', color: '#000' }}>RKM JEWELLERS{shopBranchName ? ` — ${shopBranchName}` : ''}</div>
