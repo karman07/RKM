@@ -740,7 +740,10 @@ export default function SoldInventoryPage() {
                         <div className="flex items-center justify-end gap-2">
                           <button 
                             onClick={() => {
-                              setSelectedBillItems([item]);
+                              // A multi-item bill must print as one invoice: its payments are stored for the whole bill, so
+                              // printing a single item would show that item against everything the customer paid.
+                              const sameBill = item.sale_reference ? items.filter(i => i.sale_reference === item.sale_reference) : [];
+                              setSelectedBillItems(sameBill.length > 0 ? sameBill : [item]);
                               setSelectedBillDate(item.sold_at ? new Date(item.sold_at).toLocaleDateString('en-US', { dateStyle: 'long' }) : new Date().toLocaleDateString('en-US', { dateStyle: 'long' }));
                             }}
                             className="p-2.5 rounded-xl bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition-all transform active:scale-95 shadow-sm"

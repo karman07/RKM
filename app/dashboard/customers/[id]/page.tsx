@@ -3035,7 +3035,7 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
 
       {selectedBill && (
         <BillModal
-          items={[selectedBill]}
+          items={selectedBill.sale_reference ? orders.filter(o => o.sale_reference === selectedBill.sale_reference) : [selectedBill]}
           date={selectedBill.sold_at ? new Date(selectedBill.sold_at).toLocaleDateString('en-IN', { dateStyle: 'long' }) : new Date().toLocaleDateString('en-IN', { dateStyle: 'long' })}
           onClose={() => setSelectedBill(null)}
         />
