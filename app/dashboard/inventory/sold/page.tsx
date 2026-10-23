@@ -99,6 +99,17 @@ function EditRecordModal({ item, onClose, onSave }: { item: InventoryItem; onClo
   );
 }
 
+/**
+ * What the customer's bill actually came to for this item. `selling_price` is stored before the sale-time discount
+ * percentages (admin first, then manager on the remainder — same order the invoice uses), so revenue figures
+ * must net them off or they overstate sales.
+ */
+const netSalePrice = (item: { selling_price?: number; admin_discount?: number; manager_discount?: number }) => {
+  const gross = Number(item.selling_price) || 0;
+  const afterAdmin = gross * (1 - (Number(item.admin_discount) || 0) / 100);
+  return Math.round(afterAdmin * (1 - (Number(item.manager_discount) || 0) / 100));
+};
+
 export default function SoldInventoryPage() {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [user, setUser] = useState<User | null>(null);
@@ -223,8 +234,8 @@ export default function SoldInventoryPage() {
         { header: 'Channel', accessor: (r) => r.sale_channel || 'store' },
         { header: 'Payment Mode', accessor: (r) => r.payment_mode || '' },
         { header: 'Cost', accessor: (r) => r.purchase_price ?? 0 },
-        { header: 'Price', accessor: (r) => r.selling_price ?? 0 },
-        { header: 'Profit', accessor: (r) => (r.selling_price ?? 0) - (r.purchase_price ?? 0) },
+        { header: 'Price', accessor: (r) => netSalePrice(r) },
+        { header: 'Profit', accessor: (r) => netSalePrice(r) - (r.purchase_price ?? 0) },
       ]);
     } finally {
       setExporting(false);
@@ -242,8 +253,8 @@ export default function SoldInventoryPage() {
     sorted.forEach(item => {
       const date = item.sold_at ? new Date(item.sold_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Unknown';
       if (!groups[date]) groups[date] = { revenue: 0, profit: 0, count: 0 };
-      groups[date].revenue += (item.selling_price || 0);
-      groups[date].profit += ((item.selling_price || 0) - (item.purchase_price || 0));
+      groups[date].revenue += netSalePrice(item);
+      groups[date].profit += (netSalePrice(item) - (item.purchase_price || 0));
       groups[date].count += 1;
     });
 
@@ -357,7 +368,7 @@ export default function SoldInventoryPage() {
             const id = cashier._id || cashier.name;
             if (!cashierMap[id]) cashierMap[id] = { id: cashier._id || '', name: cashier.name, branch: branchName, count: 0, revenue: 0 };
             cashierMap[id].count += 1;
-            cashierMap[id].revenue += item.selling_price || 0;
+            cashierMap[id].revenue += netSalePrice(item);
           }
 
           const manager = (item as any).sold_by_manager_id;
@@ -365,7 +376,7 @@ export default function SoldInventoryPage() {
             const id = manager._id || manager.name;
             if (!managerMap[id]) managerMap[id] = { id: manager._id || '', name: manager.name, branch: branchName, count: 0, revenue: 0 };
             managerMap[id].count += 1;
-            managerMap[id].revenue += item.selling_price || 0;
+            managerMap[id].revenue += netSalePrice(item);
           }
         });
 
@@ -717,13 +728,13 @@ export default function SoldInventoryPage() {
                           <div className="flex items-baseline gap-1">
                             <span className="text-[10px] font-bold text-slate-400">₹</span>
                             <span className="text-base font-black text-slate-900 tracking-tight">
-                              {Math.round(Number(item.selling_price || 0)).toLocaleString('en-IN')}
+                              {netSalePrice(item).toLocaleString('en-IN')}
                             </span>
                           </div>
                           <div className="flex items-center gap-1.5 mt-0.5">
                             <TrendingUp size={10} className="text-emerald-500" />
                             <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-tighter">
-                              ROI: ₹{Math.round(item.selling_price - item.purchase_price).toLocaleString('en-IN')}
+                              ROI: ₹{(netSalePrice(item) - Math.round(item.purchase_price || 0)).toLocaleString('en-IN')}
                             </span>
                           </div>
                         </div>
