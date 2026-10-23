@@ -61,3 +61,47 @@ export function computeFinalSalePrices(lines: BillLine[]): Map<string, number> {
   lines.forEach((l, i) => out.set(l.id, shares[i]));
   return out;
 }
+
+const MONEY_KEYS = [
+  'metal_price', 'stone_price', 'making_charges', 'extra_charges_total',
+  'subtotal', 'discount_amount', 'taxable_amount', 'tax_amount', 'final_price',
+] as const;
+
+export interface SaleSnapshot {
+  /** The price breakdown to print on the invoice — frozen, so later gold-rate or product edits never change it. */
+  pricing_breakdown: Record<string, any>;
+  /** Pre-discount price the invoice shows for the item (= pricing_breakdown.final_price). */
+  gross: number;
+}
+
+/**
+ * Freezes the invoice figures of one sold item so they tie to what was billed.
+ *
+ * The invoice prints: gross price, less admin %, less manager % on the remainder, less any making-charge waivers, giving the
+ * amount paid. Working that backwards from the billed amount recovers the gross price the customer was quoted:
+ *     gross = (billed + waivers) / ((1 − admin%) × (1 − manager%))
+ * The current (live) breakdown only supplies the proportions (metal / making / stones / tax), which are scaled so they add up
+ * to that gross. For a new sale the live breakdown IS the price quoted, so the scale factor is ~1; for older sales it also
+ * undoes any gold-rate or product change made since.
+ */
+export function buildSaleSnapshot(args: {
+  liveBreakdown: Record<string, any> | null | undefined;
+  billed: number;
+  waivers?: number;
+  adminPct?: number;
+  mgrPct?: number;
+}): SaleSnapshot {
+  const factor = (1 - (Number(args.adminPct) || 0) / 100) * (1 - (Number(args.mgrPct) || 0) / 100);
+  const target = (Number(args.billed) || 0) + (Number(args.waivers) || 0);
+  const gross = Math.round(factor > 0 ? target / factor : target);
+  const live = args.liveBreakdown ?? {};
+  const liveGross = Number(live.final_price) || 0;
+  const k = liveGross > 0 ? gross / liveGross : 1;
+  const pricing_breakdown: Record<string, any> = { ...live };
+  for (const key of MONEY_KEYS) {
+    if (typeof live[key] === 'number') pricing_breakdown[key] = Math.round(live[key] * k * 100) / 100;
+  }
+  pricing_breakdown.final_price = gross;
+  pricing_breakdown.frozen_at_sale = true;
+  return { pricing_breakdown, gross };
+}

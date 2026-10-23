@@ -89,6 +89,13 @@ export class InventoryItem {
   @Prop({ type: Number, min: 0, default: null })
   final_sale_price: number | null;
 
+  /**
+   * Price breakdown frozen when the item was sold (see buildSaleSnapshot). Invoices and PDFs print this instead of
+   * recomputing from today's gold rate and product data, which made old invoices change over time.
+   */
+  @Prop({ type: Object, default: null })
+  sale_pricing_snapshot: Record<string, any> | null;
+
   @Prop({ type: Number, min: 0, default: 0 })
   gold_rate_at_purchase: number;
 

@@ -45,7 +45,7 @@ import { EmailService } from '../email/email.service.js';
 import { WhatsAppService } from '../whatsapp/services/whatsapp.service.js';
 import { MiscPaymentsService } from '../misc-payments/misc-payments.service.js';
 import { buildBillPrintHtml, renderBillPdf } from './bill-pdf.builder.js';
-import { SALE_VALUE, saleValue, computeFinalSalePrices } from './sale-price';
+import { SALE_VALUE, saleValue, computeFinalSalePrices, buildSaleSnapshot } from './sale-price';
 
 // Allowed status transitions
 const STATUS_TRANSITIONS: Record<InventoryStatus, InventoryStatus[]> = {
@@ -178,7 +178,10 @@ export class InventoryService {
           ? plainItem.selling_price
           : formulaPrice,
         live_selling_price: liveSellingPrice,
-        pricing_breakdown: breakdown,
+        // Sold / returned items print the breakdown frozen at sale time; only unsold stock follows today's rates.
+        pricing_breakdown: (plainItem.status === InventoryStatus.SOLD || plainItem.status === InventoryStatus.RETURNED) && plainItem.sale_pricing_snapshot
+          ? plainItem.sale_pricing_snapshot
+          : breakdown,
         is_new_stock: isNewStock,
       };
     });
@@ -1834,6 +1837,7 @@ export class InventoryService {
       // Reflect it on the document the notifications below read from (not re-saved — already written above).
       const own = billed.get(String(savedItem._id));
       if (own != null) (savedItem as any).final_sale_price = own;
+      await this.freezeSaleSnapshots(savedItem.sale_reference || String(savedItem._id));
     }
 
     // ─── Emit domain events for WhatsApp notifications ────────────────────────
@@ -3056,6 +3060,37 @@ export class InventoryService {
       })),
     );
     return prices;
+  }
+
+  /**
+   * Freezes the invoice price breakdown of every sold item of a bill that has none yet, from what was billed (see
+   * buildSaleSnapshot). Runs at sale time; the same rule backs the one-off fill-in for sales made before it existed.
+   */
+  async freezeSaleSnapshots(saleReferenceOrItemId: string): Promise<void> {
+    const filter: Record<string, unknown> = Types.ObjectId.isValid(saleReferenceOrItemId) && saleReferenceOrItemId.length === 24
+      ? { _id: new Types.ObjectId(saleReferenceOrItemId) }
+      : { sale_reference: saleReferenceOrItemId };
+    const docs = await this.inventoryModel
+      .find({ ...filter, status: { $in: [InventoryStatus.SOLD, InventoryStatus.RETURNED] }, is_deleted: { $ne: true }, sale_pricing_snapshot: null })
+      .populate('product_id');
+    if (!docs.length) return;
+    const settings = await this.settingsService.get();
+    const writes = [] as any[];
+    for (const doc of docs) {
+      const plain: any = doc.toObject();
+      const product = plain.product_id;
+      if (!product || typeof product !== 'object') continue;
+      const live = this.pricingService.calculate(this.buildPricingInput(product, settings, plain));
+      const snapshot = buildSaleSnapshot({
+        liveBreakdown: live as any,
+        billed: saleValue(plain),
+        waivers: (Number(plain.making_charges_discount) || 0) + (Number(plain.advance_making_charges_discount) || 0),
+        adminPct: plain.admin_discount,
+        mgrPct: plain.manager_discount,
+      });
+      writes.push({ updateOne: { filter: { _id: doc._id }, update: { $set: { sale_pricing_snapshot: snapshot.pricing_breakdown } } } });
+    }
+    if (writes.length) await this.inventoryModel.bulkWrite(writes);
   }
 
   private normalisePaymentSplits(splits: Array<{ mode: string; amount: number; reference?: string }>) {
