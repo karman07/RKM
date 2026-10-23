@@ -18,6 +18,9 @@ function fmtDec(n: number, d = 3): string {
   return (n || 0).toFixed(d);
 }
 
+/** BIS jeweller registration number printed on every invoice (same for all branches). */
+export const SHOP_CERTIFICATE_NO = 'HM/C-9790227910';
+
 export function inWords(n: number): string {
   const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
     'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
@@ -281,6 +284,7 @@ export function buildBillPrintHtml(items: any[], date: string, customerRecordId:
       <div style="font-size:9px;line-height:1.7;color:#333;">
         ${shopAddress ? `<div>${esc(shopAddress)}</div>` : ''}
         <div>${shopPhone ? `<span>Phone: ${esc(shopPhone)}</span>` : ''}${shopPhone && shopGstin ? ' | ' : ''}${shopGstin ? `<span>GSTIN: ${esc(shopGstin)}</span>` : ''}</div>
+        <div>Certificate No: ${esc(SHOP_CERTIFICATE_NO)}</div>
       </div>
     </div>
     <div style="text-align:right;">
@@ -405,6 +409,7 @@ export function buildBillPrintHtml(items: any[], date: string, customerRecordId:
       ${shopPhone ? `<div>Ph: ${esc(shopPhone)}</div>` : ''}
       ${shopEmail ? `<div>Email: ${esc(shopEmail)}</div>` : ''}
       ${shopGstin ? `<div>GSTIN: ${esc(shopGstin)}</div>` : ''}
+      <div>Certificate No: ${esc(SHOP_CERTIFICATE_NO)}</div>
     </div>
     <div style="text-align:right;">
       <div style="font-weight:700;font-size:9.5px;color:#000;">RKM JEWELLERS${shopBranchName ? ` &mdash; ${esc(shopBranchName)}` : ''}</div>
@@ -529,6 +534,7 @@ export function buildOnlineOrderInvoiceHtml(order: any): string {
   <div style="padding:7px 16px 12px;border-top:1.5px solid #000;display:flex;justify-content:space-between;align-items:flex-end;font-size:8.5px;color:#555;">
     <div style="font-size:8px;color:#444;line-height:1.7;">
       <div>RKM Jewellers Online Store</div>
+      <div>Certificate No: ${esc(SHOP_CERTIFICATE_NO)}</div>
     </div>
     <div style="text-align:right;">
       <div style="font-weight:700;font-size:9.5px;color:#000;">RKM JEWELLERS</div>
