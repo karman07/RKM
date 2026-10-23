@@ -45,6 +45,7 @@ import { EmailService } from '../email/email.service.js';
 import { WhatsAppService } from '../whatsapp/services/whatsapp.service.js';
 import { MiscPaymentsService } from '../misc-payments/misc-payments.service.js';
 import { buildBillPrintHtml, renderBillPdf } from './bill-pdf.builder.js';
+import { SALE_VALUE, saleValue, computeFinalSalePrices } from './sale-price';
 
 // Allowed status transitions
 const STATUS_TRANSITIONS: Record<InventoryStatus, InventoryStatus[]> = {
@@ -229,7 +230,7 @@ export class InventoryService {
         customerName: savedItem.sold_customer_name,
         invoiceNumber,
         date,
-        amount: savedItem.selling_price,
+        amount: saleValue(savedItem),
         branchName,
         paymentMode: savedItem.payment_mode,
       });
@@ -251,7 +252,7 @@ export class InventoryService {
       itemName: (enriched as any)?.product_id?.name,
       itemCode: savedItem.unique_item_code,
       saleReference: savedItem.sale_reference,
-      amount: savedItem.selling_price,
+      amount: saleValue(savedItem),
       branchName,
       paymentMode: savedItem.payment_mode,
       soldBy,
@@ -314,7 +315,7 @@ export class InventoryService {
     const printHtml = buildBillPrintHtml(enriched, date, customerRecordId);
     const pdf = await renderBillPdf(printHtml);
 
-    const totalAmount = enriched.reduce((sum: number, it: any) => sum + (it.selling_price || 0), 0);
+    const totalAmount = enriched.reduce((sum: number, it: any) => sum + saleValue(it), 0);
     const invoiceNumber = saleReference;
     const branchName = first.sold_at_branch_id?.name;
     const soldBy = first.sold_by_user_id?.name;
@@ -947,7 +948,7 @@ export class InventoryService {
           $group: {
             _id: '$status',
             count: { $sum: 1 },
-            value: { $sum: '$selling_price' },
+            value: { $sum: SALE_VALUE },
             purchaseValue: { $sum: '$purchase_price' },
           },
         },
@@ -958,7 +959,7 @@ export class InventoryService {
         {
           $group: {
             _id: null,
-            totalProfit: { $sum: { $subtract: ['$selling_price', '$purchase_price'] } },
+            totalProfit: { $sum: { $subtract: [SALE_VALUE, '$purchase_price'] } },
           },
         },
       ]),
@@ -974,7 +975,7 @@ export class InventoryService {
           $group: {
             _id: { $dateToString: { format: '%Y-%m-%d', date: '$sold_at' } },
             count: { $sum: 1 },
-            revenue: { $sum: '$selling_price' },
+            revenue: { $sum: SALE_VALUE },
           },
         },
         { $sort: { _id: 1 } },
@@ -1014,7 +1015,7 @@ export class InventoryService {
           $group: {
             _id: null,
             count: { $sum: 1 },
-            value: { $sum: '$selling_price' },
+            value: { $sum: SALE_VALUE },
           }
         }
       ]),
@@ -1065,7 +1066,7 @@ export class InventoryService {
       // Stock count per branch
       this.inventoryModel.aggregate([
         { $match: { is_deleted: { $ne: true }, status: { $ne: InventoryStatus.SOLD } } },
-        { $group: { _id: '$branch_id', count: { $sum: 1 }, value: { $sum: '$selling_price' } } },
+        { $group: { _id: '$branch_id', count: { $sum: 1 }, value: { $sum: SALE_VALUE } } },
         { $lookup: { from: 'branches', localField: '_id', foreignField: '_id', as: 'branch' } },
         { $unwind: { path: '$branch', preserveNullAndEmptyArrays: true } },
         { $project: { branch_id: '$_id', branch_name: { $ifNull: ['$branch.name', 'Unallocated'] }, branch_code: '$branch.code', count: 1, value: 1, _id: 0 } },
@@ -1074,7 +1075,7 @@ export class InventoryService {
       // Sales today per branch
       this.inventoryModel.aggregate([
         { $match: { is_deleted: { $ne: true }, status: InventoryStatus.SOLD, sold_at: { $gte: today } } },
-        { $group: { _id: '$sold_at_branch_id', count: { $sum: 1 }, revenue: { $sum: '$selling_price' } } },
+        { $group: { _id: '$sold_at_branch_id', count: { $sum: 1 }, revenue: { $sum: SALE_VALUE } } },
         { $lookup: { from: 'branches', localField: '_id', foreignField: '_id', as: 'branch' } },
         { $unwind: { path: '$branch', preserveNullAndEmptyArrays: true } },
         { $project: { branch_id: '$_id', branch_name: { $ifNull: ['$branch.name', 'Unallocated'] }, count: 1, revenue: 1, _id: 0 } },
@@ -1093,7 +1094,7 @@ export class InventoryService {
                 date: { $dateToString: { format: '%Y-%m-%d', date: '$sold_at' } },
               },
               count: { $sum: 1 },
-              revenue: { $sum: '$selling_price' },
+              revenue: { $sum: SALE_VALUE },
             }
           },
           { $lookup: { from: 'branches', localField: '_id.branch_id', foreignField: '_id', as: 'branch' } },
@@ -1114,7 +1115,7 @@ export class InventoryService {
       // Top cashiers by sales count (all time)
       this.inventoryModel.aggregate([
         { $match: { is_deleted: { $ne: true }, status: InventoryStatus.SOLD, sold_by_user_id: { $ne: null } } },
-        { $group: { _id: '$sold_by_user_id', sales_count: { $sum: 1 }, total_revenue: { $sum: '$selling_price' } } },
+        { $group: { _id: '$sold_by_user_id', sales_count: { $sum: 1 }, total_revenue: { $sum: SALE_VALUE } } },
         { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
         { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
         { $lookup: { from: 'branches', localField: 'user.branch', foreignField: '_id', as: 'branch' } },
@@ -1136,7 +1137,7 @@ export class InventoryService {
       // Damaged items per branch
       this.inventoryModel.aggregate([
         { $match: { is_deleted: { $ne: true }, status: InventoryStatus.DAMAGED } },
-        { $group: { _id: '$branch_id', count: { $sum: 1 }, value: { $sum: '$selling_price' } } },
+        { $group: { _id: '$branch_id', count: { $sum: 1 }, value: { $sum: SALE_VALUE } } },
         { $lookup: { from: 'branches', localField: '_id', foreignField: '_id', as: 'branch' } },
         { $unwind: { path: '$branch', preserveNullAndEmptyArrays: true } },
         { $project: { branch_id: '$_id', branch_name: { $ifNull: ['$branch.name', 'Unallocated'] }, count: 1, value: 1, _id: 0 } },
@@ -1183,40 +1184,40 @@ export class InventoryService {
       // Current stock at branch
       this.inventoryModel.aggregate([
         { $match: { is_deleted: { $ne: true }, branch_id: bid, status: { $ne: InventoryStatus.SOLD } } },
-        { $group: { _id: '$status', count: { $sum: 1 }, value: { $sum: '$selling_price' } } },
+        { $group: { _id: '$status', count: { $sum: 1 }, value: { $sum: SALE_VALUE } } },
       ]),
       // Sales today at this branch
       this.inventoryModel.aggregate([
         { $match: { is_deleted: { $ne: true }, sold_at_branch_id: bid, status: InventoryStatus.SOLD, sold_at: { $gte: today } } },
-        { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$selling_price' }, profit: { $sum: { $subtract: ['$selling_price', '$purchase_price'] } } } },
+        { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: SALE_VALUE }, profit: { $sum: { $subtract: [SALE_VALUE, '$purchase_price'] } } } },
       ]),
       // 7-day sales trend
       this.inventoryModel.aggregate([
         { $match: { is_deleted: { $ne: true }, sold_at_branch_id: bid, status: InventoryStatus.SOLD, sold_at: { $gte: sevenDaysAgo } } },
-        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$sold_at' } }, count: { $sum: 1 }, revenue: { $sum: '$selling_price' } } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$sold_at' } }, count: { $sum: 1 }, revenue: { $sum: SALE_VALUE } } },
         { $sort: { _id: 1 } },
       ]),
       // 30-day sales trend
       this.inventoryModel.aggregate([
         { $match: { is_deleted: { $ne: true }, sold_at_branch_id: bid, status: InventoryStatus.SOLD, sold_at: { $gte: thirtyDaysAgo } } },
-        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$sold_at' } }, count: { $sum: 1 }, revenue: { $sum: '$selling_price' } } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$sold_at' } }, count: { $sum: 1 }, revenue: { $sum: SALE_VALUE } } },
         { $sort: { _id: 1 } },
       ]),
       // Yearly trend (monthly buckets over last 12 months)
       this.inventoryModel.aggregate([
         { $match: { is_deleted: { $ne: true }, sold_at_branch_id: bid, status: InventoryStatus.SOLD, sold_at: { $gte: oneYearAgo } } },
-        { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$sold_at' } }, count: { $sum: 1 }, revenue: { $sum: '$selling_price' } } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$sold_at' } }, count: { $sum: 1 }, revenue: { $sum: SALE_VALUE } } },
         { $sort: { _id: 1 } },
       ]),
       // Lifetime totals
       this.inventoryModel.aggregate([
         { $match: { is_deleted: { $ne: true }, sold_at_branch_id: bid, status: InventoryStatus.SOLD } },
-        { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$selling_price' }, profit: { $sum: { $subtract: ['$selling_price', '$purchase_price'] } } } },
+        { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: SALE_VALUE }, profit: { $sum: { $subtract: [SALE_VALUE, '$purchase_price'] } } } },
       ]),
       // Top 5 selling products at this branch
       this.inventoryModel.aggregate([
         { $match: { is_deleted: { $ne: true }, sold_at_branch_id: bid, status: InventoryStatus.SOLD } },
-        { $group: { _id: '$product_id', count: { $sum: 1 }, revenue: { $sum: '$selling_price' } } },
+        { $group: { _id: '$product_id', count: { $sum: 1 }, revenue: { $sum: SALE_VALUE } } },
         { $lookup: { from: 'products', localField: '_id', foreignField: '_id', as: 'product' } },
         { $unwind: { path: '$product', preserveNullAndEmptyArrays: true } },
         { $project: { product_name: { $ifNull: ['$product.name', 'Unknown'] }, product_sku: '$product.sku', count: 1, revenue: 1, _id: 0 } },
@@ -1226,7 +1227,7 @@ export class InventoryService {
       // Cashier (sold_by_user_id) performance at this branch
       this.inventoryModel.aggregate([
         { $match: { is_deleted: { $ne: true }, sold_at_branch_id: bid, status: InventoryStatus.SOLD, sold_by_user_id: { $ne: null } } },
-        { $group: { _id: '$sold_by_user_id', sales_count: { $sum: 1 }, total_revenue: { $sum: '$selling_price' } } },
+        { $group: { _id: '$sold_by_user_id', sales_count: { $sum: 1 }, total_revenue: { $sum: SALE_VALUE } } },
         { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
         { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
         { $project: { user_id: '$_id', user_name: { $ifNull: ['$user.name', 'Unknown'] }, user_role: '$user.role', sales_count: 1, total_revenue: 1, _id: 0 } },
@@ -1235,7 +1236,7 @@ export class InventoryService {
       // Manager (sold_by_manager_id) performance at this branch
       this.inventoryModel.aggregate([
         { $match: { is_deleted: { $ne: true }, sold_at_branch_id: bid, status: InventoryStatus.SOLD, sold_by_manager_id: { $ne: null } } },
-        { $group: { _id: '$sold_by_manager_id', sales_count: { $sum: 1 }, total_revenue: { $sum: '$selling_price' } } },
+        { $group: { _id: '$sold_by_manager_id', sales_count: { $sum: 1 }, total_revenue: { $sum: SALE_VALUE } } },
         { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
         { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
         { $project: { user_id: '$_id', user_name: { $ifNull: ['$user.name', 'Unknown'] }, user_role: '$user.role', sales_count: 1, total_revenue: 1, _id: 0 } },
@@ -1324,25 +1325,25 @@ export class InventoryService {
     const [salesToday, salesLifetime, salesTrend7d, salesTrend30d, topProducts, recentSales] = await Promise.all([
       this.inventoryModel.aggregate([
         { $match: { ...baseMatch, sold_at: { $gte: today } } },
-        { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$selling_price' } } },
+        { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: SALE_VALUE } } },
       ]),
       this.inventoryModel.aggregate([
         { $match: baseMatch },
-        { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$selling_price' } } },
+        { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: SALE_VALUE } } },
       ]),
       this.inventoryModel.aggregate([
         { $match: { ...baseMatch, sold_at: { $gte: sevenDaysAgo } } },
-        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$sold_at' } }, count: { $sum: 1 }, revenue: { $sum: '$selling_price' } } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$sold_at' } }, count: { $sum: 1 }, revenue: { $sum: SALE_VALUE } } },
         { $sort: { _id: 1 } },
       ]),
       this.inventoryModel.aggregate([
         { $match: { ...baseMatch, sold_at: { $gte: thirtyDaysAgo } } },
-        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$sold_at' } }, count: { $sum: 1 }, revenue: { $sum: '$selling_price' } } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$sold_at' } }, count: { $sum: 1 }, revenue: { $sum: SALE_VALUE } } },
         { $sort: { _id: 1 } },
       ]),
       this.inventoryModel.aggregate([
         { $match: baseMatch },
-        { $group: { _id: '$product_id', count: { $sum: 1 }, revenue: { $sum: '$selling_price' } } },
+        { $group: { _id: '$product_id', count: { $sum: 1 }, revenue: { $sum: SALE_VALUE } } },
         { $lookup: { from: 'products', localField: '_id', foreignField: '_id', as: 'product' } },
         { $unwind: { path: '$product', preserveNullAndEmptyArrays: true } },
         { $project: { product_name: { $ifNull: ['$product.name', 'Unknown'] }, product_sku: '$product.sku', count: 1, revenue: 1, _id: 0 } },
@@ -1828,6 +1829,12 @@ export class InventoryService {
     }
 
     const savedItem = await item.save();
+    if (dto.status === InventoryStatus.SOLD) {
+      const billed = await this.refreshBillFinalPrices(savedItem.sale_reference || String(savedItem._id));
+      // Reflect it on the document the notifications below read from (not re-saved — already written above).
+      const own = billed.get(String(savedItem._id));
+      if (own != null) (savedItem as any).final_sale_price = own;
+    }
 
     // ─── Emit domain events for WhatsApp notifications ────────────────────────
     // The event listener in WhatsAppModule picks these up — InventoryService
@@ -1843,7 +1850,7 @@ export class InventoryService {
           itemName: (savedItem as any).product_id?.name || savedItem.unique_item_code,
           itemCode: savedItem.unique_item_code,
           saleReference: savedItem.sale_reference,
-          amount: savedItem.selling_price,
+          amount: saleValue(savedItem),
           branchName: (savedItem as any).sold_at_branch_id?.name || (savedItem as any).branch_id?.name,
           paymentMode: savedItem.payment_mode,
           skipEmail: opts?.suppressEmail || undefined,
@@ -2717,7 +2724,7 @@ export class InventoryService {
         {
           $group: {
             _id: { $dateToString: { format: '%Y-%m-%d', date: '$sold_at' } },
-            revenue: { $sum: '$selling_price' },
+            revenue: { $sum: SALE_VALUE },
             count: { $sum: 1 },
           },
         },
@@ -2734,7 +2741,7 @@ export class InventoryService {
               $cond: {
                 if: { $and: [{ $isArray: '$payment_splits' }, { $gt: [{ $size: '$payment_splits' }, 0] }] },
                 then: '$payment_splits',
-                else: [{ mode: '$payment_mode', amount: '$selling_price' }],
+                else: [{ mode: '$payment_mode', amount: SALE_VALUE }],
               },
             },
           },
@@ -2756,7 +2763,7 @@ export class InventoryService {
         {
           $group: {
             _id: '$sold_at_branch_id',
-            revenue: { $sum: '$selling_price' },
+            revenue: { $sum: SALE_VALUE },
             count: { $sum: 1 },
           },
         },
@@ -2781,12 +2788,12 @@ export class InventoryService {
         {
           $group: {
             _id: null,
-            totalRevenue: { $sum: '$selling_price' },
+            totalRevenue: { $sum: SALE_VALUE },
             totalTransactions: { $sum: 1 },
-            avgTransactionValue: { $avg: '$selling_price' },
-            maxSale: { $max: '$selling_price' },
-            minSale: { $min: '$selling_price' },
-            totalProfit: { $sum: { $subtract: ['$selling_price', '$purchase_price'] } },
+            avgTransactionValue: { $avg: SALE_VALUE },
+            maxSale: { $max: SALE_VALUE },
+            minSale: { $min: SALE_VALUE },
+            totalProfit: { $sum: { $subtract: [SALE_VALUE, '$purchase_price'] } },
           },
         },
       ]),
@@ -2823,7 +2830,7 @@ export class InventoryService {
         {
           $group: {
             _id: { $dayOfWeek: '$sold_at' },
-            revenue: { $sum: '$selling_price' },
+            revenue: { $sum: SALE_VALUE },
             count: { $sum: 1 },
           },
         },
@@ -3029,6 +3036,28 @@ export class InventoryService {
    * enforced in their forms rather than here, because cashier sale-requests and sales-team
    * enquiries reach this same path when they are approved.
    */
+  /**
+   * Recomputes `final_sale_price` for every sold/returned item of one bill from the bill's payment splits. Safe to call
+   * after each item of a batch sale — the last call sees the whole bill and leaves every item correct.
+   */
+  async refreshBillFinalPrices(saleReferenceOrItemId: string): Promise<Map<string, number>> {
+    const filter: Record<string, unknown> = Types.ObjectId.isValid(saleReferenceOrItemId) && saleReferenceOrItemId.length === 24
+      ? { _id: new Types.ObjectId(saleReferenceOrItemId) }
+      : { sale_reference: saleReferenceOrItemId };
+    const bill = await this.inventoryModel
+      .find({ ...filter, status: { $in: [InventoryStatus.SOLD, InventoryStatus.RETURNED] }, is_deleted: { $ne: true } })
+      .select('selling_price payment_splits')
+      .lean();
+    if (!bill.length) return new Map();
+    const prices = computeFinalSalePrices(bill.map((b: any) => ({ id: String(b._id), selling_price: b.selling_price, payment_splits: b.payment_splits })));
+    await this.inventoryModel.bulkWrite(
+      [...prices.entries()].map(([id, final_sale_price]) => ({
+        updateOne: { filter: { _id: new Types.ObjectId(id) }, update: { $set: { final_sale_price } } },
+      })),
+    );
+    return prices;
+  }
+
   private normalisePaymentSplits(splits: Array<{ mode: string; amount: number; reference?: string }>) {
     const KNOWN = ['cash', 'card', 'upi', 'bank_transfer', 'cheque', 'emi', 'gold_exchange', 'other', 'investment_balance', 'advance_balance'];
     const out = splits.map(s => ({

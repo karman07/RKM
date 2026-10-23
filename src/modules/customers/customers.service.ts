@@ -1,3 +1,4 @@
+import { saleValue } from '../inventory/sale-price';
 import { Injectable, UnauthorizedException, BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -251,7 +252,7 @@ export class CustomersService {
         metal: item.product_id?.metal || null,
         purity: item.product_id?.purity || null,
         unique_item_code: item.unique_item_code,
-        selling_price: item.sold_price ?? item.selling_price,
+        selling_price: item.sold_price ?? saleValue(item),
         discount_amount: item.discount_amount ?? 0,
         gross_weight: item.gross_weight,
         net_weight: item.net_weight,

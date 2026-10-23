@@ -1,3 +1,4 @@
+import { saleValue } from '../inventory/sale-price';
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -114,9 +115,9 @@ export class GstReportService {
     const [sold, returned, orders, branches] = await Promise.all([
       // A returned item was still a sale in the period it sold — its refund is credited separately below.
       this.inventoryModel.find({ is_deleted: { $ne: true }, status: { $in: [InventoryStatus.SOLD, InventoryStatus.RETURNED] }, sold_at: { $ne: null }, ...range('sold_at', from, to) })
-        .select('product_id selling_price purchase_price payment_mode sold_at sale_reference unique_item_code sold_at_branch_id sold_by_user_id sold_customer_name sold_customer_phone shipping_state').lean(),
+        .select('product_id selling_price final_sale_price purchase_price payment_mode sold_at sale_reference unique_item_code sold_at_branch_id sold_by_user_id sold_customer_name sold_customer_phone shipping_state').lean(),
       this.inventoryModel.find({ is_deleted: { $ne: true }, status: InventoryStatus.RETURNED, ...range('returned_at', from, to) })
-        .select('product_id selling_price purchase_price payment_mode returned_at sale_reference unique_item_code sold_at_branch_id sold_by_user_id sold_customer_name sold_customer_phone shipping_state return_refund_status return_admin_approved_value').lean(),
+        .select('product_id selling_price final_sale_price purchase_price payment_mode returned_at sale_reference unique_item_code sold_at_branch_id sold_by_user_id sold_customer_name sold_customer_phone shipping_state return_refund_status return_admin_approved_value').lean(),
       this.onlineOrderModel.find({ payment_status: 'paid', status: { $nin: ['cancelled', 'refunded'] }, ...range('createdAt', from, to) }).lean(),
       this.branchModel.find().select('name state gstin is_active').lean(),
     ]);
@@ -178,12 +179,12 @@ export class GstReportService {
         ...this.split(gross, rate, intra, sign),
       });
     };
-    sold.forEach((i: any) => addStoreLine(i, i.sold_at, 1, Number(i.selling_price) || 0));
+    sold.forEach((i: any) => addStoreLine(i, i.sold_at, 1, saleValue(i)));
     // Only approved refunds are credited, for the amount the admin approved.
     let pendingReturns = 0;
     returned.forEach((i: any) => {
       if (i.return_refund_status === 'approved') {
-        const refund = Number(i.return_admin_approved_value ?? i.selling_price) || 0;
+        const refund = Number(i.return_admin_approved_value ?? saleValue(i)) || 0;
         if (refund > 0) addStoreLine(i, i.returned_at, -1, refund);
       } else if (i.return_refund_status !== 'rejected') pendingReturns++;
     });

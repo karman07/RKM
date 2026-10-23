@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Incentive, IncentiveDocument } from './schemas/incentive.schema';
 import { IncentivePlan, IncentivePlanDocument } from './schemas/incentive-plan.schema';
+import { saleValue } from '../inventory/sale-price';
 import { InventoryItem, InventoryItemDocument, InventoryStatus } from '../inventory/schemas/inventory-item.schema';
 import { Subscription, SubscriptionDocument } from '../gold-investment/schemas/subscription.schema';
 import { User, UserDocument } from '../../users/schemas/user.schema';
@@ -91,7 +92,7 @@ export class IncentiveService {
       const u = new Types.ObjectId(onlyUser);
       match.$or = [{ sold_by_user_id: u }, { sold_by_manager_id: u }];
     }
-    const items = await this.itemModel.find(match).select('selling_price sold_by_user_id sold_by_manager_id').lean().exec();
+    const items = await this.itemModel.find(match).select('selling_price final_sale_price sold_by_user_id sold_by_manager_id').lean().exec();
     const map = new Map<string, { count: number; amount: number }>();
     for (const it of items as any[]) {
       const ids = new Set<string>();
@@ -100,7 +101,7 @@ export class IncentiveService {
       for (const id of ids) {
         const cur = map.get(id) ?? { count: 0, amount: 0 };
         cur.count += 1;
-        cur.amount += Number(it.selling_price) || 0;
+        cur.amount += saleValue(it);
         map.set(id, cur);
       }
     }

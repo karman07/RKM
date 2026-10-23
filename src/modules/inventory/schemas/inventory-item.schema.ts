@@ -82,6 +82,13 @@ export class InventoryItem {
   @Prop({ type: Number, min: 0, required: true })
   selling_price: number;
 
+  /**
+   * What the customer was actually billed for this item, set when the sale is saved (see sale-price.ts). Revenue,
+   * leaderboards, incentives and the accounting books read this, not `selling_price`, which can be the pre-discount list price.
+   */
+  @Prop({ type: Number, min: 0, default: null })
+  final_sale_price: number | null;
+
   @Prop({ type: Number, min: 0, default: 0 })
   gold_rate_at_purchase: number;
 

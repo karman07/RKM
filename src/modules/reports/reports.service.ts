@@ -1,3 +1,4 @@
+import { SALE_VALUE, saleValue } from '../inventory/sale-price';
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -200,7 +201,7 @@ export class ReportsService {
       ]),
       this.inventoryModel.aggregate([
         { $match: { is_deleted: { $ne: true }, status: { $in: [InventoryStatus.AVAILABLE, InventoryStatus.RESERVED] } } },
-        { $group: { _id: null, costValue: { $sum: '$purchase_price' }, retailValue: { $sum: '$selling_price' }, count: { $sum: 1 } } },
+        { $group: { _id: null, costValue: { $sum: '$purchase_price' }, retailValue: { $sum: SALE_VALUE }, count: { $sum: 1 } } },
       ]),
     ]);
 
@@ -257,7 +258,7 @@ export class ReportsService {
   private async refundsPaid(from?: string, to?: string): Promise<number> {
     const agg = await this.inventoryModel.aggregate([
       { $match: { is_deleted: { $ne: true }, status: InventoryStatus.RETURNED, return_refund_status: 'approved', ...rangeMatch('returned_at', from, to) } },
-      { $group: { _id: null, total: { $sum: { $ifNull: ['$return_admin_approved_value', '$selling_price'] } } } },
+      { $group: { _id: null, total: { $sum: { $ifNull: ['$return_admin_approved_value', SALE_VALUE] } } } },
     ]);
     return agg[0]?.total ?? 0;
   }
@@ -339,7 +340,7 @@ export class ReportsService {
     const [salesByBucket, onlineByBucket, investmentInByBucket, oldGoldByBucket, poByBucket, investmentOutByBucket, refundsByBucket] = await Promise.all([
       this.inventoryModel.aggregate([
         { $match: { is_deleted: { $ne: true }, status: { $in: [InventoryStatus.SOLD, InventoryStatus.RETURNED] }, sold_at: { $ne: null }, ...rangeMatch('sold_at', from, to) } },
-        { $group: { _id: bucketExpr('sold_at', groupBy), total: { $sum: '$selling_price' } } },
+        { $group: { _id: bucketExpr('sold_at', groupBy), total: { $sum: SALE_VALUE } } },
       ]),
       this.onlineOrderModel.aggregate([
         { $match: { payment_status: 'paid', status: { $nin: ['cancelled', 'refunded'] }, ...rangeMatch('createdAt', from, to) } },
@@ -365,7 +366,7 @@ export class ReportsService {
       ]),
       this.inventoryModel.aggregate([
         { $match: { is_deleted: { $ne: true }, status: InventoryStatus.RETURNED, return_refund_status: 'approved', ...rangeMatch('returned_at', from, to) } },
-        { $group: { _id: bucketExpr('returned_at', groupBy), total: { $sum: { $ifNull: ['$return_admin_approved_value', '$selling_price'] } } } },
+        { $group: { _id: bucketExpr('returned_at', groupBy), total: { $sum: { $ifNull: ['$return_admin_approved_value', SALE_VALUE] } } } },
       ]),
     ]);
 
@@ -429,7 +430,7 @@ export class ReportsService {
     ] = await Promise.all([
       this.inventoryModel.aggregate([
         { $match: { is_deleted: { $ne: true }, status: { $in: [InventoryStatus.SOLD, InventoryStatus.RETURNED] }, sold_at: { $ne: null }, ...upTo('sold_at') } },
-        { $group: { _id: null, total: { $sum: '$selling_price' } } },
+        { $group: { _id: null, total: { $sum: SALE_VALUE } } },
       ]),
       this.onlineOrderModel.aggregate([
         { $match: { payment_status: 'paid', status: { $nin: ['cancelled', 'refunded'] }, ...upTo('createdAt') } },
@@ -460,7 +461,7 @@ export class ReportsService {
       ]),
       this.inventoryModel.aggregate([
         { $match: { is_deleted: { $ne: true }, is_emi: true, status: InventoryStatus.SOLD, ...upTo('sold_at') } },
-        { $group: { _id: null, total: { $sum: { $subtract: ['$selling_price', { $ifNull: ['$emi_down_payment', 0] }] } }, count: { $sum: 1 } } },
+        { $group: { _id: null, total: { $sum: { $subtract: [SALE_VALUE, { $ifNull: ['$emi_down_payment', 0] }] } }, count: { $sum: 1 } } },
       ]),
       this.onlineOrderModel.aggregate([
         { $match: { payment_status: 'pending', ...upTo('createdAt') } },
@@ -498,7 +499,7 @@ export class ReportsService {
         {
           $group: {
             _id: null,
-            total: { $sum: { $max: [0, { $subtract: ['$selling_price', { $ifNull: ['$prebooking_advance_amount', 0] }] }] } },
+            total: { $sum: { $max: [0, { $subtract: [SALE_VALUE, { $ifNull: ['$prebooking_advance_amount', 0] }] }] } },
             count: { $sum: 1 },
           },
         },
@@ -694,7 +695,7 @@ export class ReportsService {
           customerPhone: { $ifNull: ['$sold_customer_phone', ''] },
           soldAt: '$sold_at',
           returnedAt: '$returned_at',
-          originalSalePrice: '$selling_price',
+          originalSalePrice: SALE_VALUE,
           refundAmount: { $ifNull: ['$return_admin_approved_value', { $ifNull: ['$return_proposed_value', 0] }] },
           refundStatus: { $ifNull: ['$return_refund_status', 'pending'] },
           reason: { $ifNull: ['$return_admin_notes', { $ifNull: ['$return_manager_notes', ''] }] },
@@ -962,7 +963,7 @@ export class ReportsService {
     const [byStatus, byCategory, byBranch] = await Promise.all([
       this.inventoryModel.aggregate([
         { $match: { is_deleted: { $ne: true } } },
-        { $group: { _id: '$status', costValue: { $sum: '$purchase_price' }, retailValue: { $sum: '$selling_price' }, count: { $sum: 1 } } },
+        { $group: { _id: '$status', costValue: { $sum: '$purchase_price' }, retailValue: { $sum: SALE_VALUE }, count: { $sum: 1 } } },
         { $sort: { costValue: -1 } },
       ]),
       this.inventoryModel.aggregate([
@@ -972,13 +973,13 @@ export class ReportsService {
         { $addFields: { 'product.category_id': { $convert: { input: '$product.category_id', to: 'objectId', onError: null, onNull: null } } } },
         { $lookup: { from: 'categories', localField: 'product.category_id', foreignField: '_id', as: 'category' } },
         { $unwind: { path: '$category', preserveNullAndEmptyArrays: true } },
-        { $group: { _id: { $ifNull: ['$category.name', 'Uncategorized'] }, costValue: { $sum: '$purchase_price' }, retailValue: { $sum: '$selling_price' }, count: { $sum: 1 } } },
+        { $group: { _id: { $ifNull: ['$category.name', 'Uncategorized'] }, costValue: { $sum: '$purchase_price' }, retailValue: { $sum: SALE_VALUE }, count: { $sum: 1 } } },
         { $project: { _id: 0, key: '$_id', costValue: 1, retailValue: 1, count: 1 } },
         { $sort: { costValue: -1 } },
       ]),
       this.inventoryModel.aggregate([
         { $match: { is_deleted: { $ne: true }, status: { $in: [InventoryStatus.AVAILABLE, InventoryStatus.RESERVED] } } },
-        { $group: { _id: '$branch_id', costValue: { $sum: '$purchase_price' }, retailValue: { $sum: '$selling_price' }, count: { $sum: 1 } } },
+        { $group: { _id: '$branch_id', costValue: { $sum: '$purchase_price' }, retailValue: { $sum: SALE_VALUE }, count: { $sum: 1 } } },
         { $lookup: { from: 'branches', localField: '_id', foreignField: '_id', as: 'branch' } },
         { $unwind: { path: '$branch', preserveNullAndEmptyArrays: true } },
         { $project: { _id: 0, key: { $ifNull: ['$branch.name', 'Unallocated / Warehouse'] }, costValue: 1, retailValue: 1, count: 1 } },
@@ -1036,7 +1037,7 @@ export class ReportsService {
           status: '$status',
           location: '$location',
           cost_price: { $ifNull: ['$purchase_price', 0] },
-          selling_price: { $ifNull: ['$selling_price', 0] },
+          selling_price: { $ifNull: [SALE_VALUE, 0] },
           added_on: '$createdAt',
         },
       },
@@ -1051,7 +1052,7 @@ export class ReportsService {
     const [emiRows, onlineRows, prebookingRows] = await Promise.all([
       this.inventoryModel
         .find({ is_deleted: { $ne: true }, is_emi: true, status: InventoryStatus.SOLD })
-        .select('unique_item_code barcode sold_customer_name sold_customer_phone selling_price emi_down_payment sold_at')
+        .select('unique_item_code barcode sold_customer_name sold_customer_phone selling_price final_sale_price emi_down_payment sold_at')
         .lean()
         .exec(),
       // Unpaid online checkouts are deliberately not receivables (see balance sheet).
@@ -1069,7 +1070,7 @@ export class ReportsService {
         reference: r.unique_item_code || r.barcode,
         customerName: r.sold_customer_name,
         customerPhone: r.sold_customer_phone,
-        amount: Math.max(0, (r.selling_price ?? 0) - (r.emi_down_payment ?? 0)),
+        amount: Math.max(0, saleValue(r) - (r.emi_down_payment ?? 0)),
         date: r.sold_at,
       }))
       .filter((r: any) => r.amount > 0);
