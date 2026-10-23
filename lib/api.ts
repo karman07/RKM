@@ -328,6 +328,8 @@ export interface InventoryItem {
   /** Auto-locked from Product.purchase_price at ingress — cannot be changed */
   purchase_price: number;
   selling_price: number;
+  /** What the customer was actually billed (set when the sale is saved); falls back to selling_price on older sales */
+  final_sale_price?: number | null;
   live_selling_price?: number;
   /** Admin provisioned discount on this item (0–100 %) */
   admin_discount: number;

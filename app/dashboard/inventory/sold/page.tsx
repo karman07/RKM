@@ -100,15 +100,12 @@ function EditRecordModal({ item, onClose, onSave }: { item: InventoryItem; onClo
 }
 
 /**
- * What the customer's bill actually came to for this item. `selling_price` is stored before the sale-time discount
- * percentages (admin first, then manager on the remainder — same order the invoice uses), so revenue figures
- * must net them off or they overstate sales.
+ * What the customer was actually billed for this item. The server stores it as `final_sale_price` when the sale is
+ * saved (worked out from the bill's payments). `selling_price` alone can be the pre-discount list price, so it is only a
+ * fallback for sales that predate the field.
  */
-const netSalePrice = (item: { selling_price?: number; admin_discount?: number; manager_discount?: number }) => {
-  const gross = Number(item.selling_price) || 0;
-  const afterAdmin = gross * (1 - (Number(item.admin_discount) || 0) / 100);
-  return Math.round(afterAdmin * (1 - (Number(item.manager_discount) || 0) / 100));
-};
+const netSalePrice = (item: { selling_price?: number; final_sale_price?: number | null }) =>
+  Math.round(Number(item.final_sale_price ?? item.selling_price) || 0);
 
 export default function SoldInventoryPage() {
   const [items, setItems] = useState<InventoryItem[]>([]);
