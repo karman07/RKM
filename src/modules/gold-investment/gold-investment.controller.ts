@@ -210,8 +210,8 @@ export class GoldInvestmentController {
   @Post('subscriptions/:id/mark-payment')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
-  markCashPayment(@Param('id') id: string, @Body() dto: MarkCashPaymentDto) {
-    return this.svc.markCashPayment(id, dto);
+  markCashPayment(@Param('id') id: string, @Body() dto: MarkCashPaymentDto, @Req() req: any) {
+    return this.svc.markCashPayment(id, dto, req.user.userId);
   }
 
   /** Sales rep submits a cash payment they collected — awaits admin/manager approval */

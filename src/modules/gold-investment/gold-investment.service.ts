@@ -1,3 +1,4 @@
+import { UserRole } from '../../users/schemas/user.schema';
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -1051,7 +1052,7 @@ export class GoldInvestmentService {
     return { entry };
   }
 
-  async markCashPayment(id: string, dto: MarkCashPaymentDto): Promise<SubscriptionDocument> {
+  async markCashPayment(id: string, dto: MarkCashPaymentDto, actorId?: string): Promise<SubscriptionDocument> {
     const sub = await this.subModel.findById(id).populate('plan').exec();
     if (!sub) throw new NotFoundException('Subscription not found');
 
@@ -1064,9 +1065,14 @@ export class GoldInvestmentService {
       throw new BadRequestException('Payment date cannot be before the enrollment start date');
     }
 
+    // Credit the collecting staff member (the incentive report only counts ledger entries with `submittedBy`).
+    // Admins don't earn incentives, so their entries stay uncredited.
+    const actor = actorId ? await this.usersService.findById(actorId).catch(() => null) : null;
+    const credit = actor && actor.role !== UserRole.ADMIN ? { submittedBy: String(actor._id), submittedByName: actor.name } : {};
+
     const { entry } = await this.applyCashPayment(sub, plan, {
-      month: dto.month, amount: dto.amount, staffId: dto.staffId, note: dto.note,
-      paymentDate, goldRate: dto.goldRate,
+      month: dto.month, amount: dto.amount, staffId: dto.staffId ?? actorId, note: dto.note,
+      paymentDate, goldRate: dto.goldRate, ...credit,
     });
     await sub.save();
 
