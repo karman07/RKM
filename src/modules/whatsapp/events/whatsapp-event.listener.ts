@@ -5,6 +5,7 @@ import { WhatsAppConfig } from '../config/whatsapp.config';
 import { SettingsService } from '../../settings/settings.service';
 import {
   SALE_COMPLETED_EVENT,
+  SALE_BATCH_COMPLETED_EVENT,
   SALE_RETURNED_EVENT,
   SALE_RESERVED_EVENT,
   ADVANCE_RECEIVED_EVENT,
@@ -42,6 +43,16 @@ export class WhatsAppEventListener {
 
   @OnEvent(SALE_COMPLETED_EVENT, { async: true })
   async onSaleCompleted(payload: SaleCompletedEvent): Promise<void> {
+    if (payload.skipWhatsApp) return;
+    await this.sendSaleConfirmation(payload);
+  }
+
+  @OnEvent(SALE_BATCH_COMPLETED_EVENT, { async: true })
+  async onSaleBatchCompleted(payload: SaleCompletedEvent): Promise<void> {
+    await this.sendSaleConfirmation(payload);
+  }
+
+  private async sendSaleConfirmation(payload: SaleCompletedEvent): Promise<void> {
     if (!(await this.shouldSendWhatsApp())) {
       this.logger.log('[WAListener] WhatsApp notifications disabled, skipping sale_completed');
       return;

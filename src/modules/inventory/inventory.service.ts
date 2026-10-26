@@ -36,6 +36,7 @@ import { GoldInvestmentService } from '../gold-investment/gold-investment.servic
 import { RedemptionType } from '../gold-investment/dto/gold-investment.dto.js';
 import {
   SALE_COMPLETED_EVENT,
+  SALE_BATCH_COMPLETED_EVENT,
   SALE_RETURNED_EVENT,
   SALE_RESERVED_EVENT,
 } from '../whatsapp/events/whatsapp.events.js';
@@ -286,6 +287,30 @@ export class InventoryService {
     } catch {
       return true;
     }
+  }
+
+  /** ONE WhatsApp sale confirmation for every item sharing `saleReference` (per-item sends are skipped for batches). */
+  private async emitBatchSaleWhatsApp(saleReference: string): Promise<void> {
+    if (!saleReference) return;
+    const items: any[] = await this.inventoryModel
+      .find({ sale_reference: saleReference, status: InventoryStatus.SOLD })
+      .populate({ path: 'product_id', select: 'name' })
+      .populate({ path: 'sold_at_branch_id', select: 'name' })
+      .populate({ path: 'branch_id', select: 'name' })
+      .lean();
+    if (!items.length) return;
+    const first = items[0];
+    this.eventEmitter.emit(SALE_BATCH_COMPLETED_EVENT, {
+      customerPhone: first.sold_customer_phone,
+      customerName: first.sold_customer_name,
+      itemId: String(first._id),
+      itemName: items.length > 1 ? `${items.length} items` : (first.product_id?.name || first.unique_item_code),
+      itemCode: items.length > 1 ? undefined : first.unique_item_code,
+      saleReference,
+      amount: items.reduce((sum, it) => sum + saleValue(it), 0),
+      branchName: first.sold_at_branch_id?.name || first.branch_id?.name,
+      paymentMode: first.payment_mode,
+    });
   }
 
   /**
@@ -1844,6 +1869,17 @@ export class InventoryService {
     // The event listener in WhatsAppModule picks these up — InventoryService
     // has zero knowledge of WhatsApp implementation details.
     try {
+      // `item` isn't populated, so product/branch names are looked up here (without touching savedItem,
+      // which is returned to the caller as-is).
+      const names: any = dto.status === InventoryStatus.SOLD || dto.status === InventoryStatus.RESERVED
+        ? await this.inventoryModel
+            .findById(savedItem._id)
+            .select('product_id sold_at_branch_id branch_id')
+            .populate({ path: 'product_id', select: 'name' })
+            .populate({ path: 'sold_at_branch_id', select: 'name' })
+            .populate({ path: 'branch_id', select: 'name' })
+            .lean()
+        : null;
       if (dto.status === InventoryStatus.SOLD) {
         this.eventEmitter.emit(SALE_COMPLETED_EVENT, {
           customerId: undefined, // resolved by listener via phone
@@ -1851,13 +1887,14 @@ export class InventoryService {
           customerEmail: savedItem.sold_customer_email,
           customerName: savedItem.sold_customer_name,
           itemId: savedItem._id?.toString(),
-          itemName: (savedItem as any).product_id?.name || savedItem.unique_item_code,
+          itemName: names?.product_id?.name || savedItem.unique_item_code,
           itemCode: savedItem.unique_item_code,
           saleReference: savedItem.sale_reference,
           amount: saleValue(savedItem),
-          branchName: (savedItem as any).sold_at_branch_id?.name || (savedItem as any).branch_id?.name,
+          branchName: names?.sold_at_branch_id?.name || names?.branch_id?.name,
           paymentMode: savedItem.payment_mode,
           skipEmail: opts?.suppressEmail || undefined,
+          skipWhatsApp: opts?.suppressEmail || undefined,
         });
         // Bill email — same Tax Invoice template as the admin/manager BillModal, sent as a PDF attachment.
         // Suppressed for batch sales (sellBatch/approveSaleRequestBatch), which send one
@@ -1879,6 +1916,8 @@ export class InventoryService {
         this.eventEmitter.emit(SALE_RESERVED_EVENT, {
           customerPhone: savedItem.sold_customer_phone,
           customerName: savedItem.sold_customer_name,
+          itemName: names?.product_id?.name || savedItem.unique_item_code,
+          branchName: names?.branch_id?.name,
           itemId: savedItem._id?.toString(),
         });
       }
@@ -1987,6 +2026,9 @@ export class InventoryService {
     // call above suppressed its own individual email via suppressEmail).
     this.sendConsolidatedSaleEmails(sharedReference).catch(err =>
       this.logger.error(`[InventoryService] Failed to send consolidated batch sale emails: ${err?.message}`),
+    );
+    this.emitBatchSaleWhatsApp(sharedReference).catch(err =>
+      this.logger.error(`[InventoryService] Failed to queue batch sale WhatsApp: ${err?.message}`),
     );
 
     return results;
@@ -2333,6 +2375,9 @@ export class InventoryService {
     if (sharedRef) {
       this.sendConsolidatedSaleEmails(sharedRef).catch(err =>
         this.logger.error(`[InventoryService] Failed to send consolidated batch sale emails: ${err?.message}`),
+      );
+      this.emitBatchSaleWhatsApp(sharedRef).catch(err =>
+        this.logger.error(`[InventoryService] Failed to queue batch sale WhatsApp: ${err?.message}`),
       );
     }
 

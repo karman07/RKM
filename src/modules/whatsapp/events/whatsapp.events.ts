@@ -8,6 +8,8 @@ export const SALE_COMPLETED_EVENT = 'sale.completed';
 export const SALE_RETURNED_EVENT = 'sale.returned';
 export const SALE_RESERVED_EVENT = 'sale.reserved';
 export const ADVANCE_RECEIVED_EVENT = 'advance.received';
+/** One message for a whole multi-item bill (sellBatch / approveSaleRequestBatch). */
+export const SALE_BATCH_COMPLETED_EVENT = 'sale.batch_completed';
 
 export interface SaleCompletedEvent {
   customerId?: string;
@@ -24,6 +26,8 @@ export interface SaleCompletedEvent {
    *  after the whole batch completes (see InventoryService.sendConsolidatedSaleEmails) —
    *  the email listener skips its per-item send; WhatsApp/SMS listeners are unaffected. */
   skipEmail?: boolean;
+  /** Set for each item of a batch sale — WhatsApp sends one consolidated message for the bill instead. */
+  skipWhatsApp?: boolean;
 }
 
 export interface SaleReturnedEvent {
