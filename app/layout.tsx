@@ -6,6 +6,7 @@ import DevBanner, { DEV_BANNER_HEIGHT, getDevBannerActive } from "../components/
 import Footer from "../components/Footer";
 import BottomNav from "../components/BottomNav";
 import StoreProvider from "../components/StoreProvider";
+import RouteProgress from "../components/RouteProgress";
 
 const cormorant = Cormorant_Garamond({
   variable: "--font-serif",
@@ -58,6 +59,7 @@ export default async function RootLayout({
     >
       <body className="min-h-full flex flex-col font-sans selection:bg-[#5C0828]/20" suppressHydrationWarning>
         <AnalyticsTracker />
+        <RouteProgress />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{

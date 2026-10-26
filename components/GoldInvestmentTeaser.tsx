@@ -2,6 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 import { Gem, TrendingUp, ShieldCheck } from 'lucide-react';
 import { THEME } from '../app/constants';
+import { optimizedSrc } from '../lib/img';
 
 export default function GoldInvestmentTeaser() {
   return (
@@ -53,8 +54,10 @@ export default function GoldInvestmentTeaser() {
         <div className="relative h-[600px] w-full rounded-[3rem] overflow-hidden shadow-2xl border border-slate-100 group">
           <div className="absolute inset-0 bg-[#5C0828]/10 z-10 transition-colors duration-500 group-hover:bg-transparent"></div>
           <img 
-            src="https://images.unsplash.com/photo-1601121141461-9d6647bca1ed?q=80&w=2670&auto=format&fit=crop" 
-            alt="Gold Investment" 
+            src={optimizedSrc("https://images.unsplash.com/photo-1601121141461-9d6647bca1ed?q=80&w=2670&auto=format&fit=crop", 1080)}
+            alt="Gold Investment"
+            loading="lazy"
+            decoding="async"
             className="w-full h-full object-cover transform transition-transform duration-1000 scale-100 group-hover:scale-105"
           />
         </div>

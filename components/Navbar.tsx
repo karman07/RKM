@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { API_BASE_URL, STATIC_BASE_URL } from "../app/constants";
+import { optimizedSrc } from "../lib/img";
 import { SearchIcon, BagIcon, HeartIcon } from "./Icons";
 import Link from "next/link";
 import CartDrawer from "./CartDrawer";
@@ -369,8 +370,10 @@ export default function Navbar({ bannerActive }: { bannerActive: boolean }) {
                           style={{ border: "1px solid rgba(255,255,255,0.06)" }}
                         >
                           <img
-                            src={img}
+                            src={optimizedSrc(img, 384)}
                             alt={product.name}
+                            loading="lazy"
+                            decoding="async"
                             className="w-full h-full object-cover transition-transform duration-[1.2s] ease-out group-hover:scale-110"
                           />
                           <div

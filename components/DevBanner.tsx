@@ -17,7 +17,7 @@ export const DEV_BANNER_HEIGHT = 32;
  */
 export async function getDevBannerActive(): Promise<boolean> {
   try {
-    const res = await fetch(`${API_BASE_URL}/settings/public`, { cache: "no-store" });
+    const res = await fetch(`${API_BASE_URL}/settings/public`, { next: { revalidate: 60 } });
     if (res.status === 404) return true;
     if (!res.ok) return false;
     const data = await res.json();

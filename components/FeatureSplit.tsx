@@ -1,6 +1,7 @@
 "use client";
 
 import { THEME } from "../app/constants";
+import { optimizedSrc } from "../lib/img";
 import { FadeIn } from "./FadeIn";
 import { SparklesIcon } from "./Icons";
 
@@ -42,7 +43,9 @@ export default function FeatureSplit() {
         
         <div className="w-full md:w-1/2 h-[60vh] md:h-auto min-h-[600px] relative bg-[#FAFAF9]">
           <img 
-            src="/RKM_LOGO.jpg"
+            src={optimizedSrc("/RKM_LOGO.jpg", 1080)}
+            loading="lazy"
+            decoding="async"
             alt="RKM Jewellers Brandmark"
             className="absolute inset-0 w-full h-full object-cover hover:scale-105 transition-all duration-[2s] ease-out"
           />

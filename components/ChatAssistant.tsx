@@ -6,6 +6,7 @@ import styles from './ChatAssistant.module.css';
 import Link from 'next/link';
 import { trackEvent } from '@/app/analytics';
 import { AI_BASE_URL, STATIC_BASE_URL } from '@/app/constants';
+import { optimizedSrc } from '@/lib/img';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -206,8 +207,9 @@ export default function ChatAssistant() {
                           <div className={styles.cardImg}>
                             {p.image ? (
                               <img
-                                src={p.image}
+                                src={optimizedSrc(p.image, 256)}
                                 alt={p.name}
+                                loading="lazy"
                               />
                             ) : (
                               <div className={styles.imgPlaceholder}>RKM</div>

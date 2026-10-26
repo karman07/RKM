@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { STATIC_BASE_URL } from "../app/constants";
+import { optimizedSrc } from "../lib/img";
 
 interface BlogImageProps {
   src: string;
@@ -19,7 +20,9 @@ export default function BlogImage({ src, alt, className }: BlogImageProps) {
 
   return (
     <img
-      src={imgSrc}
+      src={optimizedSrc(imgSrc, 828)}
+      loading="lazy"
+      decoding="async"
       alt={alt}
       onError={() => setImgSrc(fallbackImage)}
       className={className}

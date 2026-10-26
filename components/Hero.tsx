@@ -5,13 +5,16 @@ import { FadeIn } from "./FadeIn";
 import { ArrowRightIcon } from "./Icons";
 import { Typewriter } from "./Typewriter";
 import Link from "next/link";
+import { optimizedSrc } from "../lib/img";
 
 export default function Hero() {
   return (
     <section className="relative h-screen flex items-center justify-center overflow-hidden">
       <div className="absolute inset-0 z-0">
         <img
-          src="/rkm_bg1.png"
+          src={optimizedSrc("/rkm_bg1.png", 1080)}
+          fetchPriority="high"
+          decoding="async"
           alt="Emerald Collection"
           className="w-full h-full object-cover brightness-[0.7] contrast-[1.1] scale-105"
         />

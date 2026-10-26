@@ -1,4 +1,5 @@
 import { THEME } from "../constants";
+import { optimizedSrc } from "../../lib/img";
 import { FadeIn } from "../../components/FadeIn";
 import MapSection from "../../components/MapSection";
 import { Metadata } from "next";
@@ -15,7 +16,7 @@ export default function AboutPage() {
       <section className="relative h-[65vh] flex items-center justify-center overflow-hidden">
         <div className="absolute inset-0 z-0">
           <img 
-            src="/RKM_LOGO.jpg" 
+            src={optimizedSrc("/RKM_LOGO.jpg", 1920)} 
             alt="RKM Jewellers" 
             className="w-full h-full object-cover brightness-[0.55]"
           />
@@ -42,8 +43,8 @@ export default function AboutPage() {
             </p>
 
             <div className="my-20 flex flex-col md:flex-row gap-8">
-              <img src="/image.png" className="w-full md:w-1/2 h-96 object-cover shadow-xl rounded-2xl transition-transform duration-700 hover:scale-[1.02]" alt="Expert Jewellery Craftsmanship Mohali" />
-              <img src="https://images.unsplash.com/photo-1601121141461-9d6647bca1ed?q=80&w=800&auto=format&fit=crop" className="w-full md:w-1/2 h-96 object-cover shadow-sm rounded-2xl" alt="Certified Diamond Jewellery Chandigarh" />
+              <img src={optimizedSrc("/image.png", 828)} loading="lazy" decoding="async" className="w-full md:w-1/2 h-96 object-cover shadow-xl rounded-2xl transition-transform duration-700 hover:scale-[1.02]" alt="Expert Jewellery Craftsmanship Mohali" />
+              <img src={optimizedSrc("https://images.unsplash.com/photo-1601121141461-9d6647bca1ed?q=80&w=800&auto=format&fit=crop", 828)} loading="lazy" decoding="async" className="w-full md:w-1/2 h-96 object-cover shadow-sm rounded-2xl" alt="Certified Diamond Jewellery Chandigarh" />
             </div>
 
             <h2 className="font-serif text-4xl mb-8 mt-16" style={{ color: THEME.colors.primaryDark }}>Expertise in Customization</h2>

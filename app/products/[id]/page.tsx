@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { THEME, API_BASE_URL, STATIC_BASE_URL } from "../../constants";
+import { optimizedSrc } from "../../../lib/img";
 import { FadeIn } from "../../../components/FadeIn";
 import { BagIcon, SparklesIcon } from "../../../components/Icons";
 import Link from "next/link";
@@ -137,7 +138,9 @@ export default function ProductDetailPage() {
             <FadeIn delay={0}>
               <div className="relative bg-[#FAFAFA] aspect-[4/5] overflow-hidden shadow-sm shadow-[#5C0828]/5 rounded-3xl">
                 <img 
-                  src={imageUrls[selectedImage]} 
+                  src={optimizedSrc(imageUrls[selectedImage], 1080)} 
+                  fetchPriority="high"
+                  decoding="async"
                   alt={product.name}
                   className="w-full h-full object-cover transition-transform duration-[2s] hover:scale-105"
                 />
@@ -152,7 +155,7 @@ export default function ProductDetailPage() {
                     onClick={() => setSelectedImage(idx)}
                     className={`relative aspect-square bg-[#FAFAFA] overflow-hidden transition-all duration-500 rounded-lg sm:rounded-xl ${selectedImage === idx ? 'ring-2 ring-[#B8975A]' : 'opacity-60 hover:opacity-100'}`}
                   >
-                    <img src={url} alt={`${product.name} shadow ${idx}`} className="w-full h-full object-cover" />
+                    <img src={optimizedSrc(url, 256)} loading="lazy" decoding="async" alt={`${product.name} shadow ${idx}`} className="w-full h-full object-cover" />
                   </button>
                 ))}
               </div>

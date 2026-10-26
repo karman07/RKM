@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { STATIC_BASE_URL, THEME, API_BASE_URL } from "../app/constants";
+import { optimizedSrc } from "../lib/img";
 import { FadeIn } from "./FadeIn";
 import { useAppDispatch, useAppSelector } from "../store/store";
 import { toggleWishlist } from "../store/wishlistSlice";
@@ -73,8 +74,10 @@ export default function ProductCard({ product, index, badge }: ProductCardProps)
           {/* Luxury Zoom Image */}
           <div className="w-full h-full transition-all duration-[1.5s] ease-out">
             <img 
-              src={imageUrl}
+              src={optimizedSrc(imageUrl, 640)}
               alt={product.name}
+              loading="lazy"
+              decoding="async"
               className="w-full h-full object-cover transition-transform duration-[2.5s] ease-out group-hover:scale-105"
             />
           </div>

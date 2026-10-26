@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../store/store";
 import { removeFromCart, updateQuantity } from "../store/cartSlice";
 import { STATIC_BASE_URL } from "../app/constants";
+import { optimizedSrc } from "../lib/img";
 import Link from "next/link";
 
 const GOLD = "#B8975A";
@@ -120,8 +121,10 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                   <div key={item._id} className="flex gap-6 group">
                     <div className="w-24 aspect-[3/4] overflow-hidden bg-[#F8F8F8] rounded-lg border border-[#F0EBE0]/40">
                       <img
-                        src={imageUrl}
+                        src={optimizedSrc(imageUrl, 256)}
                         alt={item.name}
+                        loading="lazy"
+                        decoding="async"
                         className="w-full h-full object-cover grayscale transition-all duration-700 group-hover:grayscale-0 group-hover:scale-110"
                       />
                     </div>
