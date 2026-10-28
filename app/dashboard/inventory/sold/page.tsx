@@ -107,6 +107,14 @@ function EditRecordModal({ item, onClose, onSave }: { item: InventoryItem; onClo
 const netSalePrice = (item: { selling_price?: number; final_sale_price?: number | null }) =>
   Math.round(Number(item.final_sale_price ?? item.selling_price) || 0);
 
+// The item's own recorded weight; falls back to the product's catalogue weight when the item has none (0/unset).
+function soldWeight(item: any, field: 'gross_weight' | 'net_weight' | 'stone_weight'): number | '' {
+  const own = Number(item?.[field]);
+  if (own > 0) return own;
+  const fromProduct = typeof item?.product_id === 'object' ? Number(item.product_id?.[field]) : NaN;
+  return fromProduct > 0 ? fromProduct : '';
+}
+
 export default function SoldInventoryPage() {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [user, setUser] = useState<User | null>(null);
@@ -223,6 +231,9 @@ export default function SoldInventoryPage() {
         { header: 'Item', accessor: (r) => (typeof r.product_id === 'object' ? r.product_id?.name : '') || 'Artisan Work' },
         { header: 'SKU', accessor: (r) => (typeof r.product_id === 'object' ? (r.product_id as any)?.sku : '') || '' },
         { header: 'Item Code', accessor: 'unique_item_code' },
+        { header: 'Gross Weight (g)', accessor: (r) => soldWeight(r, 'gross_weight') },
+        { header: 'Net Weight (g)', accessor: (r) => soldWeight(r, 'net_weight') },
+        { header: 'Stone Weight (g)', accessor: (r) => soldWeight(r, 'stone_weight') },
         { header: 'Invoice', accessor: (r) => (r as any).sale_reference || '' },
         { header: 'Customer', accessor: (r) => r.sold_customer_name || 'Walk-in Customer' },
         { header: 'Phone', accessor: (r) => r.sold_customer_phone || '' },
