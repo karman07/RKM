@@ -2,10 +2,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
-  getSalesReps, getSalesCommissionSummary, getSettings,
-  type User, type SalesCommissionSummary,
+  getSalesReps, getSalesCommissionSummary, getSettings, getUsers, getIncentiveReport,
+  type User, type SalesCommissionSummary, type SalesIncentive,
 } from '@/lib/api';
-import { Briefcase, TrendingUp, Search, Settings } from 'lucide-react';
+import { Briefcase, TrendingUp, Search, Settings, ChevronLeft, ChevronRight, UserCog } from 'lucide-react';
+
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 function rupee(n: number) {
   return `₹${n.toLocaleString('en-IN')}`;
@@ -28,6 +30,40 @@ export default function SalesTeamPage() {
   const [ratePct, setRatePct] = useState(2);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const now = new Date();
+  const [month, setMonth] = useState(now.getMonth());
+  const [year, setYear] = useState(now.getFullYear());
+  const [managers, setManagers] = useState<User[]>([]);
+  const [managerReport, setManagerReport] = useState<Record<string, SalesIncentive>>({});
+  const [managersLoading, setManagersLoading] = useState(true);
+
+  // Manager commission = their sales-target / slab incentive for the chosen month (same figures as Incentives & payroll).
+  useEffect(() => {
+    let cancelled = false;
+    setManagersLoading(true);
+    Promise.all([getUsers('manager', 1, 500), getIncentiveReport(month, year)])
+      .then(([mgrs, report]) => {
+        if (cancelled) return;
+        setManagers((mgrs as any).data ?? []);
+        const map: Record<string, SalesIncentive> = {};
+        report.forEach(r => { map[r.user_id] = r; });
+        setManagerReport(map);
+      })
+      .catch(() => { if (!cancelled) { setManagers([]); setManagerReport({}); } })
+      .finally(() => { if (!cancelled) setManagersLoading(false); });
+    return () => { cancelled = true; };
+  }, [month, year]);
+
+  function shiftMonth(delta: number) {
+    const d = new Date(year, month + delta, 1);
+    setMonth(d.getMonth());
+    setYear(d.getFullYear());
+  }
+
+  const managerTotal = useMemo(
+    () => managers.reduce((sum, m) => sum + (managerReport[m._id]?.total_incentive ?? 0), 0),
+    [managers, managerReport],
+  );
 
   useEffect(() => {
     (async () => {
@@ -90,10 +126,11 @@ export default function SalesTeamPage() {
       </div>
 
       {/* ── Stats Row ── */}
-      <div className="border border-slate-100 rounded-2xl divide-x divide-slate-100 grid grid-cols-2 sm:grid-cols-3 overflow-hidden mb-8">
+      <div className="border border-slate-100 rounded-2xl divide-x divide-slate-100 grid grid-cols-2 sm:grid-cols-4 overflow-hidden mb-8">
         <StatPill label="Active Reps" value={reps.length} sub="Sales Team" color="text-slate-900" />
         <StatPill label="Pending Review" value={totals.pending} sub="Enquiries" color="text-amber-600" />
         <StatPill label="Commission Earned" value={rupee(totals.commission)} sub="Auto-added to payroll" color="text-emerald-600" />
+        <StatPill label="Manager Commission" value={rupee(managerTotal)} sub={`${MONTHS[month]} ${year}`} color="text-indigo-600" />
       </div>
 
       <div className="relative group mb-6 max-w-md">
@@ -166,6 +203,78 @@ export default function SalesTeamPage() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* ── Manager commission ── */}
+      <div className="mt-10">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-4">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Manager Commission</h2>
+            <p className="text-slate-500 font-medium uppercase tracking-[0.2em] text-[10px] mt-1">
+              Sales-target incentive earned by managers
+            </p>
+          </div>
+          <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-2 py-1.5 self-start">
+            <button onClick={() => shiftMonth(-1)} className="p-2 rounded-xl hover:bg-slate-50 text-slate-500"><ChevronLeft className="w-4 h-4" /></button>
+            <span className="text-[11px] font-black uppercase tracking-widest text-slate-700 min-w-[130px] text-center">{MONTHS[month]} {year}</span>
+            <button onClick={() => shiftMonth(1)} className="p-2 rounded-xl hover:bg-slate-50 text-slate-500"><ChevronRight className="w-4 h-4" /></button>
+          </div>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-[2.5rem] shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-50/50 border-b border-slate-100">
+                  {['Manager', 'Sales', 'Sales Amount', 'Rate', 'Sales Commission', 'Gold Commission', 'Total Commission'].map(h => (
+                    <th key={h} className="px-6 py-5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {managersLoading ? (
+                  [1, 2].map(i => (
+                    <tr key={i} className="animate-pulse"><td colSpan={7} className="px-6 py-5 h-16 bg-white" /></tr>
+                  ))
+                ) : managers.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-16 text-center text-slate-400 italic text-sm">No managers found.</td>
+                  </tr>
+                ) : (
+                  managers.map(m => {
+                    const r = managerReport[m._id];
+                    return (
+                      <tr key={m._id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center text-white shrink-0">
+                              <UserCog className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-black text-slate-900 leading-tight">{m.name}</p>
+                              <p className="text-[10px] text-slate-400">{m.email}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-sm font-black text-slate-700">{r?.sales_count ?? 0}</td>
+                        <td className="px-6 py-4 text-sm font-black text-slate-700">{rupee(r?.sales_amount ?? 0)}</td>
+                        <td className="px-6 py-4 text-sm font-black text-slate-500">
+                          {r?.has_plan ? `${r.applied_rate_pct}%${r.target_reached ? ' ✓' : ''}` : 'No plan'}
+                        </td>
+                        <td className="px-6 py-4 text-sm font-black text-emerald-600">{rupee(r?.sales_incentive ?? 0)}</td>
+                        <td className="px-6 py-4 text-sm font-black text-emerald-600">{rupee(r?.gold_incentive ?? 0)}</td>
+                        <td className="px-6 py-4 text-sm font-black text-indigo-600">{rupee(r?.total_incentive ?? 0)}</td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <p className="text-[11px] text-slate-400 mt-3">
+          Targets and slabs are set under <Link href="/dashboard/incentives" className="underline hover:text-slate-600">Incentives</Link>; these amounts are added to payroll automatically.
+        </p>
       </div>
     </div>
   );

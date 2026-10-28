@@ -144,6 +144,7 @@ export default function InventoryPage() {
   const [supplierOpen, setSupplierOpen] = useState(false);
   const [productQuery, setProductQuery] = useState('');
   const [productOpen, setProductOpen] = useState(false);
+  const [productsLoading, setProductsLoading] = useState(false);
 
   // ── Add item modal ──────────────────────────────────────────────────────────
   const [addModal, setAddModal] = useState(false);
@@ -361,15 +362,13 @@ export default function InventoryPage() {
 
   useEffect(() => {
     Promise.all([
-      getProducts({ limit: '1000' }),
       getLookups(),
       getBranches().catch(() => []),
       getMe().catch(() => null),
       getSettings().catch(() => null),
       getCashiersByBranch(undefined, 200).catch(() => ({ data: [], meta: {} })),
       getSuppliers().catch(() => []),
-    ]).then(([productResponse, lookupData, branchData, meData, settingsData, cashierRes, supplierRes]) => {
-      setProducts(productResponse.data);
+    ]).then(([lookupData, branchData, meData, settingsData, cashierRes, supplierRes]) => {
       setLookups(lookupData);
       setBranches(branchData);
       setUser(meData);
@@ -378,6 +377,23 @@ export default function InventoryPage() {
       setSuppliers((Array.isArray(supplierRes) ? supplierRes : []).filter((s: Supplier) => s.is_active !== false));
     });
   }, []);
+
+  // ─── Product Search (Add to Inventory) ───────────────────────────────────
+  // Opens with the 5 newest products; typing searches the whole catalogue on the server instead of
+  // downloading every product up front.
+  useEffect(() => {
+    if (!productOpen) return;
+    let cancelled = false;
+    const q = productQuery.trim();
+    const t = setTimeout(() => {
+      setProductsLoading(true);
+      getProducts(q ? { limit: '30', search: q } : { limit: '5' })
+        .then(res => { if (!cancelled) setProducts(res.data); })
+        .catch(() => { if (!cancelled) setProducts([]); })
+        .finally(() => { if (!cancelled) setProductsLoading(false); });
+    }, q ? 250 : 0);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [productOpen, productQuery]);
 
   // ─── Product Select ──────────────────────────────────────────────────────
   function handleProductSelect(productId: string) {
@@ -1190,21 +1206,19 @@ export default function InventoryPage() {
               <input
                 className="w-full px-5 py-3 pr-10 rounded-xl border border-slate-200 bg-white outline-none text-sm font-bold focus:ring-2 focus:ring-blue-500"
                 value={productOpen ? productQuery : (selectedProduct ? `${selectedProduct.name} (${selectedProduct.sku})` : '')}
-                placeholder="Search product by name, SKU, metal or purity…"
+                placeholder="Showing latest 5 — type to search by name, SKU or barcode…"
                 onFocus={() => { setProductQuery(''); setProductOpen(true); }}
                 onChange={e => { setProductQuery(e.target.value); setProductOpen(true); }}
                 onBlur={() => setTimeout(() => setProductOpen(false), 150)}
               />
               <svg className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M19 9l-7 7-7-7" /></svg>
               {productOpen && (() => {
-                const terms = productQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
-                const filtered = products.filter(p => {
-                  const hay = `${p.name} ${p.sku} ${p.metal_type} ${p.purity}`.toLowerCase();
-                  return terms.every(t => hay.includes(t));
-                });
+                const filtered = products;
                 return (
                   <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
-                    {filtered.length === 0 ? (
+                    {productsLoading && filtered.length === 0 ? (
+                      <div className="px-5 py-3 text-[11px] text-slate-400 font-semibold">Loading…</div>
+                    ) : filtered.length === 0 ? (
                       <div className="px-5 py-3 text-[11px] text-slate-400 font-semibold">No products found</div>
                     ) : (
                       <div className="max-h-60 overflow-y-auto divide-y divide-slate-50">
