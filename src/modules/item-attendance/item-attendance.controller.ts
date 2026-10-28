@@ -24,13 +24,13 @@ export class ItemAttendanceController {
   @Post('scan')
   @Roles(UserRole.MANAGER, UserRole.CASHIER, UserRole.ADMIN)
   async markPresent(@Body('barcode') barcode: string, @Request() req) {
-    return this.itemAttendanceService.markPresent(barcode, req.user.branch, req.user.userId);
+    return this.itemAttendanceService.markPresent(barcode, req.user.branch_id ?? undefined, req.user.userId);
   }
 
   @Get('daily-stats')
   @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.CASHIER)
   async getDailyStats(@Query('branch_id') branchId: string, @Query('date') date: string, @Request() req) {
-    const targetBranch = branchId || req.user.branch;
+    const targetBranch = branchId || req.user.branch_id;
     return this.itemAttendanceService.getDailyStats(targetBranch, date);
   }
 
@@ -41,7 +41,7 @@ export class ItemAttendanceController {
     @Query('days') days: string,
     @Request() req,
   ) {
-    const targetBranch = branchId || req.user.branch;
+    const targetBranch = branchId || req.user.branch_id;
     return this.itemAttendanceService.getTrends(targetBranch, days ? parseInt(days, 10) : 14);
   }
 }
