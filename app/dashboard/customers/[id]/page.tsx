@@ -209,6 +209,19 @@ type LedgerRow = {
   reference: string;
 };
 
+
+/** Items sold together share one sale_reference and are ONE bill — keep them together, in sale order. */
+function groupByBill<T extends { _id: string; sale_reference?: string }>(items: T[]): T[][] {
+  const groups = new Map<string, T[]>();
+  for (const it of items) {
+    const key = it.sale_reference || it._id;
+    groups.set(key, [...(groups.get(key) ?? []), it]);
+  }
+  return Array.from(groups.values());
+}
+const billedAmount = (o: { selling_price?: number; final_sale_price?: number | null }) =>
+  Math.round(Number(o.final_sale_price ?? o.selling_price) || 0);
+
 function buildLedgerRows(
   orders: InventoryItem[],
   goldSubs: GoldSubscription[],
@@ -222,9 +235,9 @@ function buildLedgerRows(
     rows.push({
       date: o.sold_at || '',
       type: 'Purchase',
-      description: `${product || 'Jewellery Item'} (${o.unique_item_code})`,
+      description: `${product || 'Jewellery Item'} (${o.unique_item_code})${(o as any).sale_reference && orders.filter(x => (x as any).sale_reference === (o as any).sale_reference).length > 1 ? ' — sold together with other items on the same bill' : ''}`,
       direction: 'credit',
-      amount: o.selling_price || 0,
+      amount: billedAmount(o as any),
       reference: (o as any).sale_reference || '',
     });
   });
@@ -2954,13 +2967,37 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mt-1">Order history & itemised records</p>
               </div>
               <div className="px-4 py-2 bg-blue-50 rounded-xl text-[10px] font-black uppercase tracking-widest text-blue-600 border border-blue-100/50">
-                {orders.length} {orders.length === 1 ? 'Item' : 'Items'}
+                {groupByBill(orders).length} {groupByBill(orders).length === 1 ? 'Bill' : 'Bills'} · {orders.length} {orders.length === 1 ? 'Item' : 'Items'}
               </div>
             </div>
 
             {orders.length > 0 ? (
               <div className="divide-y divide-slate-50">
-                {orders.map((item) => {
+                {groupByBill(orders).map((group) => (
+                  <div key={group[0].sale_reference || group[0]._id} className={group.length > 1 ? 'bg-blue-50/30 border-l-4 border-blue-500' : ''}>
+                    {group.length > 1 && (
+                      <div className="flex flex-wrap items-center justify-between gap-3 px-10 pt-5 pb-1">
+                        <div className="flex items-center gap-3">
+                          <span className="px-3 py-1 bg-blue-600 text-white text-[9px] font-black uppercase tracking-widest rounded-lg">
+                            {group.length} items sold together · 1 invoice
+                          </span>
+                          <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">{group[0].sale_reference}</span>
+                          <span className="text-[10px] font-bold text-slate-500">
+                            {group[0].sold_at ? new Date(group[0].sold_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <p className="text-sm font-black text-slate-900">Bill total {fmt(group.reduce((sum, it) => sum + billedAmount(it as any), 0))}</p>
+                          <button
+                            onClick={() => setSelectedBill(group[0])}
+                            className="px-4 py-2 rounded-xl border border-blue-100 text-[9px] font-black uppercase tracking-widest text-blue-600 hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm active:scale-95"
+                          >
+                            View Bill
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {group.map((item) => {
                   const product = typeof item.product_id === 'object' ? item.product_id : null;
                   const imageUrl = item.image_url || product?.images?.[0];
                   return (
@@ -3004,19 +3041,23 @@ export default function CustomerDetailPage({ params: paramsPromise }: { params: 
 
                       <div className="flex items-center gap-6 shrink-0">
                         <div className="text-right hidden sm:block">
-                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Selling Price</p>
-                          <p className="text-lg font-serif font-bold text-slate-900">{fmt(item.selling_price || 0)}</p>
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{group.length > 1 ? 'Billed (this item)' : 'Billed'}</p>
+                          <p className="text-lg font-serif font-bold text-slate-900">{fmt(billedAmount(item as any))}</p>
                         </div>
-                        <button
-                          onClick={() => setSelectedBill(item)}
-                          className="px-4 py-2 rounded-xl border border-blue-100 text-[9px] font-black uppercase tracking-widest text-blue-600 hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm active:scale-95"
-                        >
-                          View Bill
-                        </button>
+                        {group.length === 1 && (
+                          <button
+                            onClick={() => setSelectedBill(item)}
+                            className="px-4 py-2 rounded-xl border border-blue-100 text-[9px] font-black uppercase tracking-widest text-blue-600 hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm active:scale-95"
+                          >
+                            View Bill
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
-                })}
+                    })}
+                  </div>
+                ))}
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center py-32 text-center px-8">

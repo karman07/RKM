@@ -112,6 +112,12 @@ const emptyAddForm: AddForm = {
 export default function InventoryPage() {
   const router = useRouter();
   const [items, setItems] = useState<InventoryItem[]>([]);
+  // Items sold together share a sale_reference — flag them so they never look like separate sales.
+  const billSizes = useMemo(() => {
+    const sizes = new Map<string, number>();
+    for (const it of items) if (it.sale_reference && it.status === 'sold') sizes.set(it.sale_reference, (sizes.get(it.sale_reference) ?? 0) + 1);
+    return sizes;
+  }, [items]);
   const [products, setProducts] = useState<Product[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [lookups, setLookups] = useState<Record<string, Lookup[]>>({});
@@ -931,6 +937,11 @@ export default function InventoryPage() {
                                {item.sale_reference && (
                                  <span className="px-1.5 py-[2px] bg-emerald-50 text-emerald-700 border border-emerald-200 rounded text-[8px] font-black uppercase tracking-tight">
                                    {item.sale_reference}
+                                 </span>
+                               )}
+                               {item.sale_reference && (billSizes.get(item.sale_reference) ?? 0) > 1 && (
+                                 <span className="px-1.5 py-[2px] bg-blue-600 text-white rounded text-[8px] font-black uppercase tracking-tight" title="Sold together on one invoice">
+                                   Sold together ×{billSizes.get(item.sale_reference)}
                                  </span>
                                )}
                                {(Date.now() - new Date(item.createdAt).getTime()) < 2 * 60 * 60 * 1000 && (
