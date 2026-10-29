@@ -7,6 +7,10 @@
  *   node scripts/backfill-final-sale-price.js            # dry run: prints what would change and checks every invoice, writes nothing
  *   node scripts/backfill-final-sale-price.js --apply    # writes the two fields
  *
+ *   --rebuild   also repairs multi-item bills whose STORED invoice figures do not add up to what was paid (a bug froze
+ *               item 1 against the whole bill's payment before the other items were sold). Their snapshots are rebuilt
+ *               from the full bill. Combine with --apply to write.   node scripts/backfill-final-sale-price.js --rebuild --apply
+ *
  * Run from the backend folder on the server, after the backend has been built (it uses the compiled helpers).
  */
 require('dotenv').config({ quiet: true });
@@ -16,6 +20,7 @@ const { PricingService } = require('../dist/src/modules/products/pricing.service
 const { computeFinalSalePrices, buildSaleSnapshot } = require('../dist/src/modules/inventory/sale-price');
 
 const APPLY = process.argv.includes('--apply');
+const REBUILD = process.argv.includes('--rebuild');
 const rs = v => Math.round(Number(v) || 0);
 
 (async () => {
@@ -43,6 +48,16 @@ const rs = v => Math.round(Number(v) || 0);
     const billed = computeFinalSalePrices(group.map(i => ({ id: String(i._id), selling_price: i.selling_price, payment_splits: i.payment_splits })));
     const paid = rs((group[0].payment_splits || []).reduce((s, p) => s + (Number(p.amount) || 0), 0));
     let invoiceNet = 0, wasStored = 0, billedSum = 0, invoiceGross = 0;
+    // What the invoice currently prints for the whole bill, from the snapshots already stored.
+    const netOfStored = it => {
+      const g = rs(it.sale_pricing_snapshot && it.sale_pricing_snapshot.final_price);
+      const a = rs(g * (Number(it.admin_discount) || 0) / 100);
+      const m = rs((g - g * (Number(it.admin_discount) || 0) / 100) * (Number(it.manager_discount) || 0) / 100);
+      return g - a - m - rs(it.making_charges_discount) - rs(it.advance_making_charges_discount);
+    };
+    const storedNet = group.reduce((sum, it) => sum + (it.sale_pricing_snapshot ? netOfStored(it) : 0), 0);
+    const storedOff = group.length > 1 && group.every(it => it.sale_pricing_snapshot) && Math.abs(storedNet - paid) > group.length;
+    if (storedOff) console.log(`  ↳ ${ref}: stored invoice prints ₹${storedNet} but ₹${paid} was paid${REBUILD ? ' — will rebuild' : ' (run with --rebuild to repair)'}`);
     for (const it of group) {
       const id = String(it._id);
       const waivers = rs(it.making_charges_discount) + rs(it.advance_making_charges_discount);
@@ -54,7 +69,7 @@ const rs = v => Math.round(Number(v) || 0);
       invoiceNet += gross - adm - mgr - waivers; invoiceGross += gross; wasStored += rs(it.selling_price); billedSum += billed.get(id);
       const set = {};
       if (it.final_sale_price !== billed.get(id)) set.final_sale_price = billed.get(id);
-      if (!it.sale_pricing_snapshot) set.sale_pricing_snapshot = snap.pricing_breakdown;
+      if (!it.sale_pricing_snapshot || (REBUILD && storedOff)) set.sale_pricing_snapshot = snap.pricing_breakdown;
       if (Object.keys(set).length) ops.push({ updateOne: { filter: { _id: it._id }, update: { $set: set } } });
     }
     const ok = Math.abs(invoiceNet - paid) <= group.length;   // ≤ ₹1 rounding per item

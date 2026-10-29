@@ -1862,7 +1862,12 @@ export class InventoryService {
       // Reflect it on the document the notifications below read from (not re-saved — already written above).
       const own = billed.get(String(savedItem._id));
       if (own != null) (savedItem as any).final_sale_price = own;
-      await this.freezeSaleSnapshots(savedItem.sale_reference || String(savedItem._id));
+      // A batch sale (suppressEmail) is frozen once, after its LAST item (see finalizeBillPrices). Freezing here would
+      // snapshot item 1 while it is the only sold item of the bill — i.e. against the WHOLE bill's payment — and the
+      // snapshot is write-once, so it would never be corrected when the other items are sold.
+      if (!opts?.suppressEmail) {
+        await this.freezeSaleSnapshots(savedItem.sale_reference || String(savedItem._id));
+      }
     }
 
     // ─── Emit domain events for WhatsApp notifications ────────────────────────
@@ -1978,6 +1983,7 @@ export class InventoryService {
     const sharedReference = dto.sale_reference?.trim() || this.generateSaleReference();
     const results: InventoryItemDocument[] = [];
 
+    try {
     for (let i = 0; i < dto.items.length; i++) {
       const it = dto.items[i];
       const itemDto: UpdateInventoryStatusDto = {
@@ -2020,6 +2026,10 @@ export class InventoryService {
       }
       const updated = await this.updateStatus(it.id, itemDto, requestingUserId, requestingUserBranchId, requestingUserRole, { suppressEmail: true });
       results.push(updated);
+    }
+    } finally {
+      // Whole bill is sold (or the batch stopped part-way): settle each item's billed amount and freeze the invoice figures.
+      await this.finalizeBillPrices(sharedReference);
     }
 
     // One consolidated email for the whole bill, instead of one per item (each updateStatus
@@ -2346,6 +2356,8 @@ export class InventoryService {
     if (!items.length) throw new NotFoundException('No pending requests found for this batch');
 
     const results: InventoryItemDocument[] = [];
+    const sharedRef = (items[0] as any).sale_request_data?.sale_reference;
+    try {
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       const priceOverride = overrides?.item_prices?.find(p => p.id === item._id.toString());
@@ -2369,9 +2381,11 @@ export class InventoryService {
       }
       results.push(await this.approveSaleRequest(item._id.toString(), reviewerId, reviewerRole, perItemOverrides, { suppressEmail: true }));
     }
+    } finally {
+      if (sharedRef) await this.finalizeBillPrices(sharedRef);
+    }
 
     // One consolidated email for the whole bill, instead of one per item.
-    const sharedRef = (items[0] as any).sale_request_data?.sale_reference;
     if (sharedRef) {
       this.sendConsolidatedSaleEmails(sharedRef).catch(err =>
         this.logger.error(`[InventoryService] Failed to send consolidated batch sale emails: ${err?.message}`),
@@ -3105,6 +3119,16 @@ export class InventoryService {
       })),
     );
     return prices;
+  }
+
+  /** Batch sales: once every item of the bill is sold, settle each item's billed amount and freeze its invoice figures. */
+  private async finalizeBillPrices(saleReference: string): Promise<void> {
+    try {
+      await this.refreshBillFinalPrices(saleReference);
+      await this.freezeSaleSnapshots(saleReference);
+    } catch (err: any) {
+      this.logger.error(`[InventoryService] Failed to finalize bill ${saleReference}: ${err?.message}`);
+    }
   }
 
   /**
