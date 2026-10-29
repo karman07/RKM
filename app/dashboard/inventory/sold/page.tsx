@@ -250,6 +250,17 @@ export default function SoldInventoryPage() {
     }
   }
 
+  // One record per invoice: items sold together share a sale_reference and print as ONE bill.
+  const bills = useMemo(() => {
+    const map = new Map<string, InventoryItem[]>();
+    for (const it of filtered) {
+      const key = it.sale_reference || it._id;
+      const group = map.get(key);
+      if (group) group.push(it); else map.set(key, [it]);
+    }
+    return Array.from(map.values());
+  }, [filtered]);
+
   const chartData = useMemo(() => {
     if (!items.length) return null;
     
@@ -359,7 +370,7 @@ export default function SoldInventoryPage() {
           </button>
         )}
         <p className="ml-auto text-[11px] font-bold text-slate-400 whitespace-nowrap">
-          {loading ? 'Loading…' : `${items.length} total records loaded · showing ${filtered.length}`}
+          {loading ? 'Loading…' : `${items.length} items loaded · showing ${bills.length} bill${bills.length === 1 ? '' : 's'} (${filtered.length} item${filtered.length === 1 ? '' : 's'})`}
         </p>
       </div>
 
@@ -584,37 +595,57 @@ export default function SoldInventoryPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {filtered.map((item) => {
-                  const product = typeof item.product_id === 'object' ? item.product_id : null;
+                {bills.map((billItems) => {
+                  const item = billItems[0];   // customer, branch, staff and payment are the same for every item of a bill
+                  const billTotal = billItems.reduce((sum, bi) => sum + netSalePrice(bi), 0);
+                  const billCost = billItems.reduce((sum, bi) => sum + Math.round(bi.purchase_price || 0), 0);
                   return (
-                    <tr key={item._id} className="group hover:bg-slate-50/30 transition-colors duration-200">
+                    <tr key={item.sale_reference || item._id} className="group hover:bg-slate-50/30 transition-colors duration-200">
                       <td className="px-8 py-6">
-                        <div className="flex items-center gap-5">
-                          <div className="relative group/img">
-                            <div className="absolute -inset-1 bg-gradient-to-tr from-blue-500 to-blue-700 rounded-xl blur opacity-20 group-hover/img:opacity-40 transition-opacity" />
-                            <div className="relative w-14 h-14 rounded-xl bg-slate-100 overflow-hidden border border-slate-200 shadow-sm flex-shrink-0">
-                              {product?.images?.[0] ? (
-                                <img src={staticUrl(product.images[0])} alt="" className="w-full h-full object-cover group-hover/img:scale-110 transition-transform duration-500" />
-                              ) : (
-                                <div className="h-full flex items-center justify-center bg-slate-50 text-slate-300">
-                                  <LayoutDashboard size={20} />
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          <div>
-                            <p className="text-sm font-black text-slate-900 tracking-tight group-hover:text-blue-600 transition-colors">{product?.name || 'Artisan Work'}</p>
-                            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                              <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[9px] font-black uppercase rounded-lg tracking-wider border border-slate-200">
-                                {item.unique_item_code}
-                              </span>
+                        <div className="space-y-4">
+                          {billItems.length > 1 && (
+                            <div className="flex items-center gap-2">
+                              <span className="px-2.5 py-1 bg-blue-600 text-white text-[9px] font-black uppercase rounded-lg tracking-wider">{billItems.length} items · 1 invoice</span>
                               {item.sale_reference && (
-                                <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[9px] font-black rounded-lg tracking-wider border border-emerald-200">
-                                  INV: {item.sale_reference}
-                                </span>
+                                <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[9px] font-black rounded-lg tracking-wider border border-emerald-200">INV: {item.sale_reference}</span>
                               )}
                             </div>
-                          </div>
+                          )}
+                          {billItems.map((bi) => {
+                            const product = typeof bi.product_id === 'object' ? bi.product_id : null;
+                            return (
+                              <div key={bi._id} className="flex items-center gap-5">
+                                <div className="relative group/img">
+                                  <div className="absolute -inset-1 bg-gradient-to-tr from-blue-500 to-blue-700 rounded-xl blur opacity-20 group-hover/img:opacity-40 transition-opacity" />
+                                  <div className="relative w-14 h-14 rounded-xl bg-slate-100 overflow-hidden border border-slate-200 shadow-sm flex-shrink-0">
+                                    {product?.images?.[0] ? (
+                                      <img src={staticUrl(product.images[0])} alt="" className="w-full h-full object-cover group-hover/img:scale-110 transition-transform duration-500" />
+                                    ) : (
+                                      <div className="h-full flex items-center justify-center bg-slate-50 text-slate-300">
+                                        <LayoutDashboard size={20} />
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                                <div>
+                                  <p className="text-sm font-black text-slate-900 tracking-tight group-hover:text-blue-600 transition-colors">{product?.name || 'Artisan Work'}</p>
+                                  <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                                    <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[9px] font-black uppercase rounded-lg tracking-wider border border-slate-200">
+                                      {bi.unique_item_code}
+                                    </span>
+                                    {billItems.length === 1 && bi.sale_reference && (
+                                      <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[9px] font-black rounded-lg tracking-wider border border-emerald-200">
+                                        INV: {bi.sale_reference}
+                                      </span>
+                                    )}
+                                    {user?.role === 'admin' && billItems.length > 1 && (
+                                      <button onClick={() => setEditingItem(bi)} className="text-[9px] font-black uppercase tracking-wider text-slate-400 hover:text-blue-600 underline">edit</button>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       </td>
                       <td className="px-8 py-6">
@@ -736,13 +767,13 @@ export default function SoldInventoryPage() {
                           <div className="flex items-baseline gap-1">
                             <span className="text-[10px] font-bold text-slate-400">₹</span>
                             <span className="text-base font-black text-slate-900 tracking-tight">
-                              {netSalePrice(item).toLocaleString('en-IN')}
+                              {billTotal.toLocaleString('en-IN')}
                             </span>
                           </div>
                           <div className="flex items-center gap-1.5 mt-0.5">
                             <TrendingUp size={10} className="text-emerald-500" />
                             <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-tighter">
-                              ROI: ₹{(netSalePrice(item) - Math.round(item.purchase_price || 0)).toLocaleString('en-IN')}
+                              ROI: ₹{(billTotal - billCost).toLocaleString('en-IN')}
                             </span>
                           </div>
                         </div>
@@ -760,7 +791,7 @@ export default function SoldInventoryPage() {
                             className="p-2.5 rounded-xl bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition-all transform active:scale-95 shadow-sm"
                             title="Print Signature Bill"
                           ><svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6v-8z" /></svg></button>
-                          {user?.role === 'admin' && (
+                          {user?.role === 'admin' && billItems.length === 1 && (
                             <button 
                               onClick={() => setEditingItem(item)}
                               className="p-2.5 rounded-xl bg-slate-50 text-slate-600 hover:bg-blue-600 hover:text-white transition-all transform active:scale-95 shadow-sm"
