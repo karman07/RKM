@@ -1,6 +1,6 @@
 'use client';
 import OldGoldRefInput from '../../../components/OldGoldRefInput';
-import { useEffect, useState, useRef, Suspense } from 'react';
+import { useEffect, useMemo, useState, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 import ViewItemModal from '../../../components/ViewItemModal';
@@ -227,6 +227,12 @@ export function InventoryPageContent() {
   const searchParams = useSearchParams();
   const [user, setUser] = useState<UserProfile | null>(null);
   const [items, setItems] = useState<InventoryItem[]>([]);
+  // Items sold together share a sale_reference — flag them so they never look like separate sales.
+  const billSizes = useMemo(() => {
+    const sizes = new Map<string, number>();
+    for (const it of items) if (it.sale_reference && it.status === 'sold') sizes.set(it.sale_reference, (sizes.get(it.sale_reference) ?? 0) + 1);
+    return sizes;
+  }, [items]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
@@ -1289,6 +1295,9 @@ export function InventoryPageContent() {
                 {item.sale_reference && (
                   <p className="text-[10px] font-bold text-emerald-700 mb-2">
                     Invoice: <code className="bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md text-emerald-700 font-bold">{item.sale_reference}</code>
+                    {(billSizes.get(item.sale_reference) ?? 0) > 1 && (
+                      <span className="ml-1.5 px-1.5 py-0.5 bg-blue-600 text-white rounded-md text-[9px] font-black uppercase tracking-wide" title="Sold together on one invoice">Sold together ×{billSizes.get(item.sale_reference)}</span>
+                    )}
                   </p>
                 )}
                 <div className="mb-3">
@@ -1455,6 +1464,9 @@ export function InventoryPageContent() {
                           <div className="flex items-center gap-1.5 pl-0.5">
                             <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">INV</span>
                             <code className="text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">{item.sale_reference}</code>
+                            {(billSizes.get(item.sale_reference) ?? 0) > 1 && (
+                              <span className="px-1.5 py-0.5 bg-blue-600 text-white rounded-md text-[8px] font-black uppercase tracking-wide" title="Sold together on one invoice">Sold together ×{billSizes.get(item.sale_reference)}</span>
+                            )}
                           </div>
                         )}
                       </div>
