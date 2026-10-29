@@ -105,3 +105,21 @@ export function buildSaleSnapshot(args: {
   pricing_breakdown.frozen_at_sale = true;
   return { pricing_breakdown, gross };
 }
+
+/**
+ * What an item's invoice lines add up to once the discounts are taken off: gross, less admin %, less manager % on the
+ * remainder, less making-charge waivers. For a correct frozen snapshot this equals what the customer was billed.
+ */
+export function invoiceNet(item: {
+  admin_discount?: number | null;
+  manager_discount?: number | null;
+  making_charges_discount?: number | null;
+  advance_making_charges_discount?: number | null;
+}, snapshot: { final_price?: number } | null | undefined): number {
+  const gross = Math.round(Number(snapshot?.final_price) || 0);
+  const admin = Number(item.admin_discount) || 0;
+  const adm = Math.round((gross * admin) / 100);
+  const mgr = Math.round(((gross - (gross * admin) / 100) * (Number(item.manager_discount) || 0)) / 100);
+  const waivers = Math.round(Number(item.making_charges_discount) || 0) + Math.round(Number(item.advance_making_charges_discount) || 0);
+  return gross - adm - mgr - waivers;
+}

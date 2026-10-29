@@ -46,7 +46,7 @@ import { EmailService } from '../email/email.service.js';
 import { WhatsAppService } from '../whatsapp/services/whatsapp.service.js';
 import { MiscPaymentsService } from '../misc-payments/misc-payments.service.js';
 import { buildBillPrintHtml, renderBillPdf } from './bill-pdf.builder.js';
-import { SALE_VALUE, saleValue, computeFinalSalePrices, buildSaleSnapshot } from './sale-price';
+import { SALE_VALUE, saleValue, computeFinalSalePrices, buildSaleSnapshot, invoiceNet } from './sale-price';
 
 // Allowed status transitions
 const STATUS_TRANSITIONS: Record<InventoryStatus, InventoryStatus[]> = {
@@ -173,6 +173,23 @@ export class InventoryService {
         ? new Date(plainItem.new_stock_expires_at) > new Date()
         : (plainItem.is_new_stock ?? false);
 
+      // A frozen invoice breakdown must add up to what the item was billed. Older multi-item bills were frozen against a
+      // partial bill (item 1 took the whole payment), so when it does not tie, rebuild it from the billed amount — the
+      // billed amount (final_sale_price) was always settled correctly once the whole bill was sold.
+      let frozen = plainItem.sale_pricing_snapshot;
+      const isSoldOrReturned = plainItem.status === InventoryStatus.SOLD || plainItem.status === InventoryStatus.RETURNED;
+      if (isSoldOrReturned && frozen && plainItem.final_sale_price != null) {
+        if (Math.abs(invoiceNet(plainItem, frozen) - Number(plainItem.final_sale_price)) > 2) {
+          frozen = buildSaleSnapshot({
+            liveBreakdown: breakdown as any,
+            billed: Number(plainItem.final_sale_price),
+            waivers: (Number(plainItem.making_charges_discount) || 0) + (Number(plainItem.advance_making_charges_discount) || 0),
+            adminPct: plainItem.admin_discount,
+            mgrPct: plainItem.manager_discount,
+          }).pricing_breakdown;
+        }
+      }
+
       return {
         ...plainItem,
         selling_price: (plainItem.status === InventoryStatus.SOLD || plainItem.status === InventoryStatus.RETURNED)
@@ -180,8 +197,8 @@ export class InventoryService {
           : formulaPrice,
         live_selling_price: liveSellingPrice,
         // Sold / returned items print the breakdown frozen at sale time; only unsold stock follows today's rates.
-        pricing_breakdown: (plainItem.status === InventoryStatus.SOLD || plainItem.status === InventoryStatus.RETURNED) && plainItem.sale_pricing_snapshot
-          ? plainItem.sale_pricing_snapshot
+        pricing_breakdown: isSoldOrReturned && frozen
+          ? frozen
           : breakdown,
         is_new_stock: isNewStock,
       };
