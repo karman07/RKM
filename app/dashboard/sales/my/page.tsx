@@ -49,6 +49,28 @@ function BarChart({ data }: { data: { label: string; value: number }[] }) {
   );
 }
 
+// Items sold together share a sale_reference and are ONE bill: show a single record with the bill total
+// (what the customer was actually billed — final_sale_price — not the pre-discount list price).
+function groupSalesByBill(items: any[]) {
+  const bills = new Map<string, any[]>();
+  for (const it of items) {
+    const key = it.sale_reference || it._id;
+    bills.set(key, [...(bills.get(key) ?? []), it]);
+  }
+  return Array.from(bills.entries()).map(([key, group]) => {
+    const first = group[0];
+    const name = first.product_id?.name ?? first.unique_item_code;
+    return {
+      key,
+      title: group.length > 1 ? `${name} + ${group.length - 1} more item${group.length > 2 ? 's' : ''}` : name,
+      customer: first.sold_customer_name ?? '—',
+      reference: first.sale_reference ?? first.unique_item_code,
+      total: group.reduce((sum, it) => sum + (Number(it.final_sale_price ?? it.selling_price) || 0), 0),
+      soldAt: first.sold_at,
+    };
+  });
+}
+
 export default function MyPersonalSalesPage() {
   const router = useRouter();
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -228,25 +250,25 @@ export default function MyPersonalSalesPage() {
           {/* Recent sales */}
           <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
             <h2 className="text-base font-black text-slate-900 mb-1">Recent Sales</h2>
-            <p className="text-[11px] text-slate-400 font-medium mb-5">Last 10 items sold under your reference</p>
+            <p className="text-[11px] text-slate-400 font-medium mb-5">Latest sales under your reference — items sold together show as one bill</p>
             <div className="space-y-3 max-h-[360px] overflow-y-auto pr-1">
-              {(stats?.recentSales ?? []).map((item: any) => (
-                <div key={item._id} className="flex items-center gap-3 p-2.5 rounded-2xl hover:bg-slate-50 transition-colors">
+              {groupSalesByBill(stats?.recentSales ?? []).map((bill) => (
+                <div key={bill.key} className="flex items-center gap-3 p-2.5 rounded-2xl hover:bg-slate-50 transition-colors">
                   <div className="w-9 h-9 rounded-xl bg-[#2563EB]/10 flex items-center justify-center flex-shrink-0">
                     <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#2563EB" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                     </svg>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-[12px] font-bold text-slate-800 truncate">{item.product_id?.name ?? item.unique_item_code}</p>
+                    <p className="text-[12px] font-bold text-slate-800 truncate">{bill.title}</p>
                     <p className="text-[10px] text-slate-400 truncate">
-                      {item.sold_customer_name ?? '—'} · {item.sale_reference ?? item.unique_item_code}
+                      {bill.customer} · {bill.reference}
                     </p>
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <p className="text-[12px] font-black text-[#2563EB]">{fmt(item.selling_price ?? 0)}</p>
+                    <p className="text-[12px] font-black text-[#2563EB]">{fmt(bill.total)}</p>
                     <p className="text-[9px] text-slate-400">
-                      {item.sold_at ? new Date(item.sold_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : ''}
+                      {bill.soldAt ? new Date(bill.soldAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : ''}
                     </p>
                   </div>
                 </div>
