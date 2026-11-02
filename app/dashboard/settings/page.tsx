@@ -115,7 +115,8 @@ export default function SettingsPage() {
   const [hrSpecialPct,    setHrSpecialPct]    = useState('20');
   const [uploadingLogo,   setUploadingLogo]   = useState(false);
   // Security
-  const [staffSessionExpiry, setStaffSessionExpiry] = useState('2');
+  const [staffSessionExpiry, setStaffSessionExpiry] = useState('24');
+  const [staffIdleTimeout, setStaffIdleTimeout] = useState('60');
   const [signInWindow, setSignInWindow] = useState('2');
 
   // Sales Team Commission
@@ -222,7 +223,8 @@ export default function SettingsPage() {
     setHrFine(String(settings.hr_fine_amount ?? 200000));
     setHrCasualLeaves(String(settings.hr_casual_leaves ?? 3));
     setHrAbsentAbandonment(String(settings.hr_absent_days_abandonment ?? 3));
-    setStaffSessionExpiry(String(settings.staff_session_expiry_hours ?? 2));
+    setStaffSessionExpiry(String(settings.staff_session_expiry_hours ?? 24));
+    setStaffIdleTimeout(String(settings.staff_idle_timeout_minutes ?? 60));
     setSignInWindow(String(settings.sign_in_window_hours ?? 2));
     setSalesCommissionWindow(String((settings as any).sales_commission_window_months ?? 6));
     setSalesCommissionRate(String((settings as any).sales_commission_rate_percentage ?? 2));
@@ -305,7 +307,8 @@ export default function SettingsPage() {
         hr_fine_amount:            Number(hrFine) || 200000,
         hr_casual_leaves:          Number(hrCasualLeaves) || 3,
         hr_absent_days_abandonment:Number(hrAbsentAbandonment) || 3,
-        staff_session_expiry_hours: Math.max(1, Math.min(24, Number(staffSessionExpiry) || 2)),
+        staff_session_expiry_hours: Math.max(1, Math.min(168, Number(staffSessionExpiry) || 24)),
+        staff_idle_timeout_minutes: Math.max(0, Math.min(10080, Number.isFinite(Number(staffIdleTimeout)) ? Number(staffIdleTimeout) : 60)),
         sign_in_window_hours: Math.max(1, Math.min(12, Number(signInWindow) || 2)),
         sales_commission_window_months: Math.max(0, Math.min(120, Number(salesCommissionWindow) || 6)),
         sales_commission_rate_percentage: Math.max(0, Math.min(100, Number(salesCommissionRate) || 2)),
@@ -1052,7 +1055,7 @@ return (
             <h2 className="text-[15px] font-bold" style={{ color: colors.textMain }}>Security Settings</h2>
           </div>
           <p className="text-xs mt-0.5 opacity-60" style={{ color: colors.textMain }}>
-            Configure session expiry for manager and cashier accounts. Sessions will be invalidated after this duration and staff must log in again.
+            Configure how long a login lasts and how long a user can sit idle before being signed out. Applies to all portal accounts.
           </p>
         </div>
 
@@ -1065,7 +1068,7 @@ return (
               <input
                 type="number"
                 min={1}
-                max={24}
+                max={168}
                 value={staffSessionExpiry}
                 onChange={e => setStaffSessionExpiry(e.target.value)}
                 className="w-full px-4 py-3 pr-16 rounded-xl border text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all"
@@ -1074,7 +1077,28 @@ return (
               <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[11px] font-bold opacity-40" style={{ color: colors.textMain }}>hrs</span>
             </div>
             <p className="text-[10px] opacity-50" style={{ color: colors.textMain }}>
-              1–24 hrs. Session duration after login.
+              1–168 hrs. Longest a login can last, even if the user stays active.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-widest" style={{ color: colors.textHeader }}>
+              Idle Timeout
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                min={0}
+                max={10080}
+                value={staffIdleTimeout}
+                onChange={e => setStaffIdleTimeout(e.target.value)}
+                className="w-full px-4 py-3 pr-16 rounded-xl border text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all"
+                style={{ borderColor: colors.border, background: theme === 'dark' ? '#1e293b' : '#f8fafc', color: colors.textMain }}
+              />
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[11px] font-bold opacity-40" style={{ color: colors.textMain }}>min</span>
+            </div>
+            <p className="text-[10px] opacity-50" style={{ color: colors.textMain }}>
+              Minutes of no activity before sign-out. 0 turns it off.
             </p>
           </div>
 

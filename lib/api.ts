@@ -1433,6 +1433,7 @@ export interface AppSettings {
   hr_absent_days_abandonment?: number;
   /** Session expiry in hours for manager and cashier (default 2) */
   staff_session_expiry_hours?: number;
+  staff_idle_timeout_minutes?: number;
   /** Hours after shift start within which staff must sign in before admin is alerted (default 2) */
   sign_in_window_hours?: number;
   /** Months after onboarding during which a customer's purchases/investments earn the sales agent commission (default 6) */
