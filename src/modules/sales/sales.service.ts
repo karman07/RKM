@@ -10,17 +10,147 @@ import { InventoryService } from '../inventory/inventory.service';
 import { InventoryStatus } from '../inventory/schemas/inventory-item.schema';
 import { UsersService } from '../../users/users.service';
 import { UserRole } from '../../users/schemas/user.schema';
+import { InventoryItem, InventoryItemDocument } from '../inventory/schemas/inventory-item.schema';
+import { SALE_VALUE } from '../inventory/sale-price';
+import { StockIssue, StockIssueDocument, StockIssueStatus } from '../stock-issues/schemas/stock-issue.schema';
 
 @Injectable()
 export class SalesService {
   constructor(
     @InjectModel(SaleEnquiry.name) private readonly enquiryModel: Model<SaleEnquiryDocument>,
+    @InjectModel(InventoryItem.name) private readonly inventoryModel: Model<InventoryItemDocument>,
+    @InjectModel(StockIssue.name) private readonly issueModel: Model<StockIssueDocument>,
     private readonly customersService: CustomersService,
     private readonly settingsService: SettingsService,
     private readonly notificationsService: NotificationsService,
     private readonly inventoryService: InventoryService,
     private readonly usersService: UsersService,
   ) {}
+
+  /**
+   * Manager/admin view of the sales team: one row per sales-role user with their profile,
+   * sales, stock allotments, enquiries and commission. Sales are counted by who sold the
+   * item (not by the branch it left from), so field sales never fall out of the picture.
+   */
+  async teamOverview(viewer: { role: string; branch_id?: string | null }, requestedBranchId?: string) {
+    const branchId = viewer.role === UserRole.ADMIN ? requestedBranchId : viewer.branch_id;
+    if (viewer.role !== UserRole.ADMIN && !branchId) {
+      throw new ForbiddenException('Your account is not linked to a branch');
+    }
+
+    const members = await this.usersService.findByRole(UserRole.SALES, 1, 500, branchId || undefined);
+    const agents = members.data as any[];
+    const ids = agents.map(a => new Types.ObjectId(String(a._id)));
+    if (!ids.length) return { data: [], totals: this.emptyTeamTotals() };
+
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const [sales, openIssues, issueCounts, enquiries] = await Promise.all([
+      this.inventoryModel.aggregate([
+        { $match: { is_deleted: { $ne: true }, status: InventoryStatus.SOLD, sold_by_user_id: { $in: ids } } },
+        {
+          $group: {
+            _id: '$sold_by_user_id',
+            count: { $sum: 1 },
+            revenue: { $sum: SALE_VALUE },
+            month_count: { $sum: { $cond: [{ $gte: ['$sold_at', monthStart] }, 1, 0] } },
+            month_revenue: { $sum: { $cond: [{ $gte: ['$sold_at', monthStart] }, SALE_VALUE, 0] } },
+            last_sale_at: { $max: '$sold_at' },
+          },
+        },
+      ]),
+      this.issueModel.aggregate([
+        { $match: { sales_user_id: { $in: ids }, status: { $in: [StockIssueStatus.ISSUED, StockIssueStatus.PARTIALLY_CLOSED] } } },
+        {
+          $project: {
+            sales_user_id: 1,
+            expected_return_date: 1,
+            out: { $filter: { input: '$items', as: 'i', cond: { $eq: ['$$i.outcome', 'out'] } } },
+          },
+        },
+        {
+          $group: {
+            _id: '$sales_user_id',
+            open_issues: { $sum: 1 },
+            items_out: { $sum: { $size: '$out' } },
+            value_out: { $sum: { $sum: '$out.value' } },
+            overdue_issues: {
+              $sum: { $cond: [{ $and: [{ $ne: ['$expected_return_date', null] }, { $lt: ['$expected_return_date', now] }] }, 1, 0] },
+            },
+          },
+        },
+      ]),
+      this.issueModel.aggregate([
+        { $match: { sales_user_id: { $in: ids }, status: { $ne: StockIssueStatus.CANCELLED } } },
+        { $group: { _id: '$sales_user_id', total_issues: { $sum: 1 }, last_issued_at: { $max: '$issued_at' } } },
+      ]),
+      this.enquiryModel.aggregate([
+        { $match: { sales_agent_id: { $in: ids } } },
+        {
+          $group: {
+            _id: '$sales_agent_id',
+            pending: { $sum: { $cond: [{ $eq: ['$status', SaleEnquiryStatus.PENDING] }, 1, 0] } },
+            approved: { $sum: { $cond: [{ $eq: ['$status', SaleEnquiryStatus.APPROVED] }, 1, 0] } },
+            rejected: { $sum: { $cond: [{ $eq: ['$status', SaleEnquiryStatus.REJECTED] }, 1, 0] } },
+            commission_unpaid: { $sum: { $cond: [{ $eq: ['$commission_status', CommissionStatus.UNPAID] }, '$commission_amount', 0] } },
+            commission_paid: { $sum: { $cond: [{ $eq: ['$commission_status', CommissionStatus.PAID] }, '$commission_amount', 0] } },
+          },
+        },
+      ]),
+    ]);
+
+    const by = (rows: any[]) => new Map(rows.map(r => [String(r._id), r]));
+    const salesBy = by(sales), openBy = by(openIssues), countBy = by(issueCounts), enqBy = by(enquiries);
+
+    const data = agents.map(a => {
+      const id = String(a._id);
+      const s = salesBy.get(id), o = openBy.get(id), c = countBy.get(id), e = enqBy.get(id);
+      return {
+        _id: id,
+        name: a.name,
+        email: a.email,
+        mobile_number: a.mobile_number ?? null,
+        employee_id: a.employee_id ?? null,
+        is_active: !!a.isActive,
+        joining_date: a.joining_date ?? null,
+        branch: a.branch ? { _id: String(a.branch._id ?? a.branch), name: a.branch.name ?? null } : null,
+        last_active_at: a.last_active_at ?? null,
+        sales: {
+          count: s?.count ?? 0, revenue: s?.revenue ?? 0,
+          month_count: s?.month_count ?? 0, month_revenue: s?.month_revenue ?? 0,
+          last_sale_at: s?.last_sale_at ?? null,
+        },
+        allotments: {
+          total_issues: c?.total_issues ?? 0,
+          last_issued_at: c?.last_issued_at ?? null,
+          open_issues: o?.open_issues ?? 0,
+          items_out: o?.items_out ?? 0,
+          value_out: o?.value_out ?? 0,
+          overdue_issues: o?.overdue_issues ?? 0,
+        },
+        enquiries: { pending: e?.pending ?? 0, approved: e?.approved ?? 0, rejected: e?.rejected ?? 0 },
+        commission: { unpaid: e?.commission_unpaid ?? 0, paid: e?.commission_paid ?? 0 },
+      };
+    }).sort((x, y) => y.sales.revenue - x.sales.revenue);
+
+    const totals = data.reduce((t, r) => ({
+      agents: t.agents + 1,
+      active_agents: t.active_agents + (r.is_active ? 1 : 0),
+      revenue: t.revenue + r.sales.revenue,
+      month_revenue: t.month_revenue + r.sales.month_revenue,
+      items_out: t.items_out + r.allotments.items_out,
+      value_out: t.value_out + r.allotments.value_out,
+      overdue_issues: t.overdue_issues + r.allotments.overdue_issues,
+      pending_enquiries: t.pending_enquiries + r.enquiries.pending,
+    }), this.emptyTeamTotals());
+
+    return { data, totals };
+  }
+
+  private emptyTeamTotals() {
+    return { agents: 0, active_agents: 0, revenue: 0, month_revenue: 0, items_out: 0, value_out: 0, overdue_issues: 0, pending_enquiries: 0 };
+  }
 
   async createEnquiry(salesAgentId: string, dto: CreateSaleEnquiryDto): Promise<SaleEnquiryDocument> {
     const customer = await this.customersService.findById(dto.customer_id);

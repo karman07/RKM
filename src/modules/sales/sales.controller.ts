@@ -12,6 +12,13 @@ import { UserRole } from '../../users/schemas/user.schema';
 export class SalesController {
   constructor(private readonly salesService: SalesService) {}
 
+  /** Sales-team overview for the manager's branch (admin: any branch via ?branch_id). */
+  @Get('team')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  team(@Req() req: any, @Query('branch_id') branchId?: string) {
+    return this.salesService.teamOverview({ role: req.user.role, branch_id: req.user.branch_id }, branchId);
+  }
+
   @Post('enquiries')
   @Roles(UserRole.SALES, UserRole.MANAGER)
   createEnquiry(@Body() dto: CreateSaleEnquiryDto, @Req() req: any) {
