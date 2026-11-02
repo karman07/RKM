@@ -37,6 +37,8 @@ interface UserForm {
   role: string;
   branch?: string;
   is_active: boolean;
+  last_working_day?: string;
+  exit_reason?: string;
   custom_role?: string;
   job_title?: string;
   avatar?: string;
@@ -70,6 +72,12 @@ interface UserForm {
   ifsc_code?: string;
   blank_check_url?: string;
 }
+
+const todayISO = () => new Date().toISOString().slice(0, 10);
+const fmtDay = (d?: string | null) =>
+  d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+/** Last day the person worked: the recorded last working day, or the removal date for older records. */
+const leftOn = (u: User) => u.last_working_day || (u.is_deleted ? u.deleted_at : undefined);
 
 const emptyForm: UserForm = {
   name: '', email: '', password: '', role: 'cashier', is_active: true, salary_type: 'monthly',
@@ -199,6 +207,8 @@ export default function UsersPage() {
   const [error, setError]           = useState('');
   const [toast, setToast]           = useState<{ message: string; type: 'success' | 'danger' } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
+  const [removeDay, setRemoveDay] = useState(todayISO());
+  const [removeReason, setRemoveReason] = useState('');
   const [restoreTarget, setRestoreTarget] = useState<User | null>(null);
   const [restoring, setRestoring]   = useState(false);
   const [historyUser, setHistoryUser]   = useState<User | null>(null);
@@ -293,6 +303,8 @@ export default function UsersPage() {
       role: roleValue,
       branch: (u.branch as any)?._id || (u.branch as string),
       is_active: u.is_active,
+      last_working_day: '',
+      exit_reason: '',
       avatar:                   (u as any).avatar                         || '',
       job_title:                (u as any).job_title                      || '',
       base_salary:              (u as any).base_salary?.toString()        || '',
@@ -358,6 +370,8 @@ export default function UsersPage() {
       const payload: any = {
         name: form.name, role: roleValue,
         isActive: form.is_active, branch: form.branch || null,
+        ...(editTarget && editTarget.is_active && !form.is_active
+              ? { last_working_day: form.last_working_day || todayISO(), ...(form.exit_reason ? { exit_reason: form.exit_reason } : {}) } : {}),
         ...(form.avatar            ? { avatar:                  form.avatar                    } : {}),
         ...((isWorker || !form.email) ? {}                                                      : { email: form.email }),
         ...(form.personal_email     ? { personal_email:       form.personal_email             } : {}),
@@ -429,8 +443,9 @@ export default function UsersPage() {
   async function handleDelete() {
     if (!deleteTarget) return;
     try {
-      await deleteUser(deleteTarget._id);
+      await deleteUser(deleteTarget._id, { last_working_day: removeDay || todayISO(), ...(removeReason.trim() ? { exit_reason: removeReason.trim() } : {}) });
       setDeleteTarget(null);
+      setRemoveReason('');
       showToast('User removed', 'success');
       load();
     } catch (e: any) {
@@ -615,6 +630,9 @@ export default function UsersPage() {
                                 {u.is_deleted ? 'Removed' : u.is_active ? 'Active' : 'Inactive'}
                               </span>
                             </div>
+                            {!u.is_active && leftOn(u) && (
+                              <p className="text-[10px] font-semibold text-slate-400 mt-1">Last day: {fmtDay(leftOn(u))}</p>
+                            )}
                           </div>
                         ) : (
                           <div>
@@ -630,6 +648,9 @@ export default function UsersPage() {
                                 {u.is_deleted ? 'Removed' : u.is_active ? 'Active' : 'Suspended'}
                               </span>
                             </div>
+                            {!u.is_active && leftOn(u) && (
+                              <p className="text-[10px] font-semibold text-slate-400 mt-1">Last day: {fmtDay(leftOn(u))}</p>
+                            )}
                           </div>
                         )}
                       </td>
@@ -668,7 +689,7 @@ export default function UsersPage() {
                           ) : (
                             <>
                               <button onClick={e => { e.stopPropagation(); openEdit(u); }} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><Edit2 className="w-4 h-4" /></button>
-                              <button onClick={e => { e.stopPropagation(); setDeleteTarget(u); }} className="p-2 bg-red-50 text-red-600 rounded-xl hover:bg-red-600 hover:text-white transition-all"><Trash2 className="w-4 h-4" /></button>
+                              <button onClick={e => { e.stopPropagation(); setDeleteTarget(u); setRemoveDay(todayISO()); setRemoveReason(''); }} className="p-2 bg-red-50 text-red-600 rounded-xl hover:bg-red-600 hover:text-white transition-all"><Trash2 className="w-4 h-4" /></button>
                             </>
                           )}
                         </div>
@@ -980,6 +1001,21 @@ export default function UsersPage() {
                   <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-all shadow-sm ${form.is_active ? 'translate-x-[22px]' : 'translate-x-1'}`} />
                 </button>
               </div>
+
+              {editTarget && editTarget.is_active && !form.is_active && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 bg-red-50/50 rounded-xl border border-red-100">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Last working day</label>
+                    <input type="date" value={form.last_working_day || todayISO()} onChange={e => setForm({ ...form, last_working_day: e.target.value })}
+                      className="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Reason (optional)</label>
+                    <input type="text" value={form.exit_reason || ''} onChange={e => setForm({ ...form, exit_reason: e.target.value })}
+                      className="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold" />
+                  </div>
+                </div>
+              )}
 
               {/* ── Compensation ── */}
               <div className="pt-1 border-t border-slate-100 space-y-4">
@@ -1484,6 +1520,18 @@ export default function UsersPage() {
             <p className="text-sm text-slate-500 leading-relaxed px-4">
               Remove <strong>{deleteTarget?.name}</strong> from the system? {deleteTarget?.role === 'worker' ? 'Their attendance records will be preserved.' : 'All their access will be revoked immediately.'}
             </p>
+          </div>
+          <div className="space-y-3 text-left">
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Last working day</label>
+              <input type="date" value={removeDay} onChange={e => setRemoveDay(e.target.value)}
+                className="mt-1 w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500" />
+            </div>
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Reason (optional)</label>
+              <input type="text" value={removeReason} onChange={e => setRemoveReason(e.target.value)} placeholder="e.g. Resigned, Terminated"
+                className="mt-1 w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500" />
+            </div>
           </div>
           <div className="flex gap-3">
             <button onClick={() => setDeleteTarget(null)} className="flex-1 py-3.5 border border-slate-200 rounded-xl text-xs font-bold uppercase tracking-widest text-slate-500 hover:bg-slate-50 transition-all">

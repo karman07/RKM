@@ -136,6 +136,16 @@ export interface User {
   /** Soft-deleted (removed) users are excluded from the default list — see getUsers(status) */
   is_deleted?: boolean;
   deleted_at?: string;
+  /** Set when the employee has left (removed or deactivated); cleared if they rejoin */
+  last_working_day?: string | null;
+  exit_reason?: string;
+  employment_history?: {
+    action: 'removed' | 'deactivated';
+    left_on: string;
+    last_working_day: string;
+    reason?: string;
+    rejoined_on?: string;
+  }[];
 }
 
 // ─── Custom Fields (admin-defined, for employee profiles & customer records) ──
@@ -605,8 +615,12 @@ export const createUser = (data: object) =>
 export const updateUser = (id: string, data: object) =>
   request<UserApiResponse>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }).then(normalizeUser);
 
-export const deleteUser = (id: string) =>
-  request<void>(`/users/${id}`, { method: 'DELETE' });
+export const deleteUser = (id: string, opts: { last_working_day?: string; exit_reason?: string } = {}) =>
+  request<void>(`/users/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+    body: JSON.stringify(opts),
+  });
 
 /** Reactivates a deactivated/removed employee account — the inverse of deleteUser. */
 export const restoreUser = (id: string) =>
