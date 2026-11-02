@@ -56,7 +56,8 @@ const NAV_ITEMS = [
     sub: [
       { label: 'My Sales', href: '/dashboard/sales/my' },
       { label: 'Sales Overview', href: '/dashboard/sales' },
-      { label: 'Cashier Performance', href: '/dashboard/sales#cashiers' },
+      { label: 'Sales Team', href: '/dashboard/sales-team' },
+      { label: 'Staff Performance', href: '/dashboard/sales#cashiers' },
       { label: 'Top Products', href: '/dashboard/sales#products' },
     ],
   },

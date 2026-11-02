@@ -327,12 +327,12 @@ export default function SalesPage() {
                   </svg>
                 </div>
                 <div>
-                  <h2 className="text-base font-black text-slate-900">Cashier Performance</h2>
-                  <p className="text-[11px] text-slate-400 font-medium">Sales processed by each cashier</p>
+                  <h2 className="text-base font-black text-slate-900">Staff Performance</h2>
+                  <p className="text-[11px] text-slate-400 font-medium">Sales by each cashier and sales-team member</p>
                 </div>
               </div>
-              <div className="space-y-3">
-                {(analytics?.cashierPerformance ?? []).slice(0, 5).map((c, idx) => {
+              <div className="space-y-3 max-h-[26rem] overflow-y-auto pr-1">
+                {(analytics?.cashierPerformance ?? []).map((c, idx) => {
                   const maxSales = Math.max(...(analytics?.cashierPerformance ?? []).map(x => x.sales_count), 1);
                   const pct = Math.round((c.sales_count / maxSales) * 100);
                   const rankColors = ['#4f46e5','#6366f1','#818cf8','#a5b4fc','#c7d2fe','#e0e7ff'];
@@ -345,7 +345,7 @@ export default function SalesPage() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-[12px] font-bold text-slate-800 truncate">{c.user_name}</p>
-                          <p className="text-[10px] text-slate-400 capitalize">Cashier · <span className="font-black text-blue-600">{c.sales_count} sales</span></p>
+                          <p className="text-[10px] text-slate-400">{c.user_role === 'sales' ? 'Sales team' : c.user_role === 'manager' ? 'Manager' : 'Cashier'} · <span className="font-black text-blue-600">{c.sales_count} sales</span></p>
                         </div>
                         <div className="text-right flex-shrink-0">
                           <p className="text-[12px] font-black text-blue-700">{fmt(c.total_revenue)}</p>
@@ -363,7 +363,7 @@ export default function SalesPage() {
                     <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
-                    <p className="text-sm">No cashier performance data yet</p>
+                    <p className="text-sm">No staff sales data yet</p>
                     <p className="text-[10px] text-center max-w-[180px]">Assign a cashier when processing sales to track their performance</p>
                   </div>
                 )}

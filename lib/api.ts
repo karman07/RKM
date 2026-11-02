@@ -537,6 +537,30 @@ export const proposeReturnValuation = (
   });
 
 // ── Analytics ──────────────────────────────────────────────────
+export interface SalesTeamMember {
+  _id: string;
+  name: string;
+  email: string;
+  mobile_number: string | null;
+  employee_id: string | null;
+  is_active: boolean;
+  joining_date: string | null;
+  branch: { _id: string; name: string | null } | null;
+  last_active_at: string | null;
+  sales: { count: number; revenue: number; month_count: number; month_revenue: number; last_sale_at: string | null };
+  allotments: { total_issues: number; last_issued_at: string | null; open_issues: number; items_out: number; value_out: number; overdue_issues: number };
+  enquiries: { pending: number; approved: number; rejected: number };
+  commission: { unpaid: number; paid: number };
+}
+
+export interface SalesTeamOverview {
+  data: SalesTeamMember[];
+  totals: { agents: number; active_agents: number; revenue: number; month_revenue: number; items_out: number; value_out: number; overdue_issues: number; pending_enquiries: number };
+}
+
+/** Sales-team members of the manager's branch with their sales, allotments, enquiries and commission */
+export const getSalesTeam = () => request<SalesTeamOverview>('/sales/team');
+
 export const getBranchAnalytics = (branchId: string) =>
   request<BranchAnalytics>(`/inventory/stats/branch/${branchId}`);
 
