@@ -44,6 +44,10 @@ export class User {
   @Prop({ default: true })
   isActive: boolean;
 
+  /** Last time this user made a real (non-polling) API request. Used for the idle-timeout check. */
+  @Prop({ type: Date, required: false })
+  last_active_at?: Date;
+
   /** Auto-generated unique employee identifier, e.g. EMP-0001 */
   @Prop({ type: String, required: false, unique: true, sparse: true })
   employee_id?: string;

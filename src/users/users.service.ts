@@ -142,6 +142,11 @@ export class UsersService implements OnModuleInit {
     };
   }
 
+  /** Records that the user just did something; drives the idle-timeout check. */
+  async touchActivity(id: string): Promise<void> {
+    await this.userModel.updateOne({ _id: id }, { $set: { last_active_at: new Date() } }).exec();
+  }
+
   async findById(id: string): Promise<UserDocument> {
     const user = await this.userModel.findById(id)
       .select('-password')

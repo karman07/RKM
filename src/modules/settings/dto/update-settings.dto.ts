@@ -180,8 +180,15 @@ export class UpdateSettingsDto {
   @IsOptional()
   @IsNumber()
   @Min(1)
-  @Max(24)
+  @Max(168)
   staff_session_expiry_hours?: number;
+
+  /** Minutes of inactivity before a user is logged out (0 = never). */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(10080)
+  staff_idle_timeout_minutes?: number;
 
   /** Hours after shift start within which staff must sign in (1–12). Missed sign-ins trigger an admin alert. */
   @IsOptional()

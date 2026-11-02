@@ -160,8 +160,9 @@ export class AuthService {
       : undefined;
 
     const settings = await this.getSettings();
-    const expiryHours = settings.staff_session_expiry_hours ?? 2;
+    const expiryHours = settings.staff_session_expiry_hours ?? 24;
     const expiresAt = new Date(Date.now() + expiryHours * 60 * 60 * 1000);
+    await this.usersService.touchActivity(String(user._id));
 
     // Fingerprint (WebAuthn) verification has been removed — staff sign in with password + GPS only.
     // Keep the login-session audit trail that the fingerprint step used to write.
@@ -333,8 +334,9 @@ export class AuthService {
 
     // Log successful session
     const settings = await this.getSettings();
-    const expiryHours = settings.staff_session_expiry_hours ?? 2;
+    const expiryHours = settings.staff_session_expiry_hours ?? 24;
     const expiresAt = new Date(Date.now() + expiryHours * 60 * 60 * 1000);
+    await this.usersService.touchActivity(String(user._id));
 
     try {
       await this.sessionModel.create({

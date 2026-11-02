@@ -199,8 +199,16 @@ export class Settings {
    * login and the client-side session countdown shown in each app.
    * Default: 24 hours (1 day). Admin can change this from the Settings panel.
    */
-  @Prop({ type: Number, min: 1, max: 24, default: 24 })
+  @Prop({ type: Number, min: 1, max: 168, default: 24 })
   staff_session_expiry_hours: number;
+
+  /**
+   * Idle timeout in minutes — a signed-in user with no activity for this long is
+   * logged out on their next request. Applies to every portal role. 0 = disabled.
+   * Default: 60 minutes.
+   */
+  @Prop({ type: Number, min: 0, max: 10080, default: 60 })
+  staff_idle_timeout_minutes: number;
 
   /**
    * Sign-in window in hours after shift_start_time.
