@@ -145,6 +145,33 @@ export class User {
 
   @Prop({ type: Date, required: false })
   deleted_at?: Date | null;
+
+  /** Last working day of an employee who has left (removed or deactivated). Cleared on rejoin. */
+  @Prop({ type: Date, required: false })
+  last_working_day?: Date | null;
+
+  @Prop({ type: String, required: false, trim: true })
+  exit_reason?: string;
+
+  /** Every time the person left, and when they came back (if they did). Never cleared. */
+  @Prop({
+    type: [{
+      _id: false,
+      action: { type: String, enum: ['removed', 'deactivated'] },
+      left_on: Date,
+      last_working_day: Date,
+      reason: String,
+      rejoined_on: Date,
+    }],
+    default: [],
+  })
+  employment_history: {
+    action: 'removed' | 'deactivated';
+    left_on: Date;
+    last_working_day: Date;
+    reason?: string;
+    rejoined_on?: Date;
+  }[];
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

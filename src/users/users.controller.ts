@@ -1,3 +1,4 @@
+import { RemoveUserDto } from './dto/remove-user.dto';
 import {
   Controller,
   Get,
@@ -150,7 +151,7 @@ export class UsersController {
   // ─── Admin: Delete any user; Manager: Delete cashiers + workers ────────────
   @Delete(':id')
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
-  async remove(@Param('id') id: string, @Request() req) {
+  async remove(@Param('id') id: string, @Request() req, @Body() dto: RemoveUserDto) {
     if (req.user.role === UserRole.MANAGER) {
       const target = await this.usersService.findById(id);
       const allowed = [UserRole.CASHIER, UserRole.WORKER];
@@ -158,7 +159,7 @@ export class UsersController {
         throw new ForbiddenException('Managers can only delete cashiers or workers');
       }
     }
-    return this.usersService.remove(id);
+    return this.usersService.remove(id, dto);
   }
 
   // ─── Admin: Restore any user; Manager: Restore cashiers + workers ─────────

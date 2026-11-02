@@ -1,5 +1,6 @@
 import {
   IsBoolean,
+  IsDateString,
   IsEmail,
   IsEnum,
   IsOptional,
@@ -38,6 +39,15 @@ export class UpdateUserDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  /** Last working day (YYYY-MM-DD). Used when isActive is set to false. Defaults to today. */
+  @IsDateString()
+  @IsOptional()
+  last_working_day?: string;
+
+  @IsString()
+  @IsOptional()
+  exit_reason?: string;
 
   @IsEnum(UserRole)
   @IsOptional()

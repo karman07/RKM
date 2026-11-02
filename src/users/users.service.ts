@@ -163,12 +163,32 @@ export class UsersService implements OnModuleInit {
   }
 
   async update(id: string, updateDto: UpdateUserDto): Promise<UserDocument> {
-    const payload: Partial<UpdateUserDto & { password: string }> = {
-      ...updateDto,
-    };
+    const { last_working_day, exit_reason, ...rest } = updateDto;
+    const payload: Record<string, any> = { ...rest };
     if (updateDto.password) {
       payload.password = await bcrypt.hash(updateDto.password, 10);
     }
+
+    // Track when someone leaves (active -> inactive) and when they come back.
+    if (typeof updateDto.isActive === 'boolean') {
+      const current = await this.userModel.findById(id).select('isActive is_deleted employment_history deleted_at').lean().exec();
+      if (current && !current.is_deleted) {
+        if (current.isActive && !updateDto.isActive) {
+          const lastDay = this.parseLastDay(last_working_day);
+          payload.last_working_day = lastDay;
+          payload.exit_reason = exit_reason?.trim() || undefined;
+          payload.employment_history = [
+            ...(current.employment_history ?? []),
+            { action: 'deactivated', left_on: new Date(), last_working_day: lastDay, reason: payload.exit_reason },
+          ];
+        } else if (!current.isActive && updateDto.isActive) {
+          payload.employment_history = this.closeOpenExit(current.employment_history ?? [], undefined);
+          payload.last_working_day = null;
+          payload.exit_reason = undefined;
+        }
+      }
+    }
+
     const user = await this.userModel
       .findByIdAndUpdate(id, payload, { new: true })
       .select('-password')
@@ -232,21 +252,61 @@ export class UsersService implements OnModuleInit {
    * lists, but the document itself is kept so historical sales/attendance/payroll
    * records that reference this user by id still resolve to a real name.
    */
-  async remove(id: string): Promise<{ message: string }> {
-    const user = await this.userModel
-      .findByIdAndUpdate(id, { is_deleted: true, deleted_at: new Date(), isActive: false }, { new: true })
-      .exec();
-    if (!user) throw new NotFoundException(`User ${id} not found`);
+  async remove(id: string, opts: { last_working_day?: string; exit_reason?: string } = {}): Promise<{ message: string }> {
+    const existing = await this.userModel.findById(id).select('employment_history is_deleted').lean().exec();
+    if (!existing) throw new NotFoundException(`User ${id} not found`);
+
+    const now = new Date();
+    const lastDay = this.parseLastDay(opts.last_working_day);
+    const reason = opts.exit_reason?.trim() || undefined;
+    await this.userModel.findByIdAndUpdate(id, {
+      is_deleted: true,
+      deleted_at: now,
+      isActive: false,
+      last_working_day: lastDay,
+      exit_reason: reason,
+      employment_history: [
+        ...(existing.employment_history ?? []),
+        { action: 'removed', left_on: now, last_working_day: lastDay, reason },
+      ],
+    }).exec();
     return { message: 'User deleted successfully' };
+  }
+
+  /** YYYY-MM-DD from the admin, or today when nothing was given. */
+  private parseLastDay(value?: string): Date {
+    if (!value) return new Date();
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) throw new BadRequestException('Invalid last working day');
+    return d;
+  }
+
+  /** Marks the most recent exit that has no rejoin date as "rejoined now". */
+  private closeOpenExit(history: any[], fallbackLeftOn?: Date): any[] {
+    const list = history.map(h => ({ ...h }));
+    for (let i = list.length - 1; i >= 0; i--) {
+      if (!list[i].rejoined_on) { list[i].rejoined_on = new Date(); return list; }
+    }
+    // Account was removed before history existed: keep what we know.
+    if (fallbackLeftOn) {
+      list.push({ action: 'removed', left_on: fallbackLeftOn, last_working_day: fallbackLeftOn, rejoined_on: new Date() });
+    }
+    return list;
   }
 
   /** Reactivates a deactivated or soft-deleted user — the inverse of remove(). Reinstates their
    *  original role/branch/history untouched, just clears the deleted/inactive flags. */
   async restore(id: string): Promise<UserDocument> {
+    const existing = await this.userModel.findById(id).select('employment_history deleted_at').lean().exec();
+    if (!existing) throw new NotFoundException(`User ${id} not found`);
+    const history = this.closeOpenExit(existing.employment_history ?? [], existing.deleted_at ?? undefined);
     const user = await this.userModel
       .findByIdAndUpdate(
         id,
-        { $set: { is_deleted: false, isActive: true }, $unset: { deleted_at: '' } },
+        {
+          $set: { is_deleted: false, isActive: true, employment_history: history },
+          $unset: { deleted_at: '', last_working_day: '', exit_reason: '' },
+        },
         { new: true },
       )
       .select('-password')
