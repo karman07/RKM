@@ -298,6 +298,62 @@ export class CustomerAdvanceService {
     return this.getAdvanceAnalytics(days, new Types.ObjectId(staffId));
   }
 
+  /**
+   * Every advance a staff member personally recorded, newest first, with totals — for the
+   * "Advances" section of the employee drawer. `branchId` narrows it for managers so they only
+   * see advances taken at their own branch.
+   */
+  async getAdvancesRecordedBy(staffId: string, branchId?: string, limit = 200) {
+    if (!Types.ObjectId.isValid(staffId)) throw new BadRequestException('Invalid user id');
+    const filter: any = { createdBy: new Types.ObjectId(staffId) };
+    if (branchId && Types.ObjectId.isValid(branchId)) filter.branch_id = new Types.ObjectId(branchId);
+
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+
+    const [rows, totals] = await Promise.all([
+      this.advanceModel
+        .find(filter)
+        .sort({ createdAt: -1 })
+        .limit(Math.min(Math.max(limit, 1), 500))
+        .populate('branch_id', 'name code')
+        .populate('customer', 'name phone')
+        .exec(),
+      this.advanceModel.aggregate([
+        { $match: filter },
+        {
+          $group: {
+            _id: null,
+            count: { $sum: 1 },
+            received: { $sum: '$amount' },
+            redeemed: { $sum: { $ifNull: ['$amountRedeemed', 0] } },
+            forfeited: { $sum: { $ifNull: ['$amountForfeited', 0] } },
+            month_count: { $sum: { $cond: [{ $gte: ['$createdAt', monthStart] }, 1, 0] } },
+            month_received: { $sum: { $cond: [{ $gte: ['$createdAt', monthStart] }, '$amount', 0] } },
+            active_count: { $sum: { $cond: [{ $eq: ['$status', CustomerAdvanceStatus.ACTIVE] }, 1, 0] } },
+          },
+        },
+      ]),
+    ]);
+
+    const t = totals[0] ?? {};
+    const received = t.received ?? 0, redeemed = t.redeemed ?? 0, forfeited = t.forfeited ?? 0;
+    return {
+      data: rows.map(a => this.withBalance(a)),
+      totals: {
+        count: t.count ?? 0,
+        received,
+        redeemed,
+        forfeited,
+        outstanding: Math.max(0, received - redeemed - forfeited),
+        month_count: t.month_count ?? 0,
+        month_received: t.month_received ?? 0,
+        active_count: t.active_count ?? 0,
+      },
+    };
+  }
+
   /** Search every advance ever recorded (no date window) by customer name/phone, note, mode or exact amount. */
   async searchAdvances(q: string, page = 1, limit = 20, from?: string, to?: string) {
     const term = q?.trim();

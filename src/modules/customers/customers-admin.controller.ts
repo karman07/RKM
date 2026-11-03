@@ -123,6 +123,18 @@ export class CustomersAdminController {
     return this.customerAdvanceService.getMyAdvanceAnalytics(req.user?.userId, Number(days) || 30);
   }
 
+  /** Advances recorded by one staff member (employee drawer). Managers only see their own branch's advances. */
+  @Get('advances/by-staff/:userId')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  async getAdvancesByStaff(@Param('userId') userId: string, @Req() req: any) {
+    const branchId = req.user?.role === UserRole.MANAGER ? req.user?.branch_id : undefined;
+    if (req.user?.role === UserRole.MANAGER && !branchId) {
+      throw new ForbiddenException('Your account is not linked to a branch');
+    }
+    return this.customerAdvanceService.getAdvancesRecordedBy(userId, branchId);
+  }
+
   /** Redeem (apply) an amount from an advance against a sale */
   @Post('advances/:advanceId/redeem')
   @UseGuards(RolesGuard)
