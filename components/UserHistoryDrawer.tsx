@@ -7,8 +7,9 @@ import {
   Users,
 } from 'lucide-react';
 import {
-  getAttendanceStats, getUserAttendance, getInventory, getAllLeaves, getAllReimbursements,
+  getAttendanceStats, getUserAttendance, getInventory, getAllLeaves, getAllReimbursements, getAdvancesByStaff,
   staticUrl,
+  type StaffAdvancesResult,
   type User, type Attendance, type AttendanceStats, type LeaveRequest, type ReimbursementRequest,
 } from '@/lib/api';
 
@@ -168,7 +169,7 @@ function MonthNav({ year, month, onChange }: { year: number; month: number; onCh
 
 export default function UserHistoryDrawer({ user, onClose }: { user: User; onClose: () => void }) {
   const u = user as any;
-  const [tab, setTab] = useState<'profile' | 'attendance' | 'sales' | 'leaves' | 'reimbursements'>('profile');
+  const [tab, setTab] = useState<'profile' | 'attendance' | 'sales' | 'advances' | 'leaves' | 'reimbursements'>('profile');
 
   // Attendance
   const now = new Date();
@@ -181,6 +182,12 @@ export default function UserHistoryDrawer({ user, onClose }: { user: User; onClo
   // Sales
   const [sales, setSales]           = useState<any[]>([]);
   const [loadingSales, setLoadingSales] = useState(false);
+
+  // Advances received from customers (only for roles that can record them)
+  const canRecordAdvances = ['admin', 'manager', 'sales'].includes(user.role);
+  const [advances, setAdvances] = useState<StaffAdvancesResult | null>(null);
+  const [loadingAdvances, setLoadingAdvances] = useState(false);
+  const [advancesError, setAdvancesError] = useState('');
 
   // Leaves
   const [leaves, setLeaves]         = useState<LeaveRequest[]>([]);
@@ -218,6 +225,16 @@ export default function UserHistoryDrawer({ user, onClose }: { user: User; onClo
       setSales(filtered.sort((a: any, b: any) => new Date(b.sold_at || 0).getTime() - new Date(a.sold_at || 0).getTime()));
     }).finally(() => setLoadingSales(false));
   }, [tab, user._id]);
+
+  useEffect(() => {
+    if (tab !== 'advances' || advances) return;
+    setLoadingAdvances(true);
+    setAdvancesError('');
+    getAdvancesByStaff(user._id)
+      .then(setAdvances)
+      .catch((e: Error) => setAdvancesError(e.message || 'Could not load advances'))
+      .finally(() => setLoadingAdvances(false));
+  }, [tab, user._id, advances]);
 
   useEffect(() => {
     if (tab !== 'leaves') return;
@@ -329,6 +346,9 @@ export default function UserHistoryDrawer({ user, onClose }: { user: User; onClo
           <TabBtn label="Profile"        active={tab === 'profile'}        onClick={() => setTab('profile')} />
           <TabBtn label="Attendance"     active={tab === 'attendance'}     onClick={() => setTab('attendance')} />
           <TabBtn label="Sales"          active={tab === 'sales'}          count={sales.length}  onClick={() => setTab('sales')} />
+          {canRecordAdvances && (
+            <TabBtn label="Advances" active={tab === 'advances'} count={advances?.totals.count} onClick={() => setTab('advances')} />
+          )}
           <TabBtn label="Leaves"         active={tab === 'leaves'}         count={leaves.length} onClick={() => setTab('leaves')} />
           <TabBtn label="Reimbursements" active={tab === 'reimbursements'} count={reimbs.length} onClick={() => setTab('reimbursements')} />
         </div>
@@ -549,6 +569,90 @@ export default function UserHistoryDrawer({ user, onClose }: { user: User; onClo
                               <p className="text-sm font-black text-slate-900">₹{(item.selling_price || 0).toLocaleString('en-IN')}</p>
                               <p className="text-[10px] font-bold uppercase text-blue-500">{item.payment_mode || 'cash'}</p>
                             </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ── ADVANCES ── */}
+          {tab === 'advances' && canRecordAdvances && (
+            <div className="p-8 space-y-5">
+              {loadingAdvances ? (
+                <div className="flex items-center justify-center h-40"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>
+              ) : advancesError ? (
+                <div className="p-5 bg-red-50 border border-red-100 rounded-2xl text-sm text-red-700">{advancesError}</div>
+              ) : advances && (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { label: 'Advances Received', value: String(advances.totals.count), sub: `${advances.totals.month_count} this month` },
+                      { label: 'Total Received', value: `₹${advances.totals.received.toLocaleString('en-IN')}`, sub: `₹${advances.totals.month_received.toLocaleString('en-IN')} this month` },
+                      { label: 'Used In Sales', value: `₹${advances.totals.redeemed.toLocaleString('en-IN')}`, sub: advances.totals.forfeited ? `₹${advances.totals.forfeited.toLocaleString('en-IN')} forfeited` : undefined },
+                      { label: 'Still Held', value: `₹${advances.totals.outstanding.toLocaleString('en-IN')}`, sub: `${advances.totals.active_count} active` },
+                    ].map(k => (
+                      <div key={k.label} className="p-4 bg-blue-50 border border-blue-100 rounded-2xl">
+                        <p className="text-[9px] font-black uppercase text-blue-500 tracking-widest">{k.label}</p>
+                        <p className="text-xl font-black text-blue-700">{k.value}</p>
+                        {k.sub && <p className="text-[10px] text-blue-400 font-medium mt-0.5">{k.sub}</p>}
+                      </div>
+                    ))}
+                  </div>
+
+                  {advances.data.length === 0 ? (
+                    <div className="p-10 bg-slate-50 rounded-2xl text-center border border-dashed border-slate-200">
+                      <p className="text-[11px] text-slate-400 font-black uppercase">No advances recorded</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {advances.data.map(adv => {
+                        const cust = typeof adv.customer === 'object' && adv.customer ? adv.customer : null;
+                        const branch = typeof adv.branch_id === 'object' && adv.branch_id ? adv.branch_id : null;
+                        const splits = adv.payment_splits?.length ? adv.payment_splits : [{ mode: adv.mode || 'cash', amount: adv.amount }];
+                        const closed = adv.status === 'closed';
+                        return (
+                          <div key={adv._id} className="p-4 bg-white border border-slate-100 rounded-2xl hover:border-blue-100 transition-colors">
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="min-w-0">
+                                <p className="text-sm font-black text-slate-900 truncate">{cust?.name || adv.customerName || 'Customer'}</p>
+                                <p className="text-[10px] text-slate-400 font-medium">
+                                  {cust?.phone || adv.customerPhone} · {fmtDate(adv.createdAt)}{branch?.name ? ` · ${branch.name}` : ''}
+                                </p>
+                              </div>
+                              <div className="text-right flex-shrink-0">
+                                <p className="text-sm font-black text-slate-900">₹{adv.amount.toLocaleString('en-IN')}</p>
+                                <span className={`inline-block mt-0.5 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${closed ? 'bg-slate-100 text-slate-500' : 'bg-emerald-50 text-emerald-600'}`}>
+                                  {closed ? 'Closed' : 'Active'}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="mt-3 grid grid-cols-3 gap-2 text-[10px]">
+                              <div><p className="font-black uppercase tracking-widest text-slate-400">Used</p><p className="font-bold text-slate-700">₹{(adv.amountRedeemed || 0).toLocaleString('en-IN')}</p></div>
+                              <div><p className="font-black uppercase tracking-widest text-slate-400">Forfeited</p><p className="font-bold text-slate-700">₹{(adv.amountForfeited || 0).toLocaleString('en-IN')}</p></div>
+                              <div><p className="font-black uppercase tracking-widest text-slate-400">Balance</p><p className="font-bold text-blue-600">₹{(adv.availableBalance || 0).toLocaleString('en-IN')}</p></div>
+                            </div>
+                            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                              {splits.map((sp, i) => (
+                                <span key={i} className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-slate-50 border border-slate-100 text-slate-500">
+                                  {sp.mode} ₹{sp.amount.toLocaleString('en-IN')}{sp.reference ? ` · ${sp.reference}` : ''}
+                                </span>
+                              ))}
+                              {adv.lock_in_days > 0 && (
+                                <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${adv.locked ? 'bg-amber-50 text-amber-600' : 'bg-slate-50 text-slate-400'}`}>
+                                  {adv.locked ? `Locked until ${fmtDate(adv.lock_in_expires_at ?? undefined)}` : `Lock-in ${adv.lock_in_days}d ended`}
+                                </span>
+                              )}
+                              {adv.making_charges_waiver_pct > 0 && (
+                                <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">
+                                  {adv.making_charges_waiver_pct}% making waiver
+                                </span>
+                              )}
+                            </div>
+                            {adv.note && <p className="mt-2 text-[11px] text-slate-500 italic">{adv.note}</p>}
                           </div>
                         );
                       })}

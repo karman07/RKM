@@ -3098,6 +3098,15 @@ export interface CustomerAdvance {
   }[];
 }
 
+export interface StaffAdvancesResult {
+  data: CustomerAdvance[];
+  totals: { count: number; received: number; redeemed: number; forfeited: number; outstanding: number; month_count: number; month_received: number; active_count: number };
+}
+
+/** Every advance one staff member recorded, with totals (employee drawer). Managers only get their own branch's advances. */
+export const getAdvancesByStaff = (userId: string) =>
+  request<StaffAdvancesResult>(`/customers/advances/by-staff/${userId}`);
+
 /** Lists all advances recorded for a customer (360 page ledger) */
 export const getCustomerAdvances = (customerId: string) =>
   request<CustomerAdvance[]>(`/customers/${customerId}/advances`);
