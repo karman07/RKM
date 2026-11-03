@@ -4,8 +4,8 @@ import { useRouter } from 'next/navigation';
 
 import {
   getProfile, updateUserProfile, uploadUserAvatar, staticUrl,
-  getEmployeeCustomFields, updateOwnCustomFields,
-  type UserProfile, type EmployeeCustomField,
+  getEmployeeCustomFields, updateOwnCustomFields, getAdvancesByStaff,
+  type UserProfile, type EmployeeCustomField, type StaffAdvancesTotals,
 } from '../../../lib/api';
 
 export default function ProfilePage() {
@@ -20,6 +20,7 @@ export default function ProfilePage() {
   const [savingPass, setSavingPass] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [advTotals, setAdvTotals] = useState<StaffAdvancesTotals | null>(null);
 
   useEffect(() => {
     const sessionStr = localStorage.getItem('manager_session');
@@ -31,6 +32,7 @@ export default function ProfilePage() {
     ])
       .then(([profile, cf]) => {
         setUser(profile);
+        getAdvancesByStaff(profile._id).then(r => setAdvTotals(r.totals)).catch(() => setAdvTotals(null));
         setCustomFields(cf);
         setForm({ name: profile.name, email: profile.email, avatar: profile.avatar || '' });
         const values: Record<string, string> = {};
@@ -125,6 +127,31 @@ export default function ProfilePage() {
             message.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
           }`}>
             {message.text}
+          </div>
+        )}
+
+        {/* Advances I have received */}
+        {advTotals && advTotals.count > 0 && (
+          <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-8">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Advances received</p>
+                <p className="text-2xl font-black text-slate-900">{advTotals.count}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total amount</p>
+                <p className="text-2xl font-black text-[#2563EB]">₹{advTotals.received.toLocaleString('en-IN')}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">This month</p>
+                <p className="text-2xl font-black text-slate-900">₹{advTotals.month_received.toLocaleString('en-IN')}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Still held</p>
+                <p className="text-2xl font-black text-slate-900">₹{advTotals.outstanding.toLocaleString('en-IN')}</p>
+              </div>
+            </div>
+            <a href="/dashboard/payments/advances" className="text-[11px] font-black uppercase tracking-widest text-[#2563EB] hover:underline">View all</a>
           </div>
         )}
 

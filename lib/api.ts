@@ -1520,9 +1520,28 @@ export interface AdvanceAnalytics {
 
 /** Aggregate advance-deposit stats for the Payments analytics page */
 /** Searches every advance ever recorded (all time) by customer name/phone, note, mode or amount */
-export const searchAdvances = (q: string, page = 1, limit = 20, from?: string, to?: string) =>
+export const searchAdvances = (q: string, page = 1, limit = 20, from?: string, to?: string, opts: { staffId?: string; branchScope?: boolean } = {}) =>
   request<{ data: CustomerAdvance[]; meta: { total: number; page: number; limit: number; total_pages: number } }>(
-    `/customers/advances/search?q=${encodeURIComponent(q)}&page=${page}&limit=${limit}${from ? `&from=${from}` : ''}${to ? `&to=${to}` : ''}`);
+    `/customers/advances/search?q=${encodeURIComponent(q)}&page=${page}&limit=${limit}${from ? `&from=${from}` : ''}${to ? `&to=${to}` : ''}${opts.staffId ? `&staff_id=${opts.staffId}` : ''}${opts.branchScope ? '&branch_scope=1' : ''}`);
+
+export interface StaffAdvanceSummaryRow {
+  user_id: string; name: string; role?: string; employee_id?: string; is_active: boolean;
+  count: number; received: number; redeemed: number; forfeited: number; outstanding: number;
+  month_count: number; month_received: number; last_at: string;
+}
+
+/** Who received how much in advances at this manager's branch, per staff member */
+export const getStaffAdvanceSummary = () =>
+  request<StaffAdvanceSummaryRow[]>('/customers/advances/staff-summary');
+
+export interface StaffAdvancesTotals {
+  count: number; received: number; redeemed: number; forfeited: number; outstanding: number;
+  month_count: number; month_received: number; active_count: number;
+}
+
+/** Advances one staff member recorded (branch-scoped for managers), with totals */
+export const getAdvancesByStaff = (userId: string) =>
+  request<{ data: CustomerAdvance[]; totals: StaffAdvancesTotals }>(`/customers/advances/by-staff/${userId}`);
 
 export const getAdvanceAnalytics = (days = 30) =>
   request<AdvanceAnalytics>(`/customers/advances/analytics?days=${days}`);
