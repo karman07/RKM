@@ -103,8 +103,24 @@ export class CustomersAdminController {
   @Get('advances/search')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
-  async searchAdvances(@Query('q') q?: string, @Query('page') page?: string, @Query('limit') limit?: string, @Query('from') from?: string, @Query('to') to?: string) {
-    return this.customerAdvanceService.searchAdvances(q ?? '', Number(page) || 1, Math.min(Number(limit) || 20, 100), from, to);
+  async searchAdvances(
+    @Query('q') q?: string, @Query('page') page?: string, @Query('limit') limit?: string,
+    @Query('from') from?: string, @Query('to') to?: string,
+    @Query('staff_id') staffId?: string, @Query('branch_scope') branchScope?: string, @Req() req?: any,
+  ) {
+    // Managers asking for branch scope (the Advances Received page) only see their own branch's advances.
+    const branchId = req?.user?.role === UserRole.MANAGER && branchScope === '1' ? req.user.branch_id : undefined;
+    return this.customerAdvanceService.searchAdvances(q ?? '', Number(page) || 1, Math.min(Number(limit) || 20, 100), from, to, { staffId, branchId });
+  }
+
+  /** Who received how much in advances, per staff member. Managers only see their own branch. */
+  @Get('advances/staff-summary')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  async getStaffAdvanceSummary(@Req() req: any) {
+    const branchId = req.user?.role === UserRole.MANAGER ? req.user?.branch_id : undefined;
+    if (req.user?.role === UserRole.MANAGER && !branchId) throw new ForbiddenException('Your account is not linked to a branch');
+    return this.customerAdvanceService.getStaffAdvanceSummary(branchId);
   }
 
   /** Aggregate advance-deposit stats for the Payments analytics page */

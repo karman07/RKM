@@ -354,10 +354,55 @@ export class CustomerAdvanceService {
     };
   }
 
+  /**
+   * Who received how much: one row per staff member who has recorded advances, biggest first.
+   * `branchId` limits it to one branch (managers).
+   */
+  async getStaffAdvanceSummary(branchId?: string) {
+    const match: any = { createdBy: { $ne: null } };
+    if (branchId && Types.ObjectId.isValid(branchId)) match.branch_id = new Types.ObjectId(branchId);
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+
+    const rows = await this.advanceModel.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: '$createdBy',
+          count: { $sum: 1 },
+          received: { $sum: '$amount' },
+          redeemed: { $sum: { $ifNull: ['$amountRedeemed', 0] } },
+          forfeited: { $sum: { $ifNull: ['$amountForfeited', 0] } },
+          month_count: { $sum: { $cond: [{ $gte: ['$createdAt', monthStart] }, 1, 0] } },
+          month_received: { $sum: { $cond: [{ $gte: ['$createdAt', monthStart] }, '$amount', 0] } },
+          last_at: { $max: '$createdAt' },
+        },
+      },
+      { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
+      { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          _id: 0,
+          user_id: '$_id',
+          name: { $ifNull: ['$user.name', 'Unknown'] },
+          role: '$user.role',
+          employee_id: '$user.employee_id',
+          is_active: { $ifNull: ['$user.isActive', false] },
+          count: 1, received: 1, redeemed: 1, forfeited: 1, month_count: 1, month_received: 1, last_at: 1,
+        },
+      },
+      { $sort: { received: -1 } },
+    ]);
+    return rows.map(r => ({ ...r, outstanding: Math.max(0, r.received - r.redeemed - r.forfeited) }));
+  }
+
   /** Search every advance ever recorded (no date window) by customer name/phone, note, mode or exact amount. */
-  async searchAdvances(q: string, page = 1, limit = 20, from?: string, to?: string) {
+  async searchAdvances(q: string, page = 1, limit = 20, from?: string, to?: string, scope: { staffId?: string; branchId?: string } = {}) {
     const term = q?.trim();
     const filter: any = {};
+    if (scope.staffId && Types.ObjectId.isValid(scope.staffId)) filter.createdBy = new Types.ObjectId(scope.staffId);
+    if (scope.branchId && Types.ObjectId.isValid(scope.branchId)) filter.branch_id = new Types.ObjectId(scope.branchId);
     if (term) {
       const regex = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
       const or: any[] = [{ customerName: regex }, { customerPhone: regex }, { note: regex }, { mode: regex }];
