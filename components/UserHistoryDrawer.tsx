@@ -227,14 +227,14 @@ export default function UserHistoryDrawer({ user, onClose }: { user: User; onClo
   }, [tab, user._id]);
 
   useEffect(() => {
-    if (tab !== 'advances' || advances) return;
+    if (!canRecordAdvances || advances) return;
     setLoadingAdvances(true);
     setAdvancesError('');
     getAdvancesByStaff(user._id)
       .then(setAdvances)
       .catch((e: Error) => setAdvancesError(e.message || 'Could not load advances'))
       .finally(() => setLoadingAdvances(false));
-  }, [tab, user._id, advances]);
+  }, [canRecordAdvances, user._id, advances]);
 
   useEffect(() => {
     if (tab !== 'leaves') return;
@@ -359,6 +359,29 @@ export default function UserHistoryDrawer({ user, onClose }: { user: User; onClo
           {/* ── PROFILE ── */}
           {tab === 'profile' && (
             <div className="p-8 space-y-1">
+
+              {/* Advances this person has received from customers */}
+              {canRecordAdvances && advances && (
+                <div className="flex items-center justify-between gap-4 p-5 bg-blue-50 border border-blue-100 rounded-2xl mb-3">
+                  <div className="flex items-center gap-6">
+                    <div>
+                      <p className="text-[9px] font-black uppercase text-blue-500 tracking-widest">Advances Received</p>
+                      <p className="text-xl font-black text-blue-700">{advances.totals.count}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-black uppercase text-blue-500 tracking-widest">Total Amount</p>
+                      <p className="text-xl font-black text-blue-700">₹{advances.totals.received.toLocaleString('en-IN')}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-black uppercase text-blue-500 tracking-widest">Still Held</p>
+                      <p className="text-xl font-black text-blue-700">₹{advances.totals.outstanding.toLocaleString('en-IN')}</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setTab('advances')} className="text-[10px] font-black uppercase tracking-widest text-blue-600 hover:underline flex-shrink-0">
+                    View all
+                  </button>
+                </div>
+              )}
 
               {/* Avatar spotlight — only shown when there's an actual photo */}
               {u.avatar && (

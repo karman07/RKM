@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Search, Download, Banknote } from 'lucide-react';
-import { searchAdvances, type CustomerAdvance } from '@/lib/api';
+import { searchAdvances, getStaffAdvanceSummary, type CustomerAdvance, type StaffAdvanceSummaryRow } from '@/lib/api';
 import { downloadCsv } from '@/lib/export-utils';
 import { useAppTheme } from '@/components/AppThemeContext';
 import { APP_THEME } from '@/lib/theme-constants';
@@ -52,6 +52,12 @@ export default function AdvancePaymentsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [receipt, setReceipt] = useState<CustomerAdvance | null>(null);
+  const [staffId, setStaffId] = useState('');
+  const [staffSummary, setStaffSummary] = useState<StaffAdvanceSummaryRow[]>([]);
+
+  useEffect(() => {
+    getStaffAdvanceSummary().then(setStaffSummary).catch(() => setStaffSummary([]));
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => { setDebounced(search); setPage(1); }, 350);
@@ -61,16 +67,17 @@ export default function AdvancePaymentsPage() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true); setError('');
-    searchAdvances(debounced, page, limit, from || undefined, to || undefined)
+    searchAdvances(debounced, page, limit, from || undefined, to || undefined, staffId || undefined)
       .then(r => { if (!cancelled) { setRows(r.data); setTotal(r.meta.total); } })
       .catch(e => { if (!cancelled) { setRows([]); setTotal(0); setError(e?.message || 'Failed to load advances'); } })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [debounced, page, limit, from, to]);
+  }, [debounced, page, limit, from, to, staffId]);
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const pageTotal = rows.reduce((s, a) => s + (a.amount || 0), 0);
-  const filtersActive = !!(search || from || to);
+  const filtersActive = !!(search || from || to || staffId);
+  const selectedStaff = staffSummary.find(r => r.user_id === staffId);
 
   const exportPage = useCallback(() => {
     downloadCsv('advance-payments', rows, [
@@ -82,7 +89,7 @@ export default function AdvancePaymentsPage() {
       { header: 'Redeemed', accessor: 'amountRedeemed' },
       { header: 'Available Balance', accessor: 'availableBalance' },
       { header: 'Status', accessor: 'status' },
-      { header: 'Recorded By', accessor: (a: CustomerAdvance) => (typeof a.createdBy === 'object' ? a.createdBy?.name : '') || '' },
+      { header: 'Received By', accessor: (a: CustomerAdvance) => (typeof a.createdBy === 'object' ? a.createdBy?.name : '') || '' },
       { header: 'Note', accessor: 'note' },
     ]);
   }, [rows]);
@@ -107,6 +114,34 @@ export default function AdvancePaymentsPage() {
         </button>
       </div>
 
+      {/* Received by — who took the advances */}
+      {staffSummary.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Received by · click a person to see their advances</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            {staffSummary.map(r => {
+              const active = r.user_id === staffId;
+              return (
+                <button key={r.user_id} onClick={() => { setStaffId(active ? '' : r.user_id); setPage(1); }}
+                  className={`text-left p-4 rounded-2xl border transition-all ${active ? 'border-blue-500 bg-blue-50 shadow-md' : 'border-slate-200 bg-white hover:border-blue-200'}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-black text-slate-900 truncate">{r.name}</p>
+                    {r.role && <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">{r.role}</span>}
+                  </div>
+                  <p className="text-xl font-black text-blue-700 mt-1">{fmtFull(r.received)}</p>
+                  <p className="text-[10px] text-slate-400 font-medium">
+                    {r.count} advance{r.count === 1 ? '' : 's'} · {fmtFull(r.month_received)} this month · {fmtFull(r.outstanding)} held
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+          {selectedStaff && (
+            <p className="text-[11px] font-bold text-blue-600">Showing only advances received by {selectedStaff.name}</p>
+          )}
+        </div>
+      )}
+
       {/* Filters */}
       <div className="p-5 rounded-[2rem] border flex flex-col lg:flex-row gap-3 lg:items-center" style={{ backgroundColor: colors.bg, borderColor: colors.border }}>
         <div className="relative flex-1">
@@ -120,7 +155,7 @@ export default function AdvancePaymentsPage() {
           <input type="date" value={to} min={from || undefined} onChange={e => { setTo(e.target.value); setPage(1); }} className={inputCls} title="To date" />
         </div>
         {filtersActive && (
-          <button onClick={() => { setSearch(''); setDebounced(''); setFrom(''); setTo(''); setPage(1); }}
+          <button onClick={() => { setSearch(''); setDebounced(''); setFrom(''); setTo(''); setStaffId(''); setPage(1); }}
             className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50 rounded-xl">Clear</button>
         )}
       </div>
@@ -131,7 +166,7 @@ export default function AdvancePaymentsPage() {
           <table className="w-full min-w-[1000px]">
             <thead>
               <tr className="bg-slate-50/60 border-b border-slate-100">
-                {['Date', 'Customer', 'Amount', 'Mode', 'Redeemed', 'Balance', 'Status', 'Recorded By'].map(h => (
+                {['Date', 'Customer', 'Amount', 'Mode', 'Redeemed', 'Balance', 'Status', 'Received By'].map(h => (
                   <th key={h} className="px-5 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -159,7 +194,12 @@ export default function AdvancePaymentsPage() {
                   <td className="px-5 py-3.5">
                     <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-wider border ${a.status === 'active' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>{a.status}</span>
                   </td>
-                  <td className="px-5 py-3.5 text-sm font-semibold text-slate-500 truncate max-w-[160px]">{typeof a.createdBy === 'object' ? a.createdBy?.name : '—'}</td>
+                  <td className="px-5 py-3.5 text-sm font-semibold text-slate-500 truncate max-w-[160px]">{typeof a.createdBy === 'object' && a.createdBy ? (
+                    <button onClick={() => { setStaffId(a.createdBy && typeof a.createdBy === 'object' ? a.createdBy._id : ''); setPage(1); }}
+                      className="text-left hover:text-blue-600" title="Show only this person's advances">
+                      {a.createdBy.name}{a.createdBy.role ? <span className="ml-1.5 text-[9px] font-black uppercase tracking-widest text-slate-300">{a.createdBy.role}</span> : null}
+                    </button>
+                  ) : '—'}</td>
                 </tr>
               ))}
             </tbody>

@@ -107,12 +107,19 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
               <NavIcon active={pathname === '/dashboard/analytics'} color={pathname === '/dashboard/analytics' ? colors.activeText : colors.textMuted}><path d="M12 20v-6M6 20V10M18 20V4" /></NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Business Intelligence</span>}
             </Link>}
-            {can('payments') && <Link href="/dashboard/payments" onClick={onNavigate} title={isCollapsed ? "Payments" : ""} className={navClass(pathname.startsWith('/dashboard/payments'))} style={getNavStyle(pathname.startsWith('/dashboard/payments'))}>
-              {isCollapsed && pathname.startsWith('/dashboard/payments') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
-              <NavIcon active={pathname.startsWith('/dashboard/payments')} color={pathname.startsWith('/dashboard/payments') ? colors.activeText : colors.textMuted}>
+            {can('payments') && <Link href="/dashboard/payments" onClick={onNavigate} title={isCollapsed ? "Payments" : ""} className={navClass((pathname.startsWith('/dashboard/payments') && !pathname.startsWith('/dashboard/payments/advances')))} style={getNavStyle((pathname.startsWith('/dashboard/payments') && !pathname.startsWith('/dashboard/payments/advances')))}>
+              {isCollapsed && (pathname.startsWith('/dashboard/payments') && !pathname.startsWith('/dashboard/payments/advances')) && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={(pathname.startsWith('/dashboard/payments') && !pathname.startsWith('/dashboard/payments/advances'))} color={(pathname.startsWith('/dashboard/payments') && !pathname.startsWith('/dashboard/payments/advances')) ? colors.activeText : colors.textMuted}>
                 <rect x="1" y="4" width="22" height="16" rx="2" ry="2" /><line x1="1" y1="10" x2="23" y2="10" />
               </NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Payments</span>}
+            </Link>}
+            {can('payments') && <Link href="/dashboard/payments/advances" onClick={onNavigate} title={isCollapsed ? "Advances" : ""} className={navClass(pathname.startsWith('/dashboard/payments/advances'))} style={getNavStyle(pathname.startsWith('/dashboard/payments/advances'))}>
+              {isCollapsed && pathname.startsWith('/dashboard/payments/advances') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
+              <NavIcon active={pathname.startsWith('/dashboard/payments/advances')} color={pathname.startsWith('/dashboard/payments/advances') ? colors.activeText : colors.textMuted}>
+                <rect x="2" y="6" width="20" height="12" rx="2" /><circle cx="12" cy="12" r="2.5" /><path d="M6 12h.01M18 12h.01" strokeLinecap="round" />
+              </NavIcon>
+              {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">Advances</span>}
             </Link>}
             {can('reports') && <Link href="/dashboard/reports" onClick={onNavigate} title={isCollapsed ? "Reports" : ""} className={navClass(pathname.startsWith('/dashboard/reports'))} style={getNavStyle(pathname.startsWith('/dashboard/reports'))}>
               {isCollapsed && pathname.startsWith('/dashboard/reports') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
