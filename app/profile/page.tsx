@@ -876,6 +876,12 @@ export default function ProfilePage() {
                   >
                     <LogOut size={16} /> Sign Out of Account
                   </button>
+                  <Link
+                    href="/contact?subject=account_deletion"
+                    className="text-slate-400 hover:text-red-600 text-[10px] font-black uppercase tracking-widest transition-all"
+                  >
+                    Request Account Deletion
+                  </Link>
                   <button
                     disabled={saveLoading}
                     className="w-full sm:w-auto px-8 py-4 bg-[#7A1238] text-white text-[10px] font-black uppercase tracking-[0.3em] rounded-2xl shadow-xl shadow-emerald-900/20 hover:bg-[#14532d] hover:-translate-y-1 active:scale-95 transition-all disabled:opacity-50"
