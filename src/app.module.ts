@@ -25,6 +25,7 @@ import { AttendanceModule } from './modules/attendance/attendance.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
+import { ContactModule } from './modules/contact/contact.module';
 import { GoldInvestmentModule } from './modules/gold-investment/gold-investment.module';
 import { ItemAttendanceModule } from './modules/item-attendance/item-attendance.module';
 import { HrModule } from './modules/hr/hr.module';
@@ -76,6 +77,7 @@ import { MiscPaymentsModule } from './modules/misc-payments/misc-payments.module
     CustomersModule,
     WhatsAppModule,
     FeedbackModule,
+    ContactModule,
     GoldInvestmentModule,
     ItemAttendanceModule,
     HrModule,
