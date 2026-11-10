@@ -325,10 +325,11 @@ function Section({ title, children, right }: { title: string; children: React.Re
  * 1-bit picture at the printer's resolution, and sent as a TSPL or ZPL bitmap command.
  */
 const QZ_SRC = 'https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js';
-const QZ_PREFS_KEY = 'rkm-qz-print-prefs-v1';
+const QZ_PREFS_KEY = 'rkm-qz-print-prefs-v2';
 type PrinterLang = 'tspl' | 'zpl';
-interface QzPrefs { printer: string; lang: PrinterLang; flip: boolean; invert: boolean }
-const DEFAULT_QZ_PREFS: QzPrefs = { printer: '', lang: 'tspl', flip: false, invert: false };
+type QzRotate = 0 | 90 | 180 | 270;
+interface QzPrefs { printer: string; lang: PrinterLang; rotate: QzRotate; invert: boolean }
+const DEFAULT_QZ_PREFS: QzPrefs = { printer: '', lang: 'tspl', rotate: 270, invert: false };
 
 function loadQzPrefs(): QzPrefs {
   if (typeof window === 'undefined') return DEFAULT_QZ_PREFS;
@@ -336,7 +337,7 @@ function loadQzPrefs(): QzPrefs {
     const raw = window.localStorage.getItem(QZ_PREFS_KEY);
     if (!raw) return DEFAULT_QZ_PREFS;
     const p = JSON.parse(raw);
-    return { printer: String(p.printer || ''), lang: p.lang === 'zpl' ? 'zpl' : 'tspl', flip: !!p.flip, invert: !!p.invert };
+    return { printer: String(p.printer || ''), lang: p.lang === 'zpl' ? 'zpl' : 'tspl', rotate: ([0, 90, 180, 270] as number[]).includes(Number(p.rotate)) ? (Number(p.rotate) as QzRotate) : 270, invert: !!p.invert };
   } catch { return DEFAULT_QZ_PREFS; }
 }
 
@@ -372,8 +373,10 @@ function toBase64(bytes: Uint8Array) {
 }
 
 /** Turns a rendered label node into a 1-bit picture (bit set = black) at the printer's dot grid. */
-async function labelToBits(node: HTMLElement, wMm: number, hMm: number, dpi: number, flip: boolean) {
-  const w = Math.round(wMm * dpi / 25.4), h = Math.round(hMm * dpi / 25.4);
+async function labelToBits(node: HTMLElement, wMm: number, hMm: number, dpi: number, rotate: QzRotate) {
+  const ow = Math.round(wMm * dpi / 25.4), oh = Math.round(hMm * dpi / 25.4);
+  const sideways = rotate === 90 || rotate === 270;
+  const w = sideways ? oh : ow, h = sideways ? ow : oh;   // size of the picture sent to the printer
   const url = await toPng(node, { pixelRatio: dpi / 96, backgroundColor: '#ffffff', cacheBust: true });
   const img = new Image();
   img.src = url;
@@ -384,8 +387,10 @@ async function labelToBits(node: HTMLElement, wMm: number, hMm: number, dpi: num
   if (!ctx) throw new Error('Canvas not available');
   ctx.imageSmoothingEnabled = false;
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
-  if (flip) { ctx.translate(w, h); ctx.rotate(Math.PI); }
-  ctx.drawImage(img, 0, 0, w, h);
+  if (rotate === 180) { ctx.translate(w, h); ctx.rotate(Math.PI); }
+  else if (rotate === 90) { ctx.translate(w, 0); ctx.rotate(Math.PI / 2); }
+  else if (rotate === 270) { ctx.translate(0, h); ctx.rotate(-Math.PI / 2); }
+  ctx.drawImage(img, 0, 0, ow, oh);
   const px = ctx.getImageData(0, 0, w, h).data;
   const rowBytes = Math.ceil(w / 8);
   const bits = new Uint8Array(rowBytes * h);
@@ -396,16 +401,17 @@ async function labelToBits(node: HTMLElement, wMm: number, hMm: number, dpi: num
   return { w, h, rowBytes, bits };
 }
 
-function labelCommand(lang: PrinterLang, l: LabelLayout, pic: { w: number; h: number; rowBytes: number; bits: Uint8Array }, invert: boolean): Uint8Array {
+function labelCommand(lang: PrinterLang, l: LabelLayout, pic: { w: number; h: number; rowBytes: number; bits: Uint8Array }, invert: boolean, rotate: QzRotate): Uint8Array {
+  const sideways = rotate === 90 || rotate === 270;
   if (lang === 'zpl') {
     const data = invert ? pic.bits.map(b => b ^ 0xff) : pic.bits;
     const hex = Array.from(data, b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
-    const pitch = Math.round(pageH(l) * l.printerDpi / 25.4);
+    const pitch = sideways ? pic.h + Math.round(l.gapMm * l.printerDpi / 25.4) : Math.round(pageH(l) * l.printerDpi / 25.4);
     return asciiBytes(`^XA^PW${pic.w}^LL${pitch}^LH0,0^FO0,0^GFA,${data.length},${data.length},${pic.rowBytes},${hex}^FS^XZ\r\n`);
   }
   // TSPL: in BITMAP data a 1 bit is white, so black pixels are 0
   const data = invert ? pic.bits : pic.bits.map(b => b ^ 0xff);
-  const head = `SIZE ${totalW(l)} mm,${l.heightMm} mm\r\nGAP ${l.gapMm} mm,0 mm\r\nDIRECTION 0\r\nCLS\r\nBITMAP 0,0,${pic.rowBytes},${pic.h},0,`;
+  const head = `SIZE ${sideways ? l.heightMm : totalW(l)} mm,${sideways ? totalW(l) : l.heightMm} mm\r\nGAP ${l.gapMm} mm,0 mm\r\nDIRECTION 0\r\nCLS\r\nBITMAP 0,0,${pic.rowBytes},${pic.h},0,`;
   return concatBytes([asciiBytes(head), data, asciiBytes('\r\nPRINT 1,1\r\n')]);
 }
 
@@ -469,8 +475,8 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
     for (const item of items) {
       const node = sourcesRef.current?.querySelector<HTMLElement>(`[data-qz-id="${CSS.escape(item._id)}"] .single-label-card`);
       if (!node) throw new Error('Label is not ready yet, try again');
-      const pic = await labelToBits(node, totalW(layout), layout.heightMm, layout.printerDpi, qzPrefs.flip);
-      parts.push(labelCommand(qzPrefs.lang, layout, pic, qzPrefs.invert));
+      const pic = await labelToBits(node, totalW(layout), layout.heightMm, layout.printerDpi, qzPrefs.rotate);
+      parts.push(labelCommand(qzPrefs.lang, layout, pic, qzPrefs.invert, qzPrefs.rotate));
     }
     const cfg = qz.configs.create(qzPrefs.printer);
     await qz.print(cfg, [{ type: 'raw', format: 'command', flavor: 'base64', data: toBase64(concatBytes(parts)) }]);
@@ -743,10 +749,17 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
                     {qzMsg && <p className={`mt-2 text-[11px] font-bold ${qzMsg.ok ? 'text-emerald-600' : 'text-red-600'}`}>{qzMsg.text}</p>}
                   </li>
                   <li>
-                    <span className="text-slate-900">Check the test label.</span> Upside down? Tick Flip. Printed as a black block? Tick Invert.
-                    <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 font-normal">
-                      <label className="flex items-center gap-2 text-[11px] font-bold text-slate-600 cursor-pointer select-none">
-                        <input type="checkbox" className="accent-blue-600" checked={qzPrefs.flip} onChange={e => updateQz({ flip: e.target.checked })} /> Flip upside down
+                    <span className="text-slate-900">Check the test label.</span> Printed sideways, or spread over several labels? Try a different Rotate option below. Printed as a black block? Tick Invert.
+                    <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2 font-normal">
+                      <label className="flex items-center gap-2 text-[11px] font-bold text-slate-600">
+                        Rotate
+                        <select value={qzPrefs.rotate} onChange={e => updateQz({ rotate: Number(e.target.value) as QzRotate })}
+                          className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700">
+                          <option value={270}>270° (try first)</option>
+                          <option value={90}>90°</option>
+                          <option value={0}>0°</option>
+                          <option value={180}>180°</option>
+                        </select>
                       </label>
                       <label className="flex items-center gap-2 text-[11px] font-bold text-slate-600 cursor-pointer select-none">
                         <input type="checkbox" className="accent-blue-600" checked={qzPrefs.invert} onChange={e => updateQz({ invert: e.target.checked })} /> Invert black / white
