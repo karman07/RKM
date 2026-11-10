@@ -499,44 +499,38 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
               Drag the blue handles to resize a partition. <span className="text-red-400">Red dashed</span> = fold · <span className="text-blue-500">blue dashed</span> = printable area · hatched red = unprintable edge. Guides are not printed.
             </p>
 
-            {/* ─── Quick setup: everything a non-technical user needs ─────────────────────────── */}
-            <div className="w-full mt-4 bg-white border border-slate-200 rounded-2xl px-4 py-4">
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Quick setup</p>
-                <button type="button" onClick={() => update(DEFAULT_LAYOUT)}
-                  className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-[10px] font-bold uppercase tracking-widest hover:bg-blue-700">
-                  Use standard settings
+            {/* ─── Print help: collapsed, the daily flow is just the Print button ──────────────── */}
+            <div className="w-full mt-4 flex flex-wrap items-center justify-between gap-2">
+              <p className={`text-[11px] font-bold ${isStandard ? 'text-emerald-600' : 'text-amber-600'}`}>
+                {isStandard ? 'Standard label settings ✓' : 'Custom settings in use'}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {!isStandard && (
+                  <button type="button" onClick={() => update(DEFAULT_LAYOUT)}
+                    className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-[10px] font-bold uppercase tracking-widest hover:bg-blue-700">Use standard settings</button>
+                )}
+                {layout.rotate !== 0 && (
+                  <button type="button" onClick={() => update({ rotate: layout.rotate === 270 ? 90 : 270 })}
+                    className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-widest hover:bg-slate-200"
+                    title="Only if a label comes out upside down">Flip 180°</button>
+                )}
+                <button type="button" onClick={() => setShowAdvanced(v => !v)}
+                  className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-widest hover:bg-slate-200">
+                  {showAdvanced ? 'Hide setup & advanced' : 'Printer setup & advanced'}
                 </button>
               </div>
-              <p className="text-[11px] font-bold text-slate-600 leading-snug mb-3">
-                Standard RKM tag: <span className="text-slate-900">{DEFAULT_LAYOUT.zone1Mm + DEFAULT_LAYOUT.zone2Mm + DEFAULT_LAYOUT.zone3Mm} × {DEFAULT_LAYOUT.heightMm} mm</span>, {DEFAULT_LAYOUT.gapMm} mm gap between tags.
-                {' '}Currently using: <span className={`${isStandard ? 'text-emerald-600' : 'text-amber-600'}`}>
-                  {isStandard ? 'standard settings ✓' : 'custom settings (press "Use standard settings" to go back)'}
-                </span>
-              </p>
-              <ol className="text-[11px] font-bold text-slate-600 leading-relaxed list-decimal pl-5 space-y-1">
-                <li>Click <span className="text-slate-900">Print</span>, then choose <span className="text-slate-900">&quot;Print using system dialog…&quot;</span>.</li>
-                <li>Paper size: pick <span className="text-slate-900">{PG.w} × {PG.h} mm</span> (first time only: <span className="text-slate-900">Manage Custom Sizes → add it</span>, all margins 0).</li>
-                <li>Scale: <span className="text-slate-900">100%</span> (not &quot;Fit to page&quot;). Margins: <span className="text-slate-900">None</span>.</li>
-                <li>Print <span className="text-slate-900">one label first</span> to check it before printing the batch.</li>
-              </ol>
-              {layout.rotate !== 0 && (
-                <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2">
-                  <p className="text-[11px] font-bold text-amber-800 flex-1 min-w-[12rem]">Label comes out upside down or on the wrong side?</p>
-                  <button type="button" onClick={() => update({ rotate: layout.rotate === 270 ? 90 : 270 })}
-                    className="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-[10px] font-bold uppercase tracking-widest hover:bg-amber-700">
-                    Flip 180°
-                  </button>
-                </div>
-              )}
-              <button type="button" onClick={() => setShowAdvanced(v => !v)}
-                className="mt-3 text-[10px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-800">
-                {showAdvanced ? '− Hide advanced settings' : '+ Advanced settings (sizes, margins, code, details)'}
-              </button>
             </div>
 
             {showAdvanced && (
               <>
+                <Section title="One-time printer setup (technician)">
+                  <ol className="text-[11px] font-bold text-slate-600 leading-relaxed list-decimal pl-5 space-y-1">
+                    <li>Windows → Printers → the label printer → <span className="text-slate-900">Printing Preferences</span>: add a custom paper size <span className="text-slate-900">{PG.w} × {PG.h} mm</span>, margins 0, and make it the <span className="text-slate-900">default</span>.</li>
+                    <li>Make this printer the Windows <span className="text-slate-900">default printer</span>.</li>
+                    <li>Start Chrome with <span className="text-slate-900">--kiosk-printing</span> (add it to the end of the Chrome shortcut&apos;s Target). The Print button then prints straight away, with no dialog.</li>
+                    <li>Print one label to check. If it is upside down, press Flip 180° once. The setting is remembered on this computer.</li>
+                  </ol>
+                </Section>
             {/* ─── Total vs printable area ───────────────────────────────────────────────────── */}
             <Section title="Total vs printable area" right={<p className="text-[11px] font-black text-slate-900">Tag {W} × {H} mm</p>}>
               <div className="flex h-4 w-full rounded-full overflow-hidden border border-slate-200 bg-slate-100">
