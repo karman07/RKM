@@ -43,6 +43,7 @@ interface LabelLayout {
   edgeXMm: number;       // unprintable margin, left and right edges of the tag
   edgeYMm: number;       // unprintable margin, top and bottom edges of the tag
   creaseMm: number;      // clearance kept on each side of a fold line
+  rotate: 0 | 90 | 270;  // turn the printed page so it matches how the driver feeds the roll (0 = landscape page as designed)
   gapMm: number;         // blank feed between one tag and the next on the roll (die-cut gap); page length = height + gap
   codeType: Code2D;
   codeSizeMm: number;    // 0 = automatic (as large as fits)
@@ -74,14 +75,14 @@ const FIELD_ORDER: FieldKey[] = ['name', 'weight', 'stoneWt', 'huid', 'grade', '
 
 const DEFAULT_LAYOUT: LabelLayout = {
   heightMm: 14.5, zone1Mm: 41, zone2Mm: 34, zone3Mm: 29,
-  edgeXMm: 0.5, edgeYMm: 0.6, creaseMm: 1, gapMm: 3,
+  edgeXMm: 0.5, edgeYMm: 0.6, creaseMm: 1, gapMm: 3, rotate: 90,
   codeType: 'datamatrix', codeSizeMm: 0, showCodeText: true,
   fontMm: 0, fields: ['name', 'weight', 'huid', 'grade', 'lmc'],
   printerDpi: 203, foldMarks: false, guides: true,
 };
 const ROLL_LAYOUT: Partial<LabelLayout> = { heightMm: 13, zone1Mm: 14, zone2Mm: 51, zone3Mm: 0, edgeXMm: 1, edgeYMm: 0.8 };
 
-const STORAGE_KEY = 'rkm-asset-label-layout-v4';
+const STORAGE_KEY = 'rkm-asset-label-layout-v5';
 const PNG_EXPORT_DPI = 600;
 
 const clamp = (v: number, r: { min: number; max: number }) => Math.min(r.max, Math.max(r.min, v));
@@ -102,6 +103,7 @@ function normalize(p: Partial<LabelLayout>, base: LabelLayout): LabelLayout {
     edgeYMm: clamp(num(m.edgeYMm, base.edgeYMm), RANGE.edgeYMm),
     creaseMm: clamp(num(m.creaseMm, base.creaseMm), RANGE.creaseMm),
     gapMm: clamp(num(m.gapMm, base.gapMm), RANGE.gapMm),
+    rotate: Number(m.rotate) === 90 ? 90 : Number(m.rotate) === 270 ? 270 : Number(m.rotate) === 0 ? 0 : base.rotate,
     codeType: m.codeType === 'qrcode' ? 'qrcode' : 'datamatrix',
     codeSizeMm: size <= 0 ? 0 : clamp(size, RANGE.codeSizeMm),
     showCodeText: !!m.showCodeText,
@@ -126,6 +128,8 @@ function loadSavedLayout(): LabelLayout {
 const totalW = (l: LabelLayout) => round1(l.zone1Mm + l.zone2Mm + l.zone3Mm);
 /** Length of one printed page = the tag plus the die-cut gap, so every page advances exactly one physical label. */
 const pageH = (l: LabelLayout) => round2(l.heightMm + l.gapMm);
+/** Size of the printed page: the tag + gap, turned on its side when the driver feeds the roll lengthwise. */
+const pageDims = (l: LabelLayout) => (l.rotate ? { w: pageH(l), h: totalW(l) } : { w: totalW(l), h: pageH(l) });
 
 /** Total vs printable area, in mm. Printable = the tag minus the unprintable edges; content = the part
     of it that holds the code and details (zones 1 + 2); blank = the part of zone 3 inside the printable area. */
@@ -231,9 +235,26 @@ function LabelArt({ item, l, unit }: { item: InventoryItem; l: LabelLayout; unit
 }
 
 function LabelCard({ item, l, cardRef, feed }: { item: InventoryItem; l: LabelLayout; cardRef?: React.Ref<HTMLDivElement>; feed?: boolean }) {
+  const W = totalW(l);
+  if (!feed) {
+    return (
+      <div ref={cardRef} className="single-label-card relative" style={{ width: `${W}mm`, height: `${l.heightMm}mm` }}>
+        <LabelArt item={item} l={l} unit={mm => `${mm}mm`} />
+      </div>
+    );
+  }
+  const d = pageDims(l);
+  // Rotated pages: the tag is drawn upright in a W x page-length box, then turned 90 degrees into the portrait page.
+  const turn = l.rotate === 90
+    ? { transform: `translateX(${d.w}mm) rotate(90deg)` }
+    : l.rotate === 270
+      ? { transform: `translateY(${d.h}mm) rotate(-90deg)` }
+      : {};
   return (
-    <div ref={cardRef} className="single-label-card relative" style={{ width: `${totalW(l)}mm`, height: `${feed ? pageH(l) : l.heightMm}mm` }}>
-      <LabelArt item={item} l={l} unit={mm => `${mm}mm`} />
+    <div ref={cardRef} className="single-label-card relative" style={{ width: `${d.w}mm`, height: `${d.h}mm` }}>
+      <div style={{ position: 'absolute', left: 0, top: 0, width: `${W}mm`, height: `${pageH(l)}mm`, transformOrigin: '0 0', ...turn }}>
+        <LabelArt item={item} l={l} unit={mm => `${mm}mm`} />
+      </div>
     </div>
   );
 }
@@ -316,7 +337,7 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
 
   const previewItem = mode === 'single' ? singleItem : bulkItems[0] ?? null;
   const canPrint = mode === 'single' ? !!singleItem : bulkItems.length > 0;
-  const W = totalW(layout), H = layout.heightMm, PH = pageH(layout);
+  const W = totalW(layout), H = layout.heightMm, PH = pageH(layout), PG = pageDims(layout);
   const A = areas(layout);
   const scale = Math.min(9, Math.max(3, 640 / W));          // preview pixels per mm
   const pct = (n: number) => (A.total > 0 ? Math.round((n / A.total) * 1000) / 10 : 0);
@@ -367,7 +388,7 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
     <>
       <style jsx global>{`
         @media print {
-          @page { size: ${W}mm ${PH}mm; margin: 0; }
+          @page { size: ${PG.w}mm ${PG.h}mm; margin: 0; }
           html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
           /* The print sheet is portaled to be a direct child of <body> (see below) so every OTHER direct child
              can simply be display:none. Visibility/height tricks were tried first and both failed for real
@@ -383,7 +404,7 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
             print-color-adjust: exact !important;
           }
           .single-label-card {
-            width: ${W}mm !important; height: ${PH}mm !important; position: relative !important;
+            width: ${PG.w}mm !important; height: ${PG.h}mm !important; position: relative !important;
             overflow: hidden !important; margin: 0 !important; padding: 0 !important; border: none !important;
             break-after: page; page-break-after: always; break-inside: avoid; page-break-inside: avoid;
           }
@@ -591,6 +612,19 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
               </div>
             </Section>
 
+            <Section title="Print direction">
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="text-[11px] font-bold text-slate-600">Rotate printout</label>
+                <select value={layout.rotate} onChange={e => update({ rotate: Number(e.target.value) as 0 | 90 | 270 })}
+                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700">
+                  <option value={90}>90° clockwise (page {PG.w}×{PG.h} mm)</option>
+                  <option value={270}>90° counter-clockwise</option>
+                  <option value={0}>None (landscape page)</option>
+                </select>
+                <p className="text-[10px] font-bold text-slate-400 leading-snug">Use this if the label prints sideways. Set the printer paper size to the page size shown, and if it comes out upside down, switch between the two 90° options.</p>
+              </div>
+            </Section>
+
             <Section title="Options" right={
               <button type="button" onClick={() => update(DEFAULT_LAYOUT)}
                 className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-widest hover:bg-slate-200">Reset all</button>
@@ -616,7 +650,7 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
             )}
 
             <p className="mt-6 text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-center leading-relaxed">
-              First time printing on this printer? Click <span className="font-black">&quot;Print using system dialog…&quot;</span> in the print window (not Chrome&apos;s quick print), then under Paper Size choose <span className="font-black">Manage Custom Sizes…</span> and add an exact {W}mm × {PH}mm size for this printer (tag height {H}mm + {layout.gapMm}mm gap — set the gap above to the blank space between tags on your roll), with all margins 0. Print at 100% scale. Without that, the printer driver may use its own default page length and print one label&apos;s content across several physical labels. If you change any size above, set the same paper size again.
+              First time printing on this printer? Click <span className="font-black">&quot;Print using system dialog…&quot;</span> in the print window (not Chrome&apos;s quick print), then under Paper Size choose <span className="font-black">Manage Custom Sizes…</span> and add an exact {PG.w}mm × {PG.h}mm size for this printer (tag height {H}mm + {layout.gapMm}mm gap — set the gap above to the blank space between tags on your roll), with all margins 0. Print at 100% scale. Without that, the printer driver may use its own default page length and print one label&apos;s content across several physical labels. If you change any size above, set the same paper size again.
             </p>
 
             <div className="w-full mt-3 flex flex-wrap gap-3">
