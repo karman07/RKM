@@ -43,6 +43,7 @@ interface LabelLayout {
   edgeXMm: number;       // unprintable margin, left and right edges of the tag
   edgeYMm: number;       // unprintable margin, top and bottom edges of the tag
   creaseMm: number;      // clearance kept on each side of a fold line
+  gapMm: number;         // blank feed between one tag and the next on the roll (die-cut gap); page length = height + gap
   codeType: Code2D;
   codeSizeMm: number;    // 0 = automatic (as large as fits)
   showCodeText: boolean; // item code printed under the code
@@ -61,6 +62,7 @@ const RANGE = {
   edgeXMm: { min: 0, max: 6, step: 0.1 },
   edgeYMm: { min: 0, max: 6, step: 0.1 },
   creaseMm: { min: 0, max: 4, step: 0.1 },
+  gapMm: { min: 0, max: 10, step: 0.1 },
   codeSizeMm: { min: 4, max: 30, step: 0.5 },
   fontMm: { min: 1, max: 6, step: 0.1 },
 } as const;
@@ -71,15 +73,15 @@ const FIELD_META: Record<FieldKey, string> = {
 const FIELD_ORDER: FieldKey[] = ['name', 'weight', 'stoneWt', 'huid', 'grade', 'lmc'];
 
 const DEFAULT_LAYOUT: LabelLayout = {
-  heightMm: 15, zone1Mm: 35, zone2Mm: 35, zone3Mm: 30,
-  edgeXMm: 0, edgeYMm: 0, creaseMm: 0.5,
+  heightMm: 14.5, zone1Mm: 41, zone2Mm: 34, zone3Mm: 29,
+  edgeXMm: 0.5, edgeYMm: 0.6, creaseMm: 1, gapMm: 3,
   codeType: 'datamatrix', codeSizeMm: 0, showCodeText: true,
   fontMm: 0, fields: ['name', 'weight', 'huid', 'grade', 'lmc'],
   printerDpi: 203, foldMarks: false, guides: true,
 };
 const ROLL_LAYOUT: Partial<LabelLayout> = { heightMm: 13, zone1Mm: 14, zone2Mm: 51, zone3Mm: 0, edgeXMm: 1, edgeYMm: 0.8 };
 
-const STORAGE_KEY = 'rkm-asset-label-layout-v2';
+const STORAGE_KEY = 'rkm-asset-label-layout-v4';
 const PNG_EXPORT_DPI = 600;
 
 const clamp = (v: number, r: { min: number; max: number }) => Math.min(r.max, Math.max(r.min, v));
@@ -99,6 +101,7 @@ function normalize(p: Partial<LabelLayout>, base: LabelLayout): LabelLayout {
     edgeXMm: clamp(num(m.edgeXMm, base.edgeXMm), RANGE.edgeXMm),
     edgeYMm: clamp(num(m.edgeYMm, base.edgeYMm), RANGE.edgeYMm),
     creaseMm: clamp(num(m.creaseMm, base.creaseMm), RANGE.creaseMm),
+    gapMm: clamp(num(m.gapMm, base.gapMm), RANGE.gapMm),
     codeType: m.codeType === 'qrcode' ? 'qrcode' : 'datamatrix',
     codeSizeMm: size <= 0 ? 0 : clamp(size, RANGE.codeSizeMm),
     showCodeText: !!m.showCodeText,
@@ -121,6 +124,8 @@ function loadSavedLayout(): LabelLayout {
 }
 
 const totalW = (l: LabelLayout) => round1(l.zone1Mm + l.zone2Mm + l.zone3Mm);
+/** Length of one printed page = the tag plus the die-cut gap, so every page advances exactly one physical label. */
+const pageH = (l: LabelLayout) => round2(l.heightMm + l.gapMm);
 
 /** Total vs printable area, in mm. Printable = the tag minus the unprintable edges; content = the part
     of it that holds the code and details (zones 1 + 2); blank = the part of zone 3 inside the printable area. */
@@ -155,7 +160,10 @@ function geometry(item: InventoryItem, l: LabelLayout) {
 
   // zone 2: details, rows share the printable height evenly
   const dx = l.zone1Mm + l.creaseMm;
-  const dw = Math.max(1, l.zone2Mm - 2 * l.creaseMm - (l.zone3Mm === 0 ? l.edgeXMm : 0));
+  // Right side keeps at least 1.2mm clear: printer fonts render a little wider than the preview, and the
+  // last characters were being cut off at the fold / label edge.
+  const rightPad = Math.max(l.creaseMm, 1.2) + (l.zone3Mm === 0 ? l.edgeXMm : 0);
+  const dw = Math.max(1, l.zone2Mm - l.creaseMm - rightPad);
   return { H, ph, codeBox, codeText, codeFont, details: { x: dx, y: l.edgeYMm, w: dw, h: ph } };
 }
 
@@ -181,7 +189,7 @@ function LabelArt({ item, l, unit }: { item: InventoryItem; l: LabelLayout; unit
   const rows = itemRows(item, l.fields);
   const rowH = rows.length ? G.details.h / rows.length : 0;
   const maxChars = rows.reduce((m, [k, v]) => Math.max(m, k.length + v.length + 1), 1);
-  const autoFont = Math.min(rowH * 0.66, G.details.w / (maxChars * 0.7));
+  const autoFont = Math.min(rowH * 0.66, G.details.w / (maxChars * 0.82));
   const font = l.fontMm > 0 ? l.fontMm : Math.max(1, Math.min(6, autoFont));
   const W = totalW(l);
   const foldLine = (x: number) => (
@@ -222,9 +230,9 @@ function LabelArt({ item, l, unit }: { item: InventoryItem; l: LabelLayout; unit
   );
 }
 
-function LabelCard({ item, l, cardRef }: { item: InventoryItem; l: LabelLayout; cardRef?: React.Ref<HTMLDivElement> }) {
+function LabelCard({ item, l, cardRef, feed }: { item: InventoryItem; l: LabelLayout; cardRef?: React.Ref<HTMLDivElement>; feed?: boolean }) {
   return (
-    <div ref={cardRef} className="single-label-card relative" style={{ width: `${totalW(l)}mm`, height: `${l.heightMm}mm` }}>
+    <div ref={cardRef} className="single-label-card relative" style={{ width: `${totalW(l)}mm`, height: `${feed ? pageH(l) : l.heightMm}mm` }}>
       <LabelArt item={item} l={l} unit={mm => `${mm}mm`} />
     </div>
   );
@@ -308,7 +316,7 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
 
   const previewItem = mode === 'single' ? singleItem : bulkItems[0] ?? null;
   const canPrint = mode === 'single' ? !!singleItem : bulkItems.length > 0;
-  const W = totalW(layout), H = layout.heightMm;
+  const W = totalW(layout), H = layout.heightMm, PH = pageH(layout);
   const A = areas(layout);
   const scale = Math.min(9, Math.max(3, 640 / W));          // preview pixels per mm
   const pct = (n: number) => (A.total > 0 ? Math.round((n / A.total) * 1000) / 10 : 0);
@@ -359,7 +367,7 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
     <>
       <style jsx global>{`
         @media print {
-          @page { size: ${W}mm ${H}mm; margin: 0; }
+          @page { size: ${W}mm ${PH}mm; margin: 0; }
           html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
           /* The print sheet is portaled to be a direct child of <body> (see below) so every OTHER direct child
              can simply be display:none. Visibility/height tricks were tried first and both failed for real
@@ -375,7 +383,7 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
             print-color-adjust: exact !important;
           }
           .single-label-card {
-            width: ${W}mm !important; height: ${H}mm !important; position: relative !important;
+            width: ${W}mm !important; height: ${PH}mm !important; position: relative !important;
             overflow: hidden !important; margin: 0 !important; padding: 0 !important; border: none !important;
             break-after: page; page-break-after: always; break-inside: avoid; page-break-inside: avoid;
           }
@@ -506,6 +514,7 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
               <Field label="Unprintable edge — left / right" value={layout.edgeXMm} range={RANGE.edgeXMm} onChange={v => update({ edgeXMm: v })} hint="The strip at the left and right edges that the printer can't reach, or that you want to keep empty." />
               <Field label="Unprintable edge — top / bottom" value={layout.edgeYMm} range={RANGE.edgeYMm} onChange={v => update({ edgeYMm: v })} />
               <Field label="Clearance beside each fold" value={layout.creaseMm} range={RANGE.creaseMm} onChange={v => update({ creaseMm: v })} hint="Keeps the details text away from the crease." />
+              <Field label="Gap between tags on the roll" value={layout.gapMm} range={RANGE.gapMm} onChange={v => update({ gapMm: v })} hint="Distance from the bottom of one tag to the top of the next. Page length = tag height + this gap, so each print advances exactly one tag." />
             </Section>
 
             {/* ─── Code ───────────────────────────────────────────────────────────────────── */}
@@ -607,7 +616,7 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
             )}
 
             <p className="mt-6 text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-center leading-relaxed">
-              First time printing on this printer? Click <span className="font-black">&quot;Print using system dialog…&quot;</span> in the print window (not Chrome&apos;s quick print), then under Paper Size choose <span className="font-black">Manage Custom Sizes…</span> and add an exact {W}mm × {H}mm size for this printer, with all margins 0. Print at 100% scale. Without that, the printer driver may use its own default page length and print one label&apos;s content across several physical labels. If you change any size above, set the same paper size again.
+              First time printing on this printer? Click <span className="font-black">&quot;Print using system dialog…&quot;</span> in the print window (not Chrome&apos;s quick print), then under Paper Size choose <span className="font-black">Manage Custom Sizes…</span> and add an exact {W}mm × {PH}mm size for this printer (tag height {H}mm + {layout.gapMm}mm gap — set the gap above to the blank space between tags on your roll), with all margins 0. Print at 100% scale. Without that, the printer driver may use its own default page length and print one label&apos;s content across several physical labels. If you change any size above, set the same paper size again.
             </p>
 
             <div className="w-full mt-3 flex flex-wrap gap-3">
@@ -644,9 +653,9 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
       {createPortal(
         <div className="print-labels-sheet" style={{ position: 'fixed', left: -99999, top: 0 }} aria-hidden="true">
           {mode === 'single' && singleItem ? (
-            <LabelCard item={singleItem} l={layout} />
+            <LabelCard item={singleItem} l={layout} feed />
           ) : (
-            bulkItems.map(item => <LabelCard key={item._id} item={item} l={layout} />)
+            bulkItems.map(item => <LabelCard key={item._id} item={item} l={layout} feed />)
           )}
         </div>,
         document.body
