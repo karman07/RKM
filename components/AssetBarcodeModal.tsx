@@ -75,14 +75,14 @@ const FIELD_ORDER: FieldKey[] = ['name', 'weight', 'stoneWt', 'huid', 'grade', '
 
 const DEFAULT_LAYOUT: LabelLayout = {
   heightMm: 14.5, zone1Mm: 41, zone2Mm: 34, zone3Mm: 29,
-  edgeXMm: 0.5, edgeYMm: 0.6, creaseMm: 1, gapMm: 3, rotate: 90,
+  edgeXMm: 0.5, edgeYMm: 0.6, creaseMm: 1, gapMm: 3, rotate: 270,
   codeType: 'datamatrix', codeSizeMm: 0, showCodeText: true,
   fontMm: 0, fields: ['name', 'weight', 'huid', 'grade', 'lmc'],
   printerDpi: 203, foldMarks: false, guides: true,
 };
 const ROLL_LAYOUT: Partial<LabelLayout> = { heightMm: 13, zone1Mm: 14, zone2Mm: 51, zone3Mm: 0, edgeXMm: 1, edgeYMm: 0.8 };
 
-const STORAGE_KEY = 'rkm-asset-label-layout-v5';
+const STORAGE_KEY = 'rkm-asset-label-layout-v6';
 const PNG_EXPORT_DPI = 600;
 
 const clamp = (v: number, r: { min: number; max: number }) => Math.min(r.max, Math.max(r.min, v));
