@@ -325,11 +325,12 @@ function Section({ title, children, right }: { title: string; children: React.Re
  * 1-bit picture at the printer's resolution, and sent as a TSPL or ZPL bitmap command.
  */
 const QZ_SRC = 'https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js';
-const QZ_PREFS_KEY = 'rkm-qz-print-prefs-v2';
+const QZ_PREFS_KEY = 'rkm-qz-print-prefs-v3';
 type PrinterLang = 'tspl' | 'zpl';
 type QzRotate = 0 | 90 | 180 | 270;
-interface QzPrefs { printer: string; lang: PrinterLang; rotate: QzRotate; invert: boolean }
-const DEFAULT_QZ_PREFS: QzPrefs = { printer: '', lang: 'tspl', rotate: 270, invert: false };
+type QzMode = 'driver' | 'raw';
+interface QzPrefs { printer: string; mode: QzMode; lang: PrinterLang; rotate: QzRotate; invert: boolean }
+const DEFAULT_QZ_PREFS: QzPrefs = { printer: '', mode: 'driver', lang: 'tspl', rotate: 270, invert: false };
 
 function loadQzPrefs(): QzPrefs {
   if (typeof window === 'undefined') return DEFAULT_QZ_PREFS;
@@ -337,7 +338,7 @@ function loadQzPrefs(): QzPrefs {
     const raw = window.localStorage.getItem(QZ_PREFS_KEY);
     if (!raw) return DEFAULT_QZ_PREFS;
     const p = JSON.parse(raw);
-    return { printer: String(p.printer || ''), lang: p.lang === 'zpl' ? 'zpl' : 'tspl', rotate: ([0, 90, 180, 270] as number[]).includes(Number(p.rotate)) ? (Number(p.rotate) as QzRotate) : 270, invert: !!p.invert };
+    return { printer: String(p.printer || ''), mode: p.mode === 'raw' ? 'raw' : 'driver', lang: p.lang === 'zpl' ? 'zpl' : 'tspl', rotate: ([0, 90, 180, 270] as number[]).includes(Number(p.rotate)) ? (Number(p.rotate) as QzRotate) : 270, invert: !!p.invert };
   } catch { return DEFAULT_QZ_PREFS; }
 }
 
@@ -373,8 +374,8 @@ function toBase64(bytes: Uint8Array) {
 }
 
 /** Turns a rendered label node into a 1-bit picture (bit set = black) at the printer's dot grid. */
-async function labelToBits(node: HTMLElement, wMm: number, hMm: number, dpi: number, rotate: QzRotate) {
-  const ow = Math.round(wMm * dpi / 25.4), oh = Math.round(hMm * dpi / 25.4);
+async function labelToBits(node: HTMLElement, wMm: number, hMm: number, dpi: number, rotate: QzRotate, padMm = 0) {
+  const ow = Math.round(wMm * dpi / 25.4), oh = Math.round((hMm + padMm) * dpi / 25.4), tagH = Math.round(hMm * dpi / 25.4);
   const sideways = rotate === 90 || rotate === 270;
   const w = sideways ? oh : ow, h = sideways ? ow : oh;   // size of the picture sent to the printer
   const url = await toPng(node, { pixelRatio: dpi / 96, backgroundColor: '#ffffff', cacheBust: true });
@@ -390,15 +391,19 @@ async function labelToBits(node: HTMLElement, wMm: number, hMm: number, dpi: num
   if (rotate === 180) { ctx.translate(w, h); ctx.rotate(Math.PI); }
   else if (rotate === 90) { ctx.translate(w, 0); ctx.rotate(Math.PI / 2); }
   else if (rotate === 270) { ctx.translate(0, h); ctx.rotate(-Math.PI / 2); }
-  ctx.drawImage(img, 0, 0, ow, oh);
+  ctx.drawImage(img, 0, 0, ow, tagH);
   const px = ctx.getImageData(0, 0, w, h).data;
   const rowBytes = Math.ceil(w / 8);
   const bits = new Uint8Array(rowBytes * h);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const i = (y * w + x) * 4;
-    if (0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2] < 160) bits[y * rowBytes + (x >> 3)] |= 0x80 >> (x & 7);
+    const black = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2] < 160;
+    if (black) bits[y * rowBytes + (x >> 3)] |= 0x80 >> (x & 7);
+    px[i] = px[i + 1] = px[i + 2] = black ? 0 : 255; px[i + 3] = 255;
   }
-  return { w, h, rowBytes, bits };
+  // the exact 1-bit picture that is sent, also used for the on-screen printout preview and the Windows-driver mode
+  ctx.putImageData(new ImageData(px, w, h), 0, 0);
+  return { w, h, rowBytes, bits, dataUrl: c.toDataURL('image/png') };
 }
 
 function labelCommand(lang: PrinterLang, l: LabelLayout, pic: { w: number; h: number; rowBytes: number; bits: Uint8Array }, invert: boolean, rotate: QzRotate): Uint8Array {
@@ -426,6 +431,7 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
   const [qzBusy, setQzBusy] = useState(false);
   const [qzMsg, setQzMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const sourcesRef = useRef<HTMLDivElement | null>(null);
+  const [qzPreview, setQzPreview] = useState<{ url: string; wMm: number; hMm: number } | null>(null);
   // Remembered on this computer. Nothing renders until the modal opens, so reading storage here can't mismatch SSR.
   const [layout, setLayout] = useState<LabelLayout>(loadSavedLayout);
 
@@ -467,19 +473,48 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
 
   useEffect(() => { if (open) void Promise.resolve().then(connectQz); }, [open]);
 
+  /** Picture that will be sent for one item, as the printer will get it (rotation + gap included). */
+  async function renderPicture(item: InventoryItem) {
+    const node = sourcesRef.current?.querySelector<HTMLElement>(`[data-qz-id="${CSS.escape(item._id)}"] .single-label-card`);
+    if (!node) throw new Error('Label is not ready yet, try again');
+    // Windows-driver mode prints whole pages, so the gap between tags is part of the page; printer-command mode has its own GAP setting.
+    return labelToBits(node, totalW(layout), layout.heightMm, layout.printerDpi, qzPrefs.rotate, qzPrefs.mode === 'driver' ? layout.gapMm : 0);
+  }
+
+  // Live "what will actually print" preview: the same picture that is sent, so rotation changes show up here.
+  useEffect(() => {
+    if (!open || !showQz) return;
+    const item = mode === 'single' ? singleItem : bulkItems[0];
+    if (!item) return;
+    let dead = false;
+    const timer = setTimeout(async () => {
+      try {
+        const pic = await renderPicture(item);
+        if (!dead) setQzPreview({ url: pic.dataUrl, wMm: (pic.w * 25.4) / layout.printerDpi, hMm: (pic.h * 25.4) / layout.printerDpi });
+      } catch { if (!dead) setQzPreview(null); }
+    }, 250);
+    return () => { dead = true; clearTimeout(timer); };
+  }, [open, showQz, layout, qzPrefs.rotate, qzPrefs.mode, mode, singleItem, bulkItems]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /** Sends the given items straight to the printer, one label each. Throws on any problem. */
   async function sendToPrinter(items: InventoryItem[]) {
     const qz = await loadQz();
     if (!qz.websocket.isActive()) await qz.websocket.connect({ retries: 1, delay: 1 });
-    const parts: Uint8Array[] = [];
-    for (const item of items) {
-      const node = sourcesRef.current?.querySelector<HTMLElement>(`[data-qz-id="${CSS.escape(item._id)}"] .single-label-card`);
-      if (!node) throw new Error('Label is not ready yet, try again');
-      const pic = await labelToBits(node, totalW(layout), layout.heightMm, layout.printerDpi, qzPrefs.rotate);
-      parts.push(labelCommand(qzPrefs.lang, layout, pic, qzPrefs.invert, qzPrefs.rotate));
+    const pics = [];
+    for (const item of items) pics.push(await renderPicture(item));
+    if (qzPrefs.mode === 'raw') {
+      const parts = pics.map(pic => labelCommand(qzPrefs.lang, layout, pic, qzPrefs.invert, qzPrefs.rotate));
+      await qz.print(qz.configs.create(qzPrefs.printer), [{ type: 'raw', format: 'command', flavor: 'base64', data: toBase64(concatBytes(parts)) }]);
+      return;
     }
-    const cfg = qz.configs.create(qzPrefs.printer);
-    await qz.print(cfg, [{ type: 'raw', format: 'command', flavor: 'base64', data: toBase64(concatBytes(parts)) }]);
+    // Windows-driver mode: send each label as an image on a page of exactly its size, so no paper size has to be set up in Windows.
+    const wMm = Math.round((pics[0].w * 25.4) / layout.printerDpi * 100) / 100;
+    const hMm = Math.round((pics[0].h * 25.4) / layout.printerDpi * 100) / 100;
+    const cfg = qz.configs.create(qzPrefs.printer, {
+      size: { width: wMm, height: hMm }, units: 'mm', margins: 0, scaleContent: false,
+      density: layout.printerDpi, colorType: 'blackwhite', interpolation: 'nearest-neighbor', copies: 1,
+    });
+    await qz.print(cfg, pics.map(pic => ({ type: 'pixel', format: 'image', flavor: 'base64', data: pic.dataUrl.split(',')[1] })));
   }
 
   async function handlePrint(testOnly = false) {
@@ -736,11 +771,18 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
                         <option value="">— choose printer —</option>
                         {qzPrinters.map(n => <option key={n} value={n}>{n}</option>)}
                       </select>
+                      <select value={qzPrefs.mode} onChange={e => updateQz({ mode: e.target.value as QzMode })}
+                        className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700" title="How the label is sent to the printer">
+                        <option value="driver">Send as picture via Windows driver (try first)</option>
+                        <option value="raw">Send printer commands (TSPL / ZPL)</option>
+                      </select>
+                      {qzPrefs.mode === 'raw' && (
                       <select value={qzPrefs.lang} onChange={e => updateQz({ lang: e.target.value as PrinterLang })}
                         className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700" title="Printer language. TSPL for TVS / TSC, ZPL for Zebra.">
                         <option value="tspl">TSPL (TVS, TSC, most label printers)</option>
                         <option value="zpl">ZPL (Zebra)</option>
                       </select>
+                      )}
                       <button type="button" onClick={() => void handlePrint(true)} disabled={qzBusy || qzStatus !== 'ready' || !qzPrefs.printer}
                         className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-[10px] font-bold uppercase tracking-widest hover:bg-blue-700 disabled:opacity-40">
                         {qzBusy ? 'Printing…' : 'Test print'}
@@ -764,6 +806,16 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
                       <label className="flex items-center gap-2 text-[11px] font-bold text-slate-600 cursor-pointer select-none">
                         <input type="checkbox" className="accent-blue-600" checked={qzPrefs.invert} onChange={e => updateQz({ invert: e.target.checked })} /> Invert black / white
                       </label>
+                    </div>
+                    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 font-normal">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">
+                        What will be sent to the printer{qzPreview ? ` — ${qzPreview.wMm.toFixed(1)} × ${qzPreview.hMm.toFixed(1)} mm page` : ''}
+                      </p>
+                      {qzPreview
+                        // eslint-disable-next-line @next/next/no-img-element
+                        ? <img src={qzPreview.url} alt="Printout preview" className="border border-slate-300 bg-white" style={{ maxWidth: '100%', maxHeight: 260, imageRendering: 'pixelated', filter: qzPrefs.mode === 'raw' && qzPrefs.invert ? 'invert(1)' : undefined }} />
+                        : <p className="text-[11px] font-bold text-slate-400">Preview appears here.</p>}
+                      <p className="mt-2 text-[10px] font-bold text-slate-400">This picture turns when you change Rotate. A tag lying flat (long side across) means the page is sent unturned; a tall strip means the page is turned for the printer.</p>
                     </div>
                   </li>
                   <li><span className="text-slate-900">Done.</span> From now on just press Print. Settings are remembered on this computer.</li>
