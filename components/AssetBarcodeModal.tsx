@@ -714,8 +714,13 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
                   <li>
                     <span className="text-slate-900">Click &quot;Check again&quot; above.</span> QZ Tray will ask to allow this website: tick <span className="text-slate-900">&quot;Remember this decision&quot;</span> and press Allow.
                     {' '}Status: <span className={qzStatus === 'ready' ? 'text-emerald-600' : qzStatus === 'checking' ? 'text-slate-400' : 'text-amber-600'}>
-                      {qzStatus === 'ready' ? 'connected ✓' : qzStatus === 'checking' ? 'checking…' : 'QZ Tray not found — is it running?'}
+                      {qzStatus === 'ready' ? 'connected ✓' : qzStatus === 'checking' ? 'checking…' : 'not connected'}
                     </span>
+                    {qzStatus === 'missing' && (
+                      <span className="block mt-1 font-normal text-amber-700">
+                        Not connecting although QZ Tray is running? Chrome is probably blocking it: click the icon at the left of the address bar → <span className="font-bold">Site settings</span> → set <span className="font-bold">&quot;Local network access&quot;</span> (or &quot;Apps on device&quot;) to <span className="font-bold">Allow</span>, reload the page, then click &quot;Check again&quot;. Also check the QZ icon is near the clock.
+                      </span>
+                    )}
                   </li>
                   <li>
                     <span className="text-slate-900">Choose the label printer</span> and what it understands, then press Test print.
