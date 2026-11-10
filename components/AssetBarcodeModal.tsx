@@ -322,6 +322,7 @@ function Section({ title, children, right }: { title: string; children: React.Re
 export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, onClose }: AssetBarcodeModalProps) {
   const exportRef = useRef<HTMLDivElement | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   // Remembered on this computer. Nothing renders until the modal opens, so reading storage here can't mismatch SSR.
   const [layout, setLayout] = useState<LabelLayout>(loadSavedLayout);
 
@@ -339,6 +340,9 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
   const canPrint = mode === 'single' ? !!singleItem : bulkItems.length > 0;
   const W = totalW(layout), H = layout.heightMm, PH = pageH(layout), PG = pageDims(layout);
   const A = areas(layout);
+  // Compared by value, not by JSON text, because key order differs between DEFAULT_LAYOUT and normalize()'s output
+  const isStandard = (Object.keys(DEFAULT_LAYOUT) as (keyof LabelLayout)[]).every(k =>
+    k === 'guides' || JSON.stringify(layout[k]) === JSON.stringify(DEFAULT_LAYOUT[k]));
   const scale = Math.min(9, Math.max(3, 640 / W));          // preview pixels per mm
   const pct = (n: number) => (A.total > 0 ? Math.round((n / A.total) * 1000) / 10 : 0);
 
@@ -495,6 +499,44 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
               Drag the blue handles to resize a partition. <span className="text-red-400">Red dashed</span> = fold · <span className="text-blue-500">blue dashed</span> = printable area · hatched red = unprintable edge. Guides are not printed.
             </p>
 
+            {/* ─── Quick setup: everything a non-technical user needs ─────────────────────────── */}
+            <div className="w-full mt-4 bg-white border border-slate-200 rounded-2xl px-4 py-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Quick setup</p>
+                <button type="button" onClick={() => update(DEFAULT_LAYOUT)}
+                  className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-[10px] font-bold uppercase tracking-widest hover:bg-blue-700">
+                  Use standard settings
+                </button>
+              </div>
+              <p className="text-[11px] font-bold text-slate-600 leading-snug mb-3">
+                Standard RKM tag: <span className="text-slate-900">{DEFAULT_LAYOUT.zone1Mm + DEFAULT_LAYOUT.zone2Mm + DEFAULT_LAYOUT.zone3Mm} × {DEFAULT_LAYOUT.heightMm} mm</span>, {DEFAULT_LAYOUT.gapMm} mm gap between tags.
+                {' '}Currently using: <span className={`${isStandard ? 'text-emerald-600' : 'text-amber-600'}`}>
+                  {isStandard ? 'standard settings ✓' : 'custom settings (press "Use standard settings" to go back)'}
+                </span>
+              </p>
+              <ol className="text-[11px] font-bold text-slate-600 leading-relaxed list-decimal pl-5 space-y-1">
+                <li>Click <span className="text-slate-900">Print</span>, then choose <span className="text-slate-900">&quot;Print using system dialog…&quot;</span>.</li>
+                <li>Paper size: pick <span className="text-slate-900">{PG.w} × {PG.h} mm</span> (first time only: <span className="text-slate-900">Manage Custom Sizes → add it</span>, all margins 0).</li>
+                <li>Scale: <span className="text-slate-900">100%</span> (not &quot;Fit to page&quot;). Margins: <span className="text-slate-900">None</span>.</li>
+                <li>Print <span className="text-slate-900">one label first</span> to check it before printing the batch.</li>
+              </ol>
+              {layout.rotate !== 0 && (
+                <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2">
+                  <p className="text-[11px] font-bold text-amber-800 flex-1 min-w-[12rem]">Label comes out upside down or on the wrong side?</p>
+                  <button type="button" onClick={() => update({ rotate: layout.rotate === 270 ? 90 : 270 })}
+                    className="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-[10px] font-bold uppercase tracking-widest hover:bg-amber-700">
+                    Flip 180°
+                  </button>
+                </div>
+              )}
+              <button type="button" onClick={() => setShowAdvanced(v => !v)}
+                className="mt-3 text-[10px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-800">
+                {showAdvanced ? '− Hide advanced settings' : '+ Advanced settings (sizes, margins, code, details)'}
+              </button>
+            </div>
+
+            {showAdvanced && (
+              <>
             {/* ─── Total vs printable area ───────────────────────────────────────────────────── */}
             <Section title="Total vs printable area" right={<p className="text-[11px] font-black text-slate-900">Tag {W} × {H} mm</p>}>
               <div className="flex h-4 w-full rounded-full overflow-hidden border border-slate-200 bg-slate-100">
@@ -641,6 +683,9 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
               </div>
             </Section>
 
+              </>
+            )}
+
             {mode === 'bulk' ? (
               <p className="mt-6 text-[11px] font-bold text-slate-500 text-center">
                 Previewing <span className="font-black text-slate-900">{previewItem.barcode}</span> — printing will produce one label per selected item ({bulkItems.length} total). Download only saves the item shown above.
@@ -648,10 +693,6 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
             ) : (
               <p className="mt-6 text-2xl font-black text-slate-900 tracking-widest uppercase">{previewItem.barcode}</p>
             )}
-
-            <p className="mt-6 text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-center leading-relaxed">
-              First time printing on this printer? Click <span className="font-black">&quot;Print using system dialog…&quot;</span> in the print window (not Chrome&apos;s quick print), then under Paper Size choose <span className="font-black">Manage Custom Sizes…</span> and add an exact {PG.w}mm × {PG.h}mm size for this printer (tag height {H}mm + {layout.gapMm}mm gap — set the gap above to the blank space between tags on your roll), with all margins 0. Print at 100% scale. Without that, the printer driver may use its own default page length and print one label&apos;s content across several physical labels. If you change any size above, set the same paper size again.
-            </p>
 
             <div className="w-full mt-3 flex flex-wrap gap-3">
               <button
