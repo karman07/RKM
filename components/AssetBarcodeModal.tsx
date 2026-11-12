@@ -43,8 +43,6 @@ interface LabelLayout {
   edgeXMm: number;       // unprintable margin, left and right edges of the tag
   edgeYMm: number;       // unprintable margin, top and bottom edges of the tag
   creaseMm: number;      // clearance kept on each side of a fold line
-  rotate: 0 | 90 | 270;  // turn the printed page so it matches how the driver feeds the roll (0 = landscape page as designed)
-  gapMm: number;         // blank feed between one tag and the next on the roll (die-cut gap); page length = height + gap
   codeType: Code2D;
   codeSizeMm: number;    // 0 = automatic (as large as fits)
   showCodeText: boolean; // item code printed under the code
@@ -63,7 +61,6 @@ const RANGE = {
   edgeXMm: { min: 0, max: 6, step: 0.1 },
   edgeYMm: { min: 0, max: 6, step: 0.1 },
   creaseMm: { min: 0, max: 4, step: 0.1 },
-  gapMm: { min: 0, max: 10, step: 0.1 },
   codeSizeMm: { min: 4, max: 30, step: 0.5 },
   fontMm: { min: 1, max: 6, step: 0.1 },
 } as const;
@@ -74,15 +71,15 @@ const FIELD_META: Record<FieldKey, string> = {
 const FIELD_ORDER: FieldKey[] = ['name', 'weight', 'stoneWt', 'huid', 'grade', 'lmc'];
 
 const DEFAULT_LAYOUT: LabelLayout = {
-  heightMm: 14.5, zone1Mm: 41, zone2Mm: 34, zone3Mm: 29,
-  edgeXMm: 0.5, edgeYMm: 0.6, creaseMm: 1, gapMm: 3, rotate: 270,
+  heightMm: 15, zone1Mm: 35, zone2Mm: 35, zone3Mm: 30,
+  edgeXMm: 0, edgeYMm: 0, creaseMm: 0.5,
   codeType: 'datamatrix', codeSizeMm: 0, showCodeText: true,
   fontMm: 0, fields: ['name', 'weight', 'huid', 'grade', 'lmc'],
   printerDpi: 203, foldMarks: false, guides: true,
 };
 const ROLL_LAYOUT: Partial<LabelLayout> = { heightMm: 13, zone1Mm: 14, zone2Mm: 51, zone3Mm: 0, edgeXMm: 1, edgeYMm: 0.8 };
 
-const STORAGE_KEY = 'rkm-asset-label-layout-v6';
+const STORAGE_KEY = 'rkm-asset-label-layout-v2';
 const PNG_EXPORT_DPI = 600;
 
 const clamp = (v: number, r: { min: number; max: number }) => Math.min(r.max, Math.max(r.min, v));
@@ -102,8 +99,6 @@ function normalize(p: Partial<LabelLayout>, base: LabelLayout): LabelLayout {
     edgeXMm: clamp(num(m.edgeXMm, base.edgeXMm), RANGE.edgeXMm),
     edgeYMm: clamp(num(m.edgeYMm, base.edgeYMm), RANGE.edgeYMm),
     creaseMm: clamp(num(m.creaseMm, base.creaseMm), RANGE.creaseMm),
-    gapMm: clamp(num(m.gapMm, base.gapMm), RANGE.gapMm),
-    rotate: Number(m.rotate) === 90 ? 90 : Number(m.rotate) === 270 ? 270 : Number(m.rotate) === 0 ? 0 : base.rotate,
     codeType: m.codeType === 'qrcode' ? 'qrcode' : 'datamatrix',
     codeSizeMm: size <= 0 ? 0 : clamp(size, RANGE.codeSizeMm),
     showCodeText: !!m.showCodeText,
@@ -126,10 +121,6 @@ function loadSavedLayout(): LabelLayout {
 }
 
 const totalW = (l: LabelLayout) => round1(l.zone1Mm + l.zone2Mm + l.zone3Mm);
-/** Length of one printed page = the tag plus the die-cut gap, so every page advances exactly one physical label. */
-const pageH = (l: LabelLayout) => round2(l.heightMm + l.gapMm);
-/** Size of the printed page: the tag + gap, turned on its side when the driver feeds the roll lengthwise. */
-const pageDims = (l: LabelLayout) => (l.rotate ? { w: pageH(l), h: totalW(l) } : { w: totalW(l), h: pageH(l) });
 
 /** Total vs printable area, in mm. Printable = the tag minus the unprintable edges; content = the part
     of it that holds the code and details (zones 1 + 2); blank = the part of zone 3 inside the printable area. */
@@ -164,10 +155,7 @@ function geometry(item: InventoryItem, l: LabelLayout) {
 
   // zone 2: details, rows share the printable height evenly
   const dx = l.zone1Mm + l.creaseMm;
-  // Right side keeps at least 1.2mm clear: printer fonts render a little wider than the preview, and the
-  // last characters were being cut off at the fold / label edge.
-  const rightPad = Math.max(l.creaseMm, 1.2) + (l.zone3Mm === 0 ? l.edgeXMm : 0);
-  const dw = Math.max(1, l.zone2Mm - l.creaseMm - rightPad);
+  const dw = Math.max(1, l.zone2Mm - 2 * l.creaseMm - (l.zone3Mm === 0 ? l.edgeXMm : 0));
   return { H, ph, codeBox, codeText, codeFont, details: { x: dx, y: l.edgeYMm, w: dw, h: ph } };
 }
 
@@ -193,7 +181,7 @@ function LabelArt({ item, l, unit }: { item: InventoryItem; l: LabelLayout; unit
   const rows = itemRows(item, l.fields);
   const rowH = rows.length ? G.details.h / rows.length : 0;
   const maxChars = rows.reduce((m, [k, v]) => Math.max(m, k.length + v.length + 1), 1);
-  const autoFont = Math.min(rowH * 0.66, G.details.w / (maxChars * 0.82));
+  const autoFont = Math.min(rowH * 0.66, G.details.w / (maxChars * 0.7));
   const font = l.fontMm > 0 ? l.fontMm : Math.max(1, Math.min(6, autoFont));
   const W = totalW(l);
   const foldLine = (x: number) => (
@@ -234,27 +222,10 @@ function LabelArt({ item, l, unit }: { item: InventoryItem; l: LabelLayout; unit
   );
 }
 
-function LabelCard({ item, l, cardRef, feed }: { item: InventoryItem; l: LabelLayout; cardRef?: React.Ref<HTMLDivElement>; feed?: boolean }) {
-  const W = totalW(l);
-  if (!feed) {
-    return (
-      <div ref={cardRef} className="single-label-card relative" style={{ width: `${W}mm`, height: `${l.heightMm}mm` }}>
-        <LabelArt item={item} l={l} unit={mm => `${mm}mm`} />
-      </div>
-    );
-  }
-  const d = pageDims(l);
-  // Rotated pages: the tag is drawn upright in a W x page-length box, then turned 90 degrees into the portrait page.
-  const turn = l.rotate === 90
-    ? { transform: `translateX(${d.w}mm) rotate(90deg)` }
-    : l.rotate === 270
-      ? { transform: `translateY(${d.h}mm) rotate(-90deg)` }
-      : {};
+function LabelCard({ item, l, cardRef }: { item: InventoryItem; l: LabelLayout; cardRef?: React.Ref<HTMLDivElement> }) {
   return (
-    <div ref={cardRef} className="single-label-card relative" style={{ width: `${d.w}mm`, height: `${d.h}mm` }}>
-      <div style={{ position: 'absolute', left: 0, top: 0, width: `${W}mm`, height: `${pageH(l)}mm`, transformOrigin: '0 0', ...turn }}>
-        <LabelArt item={item} l={l} unit={mm => `${mm}mm`} />
-      </div>
+    <div ref={cardRef} className="single-label-card relative" style={{ width: `${totalW(l)}mm`, height: `${l.heightMm}mm` }}>
+      <LabelArt item={item} l={l} unit={mm => `${mm}mm`} />
     </div>
   );
 }
@@ -319,119 +290,9 @@ function Section({ title, children, right }: { title: string; children: React.Re
   );
 }
 
-/* ─── Direct printing through QZ Tray ──────────────────────────────────────────────────────────
- * QZ Tray is a small free app on the PC that lets this page send a label straight to the printer, so there is
- * no print dialog, paper size or rotation to set up. The label is drawn exactly as in the preview, turned into a
- * 1-bit picture at the printer's resolution, and sent as a TSPL or ZPL bitmap command.
- */
-const QZ_SRC = 'https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js';
-const QZ_PREFS_KEY = 'rkm-qz-print-prefs-v3';
-type PrinterLang = 'tspl' | 'zpl';
-type QzRotate = 0 | 90 | 180 | 270;
-type QzMode = 'driver' | 'raw';
-interface QzPrefs { printer: string; mode: QzMode; lang: PrinterLang; rotate: QzRotate; invert: boolean }
-const DEFAULT_QZ_PREFS: QzPrefs = { printer: '', mode: 'driver', lang: 'tspl', rotate: 270, invert: false };
-
-function loadQzPrefs(): QzPrefs {
-  if (typeof window === 'undefined') return DEFAULT_QZ_PREFS;
-  try {
-    const raw = window.localStorage.getItem(QZ_PREFS_KEY);
-    if (!raw) return DEFAULT_QZ_PREFS;
-    const p = JSON.parse(raw);
-    return { printer: String(p.printer || ''), mode: p.mode === 'raw' ? 'raw' : 'driver', lang: p.lang === 'zpl' ? 'zpl' : 'tspl', rotate: ([0, 90, 180, 270] as number[]).includes(Number(p.rotate)) ? (Number(p.rotate) as QzRotate) : 270, invert: !!p.invert };
-  } catch { return DEFAULT_QZ_PREFS; }
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type QzLib = any;
-let qzLoading: Promise<QzLib> | null = null;
-function loadQz(): Promise<QzLib> {
-  const w = window as unknown as { qz?: QzLib };
-  if (w.qz) return Promise.resolve(w.qz);
-  if (!qzLoading) {
-    qzLoading = new Promise((resolve, reject) => {
-      const el = document.createElement('script');
-      el.src = QZ_SRC;
-      el.onload = () => (w.qz ? resolve(w.qz) : reject(new Error('QZ library missing')));
-      el.onerror = () => { qzLoading = null; reject(new Error('Could not load the QZ library (no internet?)')); };
-      document.head.appendChild(el);
-    });
-  }
-  return qzLoading;
-}
-
-const asciiBytes = (t: string) => Uint8Array.from(t, c => c.charCodeAt(0) & 0xff);
-function concatBytes(parts: Uint8Array[]) {
-  const out = new Uint8Array(parts.reduce((n, a) => n + a.length, 0));
-  let o = 0;
-  for (const a of parts) { out.set(a, o); o += a.length; }
-  return out;
-}
-function toBase64(bytes: Uint8Array) {
-  let bin = '';
-  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return btoa(bin);
-}
-
-/** Turns a rendered label node into a 1-bit picture (bit set = black) at the printer's dot grid. */
-async function labelToBits(node: HTMLElement, wMm: number, hMm: number, dpi: number, rotate: QzRotate, padMm = 0) {
-  const ow = Math.round(wMm * dpi / 25.4), oh = Math.round((hMm + padMm) * dpi / 25.4), tagH = Math.round(hMm * dpi / 25.4);
-  const sideways = rotate === 90 || rotate === 270;
-  const w = sideways ? oh : ow, h = sideways ? ow : oh;   // size of the picture sent to the printer
-  const url = await toPng(node, { pixelRatio: dpi / 96, backgroundColor: '#ffffff', cacheBust: true });
-  const img = new Image();
-  img.src = url;
-  await img.decode();
-  const c = document.createElement('canvas');
-  c.width = w; c.height = h;
-  const ctx = c.getContext('2d');
-  if (!ctx) throw new Error('Canvas not available');
-  ctx.imageSmoothingEnabled = false;
-  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
-  if (rotate === 180) { ctx.translate(w, h); ctx.rotate(Math.PI); }
-  else if (rotate === 90) { ctx.translate(w, 0); ctx.rotate(Math.PI / 2); }
-  else if (rotate === 270) { ctx.translate(0, h); ctx.rotate(-Math.PI / 2); }
-  ctx.drawImage(img, 0, 0, ow, tagH);
-  const px = ctx.getImageData(0, 0, w, h).data;
-  const rowBytes = Math.ceil(w / 8);
-  const bits = new Uint8Array(rowBytes * h);
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const i = (y * w + x) * 4;
-    const black = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2] < 160;
-    if (black) bits[y * rowBytes + (x >> 3)] |= 0x80 >> (x & 7);
-    px[i] = px[i + 1] = px[i + 2] = black ? 0 : 255; px[i + 3] = 255;
-  }
-  // the exact 1-bit picture that is sent, also used for the on-screen printout preview and the Windows-driver mode
-  ctx.putImageData(new ImageData(px, w, h), 0, 0);
-  return { w, h, rowBytes, bits, dataUrl: c.toDataURL('image/png') };
-}
-
-function labelCommand(lang: PrinterLang, l: LabelLayout, pic: { w: number; h: number; rowBytes: number; bits: Uint8Array }, invert: boolean, rotate: QzRotate): Uint8Array {
-  const sideways = rotate === 90 || rotate === 270;
-  if (lang === 'zpl') {
-    const data = invert ? pic.bits.map(b => b ^ 0xff) : pic.bits;
-    const hex = Array.from(data, b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
-    const pitch = sideways ? pic.h + Math.round(l.gapMm * l.printerDpi / 25.4) : Math.round(pageH(l) * l.printerDpi / 25.4);
-    return asciiBytes(`^XA^PW${pic.w}^LL${pitch}^LH0,0^FO0,0^GFA,${data.length},${data.length},${pic.rowBytes},${hex}^FS^XZ\r\n`);
-  }
-  // TSPL: in BITMAP data a 1 bit is white, so black pixels are 0
-  const data = invert ? pic.bits : pic.bits.map(b => b ^ 0xff);
-  const head = `SIZE ${sideways ? l.heightMm : totalW(l)} mm,${sideways ? totalW(l) : l.heightMm} mm\r\nGAP ${l.gapMm} mm,0 mm\r\nDIRECTION 0\r\nCLS\r\nBITMAP 0,0,${pic.rowBytes},${pic.h},0,`;
-  return concatBytes([asciiBytes(head), data, asciiBytes('\r\nPRINT 1,1\r\n')]);
-}
-
 export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, onClose }: AssetBarcodeModalProps) {
   const exportRef = useRef<HTMLDivElement | null>(null);
   const [downloading, setDownloading] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [showQz, setShowQz] = useState(false);
-  const [qzStatus, setQzStatus] = useState<'checking' | 'ready' | 'missing'>('checking');
-  const [qzPrinters, setQzPrinters] = useState<string[]>([]);
-  const [qzPrefs, setQzPrefs] = useState<QzPrefs>(loadQzPrefs);
-  const [qzBusy, setQzBusy] = useState(false);
-  const [qzMsg, setQzMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const sourcesRef = useRef<HTMLDivElement | null>(null);
-  const [qzPreview, setQzPreview] = useState<{ url: string; wMm: number; hMm: number } | null>(null);
   // Remembered on this computer. Nothing renders until the modal opens, so reading storage here can't mismatch SSR.
   const [layout, setLayout] = useState<LabelLayout>(loadSavedLayout);
 
@@ -443,110 +304,12 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
     });
   }
 
-  function updateQz(patch: Partial<QzPrefs>) {
-    setQzPrefs(prev => {
-      const next = { ...prev, ...patch };
-      try { window.localStorage.setItem(QZ_PREFS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
-    });
-  }
-
-  async function connectQz() {
-    try {
-      const qz = await loadQz();
-      if (!qz.websocket.isActive()) await qz.websocket.connect({ retries: 1, delay: 1 });
-      const found = (await qz.printers.find()) as string[] | string;
-      const list = Array.isArray(found) ? found : [found];
-      setQzPrinters(list);
-      setQzStatus('ready');
-      setQzPrefs(prev => {
-        if (prev.printer && list.includes(prev.printer)) return prev;
-        const guess = list.find(n => /tvs|lp ?46|tsc|zebra|label|gk|xprinter|argox/i.test(n)) || '';
-        const next = { ...prev, printer: guess };
-        try { window.localStorage.setItem(QZ_PREFS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-        return next;
-      });
-    } catch {
-      setQzStatus('missing');
-    }
-  }
-
-  useEffect(() => { if (open) void Promise.resolve().then(connectQz); }, [open]);
-
-  /** Picture that will be sent for one item, as the printer will get it (rotation + gap included). */
-  async function renderPicture(item: InventoryItem) {
-    const node = sourcesRef.current?.querySelector<HTMLElement>(`[data-qz-id="${CSS.escape(item._id)}"] .single-label-card`);
-    if (!node) throw new Error('Label is not ready yet, try again');
-    // Windows-driver mode prints whole pages, so the gap between tags is part of the page; printer-command mode has its own GAP setting.
-    return labelToBits(node, totalW(layout), layout.heightMm, layout.printerDpi, qzPrefs.rotate, qzPrefs.mode === 'driver' ? layout.gapMm : 0);
-  }
-
-  // Live "what will actually print" preview: the same picture that is sent, so rotation changes show up here.
-  useEffect(() => {
-    if (!open || !showQz) return;
-    const item = mode === 'single' ? singleItem : bulkItems[0];
-    if (!item) return;
-    let dead = false;
-    const timer = setTimeout(async () => {
-      try {
-        const pic = await renderPicture(item);
-        if (!dead) setQzPreview({ url: pic.dataUrl, wMm: (pic.w * 25.4) / layout.printerDpi, hMm: (pic.h * 25.4) / layout.printerDpi });
-      } catch { if (!dead) setQzPreview(null); }
-    }, 250);
-    return () => { dead = true; clearTimeout(timer); };
-  }, [open, showQz, layout, qzPrefs.rotate, qzPrefs.mode, mode, singleItem, bulkItems]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  /** Sends the given items straight to the printer, one label each. Throws on any problem. */
-  async function sendToPrinter(items: InventoryItem[]) {
-    const qz = await loadQz();
-    if (!qz.websocket.isActive()) await qz.websocket.connect({ retries: 1, delay: 1 });
-    const pics = [];
-    for (const item of items) pics.push(await renderPicture(item));
-    if (qzPrefs.mode === 'raw') {
-      const parts = pics.map(pic => labelCommand(qzPrefs.lang, layout, pic, qzPrefs.invert, qzPrefs.rotate));
-      await qz.print(qz.configs.create(qzPrefs.printer), [{ type: 'raw', format: 'command', flavor: 'base64', data: toBase64(concatBytes(parts)) }]);
-      return;
-    }
-    // Windows-driver mode: send each label as an image on a page of exactly its size, so no paper size has to be set up in Windows.
-    const wMm = Math.round((pics[0].w * 25.4) / layout.printerDpi * 100) / 100;
-    const hMm = Math.round((pics[0].h * 25.4) / layout.printerDpi * 100) / 100;
-    const cfg = qz.configs.create(qzPrefs.printer, {
-      size: { width: wMm, height: hMm }, units: 'mm', margins: 0, scaleContent: false,
-      density: layout.printerDpi, colorType: 'blackwhite', interpolation: 'nearest-neighbor', copies: 1,
-    });
-    await qz.print(cfg, pics.map(pic => ({ type: 'pixel', format: 'image', flavor: 'base64', data: pic.dataUrl.split(',')[1] })));
-  }
-
-  async function handlePrint(testOnly = false) {
-    const items = testOnly ? (previewItem ? [previewItem] : []) : mode === 'single' ? (singleItem ? [singleItem] : []) : bulkItems;
-    if (!items.length) return;
-    if (qzStatus !== 'ready' || !qzPrefs.printer) {
-      if (testOnly) { setQzMsg({ ok: false, text: 'Connect QZ Tray and choose the printer first.' }); return; }
-      window.print();
-      return;
-    }
-    setQzBusy(true); setQzMsg(null);
-    try {
-      await sendToPrinter(items);
-      setQzMsg({ ok: true, text: `Sent ${items.length} label${items.length !== 1 ? 's' : ''} to ${qzPrefs.printer}.` });
-    } catch (e) {
-      const text = e instanceof Error ? e.message : 'Printing failed';
-      setQzMsg({ ok: false, text: `Direct print failed (${text}).` });
-      if (!testOnly) window.print(); // fall back to the normal browser print so work is never blocked
-    } finally {
-      setQzBusy(false);
-    }
-  }
-
   if (!open) return null;
 
   const previewItem = mode === 'single' ? singleItem : bulkItems[0] ?? null;
   const canPrint = mode === 'single' ? !!singleItem : bulkItems.length > 0;
-  const W = totalW(layout), H = layout.heightMm, PG = pageDims(layout);
+  const W = totalW(layout), H = layout.heightMm;
   const A = areas(layout);
-  // Compared by value, not by JSON text, because key order differs between DEFAULT_LAYOUT and normalize()'s output
-  const isStandard = (Object.keys(DEFAULT_LAYOUT) as (keyof LabelLayout)[]).every(k =>
-    k === 'guides' || JSON.stringify(layout[k]) === JSON.stringify(DEFAULT_LAYOUT[k]));
   const scale = Math.min(9, Math.max(3, 640 / W));          // preview pixels per mm
   const pct = (n: number) => (A.total > 0 ? Math.round((n / A.total) * 1000) / 10 : 0);
 
@@ -596,7 +359,7 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
     <>
       <style jsx global>{`
         @media print {
-          @page { size: ${PG.w}mm ${PG.h}mm; margin: 0; }
+          @page { size: ${W}mm ${H}mm; margin: 0; }
           html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
           /* The print sheet is portaled to be a direct child of <body> (see below) so every OTHER direct child
              can simply be display:none. Visibility/height tricks were tried first and both failed for real
@@ -612,7 +375,7 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
             print-color-adjust: exact !important;
           }
           .single-label-card {
-            width: ${PG.w}mm !important; height: ${PG.h}mm !important; position: relative !important;
+            width: ${W}mm !important; height: ${H}mm !important; position: relative !important;
             overflow: hidden !important; margin: 0 !important; padding: 0 !important; border: none !important;
             break-after: page; page-break-after: always; break-inside: avoid; page-break-inside: avoid;
           }
@@ -703,140 +466,6 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
               Drag the blue handles to resize a partition. <span className="text-red-400">Red dashed</span> = fold · <span className="text-blue-500">blue dashed</span> = printable area · hatched red = unprintable edge. Guides are not printed.
             </p>
 
-            {/* ─── Print help: collapsed, the daily flow is just the Print button ──────────────── */}
-            <div className="w-full mt-4 flex flex-wrap items-center justify-between gap-2">
-              <div className="text-[11px] font-bold space-y-0.5">
-                <p className={isStandard ? 'text-emerald-600' : 'text-amber-600'}>
-                  {isStandard ? 'Standard label settings ✓' : 'Custom settings in use'}
-                </p>
-                <p className={qzStatus === 'ready' && qzPrefs.printer ? 'text-emerald-600' : qzStatus === 'checking' ? 'text-slate-400' : 'text-amber-600'}>
-                  {qzStatus === 'checking' ? 'Checking direct printing…'
-                    : qzStatus === 'ready' && qzPrefs.printer ? `Direct printing ✓ ${qzPrefs.printer}`
-                    : qzStatus === 'ready' ? 'Direct printing: choose a printer'
-                    : 'Direct printing not set up (uses normal print dialog)'}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {!isStandard && (
-                  <button type="button" onClick={() => update(DEFAULT_LAYOUT)}
-                    className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-[10px] font-bold uppercase tracking-widest hover:bg-blue-700">Use standard settings</button>
-                )}
-                {layout.rotate !== 0 && (
-                  <button type="button" onClick={() => update({ rotate: layout.rotate === 270 ? 90 : 270 })}
-                    className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-widest hover:bg-slate-200"
-                    title="Only if a label comes out upside down">Flip 180°</button>
-                )}
-                <button type="button" onClick={() => setShowQz(v => !v)}
-                  className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-[10px] font-bold uppercase tracking-widest hover:bg-blue-100">
-                  {showQz ? 'Hide guide' : 'Direct printing guide'}
-                </button>
-                <button type="button" onClick={() => setShowAdvanced(v => !v)}
-                  className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-widest hover:bg-slate-200">
-                  {showAdvanced ? 'Hide setup & advanced' : 'Printer setup & advanced'}
-                </button>
-              </div>
-            </div>
-
-            {showQz && (
-              <Section title="Direct printing (QZ Tray) — setup guide" right={
-                <button type="button" onClick={() => { setQzStatus('checking'); void connectQz(); }}
-                  className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-widest hover:bg-slate-200">Check again</button>
-              }>
-                <p className="text-[11px] font-bold text-slate-500 leading-snug mb-3">
-                  Set up once on this computer. After that, Print sends the label straight to the printer: no print dialog, no paper size, no rotation.
-                </p>
-                <ol className="text-[11px] font-bold text-slate-600 leading-relaxed list-decimal pl-5 space-y-2">
-                  <li>
-                    <span className="text-slate-900">Install the label printer</span> in Windows with its driver, and print a Windows test page to be sure it works.
-                  </li>
-                  <li>
-                    <span className="text-slate-900">Install QZ Tray</span> (free) from <a href="https://qz.io/download/" target="_blank" rel="noreferrer" className="text-blue-600 underline">qz.io/download</a> and leave it running (a small QZ icon sits near the clock). Tick &quot;start with Windows&quot;.
-                  </li>
-                  <li>
-                    <span className="text-slate-900">Click &quot;Check again&quot; above.</span> QZ Tray will ask to allow this website: tick <span className="text-slate-900">&quot;Remember this decision&quot;</span> and press Allow.
-                    {' '}Status: <span className={qzStatus === 'ready' ? 'text-emerald-600' : qzStatus === 'checking' ? 'text-slate-400' : 'text-amber-600'}>
-                      {qzStatus === 'ready' ? 'connected ✓' : qzStatus === 'checking' ? 'checking…' : 'not connected'}
-                    </span>
-                    {qzStatus === 'missing' && (
-                      <span className="block mt-1 font-normal text-amber-700">
-                        Not connecting although QZ Tray is running? Chrome is probably blocking it: click the icon at the left of the address bar → <span className="font-bold">Site settings</span> → set <span className="font-bold">&quot;Local network access&quot;</span> (or &quot;Apps on device&quot;) to <span className="font-bold">Allow</span>, reload the page, then click &quot;Check again&quot;. Also check the QZ icon is near the clock.
-                      </span>
-                    )}
-                  </li>
-                  <li>
-                    <span className="text-slate-900">Choose the label printer</span> and what it understands, then press Test print.
-                    <div className="mt-2 flex flex-wrap items-center gap-2 font-normal">
-                      <select value={qzPrefs.printer} onChange={e => updateQz({ printer: e.target.value })} disabled={qzStatus !== 'ready'}
-                        className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 max-w-[16rem]">
-                        <option value="">— choose printer —</option>
-                        {qzPrinters.map(n => <option key={n} value={n}>{n}</option>)}
-                      </select>
-                      <select value={qzPrefs.mode} onChange={e => updateQz({ mode: e.target.value as QzMode })}
-                        className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700" title="How the label is sent to the printer">
-                        <option value="driver">Send as picture via Windows driver (try first)</option>
-                        <option value="raw">Send printer commands (TSPL / ZPL)</option>
-                      </select>
-                      {qzPrefs.mode === 'raw' && (
-                      <select value={qzPrefs.lang} onChange={e => updateQz({ lang: e.target.value as PrinterLang })}
-                        className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700" title="Printer language. TSPL for TVS / TSC, ZPL for Zebra.">
-                        <option value="tspl">TSPL (TVS, TSC, most label printers)</option>
-                        <option value="zpl">ZPL (Zebra)</option>
-                      </select>
-                      )}
-                      <button type="button" onClick={() => void handlePrint(true)} disabled={qzBusy || qzStatus !== 'ready' || !qzPrefs.printer}
-                        className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-[10px] font-bold uppercase tracking-widest hover:bg-blue-700 disabled:opacity-40">
-                        {qzBusy ? 'Printing…' : 'Test print'}
-                      </button>
-                    </div>
-                    {qzMsg && <p className={`mt-2 text-[11px] font-bold ${qzMsg.ok ? 'text-emerald-600' : 'text-red-600'}`}>{qzMsg.text}</p>}
-                  </li>
-                  <li>
-                    <span className="text-slate-900">Check the test label.</span> Printed sideways, or spread over several labels? Try a different Rotate option below. Printed as a black block? Tick Invert.
-                    <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2 font-normal">
-                      <label className="flex items-center gap-2 text-[11px] font-bold text-slate-600">
-                        Rotate
-                        <select value={qzPrefs.rotate} onChange={e => updateQz({ rotate: Number(e.target.value) as QzRotate })}
-                          className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700">
-                          <option value={270}>270° (try first)</option>
-                          <option value={90}>90°</option>
-                          <option value={0}>0°</option>
-                          <option value={180}>180°</option>
-                        </select>
-                      </label>
-                      <label className="flex items-center gap-2 text-[11px] font-bold text-slate-600 cursor-pointer select-none">
-                        <input type="checkbox" className="accent-blue-600" checked={qzPrefs.invert} onChange={e => updateQz({ invert: e.target.checked })} /> Invert black / white
-                      </label>
-                    </div>
-                    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 font-normal">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">
-                        What will be sent to the printer{qzPreview ? ` — ${qzPreview.wMm.toFixed(1)} × ${qzPreview.hMm.toFixed(1)} mm page` : ''}
-                      </p>
-                      {qzPreview
-                        // eslint-disable-next-line @next/next/no-img-element
-                        ? <img src={qzPreview.url} alt="Printout preview" className="border border-slate-300 bg-white" style={{ maxWidth: '100%', maxHeight: 260, imageRendering: 'pixelated', filter: qzPrefs.mode === 'raw' && qzPrefs.invert ? 'invert(1)' : undefined }} />
-                        : <p className="text-[11px] font-bold text-slate-400">Preview appears here.</p>}
-                      <p className="mt-2 text-[10px] font-bold text-slate-400">This picture turns when you change Rotate. A tag lying flat (long side across) means the page is sent unturned; a tall strip means the page is turned for the printer.</p>
-                    </div>
-                  </li>
-                  <li><span className="text-slate-900">Done.</span> From now on just press Print. Settings are remembered on this computer.</li>
-                </ol>
-                <p className="mt-3 text-[10px] font-bold text-slate-400 leading-snug">
-                  Nothing prints? Check the QZ icon is near the clock and the printer is on with labels loaded. If QZ Tray isn&apos;t running, Print falls back to the normal browser print dialog.
-                  Labels drifting up or down? Adjust &quot;Gap between tags&quot; under Advanced settings, in 0.1 mm steps.
-                </p>
-              </Section>
-            )}
-
-            {showAdvanced && (
-              <>
-                <Section title="One-time printer setup (technician)">
-                  <ol className="text-[11px] font-bold text-slate-600 leading-relaxed list-decimal pl-5 space-y-1">
-                    <li>Windows → Printers → the label printer → <span className="text-slate-900">Printing Preferences</span>: add a custom paper size <span className="text-slate-900">{PG.w} × {PG.h} mm</span>, margins 0, and make it the <span className="text-slate-900">default</span>.</li>
-                    <li>Make this printer the Windows <span className="text-slate-900">default printer</span>.</li>
-                    <li>Start Chrome with <span className="text-slate-900">--kiosk-printing</span> (add it to the end of the Chrome shortcut&apos;s Target). The Print button then prints straight away, with no dialog.</li>
-                    <li>Print one label to check. If it is upside down, press Flip 180° once. The setting is remembered on this computer.</li>
-                  </ol>
-                </Section>
             {/* ─── Total vs printable area ───────────────────────────────────────────────────── */}
             <Section title="Total vs printable area" right={<p className="text-[11px] font-black text-slate-900">Tag {W} × {H} mm</p>}>
               <div className="flex h-4 w-full rounded-full overflow-hidden border border-slate-200 bg-slate-100">
@@ -877,7 +506,6 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
               <Field label="Unprintable edge — left / right" value={layout.edgeXMm} range={RANGE.edgeXMm} onChange={v => update({ edgeXMm: v })} hint="The strip at the left and right edges that the printer can't reach, or that you want to keep empty." />
               <Field label="Unprintable edge — top / bottom" value={layout.edgeYMm} range={RANGE.edgeYMm} onChange={v => update({ edgeYMm: v })} />
               <Field label="Clearance beside each fold" value={layout.creaseMm} range={RANGE.creaseMm} onChange={v => update({ creaseMm: v })} hint="Keeps the details text away from the crease." />
-              <Field label="Gap between tags on the roll" value={layout.gapMm} range={RANGE.gapMm} onChange={v => update({ gapMm: v })} hint="Distance from the bottom of one tag to the top of the next. Page length = tag height + this gap, so each print advances exactly one tag." />
             </Section>
 
             {/* ─── Code ───────────────────────────────────────────────────────────────────── */}
@@ -954,19 +582,6 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
               </div>
             </Section>
 
-            <Section title="Print direction">
-              <div className="flex flex-wrap items-center gap-3">
-                <label className="text-[11px] font-bold text-slate-600">Rotate printout</label>
-                <select value={layout.rotate} onChange={e => update({ rotate: Number(e.target.value) as 0 | 90 | 270 })}
-                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700">
-                  <option value={90}>90° clockwise (page {PG.w}×{PG.h} mm)</option>
-                  <option value={270}>90° counter-clockwise</option>
-                  <option value={0}>None (landscape page)</option>
-                </select>
-                <p className="text-[10px] font-bold text-slate-400 leading-snug">Use this if the label prints sideways. Set the printer paper size to the page size shown, and if it comes out upside down, switch between the two 90° options.</p>
-              </div>
-            </Section>
-
             <Section title="Options" right={
               <button type="button" onClick={() => update(DEFAULT_LAYOUT)}
                 className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-widest hover:bg-slate-200">Reset all</button>
@@ -983,9 +598,6 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
               </div>
             </Section>
 
-              </>
-            )}
-
             {mode === 'bulk' ? (
               <p className="mt-6 text-[11px] font-bold text-slate-500 text-center">
                 Previewing <span className="font-black text-slate-900">{previewItem.barcode}</span> — printing will produce one label per selected item ({bulkItems.length} total). Download only saves the item shown above.
@@ -994,14 +606,18 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
               <p className="mt-6 text-2xl font-black text-slate-900 tracking-widest uppercase">{previewItem.barcode}</p>
             )}
 
+            <p className="mt-6 text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-center leading-relaxed">
+              First time printing on this printer? Click <span className="font-black">&quot;Print using system dialog…&quot;</span> in the print window (not Chrome&apos;s quick print), then under Paper Size choose <span className="font-black">Manage Custom Sizes…</span> and add an exact {W}mm × {H}mm size for this printer, with all margins 0. Print at 100% scale. Without that, the printer driver may use its own default page length and print one label&apos;s content across several physical labels. If you change any size above, set the same paper size again.
+            </p>
+
             <div className="w-full mt-3 flex flex-wrap gap-3">
               <button
-                onClick={() => void handlePrint()}
-                disabled={!canPrint || qzBusy}
+                onClick={() => window.print()}
+                disabled={!canPrint}
                 className="flex-1 min-w-[140px] py-4 rounded-2xl bg-blue-600 text-white text-[11px] font-bold uppercase tracking-widest shadow-xl hover:bg-blue-700 transition-all active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z" /></svg>
-                {qzBusy ? 'Printing…' : mode === 'bulk' ? `Print ${bulkItems.length} Label${bulkItems.length !== 1 ? 's' : ''}` : 'Print Piece Label'}
+                {mode === 'bulk' ? `Print ${bulkItems.length} Label${bulkItems.length !== 1 ? 's' : ''}` : 'Print Piece Label'}
               </button>
               <button
                 onClick={handleDownloadPng}
@@ -1028,24 +644,13 @@ export default function AssetBarcodeModal({ open, mode, singleItem, bulkItems, o
       {createPortal(
         <div className="print-labels-sheet" style={{ position: 'fixed', left: -99999, top: 0 }} aria-hidden="true">
           {mode === 'single' && singleItem ? (
-            <LabelCard item={singleItem} l={layout} feed />
+            <LabelCard item={singleItem} l={layout} />
           ) : (
-            bulkItems.map(item => <LabelCard key={item._id} item={item} l={layout} feed />)
+            bulkItems.map(item => <LabelCard key={item._id} item={item} l={layout} />)
           )}
         </div>,
         document.body
       )}
-
-      {/* Off-screen clean copies of every label to print, rasterised for direct printing. Not display:none,
-          since html-to-image needs real layout. */}
-      <div ref={sourcesRef} style={{ position: 'fixed', left: -99999, top: 0, pointerEvents: 'none' }} aria-hidden="true">
-        {(mode === 'single' ? (singleItem ? [singleItem] : []) : bulkItems).map(item => (
-          <div key={item._id} data-qz-id={item._id}><LabelCard item={item} l={layout} /></div>
-        ))}
-        {previewItem && !(mode === 'single' ? [singleItem] : bulkItems).some(i => i?._id === previewItem._id) && (
-          <div data-qz-id={previewItem._id}><LabelCard item={previewItem} l={layout} /></div>
-        )}
-      </div>
 
       {/* Off-screen clean copy of the previewed label for PNG export — kept in normal layout flow (shifted off
           the visible page, not display:none) since html-to-image needs the node to actually be laid out. */}
