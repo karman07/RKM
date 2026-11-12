@@ -15,6 +15,8 @@ export default function AuthDialog() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [otp, setOtp] = useState('');
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
+  // 'sms' = Firebase phone auth failed (or the user asked for it), so the OTP was sent by Airtel SMS instead
+  const [otpMode, setOtpMode] = useState<'firebase' | 'sms'>('firebase');
   
   const [firebaseToken, setFirebaseToken] = useState('');
   const [firebaseEmail, setFirebaseEmail] = useState('');
@@ -50,6 +52,7 @@ export default function AuthDialog() {
   useEffect(() => {
     if (isOpen) {
       setStep('phone');
+      setOtpMode('firebase');
       setPhoneNumber('');
       setOtp('');
       setError('');
@@ -194,6 +197,31 @@ export default function AuthDialog() {
     return raw.replace(/Firebase: /gi, '').split('(')[0].trim() || 'Failed to send OTP. Please try again.';
   };
 
+  const fullPhone = () =>
+    phoneNumber.startsWith('+') ? phoneNumber : `${selectedDialCode.dial_code}${phoneNumber}`;
+
+  /** Fallback: text the OTP through the backend (Airtel IQ SMS). Indian numbers only. Returns true if sent. */
+  const sendSmsOtp = async (): Promise<boolean> => {
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/customers/auth/sms-otp/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: fullPhone() }),
+      });
+      if (res.ok) {
+        setOtpMode('sms');
+        setOtp('');
+        setStep('otp');
+        return true;
+      }
+      const data = await res.json().catch(() => ({}));
+      setError(data.message || 'Could not send the SMS OTP. Please try again.');
+    } catch {
+      setError('Could not send the SMS OTP. Please check your connection and try again.');
+    }
+    return false;
+  };
+
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSendingOtp.current) return;
@@ -225,6 +253,7 @@ export default function AuthDialog() {
 
       const result = await signInWithPhoneNumber(auth, formattedPhone, verifier);
       setConfirmationResult(result);
+      setOtpMode('firebase');
       setStep('otp');
     } catch (err: any) {
       // Do NOT wipe innerHTML here — the reCAPTCHA widget may still have live
@@ -232,7 +261,9 @@ export default function AuthDialog() {
       // "Cannot read properties of null (reading 'style')". Only destroy the
       // verifier reference; the container is cleaned on the next Send OTP click.
       destroyRecaptcha();
-      setError(friendlyFirebaseError(err));
+      // Firebase couldn't send the OTP — fall back to SMS (Indian numbers) before showing an error.
+      if (selectedDialCode.dial_code === '+91' && (await sendSmsOtp())) return;
+      setError((prev) => prev || friendlyFirebaseError(err));
     } finally {
       isSendingOtp.current = false;
       setLoading(false);
@@ -241,17 +272,29 @@ export default function AuthDialog() {
 
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!confirmationResult) return;
+    if (otpMode === 'firebase' && !confirmationResult) return;
     setError('');
     setLoading(true);
     try {
-      const result = await confirmationResult.confirm(otp);
+      if (otpMode === 'sms') {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/customers/auth/sms-otp/verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: fullPhone(), code: otp.trim() }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.token) throw new Error(data.message || 'Invalid OTP');
+        setFirebaseToken(data.token);
+        await verifyBackend(data.token);
+        return;
+      }
+      const result = await confirmationResult!.confirm(otp);
       const token = await result.user.getIdToken();
       setFirebaseToken(token);
       setFirebaseEmail(result.user.email || '');
       await verifyBackend(token);
     } catch (err: any) {
-      setError('Invalid OTP or Verification Failed');
+      setError(otpMode === 'sms' ? (err?.message || 'Invalid OTP or Verification Failed') : 'Invalid OTP or Verification Failed');
     } finally {
       setLoading(false);
     }
@@ -285,16 +328,23 @@ export default function AuthDialog() {
     setError('');
     setLoading(true);
     try {
-      if (!auth.currentUser) throw new Error("No authenticated session found");
+      let token: string;
+      if (otpMode === 'sms') {
+        // Phone was verified by SMS OTP — the signed token from /sms-otp/verify stands in for a Firebase ID token.
+        if (!firebaseToken) throw new Error("No authenticated session found");
+        token = firebaseToken;
+      } else {
+        if (!auth.currentUser) throw new Error("No authenticated session found");
 
-      // Optional: attempt to update email on firebase user 
-      try {
-        await updateEmail(auth.currentUser, email);
-      } catch (f) {
-        console.log("Firebase email sync skipped", f);
+        // Optional: attempt to update email on firebase user 
+        try {
+          await updateEmail(auth.currentUser, email);
+        } catch (f) {
+          console.log("Firebase email sync skipped", f);
+        }
+
+        token = await auth.currentUser.getIdToken(true);
       }
-
-      const token = await auth.currentUser.getIdToken(true); 
 
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/customers/auth/register`, {
         method: 'POST',
@@ -455,7 +505,7 @@ export default function AuthDialog() {
           {step === 'otp' && (
             <form onSubmit={handleVerifyOtp} className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="space-y-2 text-center mb-4">
-                <p className="text-sm font-bold text-slate-700">We sent a code to <span className="text-[#7A1238]">{phoneNumber}</span></p>
+                <p className="text-sm font-bold text-slate-700">We sent {otpMode === 'sms' ? 'an SMS' : 'a code'} to <span className="text-[#7A1238]">{phoneNumber}</span></p>
                 <div onClick={() => setStep('phone')} className="text-[11px] font-bold uppercase tracking-widest text-blue-600 cursor-pointer hover:underline">Change Number</div>
               </div>
               <div className="space-y-2">
@@ -472,6 +522,16 @@ export default function AuthDialog() {
               <button disabled={loading} className="w-full py-4 bg-[#7A1238] text-white text-[11px] font-bold uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-[#5C0828]/20 hover:bg-[#3A0418] hover:-translate-y-0.5 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50">
                 {loading ? 'Verifying...' : 'Verify Identity'} <CheckCircle2 size={14} />
               </button>
+              {selectedDialCode.dial_code === '+91' && (
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={async () => { setError(''); setLoading(true); await sendSmsOtp(); setLoading(false); }}
+                  className="w-full text-center text-[11px] font-bold uppercase tracking-widest text-blue-600 hover:underline disabled:opacity-50"
+                >
+                  {otpMode === 'sms' ? 'Resend SMS' : "Didn't get the code? Send via SMS"}
+                </button>
+              )}
             </form>
           )}
 
