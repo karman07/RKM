@@ -42,6 +42,8 @@ import { SettingsModule } from '../settings/settings.module';
         redis: {
           host: configService.get<string>('REDIS_HOST') ?? 'localhost',
           port: parseInt(configService.get<string>('REDIS_PORT') ?? '6379', 10),
+          // The App-Review demo instance uses its own Redis DB so it can never consume the real queue's jobs.
+          db: parseInt(configService.get<string>('REDIS_DB') ?? '0', 10),
         },
         defaultJobOptions: {
           attempts: parseInt(configService.get<string>('WHATSAPP_SINGLE_JOB_RETRIES') ?? '3', 10),

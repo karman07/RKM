@@ -149,7 +149,8 @@ export class AuthService {
       throw new ForbiddenException('This account does not have system access. Please contact your manager.');
     }
 
-    if (user.role !== 'admin' && user.role !== 'custom' && user.role !== 'sales') {
+    // DEMO_MODE (the isolated App-Review instance only) lets reviewers sign in from anywhere.
+    if (process.env.DEMO_MODE !== 'true' && user.role !== 'admin' && user.role !== 'custom' && user.role !== 'sales') {
       await this.checkGeofence(user, loginDto.latitude, loginDto.longitude);
     }
 
@@ -388,6 +389,8 @@ export class AuthService {
 
   private issueToken(user: any, customRole?: any, expiresInHours?: number) {
     const payload: Record<string, any> = { email: user.email, sub: user._id, role: user.role };
+    // Marks tokens from the demo instance so the production backend knows to route them there.
+    if (process.env.DEMO_MODE === 'true') payload.demo = true;
     if (customRole) payload.permissions = customRole.sidebar_permissions ?? [];
     const signOptions = expiresInHours ? { expiresIn: expiresInHours * 3600 } : undefined;
     return {

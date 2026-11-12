@@ -5,6 +5,7 @@ import { join } from 'path';
 import { mkdirSync, existsSync } from 'fs';
 import { AppModule } from './app.module';
 import { UsersService } from './users/users.service';
+import { demoRouter } from './demo-router';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -16,6 +17,9 @@ async function bootstrap() {
     allowedHeaders: '*',
     credentials: true,
   });
+
+  // App-Review demo: route demo logins/tokens to the isolated demo instance (no-op unless DEMO_UPSTREAM is set).
+  if (process.env.DEMO_UPSTREAM) app.use(demoRouter(process.env.DEMO_UPSTREAM, process.env.DEMO_EMAILS ?? ''));
 
   // Enable validation globally
   app.useGlobalPipes(
