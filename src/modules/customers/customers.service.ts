@@ -4,6 +4,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import * as admin from 'firebase-admin';
 import { JwtService } from '@nestjs/jwt';
+import { SmsOtpService } from './sms-otp.service';
 import { Customer, CustomerDocument, CustomerProfileFields, CUSTOMER_SOURCES } from './schemas/customer.schema';
 import { User, UserDocument, UserRole } from '../../users/schemas/user.schema';
 import { RegisterCustomerDto, LoginCustomerDto } from './dto/register-customer.dto';
@@ -69,12 +70,16 @@ export class CustomersService {
     @InjectModel(OnlineOrder.name) private onlineOrderModel: Model<OnlineOrderDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     private jwtService: JwtService,
+    private smsOtpService: SmsOtpService,
   ) {}
 
   private async verifyFirebaseToken(token: string) {
     if (!token) throw new UnauthorizedException('No token provided');
     // For development/testing when firebase credentials aren't fully set,
     // we could try verifying or bypass if a special test token is provided.
+    // Fallback: a token issued by SMS OTP (Airtel IQ) after Firebase phone auth failed.
+    const smsPhone = this.smsOtpService.readToken(token);
+    if (smsPhone) return { uid: `sms:${smsPhone}`, email: undefined as string | undefined, phone_number: smsPhone };
     if (token === 'TEST_TOKEN_123') {
       return { uid: 'testuid', email: 'test@example.com', phone_number: '+1234567890' };
     }

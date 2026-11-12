@@ -15,6 +15,9 @@ import { OnlineOrder, OnlineOrderSchema } from '../online-orders/schemas/online-
 import { User, UserSchema } from '../../users/schemas/user.schema';
 import { CustomFieldsModule } from '../custom-fields/custom-fields.module';
 import { EmailModule } from '../email/email.module';
+import { SmsModule } from '../sms/sms.module';
+import { SmsOtpService } from './sms-otp.service';
+import { SmsOtp, SmsOtpSchema } from './schemas/sms-otp.schema';
 
 @Module({
   imports: [
@@ -24,6 +27,7 @@ import { EmailModule } from '../email/email.module';
       { name: InventoryItem.name, schema: InventoryItemSchema },
       { name: OnlineOrder.name, schema: OnlineOrderSchema },
       { name: User.name, schema: UserSchema },
+      { name: SmsOtp.name, schema: SmsOtpSchema },
     ]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -36,9 +40,10 @@ import { EmailModule } from '../email/email.module';
     PassportModule.register({ defaultStrategy: 'customer-jwt' }),
     CustomFieldsModule,
     EmailModule,
+    SmsModule,
   ],
   controllers: [CustomersController, CustomersAdminController],
-  providers: [CustomersService, CustomerAdvanceService, CustomerJwtStrategy],
+  providers: [CustomersService, CustomerAdvanceService, CustomerJwtStrategy, SmsOtpService],
   exports: [CustomersService, CustomerAdvanceService],
 })
 export class CustomersModule {}

@@ -3059,8 +3059,7 @@ export class InventoryService {
 
     if (channel === 'sms') {
       if (!phone) throw new BadRequestException('No phone number on record for this sale');
-      const message = `Thank you for shopping with ${companyName}! We hope you love your ${itemName}. We'd love to hear your feedback — your experience means a lot to us.`;
-      await this.smsService.sendSms(phone, message, {
+      await this.smsService.sendTemplate(phone, 'manual_thank_you', [String(itemName)], {
         trigger: 'manual_thank_you',
         saleReference: item.sale_reference,
       });

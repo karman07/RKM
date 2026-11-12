@@ -1,6 +1,7 @@
 import { Controller, Post, Body, Get, Patch, Param, Res, UseGuards, Request, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
 import type { Response } from 'express';
 import { CustomersService } from './customers.service';
+import { SmsOtpService } from './sms-otp.service';
 import { RegisterCustomerDto, LoginCustomerDto } from './dto/register-customer.dto';
 import { CustomerJwtAuthGuard } from './customer-jwt-auth.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -58,8 +59,21 @@ interface CustomerSelfServiceDto {
 export class CustomersController {
   constructor(
     private readonly customersService: CustomersService,
+    private readonly smsOtp: SmsOtpService,
     private readonly customFieldsService: CustomFieldsService,
   ) {}
+
+  /** Fallback when Firebase phone auth fails: text a 6-digit OTP via Airtel IQ SMS. */
+  @Post('sms-otp/request')
+  async requestSmsOtp(@Body() body: { phone: string }) {
+    return this.smsOtp.request(body?.phone);
+  }
+
+  /** Verifies the SMS OTP and returns a token to send as `firebaseToken` to /login or /register. */
+  @Post('sms-otp/verify')
+  async verifySmsOtp(@Body() body: { phone: string; code: string }) {
+    return this.smsOtp.verify(body?.phone, body?.code);
+  }
 
   @Post('login')
   async login(@Body() loginDto: LoginCustomerDto) {

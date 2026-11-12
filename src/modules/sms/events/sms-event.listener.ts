@@ -35,13 +35,9 @@ export class SmsEventListener {
     if (!(await this.shouldSendSms())) return;
     if (!payload.customerPhone) return;
 
-    const cfg = await this.settingsService.get().catch(() => null);
-    const companyName = (cfg as any)?.company_name || 'RKM Jewellers';
-    const message = `Thank you for shopping with ${companyName}! Your purchase${payload.saleReference ? ` (${payload.saleReference})` : ''} is confirmed. We'd love your feedback.`;
-
     this.logger.log(`[SmsListener] Sending purchase confirmation SMS to ${payload.customerPhone}`);
     try {
-      await this.smsService.sendSms(payload.customerPhone, message, {
+      await this.smsService.sendTemplate(payload.customerPhone, 'sale_completed', [payload.saleReference || payload.itemCode || ''], {
         trigger: 'sale_completed',
         saleReference: payload.saleReference,
       });
@@ -55,12 +51,8 @@ export class SmsEventListener {
     if (!(await this.shouldSendSms())) return;
     if (!payload.customerPhone) return;
 
-    const cfg = await this.settingsService.get().catch(() => null);
-    const companyName = (cfg as any)?.company_name || 'RKM Jewellers';
-    const message = `${companyName}: Your return${payload.saleReference ? ` (${payload.saleReference})` : ''} has been acknowledged and is being processed.`;
-
     try {
-      await this.smsService.sendSms(payload.customerPhone, message, {
+      await this.smsService.sendTemplate(payload.customerPhone, 'sale_returned', [payload.saleReference || ''], {
         trigger: 'sale_returned',
         saleReference: payload.saleReference,
       });
