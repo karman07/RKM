@@ -90,6 +90,8 @@ export default function ManagerLogin() {
   const [isAdminBlock, setIsAdminBlock] = useState(false);
 
   const coordsRef = useRef({ latitude: 0, longitude: 0 });
+  // Lets a user past the location prompt (e.g. App Review demo accounts). The server still enforces the branch geofence for real staff.
+  const [skipGps, setSkipGps] = useState(false);
 
   const askGPS = useCallback(async () => {
     setGps({ status: 'requesting' });
@@ -102,6 +104,7 @@ export default function ManagerLogin() {
       setStep('form');
     } catch (e: any) {
       setGps({ status: e.message === 'denied' || e.message === 'no-support' ? 'denied' : 'unavailable' });
+      setStep('form'); // otherwise the page stays on the "Detecting Your Location" spinner forever
     }
   }, []);
 
@@ -197,7 +200,7 @@ export default function ManagerLogin() {
   }
 
   // ── GPS denied ───────────────────────────────────────────────────────────────
-  if (gps.status === 'denied' || gps.status === 'unavailable') {
+  if (!skipGps && (gps.status === 'denied' || gps.status === 'unavailable')) {
     return (
       <PageShell>
         <div className="text-center space-y-6">
@@ -216,6 +219,9 @@ export default function ManagerLogin() {
           </div>
           <button onClick={askGPS} className="w-full h-[52px] bg-[#5A0F1A] hover:bg-[#7A1C2A] text-white rounded-2xl font-black uppercase tracking-widest text-xs transition-all shadow-lg shadow-[#5A0F1A]/25">
             Retry Location Access
+          </button>
+          <button onClick={() => setSkipGps(true)} className="w-full text-center text-[11px] font-bold uppercase tracking-widest text-slate-500 hover:text-slate-800 underline underline-offset-4">
+            Continue to sign in
           </button>
         </div>
       </PageShell>
