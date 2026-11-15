@@ -4,7 +4,7 @@ import { Document } from 'mongoose';
 export type SmsLogDocument = SmsLog & Document;
 
 export type SmsStatus = 'sent' | 'delivered' | 'failed';
-export type SmsTrigger = 'manual_thank_you' | 'sale_completed' | 'sale_returned' | 'otp' | 'manual';
+export type SmsTrigger = 'manual_thank_you' | 'sale_completed' | 'sale_returned' | 'payment_received' | 'otp' | 'manual';
 
 @Schema({ timestamps: true, collection: 'sms_logs' })
 export class SmsLog {
@@ -36,7 +36,7 @@ export class SmsLog {
   @Prop({ type: Date })
   delivered_at?: Date;
 
-  @Prop({ type: String, enum: ['manual_thank_you', 'sale_completed', 'sale_returned', 'otp', 'manual'], default: 'manual' })
+  @Prop({ type: String, enum: ['manual_thank_you', 'sale_completed', 'sale_returned', 'payment_received', 'otp', 'manual'], default: 'manual' })
   trigger: SmsTrigger;
 
   @Prop({ type: String })

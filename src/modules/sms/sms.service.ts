@@ -5,7 +5,7 @@ import { Model } from 'mongoose';
 import axios from 'axios';
 import { SmsLog, SmsLogDocument, SmsStatus, SmsTrigger } from './schemas/sms-log.schema';
 import { SmsCallbackEvent, SmsCallbackEventDocument } from './schemas/sms-callback-event.schema';
-import { renderSmsTemplate, SMS_TEMPLATES, SmsTemplateKey } from './templates/sms-templates.registry';
+import { renderSmsTemplate, resolveDltTemplateId, SMS_TEMPLATES, SmsTemplateKey } from './templates/sms-templates.registry';
 
 const SEND_PATH = '/api/v1/send-sms';
 
@@ -51,8 +51,9 @@ export class SmsService {
       content: t.content,
       messageType: t.messageType,
       envKey: t.envKey,
-      dltTemplateId: this.env(t.envKey) || null,
-      ready: !!this.env(t.envKey),
+      header: t.header || this.sourceAddress,
+      dltTemplateId: resolveDltTemplateId(t, this.env(t.envKey)) || null,
+      ready: !!resolveDltTemplateId(t, this.env(t.envKey)),
     }));
   }
 
@@ -77,7 +78,7 @@ export class SmsService {
     const loggedMessage = def.otp ? renderSmsTemplate(def, ['******']) : message; // never store a live OTP
     const base = { phone: mobile, message: loggedMessage, trigger, sale_reference: meta?.saleReference, template: templateKey };
 
-    const dltTemplateId = this.env(def.envKey);
+    const dltTemplateId = resolveDltTemplateId(def, this.env(def.envKey));
     if (!dltTemplateId) {
       const error = `SMS template '${templateKey}' has no DLT template ID — register it on DLT and set ${def.envKey}`;
       this.logger.warn(error);
@@ -99,7 +100,7 @@ export class SmsService {
           customerId: this.customerId,
           destinationAddress: to,
           message,
-          sourceAddress: this.sourceAddress,
+          sourceAddress: def.header || this.sourceAddress,
           messageType: def.messageType,
           dltTemplateId,
           entityId: this.entityId,
