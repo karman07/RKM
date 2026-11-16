@@ -681,3 +681,9 @@ export const submitSaleRequestBatch = (
   method: 'POST',
   body: JSON.stringify({ items, requestData }),
 });
+
+export const changeOwnPassword = (currentPassword: string, newPassword: string) =>
+  request<{ success: boolean }>('/users/me/password', {
+    method: 'PATCH',
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });

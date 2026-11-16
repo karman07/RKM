@@ -3,6 +3,8 @@ import { useEffect, useState, Suspense } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { getProfile, UserProfile, staticUrl } from '../lib/api';
 import SessionExpiredDialog from './SessionExpiredDialog';
+import BrandMark from '@/lib/BrandMark';
+import { BRAND_SHORT } from '@/lib/brand';
 
 const NAV_ITEMS = [
   {
@@ -115,10 +117,10 @@ export function SidebarInner({ children }: SidebarProps) {
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 py-5 border-b border-white/10">
         <div className="w-10 h-10 rounded-xl bg-white/15 flex-shrink-0 flex items-center justify-center overflow-hidden">
-          <img src="/rkm-logo.png" alt="RKM" className="w-full h-full object-contain scale-150 brightness-150" />
+          <BrandMark className="w-full h-full object-contain scale-150 brightness-150" />
         </div>
         <div className="min-w-0">
-          <p className="text-sm font-black leading-none">RKM Cashier</p>
+          <p className="text-sm font-black leading-none">{BRAND_SHORT} Cashier</p>
           <p className="text-[10px] text-white/50 font-bold uppercase tracking-widest mt-0.5 truncate">
             {user?.branch?.name ?? '—'}
           </p>
@@ -238,7 +240,7 @@ export function SidebarInner({ children }: SidebarProps) {
             </svg>
           </button>
           <div className="w-8 h-8 rounded-lg bg-[#5A0F1A] flex items-center justify-center overflow-hidden">
-            <img src="/rkm-logo.png" alt="RKM" className="w-full h-full object-contain scale-150 brightness-150" />
+            <BrandMark className="w-full h-full object-contain scale-150 brightness-150" />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-black text-slate-900 truncate">{activeNav?.label ?? 'Dashboard'}</p>

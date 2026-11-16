@@ -6,6 +6,7 @@ import {
   getProfile, checkSessionExpiry,
   type UserProfile,
 } from '../../lib/api';
+import BrandMark from '@/lib/BrandMark';
 
 const MODULES = [
   {
@@ -116,7 +117,7 @@ export default function CashierDashboard() {
     <div className="min-h-screen bg-[#F8F8F8] flex items-center justify-center">
       <div className="flex flex-col items-center gap-4">
         <div className="w-14 h-14 rounded-2xl bg-[#5A0F1A] flex items-center justify-center overflow-hidden shadow-2xl">
-          <img src="/rkm-logo.png" alt="RKM" className="w-full h-full object-contain scale-150 brightness-150" />
+          <BrandMark className="w-full h-full object-contain scale-150 brightness-150" />
         </div>
         <div className="w-10 h-10 border-4 border-[#5A0F1A]/20 border-t-[#5A0F1A] rounded-full animate-spin" />
       </div>

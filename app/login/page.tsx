@@ -2,6 +2,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { API_BASE } from '../../lib/api';
+import { BRAND_DOMAIN, BRAND_NAME } from '@/lib/brand';
+import BrandMark from '@/lib/BrandMark';
 
 type GpsState =
   | { status: 'requesting' }
@@ -39,7 +41,7 @@ function Logo() {
   return (
     <div className="relative h-24 w-24 bg-gradient-to-br from-[#5A0F1A] to-[#3D0A11] rounded-[1.75rem] flex items-center justify-center shadow-2xl shadow-[#5A0F1A]/30 overflow-hidden border border-white/10">
       <div className="p-3.5 w-full h-full flex items-center justify-center">
-        <img src="/rkm-logo.png" alt="RKM" className="w-full h-full object-contain brightness-110" />
+        <BrandMark className="w-full h-full object-contain brightness-110" />
       </div>
     </div>
   );
@@ -66,7 +68,7 @@ function PageShell({ children }: { children: React.ReactNode }) {
         <div className="flex justify-center"><Logo /></div>
         <div className="text-center">
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Cashier Portal</h1>
-          <p className="text-sm text-slate-500 mt-1">RKM Jewellers · Staff Access</p>
+          <p className="text-sm text-slate-500 mt-1">{BRAND_NAME} · Staff Access</p>
         </div>
         <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 p-8">
           {children}
@@ -234,7 +236,7 @@ export default function CashierLogin() {
         <div className="flex justify-center mb-10"><Logo /></div>
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-2">Cashier Portal</h1>
-          <p className="text-sm font-medium text-slate-500">RKM Jewellers · Staff Access</p>
+          <p className="text-sm font-medium text-slate-500">{BRAND_NAME} · Staff Access</p>
           <div className="inline-flex items-center gap-2 mt-3 px-4 py-2 bg-slate-100 border border-slate-200 rounded-full">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
             <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">GPS · Password</span>
@@ -307,7 +309,7 @@ export default function CashierLogin() {
               <label className="block text-[11px] uppercase tracking-widest font-bold text-slate-400 mb-2 ml-1">Email Address</label>
               <input type="email" required autoComplete="email" value={email} onChange={e => setEmail(e.target.value)}
                 className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-medium text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-[#7A1C2A]/10 focus:border-[#7A1C2A] focus:bg-white transition-all"
-                placeholder="cashier@rkmjewellers.com" />
+                placeholder={`cashier@${BRAND_DOMAIN}`} />
             </div>
 
             <div>
@@ -337,7 +339,7 @@ export default function CashierLogin() {
             </button>
 
             <p className="text-center text-[10px] font-bold text-slate-300 uppercase tracking-widest">
-              Protected by RKM Security · GPS
+              Protected by {BRAND_NAME} Security · GPS
             </p>
           </form>
         </div>
