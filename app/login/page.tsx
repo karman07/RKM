@@ -2,12 +2,14 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { API_BASE } from '../../lib/api';
+import { BRAND_DOMAIN, BRAND_NAME } from '@/lib/brand';
+import BrandMark from '@/lib/BrandMark';
 
 function Logo() {
   return (
     <div className="relative h-24 w-24 bg-gradient-to-br from-[#5A0F1A] to-[#3D0A11] rounded-[1.75rem] flex items-center justify-center shadow-2xl shadow-[#5A0F1A]/30 overflow-hidden border border-white/10">
       <div className="p-3.5 w-full h-full flex items-center justify-center">
-        <img src="/rkm-logo.png" alt="RKM" className="w-full h-full object-contain brightness-110" />
+        <BrandMark className="w-full h-full object-contain brightness-110" />
       </div>
     </div>
   );
@@ -93,7 +95,7 @@ export default function SalesLogin() {
         <div className="flex justify-center mb-10"><Logo /></div>
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-2">Sales Portal</h1>
-          <p className="text-sm font-medium text-slate-500">RKM Jewellers · Field Sales Access</p>
+          <p className="text-sm font-medium text-slate-500">{BRAND_NAME} · Field Sales Access</p>
           <div className="inline-flex items-center gap-2 mt-3 px-4 py-2 bg-slate-100 border border-slate-200 rounded-full">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
             <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Sign in from anywhere</span>
@@ -117,7 +119,7 @@ export default function SalesLogin() {
               <label className="block text-[11px] uppercase tracking-widest font-bold text-slate-400 mb-2 ml-1">Email Address</label>
               <input type="email" required autoComplete="email" value={email} onChange={e => setEmail(e.target.value)}
                 className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-medium text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-[#7A1C2A]/10 focus:border-[#7A1C2A] focus:bg-white transition-all"
-                placeholder="sales@rkmjewellers.com" />
+                placeholder={`sales@${BRAND_DOMAIN}`} />
             </div>
 
             <div>
@@ -147,7 +149,7 @@ export default function SalesLogin() {
             </button>
 
             <p className="text-center text-[10px] font-bold text-slate-300 uppercase tracking-widest">
-              Protected by RKM Security
+              Protected by {BRAND_NAME} Security
             </p>
           </form>
         </div>
