@@ -1,5 +1,6 @@
 import { THEME } from "../constants";
 import { FadeIn } from "../../components/FadeIn";
+import { BRAND_DOMAIN, BRAND_NAME } from '@/lib/brand';
 
 export default function PrivacyPolicy() {
   return (
@@ -17,7 +18,7 @@ export default function PrivacyPolicy() {
           <div className="prose prose-lg max-w-none text-[15px] leading-loose" style={{ color: THEME.colors.textMuted }}>
             <h2 className="font-serif text-2xl mt-12 mb-6" style={{ color: THEME.colors.primaryDark }}>1. Introduction</h2>
             <p className="mb-6">
-              Welcome to RKM Jewellers. We respect your privacy and are committed to protecting your personal data.
+              Welcome to {BRAND_NAME}. We respect your privacy and are committed to protecting your personal data.
               This privacy policy will inform you as to how we look after your personal data when you visit our website 
               (regardless of where you visit it from) and tell you about your privacy rights and how the law protects you.
             </p>
@@ -50,7 +51,7 @@ export default function PrivacyPolicy() {
             <div className="mt-16 p-8 bg-gray-50 border-l-4" style={{ borderColor: THEME.colors.secondary }}>
               <p className="m-0 text-sm">
                 For complete details regarding your privacy rights or if you have any questions, please contact our Data Protection Officer at: <br/>
-                <a href="mailto:info@rkmjewellers.com" className="font-semibold" style={{ color: THEME.colors.primaryDark }}>info@rkmjewellers.com</a>
+                <a href={`mailto:info@${BRAND_DOMAIN}`} className="font-semibold" style={{ color: THEME.colors.primaryDark }}>info@{BRAND_DOMAIN}</a>
               </p>
             </div>
           </div>

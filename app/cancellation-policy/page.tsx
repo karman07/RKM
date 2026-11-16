@@ -1,5 +1,6 @@
 import { THEME } from "../constants";
 import { FadeIn } from "../../components/FadeIn";
+import { BRAND_DOMAIN, BRAND_NAME, BRAND_SHORT } from '@/lib/brand';
 
 export default function CancellationPolicy() {
   return (
@@ -49,7 +50,7 @@ export default function CancellationPolicy() {
               <li><strong>Packaging charges</strong>, where applicable.</li>
             </ul>
             <p className="mb-6">
-              The net balance after these deductions is issued to you as store credit, redeemable at any RKM
+              The net balance after these deductions is issued to you as store credit, redeemable at any {BRAND_SHORT}
               Jewellers branch, within <strong>7 business days</strong> of your request being approved.
             </p>
 
@@ -65,8 +66,8 @@ export default function CancellationPolicy() {
                 <strong>To request a cancellation</strong>, contact us with your order or plan reference number:
               </p>
               <p className="m-0 text-sm">
-                Email: <a href="mailto:info@rkmjewellers.com" className="font-semibold" style={{ color: THEME.colors.primaryDark }}>info@rkmjewellers.com</a><br />
-                Branch: RKM Jewellers, Phase 3B2, Mohali, Punjab 160059 — serving Chandigarh &amp; Tri-city
+                Email: <a href={`mailto:info@${BRAND_DOMAIN}`} className="font-semibold" style={{ color: THEME.colors.primaryDark }}>info@{BRAND_DOMAIN}</a><br />
+                Branch: {BRAND_NAME}, Phase 3B2, Mohali, Punjab 160059 — serving Chandigarh &amp; Tri-city
               </p>
             </div>
           </div>

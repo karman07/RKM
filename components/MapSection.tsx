@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { API_BASE_URL } from "../app/constants";
 import { FadeIn } from "./FadeIn";
+import { BRAND_NAME } from '@/lib/brand';
 
 interface Branch {
   _id: string;
@@ -39,7 +40,7 @@ export default function MapSection() {
 
   if (branches.length === 0) return null;
 
-  const mapQuery = selected ? encodeURIComponent(`RKM Jewellers, ${fullAddress(selected)}`) : "";
+  const mapQuery = selected ? encodeURIComponent(`${BRAND_NAME}, ${fullAddress(selected)}`) : "";
 
   return (
     <section id="visit" className="py-24 px-6 bg-white overflow-hidden">

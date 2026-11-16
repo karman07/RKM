@@ -6,6 +6,7 @@ import { closeAuthDialog, setAuth } from '../store/authSlice';
 import { auth } from '../lib/firebase';
 import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult, updateEmail, sendEmailVerification, reload } from 'firebase/auth';
 import { X, CheckCircle2, ChevronRight, MapPin, User as UserIcon, Phone, Search, ChevronDown, Mail, Loader2, AlertCircle } from 'lucide-react';
+import { BRAND_SHORT } from '@/lib/brand';
 
 export default function AuthDialog() {
   const dispatch = useAppDispatch();
@@ -110,15 +111,15 @@ export default function AuthDialog() {
     return c ? c.states : [];
   };
 
-  const fetchCities = async (c: string, s: string) => {
+  // countriesnow.space moved this endpoint: the old POST now 301-redirects to a GET /q route, and
+  // browsers drop the POST body on that redirect, which left the city list permanently empty.
+  const fetchCities = async (c: string, s: string): Promise<string[]> => {
     try {
-      const res = await fetch('https://countriesnow.space/api/v0.1/countries/state/cities', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ country: c, state: s })
-      });
+      const res = await fetch(
+        `https://countriesnow.space/api/v0.1/countries/state/cities/q?country=${encodeURIComponent(c)}&state=${encodeURIComponent(s)}`,
+      );
       const data = await res.json();
-      return data.data || [];
+      return Array.isArray(data.data) ? data.data : [];
     } catch (e) {
       return [];
     }
@@ -134,12 +135,19 @@ export default function AuthDialog() {
   );
 
   const [citiesList, setCitiesList] = useState<string[]>([]);
+  const [citiesLoading, setCitiesLoading] = useState(false);
   useEffect(() => {
+    let cancelled = false;
     if (country && stateName) {
-      fetchCities(country, stateName).then(setCitiesList);
+      setCitiesLoading(true);
+      fetchCities(country, stateName).then(list => {
+        if (!cancelled) { setCitiesList(list); setCitiesLoading(false); }
+      });
     } else {
       setCitiesList([]);
+      setCitiesLoading(false);
     }
+    return () => { cancelled = true; };
   }, [country, stateName]);
 
   const filteredCities = citiesList.filter(c => 
@@ -383,7 +391,7 @@ export default function AuthDialog() {
         {/* Header */}
         <div className="flex items-center justify-between px-8 py-6 border-b border-slate-100 bg-slate-50/50">
           <div>
-            <h2 className="text-xl font-bold font-serif text-slate-900">RKM Member Access</h2>
+            <h2 className="text-xl font-bold font-serif text-slate-900">{BRAND_SHORT} Member Access</h2>
             <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-slate-400 mt-1">Unlock Exclusive Collections</p>
           </div>
           <button onClick={() => dispatch(closeAuthDialog())} className="p-2 text-slate-400 hover:text-slate-700 bg-white shadow-sm border border-slate-200 rounded-full transition-all hover:scale-105 active:scale-95">
@@ -724,7 +732,18 @@ export default function AuthDialog() {
                               </div>
                             ))
                           ) : (
-                            <div className="px-4 py-8 text-center text-slate-400 text-xs italic">No city found</div>
+                            citiesLoading ? (
+                              <div className="px-4 py-8 text-center text-slate-400 text-xs italic">Loading cities…</div>
+                            ) : citySearch.trim() ? (
+                              <div
+                                onClick={() => { setCity(citySearch.trim()); setCitySearch(''); setActiveDropdown(null); }}
+                                className="px-4 py-3 text-xs cursor-pointer text-[#5C0828] font-bold hover:bg-slate-50"
+                              >
+                                Use “{citySearch.trim()}”
+                              </div>
+                            ) : (
+                              <div className="px-4 py-8 text-center text-slate-400 text-xs italic">City list unavailable — type your city above</div>
+                            )
                           )}
                         </div>
                       </div>
@@ -744,7 +763,7 @@ export default function AuthDialog() {
               <div className="w-20 h-20 bg-[#FDF4F6] text-[#5C0828] rounded-full flex items-center justify-center mb-6 shadow-inner">
                 <CheckCircle2 size={40} />
               </div>
-              <h3 className="text-2xl font-serif font-bold text-slate-900">Welcome to RKM</h3>
+              <h3 className="text-2xl font-serif font-bold text-slate-900">Welcome to {BRAND_SHORT}</h3>
               <p className="text-sm font-medium text-slate-500 mt-2">Your premium account is ready.</p>
             </div>
           )}

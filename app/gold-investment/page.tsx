@@ -8,6 +8,7 @@ import {
   Zap, Clock, Store, TrendingUp, Wallet, RefreshCw, Sparkles
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { BRAND_NAME, BRAND_SHORT } from '@/lib/brand';
 
 interface Plan {
   _id: string;
@@ -208,9 +209,9 @@ export default function GoldInvestmentPage() {
         order_id: data.orderId,
         amount: Math.round(amount * 100),
         currency: 'INR',
-        name: 'RKM Jewellers',
+        name: `${BRAND_NAME}`,
         description: 'Hold My Gold — Investment',
-        image: 'https://via.placeholder.com/150/064E3B/FFFFFF?text=RKM',
+        image: `https://via.placeholder.com/150/064E3B/FFFFFF?text=${BRAND_SHORT}`,
         handler: async (response: any) => {
           try {
             const verifyRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/gold-investment/my-subscriptions/hold-my-gold/topup/verify`, {
@@ -285,9 +286,9 @@ export default function GoldInvestmentPage() {
       const options = {
         key: data.razorpayKey,
         subscription_id: data.subscription.razorpaySubscriptionId,
-        name: 'RKM Jewellers',
+        name: `${BRAND_NAME}`,
         description: 'Systematic Gold Investment Plan – Autopay',
-        image: 'https://via.placeholder.com/150/064E3B/FFFFFF?text=RKM',
+        image: `https://via.placeholder.com/150/064E3B/FFFFFF?text=${BRAND_SHORT}`,
         recurring: true,
         handler: async (response: any) => {
           try {
@@ -352,7 +353,7 @@ export default function GoldInvestmentPage() {
               </span>
             </h1>
             <p className="max-w-3xl mx-auto text-slate-500 font-medium md:text-xl mb-12 leading-relaxed animate-in fade-in slide-in-from-bottom-6 duration-1000 delay-300 fill-mode-both">
-              Set up Autopay once, then let it grow automatically every month — with guaranteed interest and exclusive redemption discounts at RKM Jewellers.
+              Set up Autopay once, then let it grow automatically every month — with guaranteed interest and exclusive redemption discounts at {BRAND_NAME}.
             </p>
             <div className="flex items-center gap-6 animate-in fade-in slide-in-from-bottom-6 duration-1000 delay-500 fill-mode-both">
               <a href="#plans" className="px-8 py-4 bg-[#5C0828] text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-[#5C0828]/20 hover:-translate-y-1 hover:shadow-2xl hover:shadow-[#5C0828]/30 transition-all duration-300">
@@ -378,7 +379,7 @@ export default function GoldInvestmentPage() {
               { icon: <Clock />, title: 'Select Duration', desc: 'Choose a 6, 10 or 12-month savings period that fits your lifestyle.' },
               { icon: <Zap />, title: 'Authorize Autopay', desc: 'Set up a secure UPI or card autopay mandate once — your monthly instalment is then collected automatically, no manual payment needed.' },
               { icon: <TrendingUp />, title: 'Earn Returns', desc: 'Your principal earns fixed monthly interest, growing your value every single day.' },
-              { icon: <Store />, title: 'Shop Jewellery', desc: 'At maturity, redeem your total plus a special RKM discount on making charges at any branch.' },
+              { icon: <Store />, title: 'Shop Jewellery', desc: `At maturity, redeem your total plus a special ${BRAND_SHORT} discount on making charges at any branch.` },
             ].map((step, i) => (
               <div
                 key={i}
@@ -405,7 +406,7 @@ export default function GoldInvestmentPage() {
           <div>
             <p className="font-bold text-amber-900 mb-1">Automatic monthly payments via Autopay</p>
             <p className="text-sm text-amber-800 leading-relaxed">
-              When you enrol, you authorize a secure recurring mandate (UPI Autopay or card) once — Razorpay then collects your monthly instalment automatically. If a payment ever fails, you can always settle it in cash at any RKM Jewellers store.
+              When you enrol, you authorize a secure recurring mandate (UPI Autopay or card) once — Razorpay then collects your monthly instalment automatically. If a payment ever fails, you can always settle it in cash at any {BRAND_NAME} store.
             </p>
           </div>
         </div>
@@ -753,7 +754,7 @@ export default function GoldInvestmentPage() {
               {[
                 { title: 'Monthly Earnings', desc: 'Unlike standard jewellery advance schemes, we calculate your benefit monthly, ensuring your money never sits idle.' },
                 { title: 'Automatic Autopay', desc: 'Authorize your mandate once via UPI or card — your monthly instalment is then collected automatically, no need to remember or revisit.' },
-                { title: 'Cash Fallback, Always', desc: 'If a bank ever cancels or pauses your mandate, we notify you immediately — just visit any RKM Jewellers store to pay that month in cash and keep your plan on track.' },
+                { title: 'Cash Fallback, Always', desc: `If a bank ever cancels or pauses your mandate, we notify you immediately — just visit any ${BRAND_NAME} store to pay that month in cash and keep your plan on track.` },
               ].map((info, i) => (
                 <div
                   key={i}
@@ -780,7 +781,7 @@ export default function GoldInvestmentPage() {
               <p>In case of plan cancellation before maturity, the principal amount will be available for purchase credit, but the interest benefit will be forfeited.</p>
             </div>
             <div className="mt-12 flex items-center gap-4 text-[10px] font-black uppercase tracking-[0.2em] text-[#5C0828]">
-              <ShieldCheck size={16} /> Secured by RKM Jewellers & Razorpay
+              <ShieldCheck size={16} /> Secured by {BRAND_NAME} & Razorpay
             </div>
           </div>
         </div>

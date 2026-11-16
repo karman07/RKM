@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { Gem, TrendingUp, ShieldCheck } from 'lucide-react';
 import { THEME } from '../app/constants';
 import { optimizedSrc } from '../lib/img';
+import { BRAND_SHORT } from '@/lib/brand';
 
 export default function GoldInvestmentTeaser() {
   return (
@@ -12,7 +13,7 @@ export default function GoldInvestmentTeaser() {
       <div className="max-w-[1440px] mx-auto relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-20 items-center">
         <div className="space-y-10">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-[#5C0828]/5 border border-[#5C0828]/10 rounded-full text-[11px] font-black uppercase tracking-[2px] text-[#5C0828]">
-            <Gem size={14} className="animate-pulse" /> The RKM Promise
+            <Gem size={14} className="animate-pulse" /> The {BRAND_SHORT} Promise
           </div>
           
           <h2 className="text-4xl md:text-6xl font-serif font-black text-slate-900 leading-tight">
@@ -21,7 +22,7 @@ export default function GoldInvestmentTeaser() {
           </h2>
           
           <p className="text-slate-500 font-medium md:text-lg leading-relaxed max-w-xl">
-            Secure your future by building wealth month by month. Accumulate value with guaranteed monthly interest and redeem it for exquisite RKM jewellery with exclusive maturity discounts.
+            Secure your future by building wealth month by month. Accumulate value with guaranteed monthly interest and redeem it for exquisite {BRAND_SHORT} jewellery with exclusive maturity discounts.
           </p>
 
           <div className="grid grid-cols-2 gap-8 pt-4">

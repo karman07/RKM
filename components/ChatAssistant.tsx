@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { trackEvent } from '@/app/analytics';
 import { AI_BASE_URL, STATIC_BASE_URL } from '@/app/constants';
 import { optimizedSrc } from '@/lib/img';
+import { BRAND_NAME, BRAND_SHORT } from '@/lib/brand';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -77,7 +78,7 @@ export default function ChatAssistant() {
     } else {
       setMessages([{
         role: 'assistant',
-        content: "Welcome to RKM Jewellers. I am your personal AI concierge. How may I assist you in finding the perfect piece of luxury jewellery today?",
+        content: `Welcome to ${BRAND_NAME}. I am your personal AI concierge. How may I assist you in finding the perfect piece of luxury jewellery today?`,
         timestamp: Date.now(),
       }]);
     }
@@ -146,7 +147,7 @@ export default function ChatAssistant() {
     localStorage.removeItem(STORAGE_KEY);
     setMessages([{
       role: 'assistant',
-      content: "Welcome back to RKM Jewellers. How may I help you today?",
+      content: `Welcome back to ${BRAND_NAME}. How may I help you today?`,
       timestamp: Date.now(),
     }]);
     setQuestionCount(0);
@@ -156,9 +157,9 @@ export default function ChatAssistant() {
     <>
       {/* Floating trigger */}
       {!isOpen && (
-        <button className={styles.chatButton} onClick={() => setIsOpen(true)} aria-label="Open RKM AI">
+        <button className={styles.chatButton} onClick={() => setIsOpen(true)} aria-label={`Open ${BRAND_SHORT} AI`}>
           <SparklesIcon />
-          <span>Ask RKM AI</span>
+          <span>Ask {BRAND_SHORT} AI</span>
         </button>
       )}
 
@@ -170,7 +171,7 @@ export default function ChatAssistant() {
             <div className={styles.headerInfo}>
               <div className={styles.avatarWrap}><SparklesIcon /></div>
               <div>
-                <h3>RKM Concierge</h3>
+                <h3>{BRAND_SHORT} Concierge</h3>
                 <p className={styles.onlineStatus}>
                   <span className={styles.dot} />
                   {MAX_QUESTIONS - questionCount} sessions left
@@ -212,7 +213,7 @@ export default function ChatAssistant() {
                                 loading="lazy"
                               />
                             ) : (
-                              <div className={styles.imgPlaceholder}>RKM</div>
+                              <div className={styles.imgPlaceholder}>{BRAND_SHORT}</div>
                             )}
                           </div>
                           <div className={styles.cardInfo}>
@@ -269,7 +270,7 @@ export default function ChatAssistant() {
             </button>
           </form>
 
-          <div className={styles.branding}>Exclusively by RKM Jewellers</div>
+          <div className={styles.branding}>Exclusively by {BRAND_NAME}</div>
         </div>
       )}
     </>

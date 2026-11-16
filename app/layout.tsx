@@ -7,6 +7,7 @@ import Footer from "../components/Footer";
 import BottomNav from "../components/BottomNav";
 import StoreProvider from "../components/StoreProvider";
 import RouteProgress from "../components/RouteProgress";
+import { BRAND_ICON, BRAND_NAME } from '@/lib/brand';
 
 const cormorant = Cormorant_Garamond({
   variable: "--font-serif",
@@ -21,21 +22,21 @@ const jost = Jost({
 });
 
 export const metadata: Metadata = {
-  title: "RKM Jewellers | Best Jewellery Shop in Mohali & Chandigarh",
-  description: "RKM Jewellers Mohali offers exquisite handcrafted 22K gold, certified diamonds, and customized bridal jewellery. Trusted jewellers since years, serving Chandigarh & Punjab with BIS Hallmarked purity and elegant designs.",
-  keywords: "RKM Jewellers, Jewellers in Mohali, Best Jewellery Shop Chandigarh, Gold Jewellery Mohali, Diamond Ring Chandigarh, Bridal Jewellery sets Punjab, Customized Jewellery Mohali, BIS Hallmarked Gold Mohali",
+  title: `${BRAND_NAME} | Best Jewellery Shop in Mohali & Chandigarh`,
+  description: `${BRAND_NAME} Mohali offers exquisite handcrafted 22K gold, certified diamonds, and customized bridal jewellery. Trusted jewellers since years, serving Chandigarh & Punjab with BIS Hallmarked purity and elegant designs.`,
+  keywords: `${BRAND_NAME}, Jewellers in Mohali, Best Jewellery Shop Chandigarh, Gold Jewellery Mohali, Diamond Ring Chandigarh, Bridal Jewellery sets Punjab, Customized Jewellery Mohali, BIS Hallmarked Gold Mohali`,
   openGraph: {
-    title: "RKM Jewellers | Exquisite Craftsmanship in Mohali",
-    description: "Discover handcrafted gold, diamonds, and customized bridal sets at RKM Jewellers, Mohali's most trusted jewelry destination.",
+    title: `${BRAND_NAME} | Exquisite Craftsmanship in Mohali`,
+    description: `Discover handcrafted gold, diamonds, and customized bridal sets at ${BRAND_NAME}, Mohali's most trusted jewelry destination.`,
     url: "https://rkmjewellers.com",
-    siteName: "RKM Jewellers",
+    siteName: `${BRAND_NAME}`,
     locale: "en_IN",
     type: "website",
   },
   icons: {
-    icon: "/RKM LOGO SVG.svg",
-    shortcut: "/RKM LOGO SVG.svg",
-    apple: "/RKM LOGO SVG.svg",
+    icon: BRAND_ICON,
+    shortcut: BRAND_ICON,
+    apple: BRAND_ICON,
   },
 };
 
@@ -66,7 +67,7 @@ export default async function RootLayout({
             __html: JSON.stringify({
               "@context": "https://schema.org",
               "@type": "JewelryStore",
-              "name": "RKM Jewellers",
+              "name": `${BRAND_NAME}`,
               "image": "https://rkmjewellers.com/RKM_LOGO.jpg",
               "@id": "https://rkmjewellers.com",
               "url": "https://rkmjewellers.com",

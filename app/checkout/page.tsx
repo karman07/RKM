@@ -5,6 +5,7 @@ import { clearCart } from "../../store/cartSlice";
 import { API_BASE_URL, STATIC_BASE_URL } from "../constants";
 import Link from "next/link";
 import { toast } from "sonner";
+import { BRAND_NAME } from '@/lib/brand';
 
 declare global { interface Window { Razorpay: any } }
 
@@ -201,7 +202,7 @@ export default function CheckoutPage() {
         key: key_id || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_SgRfxMd5cy2i1U',
         amount: Math.round(total * 100),
         currency: "INR",
-        name: "RKM Jewellers",
+        name: `${BRAND_NAME}`,
         description: "Online Order Payment",
         order_id: razorpay_order_id,
         prefill: { name: form.name, email: form.email, contact: form.phone },

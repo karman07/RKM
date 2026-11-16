@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckCircle2, Gem, TrendingUp, Sparkles, ArrowRight, Wallet, Clock, Zap, Banknote, MessageCircle, AlertCircle, Download, Receipt, FileText, RefreshCw } from 'lucide-react';
 import InvestmentReceiptModal from './InvestmentReceiptModal';
+import { BRAND_NAME } from '@/lib/brand';
 
 interface PaymentLedgerEntry {
   month: number;
@@ -91,7 +92,7 @@ function downloadStatement(sub: GoldSub, fmt: (v: number) => string) {
     rows.push({ date: p.date, type: 'Payment', description: `Month ${p.month} (${p.type})${p.note ? ` — ${p.note}` : ''}`, amount: fmt(p.amount) });
   });
   (sub.interestAdjustments || []).forEach(a => {
-    rows.push({ date: a.date, type: 'Bonus Interest', description: a.note || 'Credited by RKM Jewellers', amount: `+${fmt(a.amount)}` });
+    rows.push({ date: a.date, type: 'Bonus Interest', description: a.note || `Credited by ${BRAND_NAME}`, amount: `+${fmt(a.amount)}` });
   });
   (sub.redemptionHistory || []).forEach(r => {
     rows.push({ date: r.date, type: 'Redemption', description: `${r.saleReference ? `Bill: ${r.saleReference}` : 'Redeemed at store'}${r.note ? ` — ${r.note}` : ''}`, amount: `-${fmt(r.amount)}` });
@@ -402,7 +403,7 @@ function StandardGoldTracker({ sub }: { sub: GoldSub }) {
           <div>
             <p className="text-[10px] font-black text-amber-800 uppercase tracking-wider mb-0.5">Manual Payments Required</p>
             <p className="text-[10px] text-amber-700 leading-relaxed">
-              Your autopay was cancelled. {total - paid} month{total - paid !== 1 ? 's' : ''} remaining. You will receive a WhatsApp reminder monthly, or pay cash at any RKM Jewellers store.
+              Your autopay was cancelled. {total - paid} month{total - paid !== 1 ? 's' : ''} remaining. You will receive a WhatsApp reminder monthly, or pay cash at any {BRAND_NAME} store.
             </p>
           </div>
         </div>
@@ -664,7 +665,7 @@ function StandardGoldTracker({ sub }: { sub: GoldSub }) {
           <div className="flex items-center gap-2 mt-3 pt-3 border-t" style={{ borderColor: '#EEE0C8' }}>
             <Sparkles size={13} style={{ color: '#B8975A' }} className="shrink-0" />
             <p className="text-[9px] font-bold text-slate-600">
-              At jewelry purchase, choose{(plan.cashBenefitPercent ?? 0) > 0 ? <> a <span className="font-black" style={{ color: '#5C0828' }}>{plan.cashBenefitPercent}% cash benefit</span> or</> : ''} a <span className="font-black" style={{ color: '#5C0828' }}>{plan.makingChargeDiscountPercent ?? 100}% making-charge waiver</span> on your accumulated gold at RKM Jewellers
+              At jewelry purchase, choose{(plan.cashBenefitPercent ?? 0) > 0 ? <> a <span className="font-black" style={{ color: '#5C0828' }}>{plan.cashBenefitPercent}% cash benefit</span> or</> : ''} a <span className="font-black" style={{ color: '#5C0828' }}>{plan.makingChargeDiscountPercent ?? 100}% making-charge waiver</span> on your accumulated gold at {BRAND_NAME}
             </p>
           </div>
         </div>
@@ -802,7 +803,7 @@ function OpenEndedGoldTracker({ sub }: { sub: GoldSub }) {
           <div>
             <p className="text-[10px] font-black text-amber-800 uppercase tracking-wider mb-0.5">Plan {sub.status === 'halted' ? 'Halted' : 'Cancelled'}</p>
             <p className="text-[10px] text-amber-700 leading-relaxed">
-              Your accumulated gold and balance are unaffected — visit any RKM Jewellers store or contact us to resolve this and keep investing.
+              Your accumulated gold and balance are unaffected — visit any {BRAND_NAME} store or contact us to resolve this and keep investing.
             </p>
           </div>
         </div>
@@ -923,7 +924,7 @@ function OpenEndedGoldTracker({ sub }: { sub: GoldSub }) {
           <div className="flex items-center gap-2">
             <Sparkles size={13} style={{ color: '#B8975A' }} className="shrink-0" />
             <p className="text-[9px] font-bold text-slate-600">
-              At jewelry purchase, redeem your gold with a <span className="font-black" style={{ color: '#5C0828' }}>{plan.makingChargeDiscountPercent ?? 100}% making-charge waiver</span> — approved per account by RKM Jewellers — or a cash-style benefit. GST applies only on the amount remaining after redemption.
+              At jewelry purchase, redeem your gold with a <span className="font-black" style={{ color: '#5C0828' }}>{plan.makingChargeDiscountPercent ?? 100}% making-charge waiver</span> — approved per account by {BRAND_NAME} — or a cash-style benefit. GST applies only on the amount remaining after redemption.
             </p>
           </div>
         </div>

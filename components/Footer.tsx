@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { THEME, API_BASE_URL } from "../app/constants";
 import Link from "next/link";
+import { BRAND_NAME, BRAND_SHORT } from '@/lib/brand';
+import BrandMark from '@/lib/BrandMark';
 
 interface Category {
   _id: string;
@@ -73,7 +75,7 @@ export default function Footer() {
         <div className="col-span-2 md:col-span-3 lg:col-span-2 pr-12">
           <div className="mb-8">
             <div className="w-28 h-28 flex items-center justify-start origin-left">
-              <img src="/RKM LOGO SVG.svg" alt="RKM Jewellers" className="w-full h-full object-contain" />
+              <BrandMark className="w-full h-full object-contain" />
             </div>
           </div>
           <p className="opacity-60 text-[11px] uppercase tracking-[0.3em] leading-[2.2] mb-10 text-balance">
@@ -130,7 +132,7 @@ export default function Footer() {
           <div className="flex flex-col gap-4">
             <Link href="/" className="text-[10px] font-bold uppercase tracking-[0.2em] hover:text-[#B8975A] transition-colors">Home</Link>
             <Link href="/products" className="text-[10px] font-bold uppercase tracking-[0.2em] hover:text-[#B8975A] transition-colors">Fine Collections</Link>
-            <Link href="/about" className="text-[10px] font-bold uppercase tracking-[0.2em] hover:text-[#B8975A] transition-colors">The RKM Story</Link>
+            <Link href="/about" className="text-[10px] font-bold uppercase tracking-[0.2em] hover:text-[#B8975A] transition-colors">The {BRAND_SHORT} Story</Link>
             <Link href="/blogs" className="text-[10px] font-bold uppercase tracking-[0.2em] hover:text-[#B8975A] transition-colors">Artisan Journal</Link>
             <Link href="/gold-investment" className="text-[10px] font-bold uppercase tracking-[0.2em] hover:text-[#B8975A] transition-colors">Gold Investments</Link>
             <Link href="/wishlist" className="text-[10px] font-bold uppercase tracking-[0.2em] hover:text-[#B8975A] transition-colors">Wishlist</Link>
@@ -158,11 +160,11 @@ export default function Footer() {
 
       {/* SEO Footer Text */}
       <div className="max-w-[1440px] mx-auto mb-16 opacity-60 text-[9px] uppercase tracking-[0.2em] leading-relaxed text-center lg:text-left">
-        <p>RKM Jewellers: Your trusted destination for 22K Hallmarked Gold, Certified Diamonds, and Customized Bridal Jewellery in Mohali, Chandigarh, Panchkula, and Punjab. Experience the blend of traditional artistry and modern elegance.</p>
+        <p>{BRAND_NAME}: Your trusted destination for 22K Hallmarked Gold, Certified Diamonds, and Customized Bridal Jewellery in Mohali, Chandigarh, Panchkula, and Punjab. Experience the blend of traditional artistry and modern elegance.</p>
       </div>
 
       <div className="max-w-[1440px] mx-auto border-t pt-8 flex flex-col md:flex-row justify-between items-center gap-6 text-[10px] uppercase tracking-[0.1em] opacity-40 font-bold" style={{ borderColor: '#ffffff10' }}>
-        <p>&copy; {new Date().getFullYear()} RKM Jewellers Mohali. Empowering Elegance Every Day.</p>
+        <p>&copy; {new Date().getFullYear()} {BRAND_NAME} Mohali. Empowering Elegance Every Day.</p>
         <div className="flex flex-wrap gap-10">
           <Link href="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link>
           <Link href="/contact" className="hover:text-white transition-colors">Contact Us</Link>

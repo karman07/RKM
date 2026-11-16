@@ -7,6 +7,7 @@ import { API_BASE_URL, THEME, STATIC_BASE_URL } from "../../app/constants";
 import { trackEvent } from "../../app/analytics";
 import Link from "next/link";
 import { FadeIn } from "../../components/FadeIn";
+import { BRAND_SHORT } from '@/lib/brand';
 
 const GOLD = "#B8975A";
 
@@ -148,7 +149,7 @@ export default function CartPage() {
 
               <div className="pt-4 space-y-4">
                 <p className="text-[8px] uppercase tracking-[0.2em] text-[#7A8C85] leading-loose text-center">
-                  Secure checkout powered by RKM International Assurance.
+                  Secure checkout powered by {BRAND_SHORT} International Assurance.
                   Shipments are fully insured until delivery.
                 </p>
               </div>

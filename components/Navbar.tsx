@@ -12,6 +12,8 @@ import { useAppSelector, useAppDispatch } from "../store/store";
 import { openAuthDialog, logout } from "../store/authSlice";
 import { User as UserIcon, LogOut, Heart, ShoppingBag, ExternalLink, ChevronRight, LayoutDashboard, Settings } from "lucide-react";
 import LogoutDialog from "./LogoutDialog";
+import {BRAND_NAME} from '@/lib/brand';
+import BrandMark from '@/lib/BrandMark';
 
 interface Lookup {
   _id: string;
@@ -466,7 +468,7 @@ export default function Navbar({ bannerActive }: { bannerActive: boolean }) {
         <div className="max-w-[1440px] mx-auto px-6 lg:px-12 h-[70px] flex items-center gap-8">
           <Link href="/" className="flex-shrink-0 flex items-center group">
             <div className="h-11 flex items-center justify-center transition-all duration-300">
-              <img src="/RKM LOGO SVG.svg" alt="RKM Jewellers" className="h-full w-auto object-contain transform group-hover:scale-105 transition-transform duration-700" />
+              <BrandMark className="h-full w-auto object-contain transform group-hover:scale-105 transition-transform duration-700" />
             </div>
           </Link>
 

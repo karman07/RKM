@@ -1,5 +1,6 @@
 import { THEME } from "../constants";
 import { FadeIn } from "../../components/FadeIn";
+import { BRAND_DOMAIN, BRAND_NAME } from '@/lib/brand';
 
 export default function RefundPolicy() {
   return (
@@ -27,7 +28,7 @@ export default function RefundPolicy() {
             <p className="mb-6">
               If you receive an item that is defective, damaged in transit, or does not match your order, please
               contact us within <strong>48 hours of delivery</strong> at{' '}
-              <a href="mailto:info@rkmjewellers.com" style={{ color: THEME.colors.primaryDark }}>info@rkmjewellers.com</a>{' '}
+              <a href={`mailto:info@${BRAND_DOMAIN}`} style={{ color: THEME.colors.primaryDark }}>info@{BRAND_DOMAIN}</a>{' '}
               with photos of the item and your order/invoice number. Once verified (within 2 business days of your
               report), <strong>you may choose</strong> between:
             </p>
@@ -55,7 +56,7 @@ export default function RefundPolicy() {
               future jewellery purchase, not as a general-purpose deposit. If you close the plan and redeem your
               balance <em>without</em> buying an item, this is handled as a scheme redemption rather than a product
               refund: in line with industry practice for prepaid gold-savings schemes, the balance is issued as{' '}
-              <strong>store credit</strong> (redeemable at any RKM Jewellers branch against a future purchase),
+              <strong>store credit</strong> (redeemable at any {BRAND_NAME} branch against a future purchase),
               after the following deductions:
             </p>
             <ul className="list-disc pl-6 mb-6 space-y-2">
@@ -84,8 +85,8 @@ export default function RefundPolicy() {
                 <strong>To raise a refund request</strong>, contact us with your order or plan reference number:
               </p>
               <p className="m-0 text-sm">
-                Email: <a href="mailto:info@rkmjewellers.com" className="font-semibold" style={{ color: THEME.colors.primaryDark }}>info@rkmjewellers.com</a><br />
-                Branch: RKM Jewellers, Phase 3B2, Mohali, Punjab 160059 — serving Chandigarh &amp; Tri-city
+                Email: <a href={`mailto:info@${BRAND_DOMAIN}`} className="font-semibold" style={{ color: THEME.colors.primaryDark }}>info@{BRAND_DOMAIN}</a><br />
+                Branch: {BRAND_NAME}, Phase 3B2, Mohali, Punjab 160059 — serving Chandigarh &amp; Tri-city
               </p>
             </div>
           </div>

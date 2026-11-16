@@ -4,6 +4,7 @@ import { THEME } from "../app/constants";
 import { optimizedSrc } from "../lib/img";
 import { FadeIn } from "./FadeIn";
 import { SparklesIcon } from "./Icons";
+import { BRAND_NAME } from '@/lib/brand';
 
 export default function FeatureSplit() {
   return (
@@ -46,7 +47,7 @@ export default function FeatureSplit() {
             src={optimizedSrc("/RKM_LOGO.jpg", 1080)}
             loading="lazy"
             decoding="async"
-            alt="RKM Jewellers Brandmark"
+            alt={`${BRAND_NAME} Brandmark`}
             className="absolute inset-0 w-full h-full object-cover hover:scale-105 transition-all duration-[2s] ease-out"
           />
         </div>

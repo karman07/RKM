@@ -10,6 +10,7 @@ import LogoutDialog from '../../components/LogoutDialog';
 import GoldInvestmentTracker from '../../components/GoldInvestmentTracker';
 import { API_BASE_URL, STATIC_BASE_URL } from '../constants';
 import { downloadInvestmentStatementPdf } from '../../lib/investmentStatement';
+import { BRAND_NAME } from '@/lib/brand';
 
 function staticImg(path: string | undefined | null) {
   if (!path) return "";
@@ -335,7 +336,7 @@ export default function ProfilePage() {
                   <div className="flex-1">
                     <p className="text-[9px] font-black uppercase tracking-[0.35em] text-white/50 mb-1">Investment Balance</p>
                     <h2 className="text-3xl sm:text-4xl md:text-5xl font-serif font-black text-white mb-2">{formatINR(totalBalance)}</h2>
-                    <p className="text-sm text-white/60 font-medium">Available to redeem at any RKM Jewellers store</p>
+                    <p className="text-sm text-white/60 font-medium">Available to redeem at any {BRAND_NAME} store</p>
                     {redeemedTotal > 0 && (
                       <p className="text-xs text-[#B8975A] font-bold mt-1">{formatINR(redeemedTotal)} already redeemed</p>
                     )}
