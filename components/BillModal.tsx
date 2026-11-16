@@ -2,8 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
+import EditBillModal from './EditBillModal';
+import BillEditHistoryModal from './BillEditHistoryModal';
 import { staticUrl, getSettings, updateInventoryStatus, notifyCustomerPostSale, getSmsStatus, searchCustomerByPhone, type InventoryItem, type AppSettings } from '@/lib/api';
 import { downloadElementAsPdf, shareElementAsPdf } from '@/lib/pdf-utils';
+import { BRAND_NAME, BRAND_NAME_UPPER, BRAND_SHORT } from '@/lib/brand';
 
 interface TaxEntry { name: string; percentage: number }
 
@@ -234,6 +237,27 @@ function RefundModal({ items, onClose, onSuccess }: { items: InventoryItem[]; on
 
 export default function BillModal(props: BillModalProps) {
   const { items, date, onClose, onRefunded } = props;
+  const [showEdit, setShowEdit] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [, setEditTick] = useState(0);
+  const canEditBill = (() => {
+    const first: any = items[0];
+    if (!first?.sale_reference || first.status !== 'sold') return false;
+    try {
+      const u = JSON.parse(localStorage.getItem('admin_user') ?? 'null');
+      return !u || u.role === 'admin' || u.role === 'manager'; // the server enforces this too
+    } catch { return true; }
+  })();
+  /** Apply the server's saved values onto the open bill so it shows the corrected details straight away. */
+  const applyEdited = (updated: any[]) => {
+    for (const u of updated) {
+      const it: any = items.find((i: any) => String(i._id) === String(u._id));
+      if (!it) continue;
+      for (const k of ['sold_customer_name', 'sold_customer_phone', 'sold_customer_email', 'sold_at', 'payment_splits',
+        'selling_price', 'final_sale_price', 'manager_discount', 'sale_pricing_snapshot']) it[k] = u[k];
+    }
+    setEditTick(t => t + 1);
+  };
   const [showRefundModal, setShowRefundModal] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState<'download' | 'share' | null>(null);
   const [notifying, setNotifying] = useState<'sms' | 'whatsapp' | 'email' | null>(null);
@@ -298,7 +322,7 @@ export default function BillModal(props: BillModalProps) {
         'printable-bill',
         `Invoice-${saleRef}.pdf`,
         `Invoice ${saleRef}`,
-        `Tax invoice ${saleRef} from RKM Jewellers`,
+        `Tax invoice ${saleRef} from ${BRAND_NAME}`,
       );
       if (!shared) toast.info('Direct sharing isn\'t supported on this browser — the invoice PDF was downloaded instead.');
     } catch (e: any) {
@@ -516,7 +540,7 @@ ${billEl.outerHTML}
     branchData = props.branch;
   }
 
-  const shopName    = 'RKM JEWELLERS';
+  const shopName    = `${BRAND_NAME_UPPER}`;
   const shopTagline = 'FINE JEWELLERY • EST. 2005';
   const shopCertificateNo = 'HM/C-9790227910';
 
@@ -555,6 +579,24 @@ ${billEl.outerHTML}
               Refund
             </button>
           )}
+          {canEditBill && (
+            <button
+              onClick={() => setShowEdit(true)}
+              className="flex items-center gap-2 px-5 py-2 rounded-full bg-amber-400 text-black text-xs font-bold uppercase tracking-widest border border-amber-300 hover:bg-amber-300 transition-all shadow-lg"
+            >
+              Edit Bill
+            </button>
+          )}
+          {canEditBill && (
+            <button
+              onClick={() => setShowHistory(true)}
+              className="flex items-center gap-2 px-5 py-2 rounded-full bg-white/10 text-white text-xs font-bold uppercase tracking-widest border border-white/30 hover:bg-white/20 transition-all shadow-lg"
+            >
+              Edit History
+            </button>
+          )}
+          {showHistory && <BillEditHistoryModal saleReference={(items[0] as any).sale_reference} onClose={() => setShowHistory(false)} />}
+          {showEdit && <EditBillModal items={items} onClose={() => setShowEdit(false)} onSaved={applyEdited} />}
           <button
             onClick={handleDownload}
             disabled={generatingPdf !== null}
@@ -684,7 +726,7 @@ ${billEl.outerHTML}
             <div style={{ fontSize: '8px', fontWeight: 700, color: '#555', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '3px' }}>Customer Details</div>
             <div style={{ fontWeight: 700, fontSize: '11px', marginBottom: '2px' }}>{customer?.sold_customer_name ?? 'Walk-in Customer'}</div>
             <div style={{ fontSize: '9px', lineHeight: 1.65, color: '#333' }}>
-              {customerRecordId && <div>Customer ID: <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>RKM{customerRecordId.slice(-8).toUpperCase()}</span></div>}
+              {customerRecordId && <div>Customer ID: <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{BRAND_SHORT}{customerRecordId.slice(-8).toUpperCase()}</span></div>}
               {customer?.sold_customer_phone && <div>Phone: {customer.sold_customer_phone}</div>}
               {customer?.sold_customer_email && <div>Email: {customer.sold_customer_email}</div>}
               {(customer as any)?.old_gold_reference && <div>Old Gold Ref: <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{(customer as any).old_gold_reference}</span></div>}
@@ -926,7 +968,7 @@ ${billEl.outerHTML}
             <div>Certificate No: {shopCertificateNo}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontWeight: 700, fontSize: '9.5px', color: '#000' }}>RKM JEWELLERS{shopBranchName ? ` — ${shopBranchName}` : ''}</div>
+            <div style={{ fontWeight: 700, fontSize: '9.5px', color: '#000' }}>{BRAND_NAME_UPPER}{shopBranchName ? ` — ${shopBranchName}` : ''}</div>
             <div style={{ marginTop: '24px', borderTop: '1px solid #999', paddingTop: '2px' }}>Authorised Signatory</div>
             <div style={{ marginTop: '3px', color: '#aaa' }}>E&amp;OE | See Overleaf</div>
           </div>

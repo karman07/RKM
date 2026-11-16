@@ -2,6 +2,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getProfile, getBranchAnalytics, UserProfile, BranchAnalytics, staticUrl } from '../../lib/api';
+import {BRAND_NAME} from '@/lib/brand';
+import BrandMark from '@/lib/BrandMark';
 
 function fmt(n: number) { return `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`; }
 function fmtL(n: number) { return `₹${(n / 100000).toFixed(2)}L`; }
@@ -140,7 +142,7 @@ export default function ManagerDashboard() {
       <div className="min-h-screen bg-[#0f0a0a] flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="w-14 h-14 rounded-2xl bg-[#5A0F1A] flex items-center justify-center overflow-hidden shadow-2xl">
-            <img src="/rkm-logo.png" alt="RKM" className="w-full h-full object-contain scale-150 brightness-150" />
+            <BrandMark className="w-full h-full object-contain scale-150 brightness-150" />
           </div>
           <div className="w-10 h-10 border-4 border-white/10 border-t-white/60 rounded-full animate-spin" />
         </div>
@@ -157,10 +159,10 @@ export default function ManagerDashboard() {
             {/* Brand */}
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-[#5A0F1A] flex items-center justify-center overflow-hidden shadow-lg shadow-[#5A0F1A]/30">
-                <img src="/rkm-logo.png" alt="RKM" className="w-full h-full object-contain scale-150 brightness-150" />
+                <BrandMark className="w-full h-full object-contain scale-150 brightness-150" />
               </div>
               <div>
-                <p className="text-sm font-black text-slate-900 leading-none">RKM Jewellers</p>
+                <p className="text-sm font-black text-slate-900 leading-none">{BRAND_NAME}</p>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Manager Portal</p>
               </div>
             </div>

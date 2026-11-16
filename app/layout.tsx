@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { BRAND_ICON, BRAND_NAME, BRAND_SHORT } from '@/lib/brand';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,12 +14,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "RKM Manager Portal",
-  description: "Manager portal for RKM Jewellers",
+  title: `${BRAND_SHORT} Manager Portal`,
+  description: `Manager portal for ${BRAND_NAME}`,
   icons: {
-    icon: "/rkm-logo-cropped.png",
-    shortcut: "/rkm-logo-cropped.png",
-    apple: "/rkm-logo-cropped.png",
+    icon: BRAND_ICON,
+    shortcut: BRAND_ICON,
+    apple: BRAND_ICON,
   },
 };
 

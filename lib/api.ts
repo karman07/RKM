@@ -505,14 +505,12 @@ export const updateInventoryHallmark = (id: string, hallmark: string) =>
 /** Whether MSG91 SMS is configured on the backend — used to show/hide the SMS option */
 export const getSmsStatus = () => request<{ enabled: boolean }>('/sms/status');
 
-/** Generate a unique sale invoice number: INV-YYYYMMDD-<random 4-char> */
-export function generateSaleInvoiceNumber(): string {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
-  return `INV-${y}${m}${d}-${rand}`;
+/**
+ * Invoice numbers are issued by the server from one continuous sequence shared by all locations
+ * (RKM-000001, RKM-000002, …). The client must not invent one — returning undefined makes the server allocate it.
+ */
+export function generateSaleInvoiceNumber(): string | undefined {
+  return undefined;
 }
 
 export const updateManagerDiscount = (id: string, discount: number) =>
@@ -1720,3 +1718,41 @@ export async function downloadStockIssuePdf(id: string, filename: string): Promi
   document.body.appendChild(a); a.click(); a.remove();
   window.URL.revokeObjectURL(url);
 }
+
+export const changeOwnPassword = (currentPassword: string, newPassword: string) =>
+  request<{ success: boolean }>('/users/me/password', {
+    method: 'PATCH',
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+
+export interface EditBillPayload {
+  reason: string;
+  customer?: { name?: string; phone?: string; email?: string };
+  sold_at?: string;
+  items?: { id: string; final_sale_price?: number; manager_discount?: number }[];
+  payment_splits?: { mode: string; amount: number; reference?: string }[];
+  /** Email the corrected invoice and send the WhatsApp update to the customer. */
+  notify_customer?: boolean;
+}
+
+/** Admin / manager: correct an existing bill. The invoice number never changes; every edit is audit-logged. */
+export const editBill = (saleReference: string, body: EditBillPayload) =>
+  request<{ sale_reference: string; items: any[]; notifications: { email: string; whatsapp: string } | null }>(`/inventory/bill/${encodeURIComponent(saleReference)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+
+export interface BillEditLog {
+  _id: string;
+  sale_reference: string;
+  edited_at: string;
+  edited_by_name: string;
+  edited_by_role: string;
+  reason: string;
+  before: any;
+  after: any;
+}
+
+/** Audit trail of every edit made to a bill, newest first. */
+export const getBillEditHistory = (saleReference: string) =>
+  request<BillEditLog[]>(`/inventory/bill/${encodeURIComponent(saleReference)}/edit-history`);

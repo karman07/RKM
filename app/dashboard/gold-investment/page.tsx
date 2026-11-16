@@ -8,6 +8,7 @@ import {
   enrollSubscription, searchCustomers,
   GoldInvestmentPlan, GoldSubscription, GoldStats, FullCustomer,
 } from '@/lib/api';
+import { BRAND_NAME } from '@/lib/brand';
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
@@ -290,7 +291,7 @@ export default function ManagerGoldInvestment() {
           <h1 className="text-3xl font-serif font-bold tracking-tight text-slate-900 mb-1">Gold Investment Plans</h1>
           <div className="flex items-center gap-3">
             <div className="h-0.5 w-8 bg-[#5A0F1A]" />
-            <p className="text-[10px] font-black tracking-[0.3em] uppercase text-[#5A0F1A]">RKM Jewellers · Subscriber Registry</p>
+            <p className="text-[10px] font-black tracking-[0.3em] uppercase text-[#5A0F1A]">{BRAND_NAME} · Subscriber Registry</p>
           </div>
         </div>
         <button onClick={openEnrollModal} className="px-6 py-3 bg-emerald-600 text-white text-xs font-black uppercase tracking-widest rounded-2xl hover:bg-emerald-700 transition-all shadow-lg">

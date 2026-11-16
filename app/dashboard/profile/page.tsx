@@ -1,6 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import ChangePasswordCard from '@/components/ChangePasswordCard';
+import { changeOwnPassword } from '@/lib/api';
 
 import {
   getProfile, updateUserProfile, uploadUserAvatar, staticUrl,
@@ -424,7 +426,8 @@ export default function ProfilePage() {
             </div>
           </div>
         )}
+        <ChangePasswordCard onSubmit={changeOwnPassword} />
       </div>
-    </div>
+      </div>
   );
 }

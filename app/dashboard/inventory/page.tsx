@@ -24,6 +24,7 @@ import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from 'fi
 import { auth } from '../../../lib/firebase';
 import { toast } from 'sonner';
 import DiscountField from '@/components/DiscountField';
+import { BRAND_JEWELS } from '@/lib/brand';
 
 const COUNTRY_CODES = [
   { code: '+91', name: 'India', flag: '🇮🇳' },
@@ -1032,7 +1033,7 @@ export function InventoryPageContent() {
           key: orderData.razorpayKey,
           amount: orderData.amount,
           currency: orderData.currency,
-          name: "RKM Jewels",
+          name: `${BRAND_JEWELS}`,
           description: `EMI Payment for ${sellItem.product_id?.name || 'Jewelry'}`,
           order_id: orderData.orderId,
           handler: async (response: any) => {

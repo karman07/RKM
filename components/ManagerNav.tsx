@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { getProfile, UserProfile } from '../lib/api';
+import BrandMark from '@/lib/BrandMark';
 
 interface NavbarProps {
   title?: string;
@@ -59,7 +60,7 @@ export default function ManagerNav({ title, subtitle, showBack = false }: Navbar
               </button>
             )}
             <div className="h-11 w-14 bg-[#5A0F1A] rounded-xl flex-shrink-0 flex items-center justify-center shadow overflow-hidden">
-              <img src="/rkm-logo.png" alt="RKM" className="w-full h-full object-contain scale-150 brightness-110" />
+              <BrandMark className="w-full h-full object-contain scale-150 brightness-110" />
             </div>
             <div className="hidden sm:flex flex-col min-w-0">
               {title ? (
