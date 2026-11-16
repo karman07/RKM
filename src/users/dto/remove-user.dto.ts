@@ -1,4 +1,4 @@
-import { IsDateString, IsOptional, IsString } from 'class-validator';
+import { IsDateString, IsMongoId, IsOptional, IsString } from 'class-validator';
 
 export class RemoveUserDto {
   /** Last working day (YYYY-MM-DD). Defaults to today. */
@@ -9,4 +9,9 @@ export class RemoveUserDto {
   @IsString()
   @IsOptional()
   exit_reason?: string;
+
+  /** Active user who takes over this person's sales, customers, reportees and branch. */
+  @IsMongoId()
+  @IsOptional()
+  reassign_to?: string;
 }

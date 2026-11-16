@@ -8,7 +8,10 @@ import { UsersService } from './users/users.service';
 import { demoRouter } from './demo-router';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    // Razorpay webhook signatures are computed over the exact request bytes — keep them available.
+    rawBody: true,
+  });
 
   // Enable extremely permissive CORS allowing access from anywhere
   app.enableCors({

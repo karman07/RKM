@@ -1421,9 +1421,12 @@ export class GoldInvestmentService {
     const secret = this.configService.get<string>('RAZORPAY_WEBHOOK_SECRET') || this.configService.get<string>('RAZORPAY_SECRET') || '';
 
     const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
-    if (expected !== signature) {
+    const a = Buffer.from(expected);
+    const b = Buffer.from(String(signature ?? ''));
+    if (!secret || a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
       this.logger.warn('Webhook signature mismatch');
-      return { received: false };
+      // Non-2xx so Razorpay keeps retrying (and flags it in the dashboard) instead of silently dropping the event.
+      throw new BadRequestException('Invalid webhook signature');
     }
 
     const event = JSON.parse(rawBody);
@@ -1446,6 +1449,11 @@ export class GoldInvestmentService {
         break;
 
       case 'subscription.charged': {
+        // Razorpay retries webhooks — never credit the same payment twice.
+        if (paymentId && (sub.paymentLedger || []).some((e: any) => e.razorpayPaymentId === paymentId)) {
+          this.logger.log(`Webhook: payment ${paymentId} already recorded for subscription ${sub._id}; skipping`);
+          break;
+        }
         const isFirstPayment = sub.installmentsPaid === 0;
         const goldRate = await this.currentGoldRate();
         const gramsCredited = goldRate > 0 ? monthlyAmount / goldRate : 0;
@@ -1496,6 +1504,14 @@ export class GoldInvestmentService {
           this.logger.error('WhatsApp on-halt failed', err),
         );
         this.notifyAdminsOfStoppedAutopay(sub, plan, 'halted');
+        break;
+
+      case 'subscription.expired':
+        // The customer never authorised the mandate in time — nothing was ever charged. Don't leave it "pending" forever.
+        if (sub.status === SubscriptionStatus.PENDING) {
+          sub.status = SubscriptionStatus.CANCELLED;
+          sub.endedAt = new Date();
+        }
         break;
 
       case 'subscription.completed':

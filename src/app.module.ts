@@ -50,7 +50,9 @@ import { MiscPaymentsModule } from './modules/misc-payments/misc-payments.module
   imports: [
     ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env.local', '.env'] }),
     EventEmitterModule.forRoot({ wildcard: false, delimiter: '.', global: true }),
-    ScheduleModule.forRoot(),
+    // Set DISABLE_SCHEDULES=true when running a second instance (e.g. locally against live data) so cron jobs
+    // — end-of-day emails, sign-in monitor, autopay resume — are not fired twice.
+    ...(process.env.DISABLE_SCHEDULES === 'true' ? [] : [ScheduleModule.forRoot()]),
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

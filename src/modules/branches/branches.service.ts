@@ -21,7 +21,20 @@ export class BranchesService {
     return dto;
   }
 
+  /** One GSTIN for the whole business: Settings → company_gstin is the single source of truth. */
+  private async companyGstin(): Promise<string> {
+    const st: any = await this.branchModel.db.collection('settings').findOne({ singleton_key: 'global' });
+    return String(st?.company_gstin ?? '').trim().toUpperCase();
+  }
+
+  /** Forces the company GSTIN onto a branch payload so branches can never drift apart. */
+  private async withCompanyGstin<T extends { gstin?: string }>(dto: T): Promise<T> {
+    const gstin = await this.companyGstin();
+    return gstin ? { ...dto, gstin } : dto;
+  }
+
   async create(dto: CreateBranchDto): Promise<BranchDocument> {
+    dto = await this.withCompanyGstin(dto);
     const existing = await this.branchModel.findOne({ code: dto.code.toUpperCase() });
     if (existing) throw new ConflictException(`Branch code ${dto.code} already exists`);
 
@@ -40,6 +53,7 @@ export class BranchesService {
   }
 
   async update(id: string, dto: UpdateBranchDto): Promise<BranchDocument> {
+    dto = await this.withCompanyGstin(dto);
     const update: any = this.sanitizeManager(dto);
     if (this.isBlankManager(dto)) update.$unset = { manager: 1 };
     const branch = await this.branchModel.findByIdAndUpdate(id, update, { new: true }).exec();

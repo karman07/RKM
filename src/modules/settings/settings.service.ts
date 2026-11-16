@@ -35,6 +35,12 @@ export class SettingsService {
       { new: true, upsert: true },
     );
 
+    // The GSTIN is one number for every location — push it to all branches so tax invoices always agree.
+    const gstin = typeof dto.company_gstin === 'string' ? dto.company_gstin.trim().toUpperCase() : '';
+    if (gstin) {
+      await this.model.db.collection('branches').updateMany({}, { $set: { gstin } });
+    }
+
     // Fire-and-forget: sync inventory prices in the background.
     // We use ModuleRef to lazily resolve InventoryService, avoiding circular dependency.
     this.triggerInventorySync().catch((err) =>

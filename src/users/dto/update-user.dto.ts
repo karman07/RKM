@@ -3,6 +3,7 @@ import {
   IsDateString,
   IsEmail,
   IsEnum,
+  IsMongoId,
   IsOptional,
   IsString,
   MinLength,
@@ -39,6 +40,11 @@ export class UpdateUserDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  /** Used when isActive is set to false: active user who takes over sales, customers, reportees and branch. */
+  @IsMongoId()
+  @IsOptional()
+  reassign_to?: string;
 
   /** Last working day (YYYY-MM-DD). Used when isActive is set to false. Defaults to today. */
   @IsDateString()

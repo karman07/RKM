@@ -24,6 +24,7 @@ import { BarcodeService } from '../uploads/barcode.service.js';
 import { CreateInventoryItemDto } from './dto/create-inventory-item.dto.js';
 import { UpdateInventoryStatusDto } from './dto/update-inventory-status.dto.js';
 import { SellBatchDto } from './dto/sell-batch.dto.js';
+import { EditBillDto } from './dto/edit-bill.dto.js';
 import { QueryInventoryDto } from './dto/query-inventory.dto.js';
 import { UpdateInventoryDiscountDto } from './dto/update-inventory-discount.dto.js';
 import { PreBookItemDto } from './dto/prebook-item.dto.js';
@@ -468,12 +469,23 @@ export class InventoryService {
     return Number(metalRates[metalType]) || 0;
   }
 
-  /** Generates a unique sale reference: SALE-YYYYMMDD-NNNNN */
-  private generateSaleReference(): string {
-    const date = new Date();
-    const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
-    const random = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
-    return `SALE-${dateStr}-${random}`;
+  /**
+   * Next invoice number — ONE continuous sequence shared by every location (RKM-000001, RKM-000002, …).
+   * Allocated atomically from a counter document, so two branches billing at the same moment can never
+   * get the same number or skip around. A number is only consumed when a sale is actually being billed.
+   */
+  private async generateSaleReference(): Promise<string> {
+    const res: any = await this.inventoryModel.db
+      .collection('invoice_counters')
+      .findOneAndUpdate({ _id: 'sale_invoice' as any }, { $inc: { seq: 1 } }, { upsert: true, returnDocument: 'after' });
+    const seq = res?.seq ?? res?.value?.seq;
+    if (!Number.isFinite(seq)) throw new BadRequestException('Could not allocate an invoice number. Please try again.');
+    return `RKM-${String(seq).padStart(6, '0')}`;
+  }
+
+  /** Accepts a client-supplied reference only if it is already one of our sequence numbers (shared multi-item bills). */
+  private isSequenceReference(ref?: string | null): boolean {
+    return /^RKM-\d{6,}$/.test(String(ref ?? '').trim());
   }
 
   // ─── Add Single Item ───────────────────────────────────────────────────────
@@ -1781,7 +1793,7 @@ export class InventoryService {
 
       // Auto-generate a unique sale reference, unless a shared one was supplied (multi-item bill)
       if (!item.sale_reference) {
-        item.sale_reference = dto.sale_reference?.trim() || this.generateSaleReference();
+        item.sale_reference = this.isSequenceReference(dto.sale_reference) ? dto.sale_reference!.trim() : await this.generateSaleReference();
       }
 
       // ─── Redeem investment plan balance — atomically with the sale ────────────
@@ -1997,7 +2009,7 @@ export class InventoryService {
   ): Promise<InventoryItemDocument[]> {
     if (!dto.items?.length) throw new BadRequestException('At least one item is required');
 
-    const sharedReference = dto.sale_reference?.trim() || this.generateSaleReference();
+    const sharedReference = this.isSequenceReference(dto.sale_reference) ? dto.sale_reference!.trim() : await this.generateSaleReference();
     const results: InventoryItemDocument[] = [];
 
     try {
@@ -3106,6 +3118,261 @@ export class InventoryService {
     }
 
     throw new BadRequestException('Invalid channel — must be sms, whatsapp, or email');
+  }
+
+  // ─── Manual bill editing (admin / manager) ──────────────────────────────────
+
+  /**
+   * Corrects an already-created bill: buyer details, invoice date, per-item billed amount / manager discount and the
+   * payment splits. The invoice number never changes. Every edit is written to `bill_edit_logs` (who, when, why,
+   * before / after). Prices, payment splits and the frozen invoice breakdown are kept consistent:
+   *   - the payment splits must add up to the bill total whenever a price or the splits change;
+   *   - investment / advance balance rows are linked to other ledgers, so they can't be altered here;
+   *   - managers can only edit bills sold at their own branch.
+   */
+  async editBill(
+    saleReference: string,
+    dto: EditBillDto,
+    actor: { userId: string; role: string; branchId?: string | null },
+  ) {
+    const ref = String(saleReference ?? '').trim();
+    if (!ref) throw new BadRequestException('Bill number is required');
+
+    const all = await this.inventoryModel.find({ sale_reference: ref, is_deleted: { $ne: true } });
+    if (!all.length) throw new NotFoundException(`Bill ${ref} not found`);
+    if (all.some(i => i.status !== InventoryStatus.SOLD)) {
+      throw new BadRequestException('Only completed sales can be edited — this bill has returned or non-sold items.');
+    }
+    const items = all;
+
+    if (actor.role === 'manager') {
+      const own = String(actor.branchId ?? '');
+      if (!own || items.some(i => String(i.sold_at_branch_id ?? '') !== own)) {
+        throw new ForbiddenException('Managers can only edit bills sold at their own branch.');
+      }
+    }
+
+    const hasChange = dto.customer || dto.sold_at || dto.items?.length || dto.payment_splits;
+    if (!hasChange) throw new BadRequestException('Nothing to change.');
+
+    const byId = new Map(items.map(i => [String(i._id), i]));
+    const itemEdits = new Map<string, NonNullable<EditBillDto['items']>[number]>();
+    for (const e of dto.items ?? []) {
+      if (!byId.has(e.id)) throw new BadRequestException(`Item ${e.id} is not part of bill ${ref}`);
+      itemEdits.set(e.id, e);
+    }
+
+    const first: any = items[0];
+    const before = {
+      customer: { name: first.sold_customer_name, phone: first.sold_customer_phone, email: first.sold_customer_email },
+      sold_at: first.sold_at,
+      payment_splits: (first.payment_splits ?? []).map((s: any) => ({ mode: s.mode, amount: s.amount, reference: s.reference })),
+      items: items.map((i: any) => ({
+        id: String(i._id), selling_price: i.selling_price, final_sale_price: i.final_sale_price, manager_discount: i.manager_discount,
+      })),
+    };
+
+    // ── customer ────────────────────────────────────────────────────────────
+    const common: Record<string, any> = {};
+    if (dto.customer) {
+      if (dto.customer.name !== undefined) {
+        const n = dto.customer.name.trim();
+        if (!n) throw new BadRequestException('Customer name cannot be empty');
+        common.sold_customer_name = n;
+      }
+      if (dto.customer.phone !== undefined) common.sold_customer_phone = dto.customer.phone.trim();
+      if (dto.customer.email !== undefined) {
+        const e = dto.customer.email.trim();
+        if (e && !/^\S+@\S+\.\S+$/.test(e)) throw new BadRequestException('Enter a valid email address');
+        common.sold_customer_email = e;
+      }
+    }
+
+    // ── date ────────────────────────────────────────────────────────────────
+    if (dto.sold_at) {
+      const d = new Date(dto.sold_at);
+      if (Number.isNaN(d.getTime())) throw new BadRequestException('Invalid invoice date');
+      if (d.getTime() > Date.now() + 24 * 60 * 60 * 1000) throw new BadRequestException('Invoice date cannot be in the future');
+      common.sold_at = d;
+    }
+
+    // ── payment splits ──────────────────────────────────────────────────────
+    const protectedModes = ['investment_balance', 'advance_balance'];
+    const key = (s: any) => `${s.mode}|${Math.round(Number(s.amount) || 0)}|${s.reference ?? ''}`;
+    let newSplits: Array<{ mode: string; amount: number; reference?: string }> | null = null;
+    if (dto.payment_splits) {
+      newSplits = this.normalisePaymentSplits(dto.payment_splits);
+      const oldLocked = before.payment_splits.filter((s: any) => protectedModes.includes(s.mode)).map(key).sort().join(';');
+      const newLocked = newSplits.filter(s => protectedModes.includes(s.mode)).map(key).sort().join(';');
+      if (oldLocked !== newLocked) {
+        throw new BadRequestException('Investment-balance and advance-balance payments are linked to other records and cannot be changed here.');
+      }
+      common.payment_splits = newSplits;
+    }
+    const effectiveSplits = newSplits ?? before.payment_splits;
+    const splitsTotal = Math.round(effectiveSplits.reduce((sum: number, s: any) => sum + (Number(s.amount) || 0), 0));
+
+    // ── billed amount per item ──────────────────────────────────────────────
+    const newFinal = new Map<string, number>();
+    const itemsPriced = [...itemEdits.values()].some(e => e.final_sale_price !== undefined);
+    if (itemsPriced) {
+      for (const i of items) {
+        const e = itemEdits.get(String(i._id));
+        newFinal.set(String(i._id), Math.round(e?.final_sale_price !== undefined ? e.final_sale_price : saleValue(i as any)));
+      }
+    } else if (newSplits) {
+      const prices = computeFinalSalePrices(items.map((i: any) => ({ id: String(i._id), selling_price: i.selling_price, payment_splits: newSplits })));
+      prices.forEach((v, k) => newFinal.set(k, v));
+    }
+    const priceChanged = items.some(i => newFinal.has(String(i._id)) && newFinal.get(String(i._id)) !== Math.round(saleValue(i as any)));
+    if (priceChanged || itemsPriced) {
+      const billTotal = [...newFinal.values()].reduce((a, b) => a + b, 0);
+      if (Math.abs(billTotal - splitsTotal) > 1) {
+        throw new BadRequestException(
+          `The payments (Rs ${splitsTotal.toLocaleString('en-IN')}) must add up to the bill total (Rs ${billTotal.toLocaleString('en-IN')}). Adjust the payment splits to match.`,
+        );
+      }
+    }
+
+    // ── write ───────────────────────────────────────────────────────────────
+    const ops: any[] = [];
+    for (const i of items as any[]) {
+      const id = String(i._id);
+      const e = itemEdits.get(id);
+      const set: Record<string, any> = { ...common };
+      if (e?.manager_discount !== undefined) set.manager_discount = e.manager_discount;
+      const billed = newFinal.get(id);
+      if (billed !== undefined) {
+        set.final_sale_price = billed;
+        if (e?.final_sale_price !== undefined) set.selling_price = billed; // keep proportional re-splitting consistent
+      }
+      const pricingTouched = billed !== undefined || e?.manager_discount !== undefined;
+      if (pricingTouched) {
+        if (i.sale_pricing_snapshot) {
+          set.sale_pricing_snapshot = buildSaleSnapshot({
+            liveBreakdown: i.sale_pricing_snapshot,
+            billed: billed ?? saleValue(i),
+            waivers: (Number(i.making_charges_discount) || 0) + (Number(i.advance_making_charges_discount) || 0),
+            adminPct: i.admin_discount,
+            mgrPct: e?.manager_discount !== undefined ? e.manager_discount : i.manager_discount,
+          }).pricing_breakdown;
+        }
+      }
+      if (Object.keys(set).length) ops.push({ updateOne: { filter: { _id: i._id }, update: { $set: set } } });
+    }
+    if (ops.length) await this.inventoryModel.bulkWrite(ops);
+
+    const updated = await this.inventoryModel.find({ sale_reference: ref, is_deleted: { $ne: true } }).lean();
+    const u0: any = updated[0];
+    const after = {
+      customer: { name: u0.sold_customer_name, phone: u0.sold_customer_phone, email: u0.sold_customer_email },
+      sold_at: u0.sold_at,
+      payment_splits: (u0.payment_splits ?? []).map((s: any) => ({ mode: s.mode, amount: s.amount, reference: s.reference })),
+      items: updated.map((i: any) => ({
+        id: String(i._id), selling_price: i.selling_price, final_sale_price: i.final_sale_price, manager_discount: i.manager_discount,
+      })),
+    };
+
+    const users = this.inventoryModel.db.collection('users');
+    const actorDoc: any = Types.ObjectId.isValid(actor.userId)
+      ? await users.findOne({ _id: new Types.ObjectId(actor.userId) }, { projection: { name: 1 } })
+      : null;
+    await this.inventoryModel.db.collection('bill_edit_logs').insertOne({
+      sale_reference: ref,
+      edited_at: new Date(),
+      edited_by: Types.ObjectId.isValid(actor.userId) ? new Types.ObjectId(actor.userId) : actor.userId,
+      edited_by_name: actorDoc?.name ?? '',
+      edited_by_role: actor.role,
+      reason: dto.reason.trim(),
+      before,
+      after,
+    });
+
+    const notifications = dto.notify_customer ? await this.sendCorrectedInvoice(ref) : null;
+    return { sale_reference: ref, items: updated, notifications };
+  }
+
+  /**
+   * After a bill edit: emails the customer the corrected invoice (PDF attached, built by the same pipeline as the
+   * original) and sends the WhatsApp sale update with the new amount. Never throws — the edit is already saved, so
+   * the outcome is reported back for the admin to see instead.
+   */
+  private async sendCorrectedInvoice(saleReference: string): Promise<{ email: string; whatsapp: string }> {
+    const result = { email: 'skipped', whatsapp: 'skipped' };
+    try {
+      const rawItems = await this.inventoryModel.find({ sale_reference: saleReference }).select('_id').lean();
+      const enriched = rawItems.length ? await this.fetchAndEnrichSoldItems(rawItems.map((i: any) => String(i._id))) : [];
+      if (!enriched.length) return result;
+      const first: any = enriched[0];
+      const date = new Date(first.sold_at || Date.now()).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+      const totalAmount = enriched.reduce((sum: number, it: any) => sum + saleValue(it), 0);
+      const itemName = enriched.length > 1 ? `${enriched.length} items` : (first.product_id?.name || first.unique_item_code);
+
+      // ── email ──
+      if (!first.sold_customer_email) {
+        result.email = 'no_email_on_bill';
+      } else {
+        try {
+          let customerRecordId: string | null = null;
+          if (first.sold_customer_phone) {
+            const matches = await this.customersService.searchByPhone(first.sold_customer_phone);
+            customerRecordId = (matches?.[0] as any)?._id?.toString() ?? null;
+          }
+          const pdf = await renderBillPdf(buildBillPrintHtml(enriched, date, customerRecordId));
+          const esc = (v: string) => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' } as any)[c]);
+          const html = `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#222;line-height:1.5">
+            <h2 style="color:#5A0F1A;margin-bottom:4px">Corrected Tax Invoice</h2>
+            <p>Dear ${esc(first.sold_customer_name || 'Customer')},</p>
+            <p>We have updated your invoice <strong>${esc(saleReference)}</strong> dated ${esc(date)}. The corrected invoice is attached and replaces the earlier copy.</p>
+            <p>Invoice total: <strong>Rs ${Math.round(totalAmount).toLocaleString('en-IN')}</strong></p>
+            <p>If anything looks wrong, please reply to this email or contact the store.</p>
+            <p>Thank you,<br/>${esc(this.emailService.fromDisplayName)}</p></div>`;
+          const sent = await this.emailService.sendMail({
+            to: first.sold_customer_email,
+            toName: first.sold_customer_name,
+            subject: `Corrected Tax Invoice ${saleReference} | RKM Jewellers`,
+            html,
+            trigger: 'sale_bill',
+            saleReference,
+            attachments: [{ filename: `Invoice-${saleReference}.pdf`, content: pdf }],
+          });
+          result.email = sent?.success ? 'sent' : `failed: ${sent?.error ?? 'unknown error'}`;
+        } catch (err: any) {
+          result.email = `failed: ${err?.message ?? 'unknown error'}`;
+        }
+      }
+
+      // ── WhatsApp (approved sale template, carries the invoice number and the updated amount) ──
+      if (!first.sold_customer_phone) {
+        result.whatsapp = 'no_phone_on_bill';
+      } else {
+        this.eventEmitter.emit(SALE_BATCH_COMPLETED_EVENT, {
+          customerPhone: first.sold_customer_phone,
+          customerName: first.sold_customer_name,
+          itemId: String(first._id),
+          itemName: `${itemName} (corrected invoice)`,
+          saleReference,
+          amount: totalAmount,
+          branchName: first.sold_at_branch_id?.name,
+          paymentMode: first.payment_mode,
+        });
+        result.whatsapp = 'queued';
+      }
+    } catch (err: any) {
+      this.logger.error(`[InventoryService] Corrected-invoice notification failed for ${saleReference}: ${err?.message}`);
+      result.email = result.email === 'skipped' ? `failed: ${err?.message}` : result.email;
+    }
+    return result;
+  }
+
+  /** Audit trail of every edit made to a bill, newest first. */
+  async getBillEditHistory(saleReference: string) {
+    return this.inventoryModel.db
+      .collection('bill_edit_logs')
+      .find({ sale_reference: String(saleReference ?? '').trim() })
+      .sort({ edited_at: -1 })
+      .limit(100)
+      .toArray();
   }
 
   /**

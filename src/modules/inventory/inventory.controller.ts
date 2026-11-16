@@ -18,6 +18,7 @@ import { CertificateService } from './certificate.service';
 import { CreateInventoryItemDto } from './dto/create-inventory-item.dto';
 import { UpdateInventoryStatusDto } from './dto/update-inventory-status.dto';
 import { SellBatchDto } from './dto/sell-batch.dto';
+import { EditBillDto } from './dto/edit-bill.dto';
 import { DeleteInventoryItemDto } from './dto/delete-inventory-item.dto';
 import { BulkDeleteInventoryDto } from './dto/bulk-delete-inventory.dto';
 import { QueryInventoryDto } from './dto/query-inventory.dto';
@@ -38,6 +39,29 @@ export class InventoryController {
     private readonly inventoryService: InventoryService,
     private readonly certificateService: CertificateService,
   ) {}
+
+  /**
+   * PATCH /inventory/bill/:saleReference
+   * Admin or Manager corrects an existing bill (buyer, date, billed amounts, payment splits). Audit-logged; the
+   * invoice number never changes. Managers are limited to their own branch.
+   */
+  @Patch('bill/:saleReference')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  editBill(@Param('saleReference') saleReference: string, @Body() dto: EditBillDto, @Request() req: any) {
+    const userId = req.user?.userId || req.user?.sub || req.user?._id || req.user?.id;
+    return this.inventoryService.editBill(saleReference, dto, {
+      userId: String(userId ?? ''),
+      role: req.user?.role,
+      branchId: req.user?.branch_id ?? null,
+    });
+  }
+
+  /** GET /inventory/bill/:saleReference/edit-history — audit trail for a bill. */
+  @Get('bill/:saleReference/edit-history')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  billEditHistory(@Param('saleReference') saleReference: string) {
+    return this.inventoryService.getBillEditHistory(saleReference);
+  }
 
   @Post()
   @Roles(UserRole.ADMIN, UserRole.MANAGER)

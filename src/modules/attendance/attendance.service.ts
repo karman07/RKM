@@ -128,7 +128,8 @@ export class AttendanceService {
           existing.is_late         = is_late;
           existing.late_by_minutes = late_by_minutes;
           // Apply auto-status only if admin didn't explicitly set one
-          if (!status && autoStatus) {
+          // Never downgrade an approved leave day to present/half-day just because they signed in.
+          if (!status && autoStatus && existing.status !== AttendanceStatus.ON_LEAVE) {
             existing.status = autoStatus;
           }
         }
