@@ -14,6 +14,7 @@ import {
   waSyncTemplate, waSyncAllTemplates, waSubmitTemplate, waTemplateStats,
   type WaTemplateV2, type WaTemplateComponentV2, type WaTemplateButton,
 } from '@/lib/api';
+import { BRAND_NAME } from '@/lib/brand';
 
 // ─── Customer schema variables ────────────────────────────────────────────────
 
@@ -30,7 +31,7 @@ const CUSTOMER_VARS = [
   { key: 'amount',            label: 'Sale Amount',        sample: '₹1,25,000',           group: 'Sale' },
   { key: 'branchName',        label: 'Branch Name',        sample: 'Chandigarh Main',     group: 'Sale' },
   { key: 'lastContactedAt',   label: 'Last Contacted',     sample: '15 Apr 2026',         group: 'Customer' },
-  { key: 'shopName',          label: 'Shop Name',          sample: 'RKM Jewellers',       group: 'Business' },
+  { key: 'shopName',          label: 'Shop Name',          sample: `${BRAND_NAME}`,       group: 'Business' },
   { key: 'returnDeadline',    label: 'Return Deadline',    sample: '22 Apr 2026',         group: 'Sale' },
 ] as const;
 
@@ -559,7 +560,7 @@ function TemplateBuilder({ onSaved }: { onSaved: () => void }) {
               onFocus={() => { activeTextareaRef.current = bodyRef; }}
               rows={6}
               maxLength={1024}
-              placeholder={`Hello {{1}}, your *sale {{2}}* has been confirmed.\n\nAmount: ₹{{3}}\nItem: {{4}}\n\nThank you for choosing _RKM Jewellers_! 🙏`}
+              placeholder={`Hello {{1}}, your *sale {{2}}* has been confirmed.\n\nAmount: ₹{{3}}\nItem: {{4}}\n\nThank you for choosing _${BRAND_NAME}_! 🙏`}
               className="w-full px-4 py-3 border-2 border-dashed border-blue-200 bg-blue-50/30 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none resize-none leading-relaxed"
             />
             <div className="flex items-center justify-between mt-1">
@@ -573,7 +574,7 @@ function TemplateBuilder({ onSaved }: { onSaved: () => void }) {
         <div className="bg-white border border-slate-100 rounded-2xl p-5">
           <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Footer <span className="text-slate-300 font-medium normal-case">(optional · small gray text · no variables)</span></p>
           <input value={footerText} onChange={e => setFooterText(e.target.value)}
-            placeholder="RKM Jewellers · quality you can trust"
+            placeholder={`${BRAND_NAME} · quality you can trust`}
             maxLength={60}
             className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none" />
           <p className="text-[9px] text-slate-300 mt-0.5 font-medium text-right">{footerText.length}/60</p>

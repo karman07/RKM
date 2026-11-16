@@ -4,6 +4,8 @@ import { useRouter } from 'next/navigation';
 import { login, checkIn } from '@/lib/api';
 import { motion } from 'framer-motion';
 import { Lock, Mail, Loader2, Star, ShieldCheck } from 'lucide-react';
+import {BRAND_NAME} from '@/lib/brand';
+import BrandMark from '@/lib/BrandMark';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -67,7 +69,7 @@ export default function LoginPage() {
             transition={{ delay: 0.1, duration: 0.4 }}
             className="inline-flex items-center justify-center w-20 h-20 bg-white border border-slate-100 rounded-2xl mb-5 shadow-xl shadow-blue-500/5 relative group p-2 overflow-hidden"
           >
-            <img src="/rkm-logo.png" alt="RKM Logo" className="w-full h-full object-contain transform group-hover:scale-110 transition-transform duration-700" />
+            <BrandMark className="w-full h-full object-contain transform group-hover:scale-110 transition-transform duration-700" />
           </motion.div>
           
           <motion.h1 
@@ -76,7 +78,7 @@ export default function LoginPage() {
             transition={{ delay: 0.2 }}
             className="text-[28px] font-black text-slate-900 tracking-tighter uppercase"
           >
-            RKM Jewellers
+            {BRAND_NAME}
           </motion.h1>
           <motion.p 
             initial={{ opacity: 0 }}

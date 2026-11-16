@@ -11,6 +11,7 @@ import {
   Type as TypeIcon, Plus, Trash2, Eye, EyeOff, RotateCcw, ChevronUp, ChevronDown,
   AlignLeft, AlignCenter, AlignRight, Bold, Layers, StretchHorizontal, Download,
 } from 'lucide-react';
+import { BRAND_NAME, BRAND_SHORT } from '@/lib/brand';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -91,7 +92,7 @@ const clampNum = (v: number, min: number, max: number) => Math.min(max, Math.max
 function getLabelFields(item: InventoryItem) {
   const product = typeof item.product_id === 'object' ? (item.product_id as Product) : null;
   return {
-    name: product?.name || 'RKM Masterpiece',
+    name: product?.name || `${BRAND_SHORT} Masterpiece`,
     gwt: product?.gross_weight ?? 0,
     nwt: product?.net_weight ?? 0,
     stoneWt: product?.stone_weight ?? 0,
@@ -967,7 +968,7 @@ export default function LabelDesignerModal({ open, mode, singleItem, bulkItems, 
                               <input
                                 value={selectedEl.text}
                                 onChange={e => updateElement(selectedEl.id, { text: e.target.value })}
-                                placeholder="e.g. RKM Jewellers"
+                                placeholder={`e.g. ${BRAND_NAME}`}
                                 className="mt-1 w-full px-2.5 py-2 rounded-lg border border-slate-200 text-[11px] font-bold text-slate-700 outline-none focus:border-blue-400"
                               />
                             </div>

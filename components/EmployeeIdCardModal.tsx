@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import QRCode from 'qrcode';
 import { staticUrl, type User, type Branch } from '@/lib/api';
 import { downloadElementAsPdf, shareElementAsPdf } from '@/lib/pdf-utils';
+import { BRAND_NAME, BRAND_NAME_UPPER } from '@/lib/brand';
 
 interface EmployeeIdCardModalProps {
   user: User;
@@ -62,7 +63,7 @@ export default function EmployeeIdCardModal({ user, branches, onClose }: Employe
         'printable-employee-id-card',
         `${cardNo}.pdf`,
         `Employee ID Card ${cardNo}`,
-        `RKM Jewellers employee ID card for ${user.name}`,
+        `${BRAND_NAME} employee ID card for ${user.name}`,
         { singlePage: true },
       );
       if (!shared) toast.info('Direct sharing isn\'t supported on this browser — the ID card PDF was downloaded instead.');
@@ -111,7 +112,7 @@ export default function EmployeeIdCardModal({ user, branches, onClose }: Employe
         >
           {/* Header strip */}
           <div style={{ textAlign: 'center', background: MAROON, color: '#fff', padding: '16px 20px' }}>
-            <div style={{ fontSize: '19px', fontWeight: 900, letterSpacing: '3px', fontFamily: '"Georgia", serif' }}>RKM JEWELLERS</div>
+            <div style={{ fontSize: '19px', fontWeight: 900, letterSpacing: '3px', fontFamily: '"Georgia", serif' }}>{BRAND_NAME_UPPER}</div>
             <div style={{ fontSize: '10px', fontWeight: 900, letterSpacing: '2px', marginTop: '4px' }}>EMPLOYEE ID CARD</div>
             <div style={{ fontSize: '8px', letterSpacing: '1px', color: 'rgba(255,255,255,0.65)', marginTop: '2px' }}>{cardNo}</div>
           </div>
@@ -153,7 +154,7 @@ export default function EmployeeIdCardModal({ user, branches, onClose }: Employe
             <div style={{ fontSize: '9px', color: '#555', lineHeight: 1.6, textAlign: 'center', marginTop: '10px' }}>
               <div style={{ fontWeight: 900, color: MAROON, fontSize: '10px' }}>SCAN TO EXPLORE OUR COLLECTION</div>
               <div>{PRODUCTS_URL.replace('https://', '')}</div>
-              <div style={{ marginTop: '6px', color: '#000' }}>This card is the property of RKM Jewellers.<br />If found, please return to the nearest branch.</div>
+              <div style={{ marginTop: '6px', color: '#000' }}>This card is the property of {BRAND_NAME}.<br />If found, please return to the nearest branch.</div>
             </div>
           </div>
         </div>

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import type { CustomerAdvance } from '@/lib/api';
 import { downloadElementAsPdf, shareElementAsPdf } from '@/lib/pdf-utils';
+import { BRAND_NAME, BRAND_NAME_UPPER, BRAND_SHORT } from '@/lib/brand';
 
 interface AdvanceReceiptModalProps {
   advance: CustomerAdvance;
@@ -41,8 +42,8 @@ export default function AdvanceReceiptModal({ advance, onClose }: AdvanceReceipt
   // Customer details (actual data from the customer ref, when populated)
   const customerObj = advance.customer && typeof advance.customer === 'object' ? advance.customer as any : null;
   const customerId = customerObj
-    ? `RKM${customerObj._id.slice(-8).toUpperCase()}`
-    : typeof advance.customer === 'string' ? `RKM${advance.customer.slice(-8).toUpperCase()}` : '—';
+    ? `${BRAND_SHORT}${customerObj._id.slice(-8).toUpperCase()}`
+    : typeof advance.customer === 'string' ? `${BRAND_SHORT}${advance.customer.slice(-8).toUpperCase()}` : '—';
   const customerAddressParts = [
     customerObj?.address,
     customerObj?.city,
@@ -69,7 +70,7 @@ export default function AdvanceReceiptModal({ advance, onClose }: AdvanceReceipt
         'printable-advance-receipt',
         `${receiptNo}.pdf`,
         `Advance Receipt ${receiptNo}`,
-        `Advance payment receipt ${receiptNo} from RKM Jewellers`,
+        `Advance payment receipt ${receiptNo} from ${BRAND_NAME}`,
       );
       if (!shared) toast.info('Direct sharing isn\'t supported on this browser — the receipt PDF was downloaded instead.');
     } catch (e: any) {
@@ -118,7 +119,7 @@ export default function AdvanceReceiptModal({ advance, onClose }: AdvanceReceipt
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '16px 20px', borderBottom: '2px solid #000' }}>
           <div>
-            <div style={{ fontSize: '22px', fontWeight: 900, letterSpacing: '3px', fontFamily: '"Georgia", serif' }}>RKM JEWELLERS</div>
+            <div style={{ fontSize: '22px', fontWeight: 900, letterSpacing: '3px', fontFamily: '"Georgia", serif' }}>{BRAND_NAME_UPPER}</div>
             <div style={{ fontSize: '9px', letterSpacing: '2px', color: '#555', marginBottom: '4px' }}>
               FINE JEWELLERY • EST. 2005{branchData?.name ? ` • ${branchData.name.toUpperCase()} BRANCH` : ''}
             </div>

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Plus_Jakarta_Sans, Inter } from 'next/font/google';
 import { AppThemeProvider } from '@/components/AppThemeContext';
 import "./globals.css";
+import { BRAND_ICON, BRAND_NAME, BRAND_SHORT } from '@/lib/brand';
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
@@ -16,12 +17,12 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "RKM Admin Control",
-  description: "Secure Admin Management for RKM Jewellers",
+  title: `${BRAND_SHORT} Admin Control`,
+  description: `Secure Admin Management for ${BRAND_NAME}`,
   icons: {
-    icon: "/rkm-logo-cropped.png",
-    shortcut: "/rkm-logo-cropped.png",
-    apple: "/rkm-logo-cropped.png",
+    icon: BRAND_ICON,
+    shortcut: BRAND_ICON,
+    apple: BRAND_ICON,
   },
 };
 

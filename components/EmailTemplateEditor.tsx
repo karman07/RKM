@@ -7,6 +7,7 @@ import {
   Receipt, RotateCcw, Bookmark, MessageSquare, FileText,
 } from 'lucide-react';
 import type { EmailTemplate } from '@/lib/api';
+import { BRAND_JEWELS, BRAND_SHORT } from '@/lib/brand';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -72,10 +73,10 @@ interface Preset { label: string; icon: React.ElementType; subject: string; desc
 
 const PRESETS: Record<string, Preset> = {
   sale_completed: {
-    label: 'Purchase Confirmation', icon: Receipt, subject: 'Your purchase at RKM Jewels — {{sale_reference}}',
+    label: 'Purchase Confirmation', icon: Receipt, subject: `Your purchase at ${BRAND_JEWELS} — {{sale_reference}}`,
     description: 'Sent automatically when a sale is completed',
     config: {
-      accent_color: '#1f63d8', brand_name: 'RKM Jewels',
+      accent_color: '#1f63d8', brand_name: `${BRAND_JEWELS}`,
       header_title: 'Purchase Confirmed',
       header_subtitle: 'Dear {{customer_name}}, thank you for shopping with us.',
       body_text: 'Your jewellery is ready for collection or will be dispatched as per your preference. Here are your order details:',
@@ -93,23 +94,23 @@ const PRESETS: Record<string, Preset> = {
     },
   },
   sale_returned: {
-    label: 'Return Acknowledgement', icon: RotateCcw, subject: 'Return acknowledged — {{sale_reference}} | RKM Jewels',
+    label: 'Return Acknowledgement', icon: RotateCcw, subject: `Return acknowledged — {{sale_reference}} | ${BRAND_JEWELS}`,
     description: 'Sent when a customer return is recorded',
     config: {
-      accent_color: '#ea580c', brand_name: 'RKM Jewels',
+      accent_color: '#ea580c', brand_name: `${BRAND_JEWELS}`,
       header_title: 'Return Acknowledged',
       header_subtitle: 'Hi {{customer_name}}, we have received your return.',
       body_text: "We've received your return request for order {{sale_reference}}. Our team will process your refund shortly and notify you once completed.\n\nIf you have any questions, please contact us directly. Thank you for your patience.",
       show_details: false, detail_rows: [],
       show_button: false, button_text: '',
-      footer_text: 'RKM Jewels — Automated Return Confirmation',
+      footer_text: `${BRAND_JEWELS} — Automated Return Confirmation`,
     },
   },
   sale_reserved: {
-    label: 'Reservation Notice', icon: Bookmark, subject: '{{item_name}} is reserved for you | RKM Jewels',
+    label: 'Reservation Notice', icon: Bookmark, subject: `{{item_name}} is reserved for you | ${BRAND_JEWELS}`,
     description: 'Sent when an item is reserved for a customer',
     config: {
-      accent_color: '#7c3aed', brand_name: 'RKM Jewels',
+      accent_color: '#7c3aed', brand_name: `${BRAND_JEWELS}`,
       header_title: 'Item Reserved for You',
       header_subtitle: 'Hi {{customer_name}}, your item is being held.',
       body_text: "Great news! The item you requested has been reserved for you. Please visit your nearest branch within 48 hours to complete the purchase.\n\nPlease note that reservations are held for a limited time only.",
@@ -119,33 +120,33 @@ const PRESETS: Record<string, Preset> = {
         { id: '2', label: 'Branch', value: '{{branch_name}}', highlight: false },
       ],
       show_button: false, button_text: '',
-      footer_text: 'RKM Jewels — Automated Reservation Notice',
+      footer_text: `${BRAND_JEWELS} — Automated Reservation Notice`,
     },
   },
   feedback: {
-    label: 'Feedback Request', icon: MessageSquare, subject: 'How was your experience? | RKM Jewels',
+    label: 'Feedback Request', icon: MessageSquare, subject: `How was your experience? | ${BRAND_JEWELS}`,
     description: 'Request feedback from customers after purchase',
     config: {
-      accent_color: '#059669', brand_name: 'RKM Jewels',
+      accent_color: '#059669', brand_name: `${BRAND_JEWELS}`,
       header_title: 'How Was Your Experience?',
       header_subtitle: "Hi {{customer_name}}, we'd love to hear from you!",
-      body_text: "Thank you for choosing RKM Jewels for your recent purchase ({{sale_reference}}).\n\nYour feedback helps us serve you better. It only takes 30 seconds!",
+      body_text: `Thank you for choosing ${BRAND_JEWELS} for your recent purchase ({{sale_reference}}).\n\nYour feedback helps us serve you better. It only takes 30 seconds!`,
       show_details: false, detail_rows: [],
       show_button: true, button_text: 'Leave a Review',
-      footer_text: 'Thank you for being a valued customer of RKM Jewels.',
+      footer_text: `Thank you for being a valued customer of ${BRAND_JEWELS}.`,
     },
   },
   custom: {
-    label: 'Blank Template', icon: FileText, subject: 'Message from RKM Jewels',
+    label: 'Blank Template', icon: FileText, subject: `Message from ${BRAND_JEWELS}`,
     description: 'Start from scratch',
     config: {
-      accent_color: '#1f63d8', brand_name: 'RKM Jewels',
+      accent_color: '#1f63d8', brand_name: `${BRAND_JEWELS}`,
       header_title: 'Hello {{customer_name}}',
       header_subtitle: '',
       body_text: 'Write your message here.',
       show_details: false, detail_rows: [],
       show_button: false, button_text: '',
-      footer_text: 'RKM Jewels',
+      footer_text: `${BRAND_JEWELS}`,
     },
   },
 };
@@ -221,7 +222,7 @@ export function generateEmailHtml(cfg: TemplateConfig): string {
         <!-- HEADER -->
         <tr>
           <td style="background:linear-gradient(135deg,${c} 0%,${cd} 100%);padding:48px 40px 40px;text-align:center;">
-            <p style="margin:0 0 10px;font-size:11px;font-weight:800;letter-spacing:4px;text-transform:uppercase;color:rgba(255,255,255,0.55);">${cfg.brand_name || 'RKM JEWELS'}</p>
+            <p style="margin:0 0 10px;font-size:11px;font-weight:800;letter-spacing:4px;text-transform:uppercase;color:rgba(255,255,255,0.55);">${cfg.brand_name || `${BRAND_SHORT} JEWELS`}</p>
             <h1 style="margin:0;font-size:30px;font-weight:900;color:#ffffff;letter-spacing:-0.5px;line-height:1.2;">${cfg.header_title || 'Hello!'}</h1>
             ${cfg.header_subtitle ? `<p style="margin:14px 0 0;font-size:14px;color:rgba(255,255,255,0.8);line-height:1.5;">${cfg.header_subtitle}</p>` : ''}
           </td>
@@ -239,7 +240,7 @@ export function generateEmailHtml(cfg: TemplateConfig): string {
         <!-- FOOTER -->
         <tr>
           <td style="background:#f8fafc;padding:24px 40px;border-top:1px solid #f1f5f9;text-align:center;">
-            <p style="margin:0 0 6px;font-size:11px;font-weight:800;letter-spacing:3px;text-transform:uppercase;color:#94a3b8;">${cfg.brand_name || 'RKM Jewels'}</p>
+            <p style="margin:0 0 6px;font-size:11px;font-weight:800;letter-spacing:3px;text-transform:uppercase;color:#94a3b8;">${cfg.brand_name || `${BRAND_JEWELS}`}</p>
             ${cfg.footer_text ? `<p style="margin:0;font-size:11px;color:#94a3b8;line-height:1.6;">${cfg.footer_text}</p>` : ''}
           </td>
         </tr>
@@ -549,7 +550,7 @@ export default function EmailTemplateEditor({ template, isNew, saving, onSave, o
                   </div>
                   <div className="mt-3">
                     <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Brand Name</label>
-                    <input value={config.brand_name} onChange={e => upd('brand_name')(e.target.value)} placeholder="RKM Jewels"
+                    <input value={config.brand_name} onChange={e => upd('brand_name')(e.target.value)} placeholder={`${BRAND_JEWELS}`}
                       className={inputCls} />
                   </div>
                 </Section>

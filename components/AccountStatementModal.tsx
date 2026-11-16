@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import type { Customer } from '@/lib/api';
 import { downloadElementAsPdf, shareElementAsPdf } from '@/lib/pdf-utils';
+import {BRAND_NAME, BRAND_NAME_UPPER, BRAND_SHORT } from '@/lib/brand';
+import BrandMark from '@/lib/BrandMark';
 
 type LedgerRow = {
   date: string;
@@ -59,7 +61,7 @@ export default function AccountStatementModal({ customer, rows, totalCredit, tot
         'printable-account-statement',
         `${statementNo}.pdf`,
         `Account Statement — ${customer.name}`,
-        `Full account statement for ${customer.name} from RKM Jewellers`,
+        `Full account statement for ${customer.name} from ${BRAND_NAME}`,
       );
       if (!shared) toast.info('Direct sharing isn\'t supported on this browser — the statement PDF was downloaded instead.');
     } catch (e: any) {
@@ -108,9 +110,9 @@ export default function AccountStatementModal({ customer, rows, totalCredit, tot
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '18px 20px', borderBottom: '2px solid #000' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <img src="/rkm-logo.png" alt="RKM Jewellers" style={{ width: '42px', height: '42px', objectFit: 'contain' }} />
+            <BrandMark style={{ width: '42px', height: '42px', objectFit: 'contain' }} />
             <div>
-              <div style={{ fontSize: '22px', fontWeight: 900, letterSpacing: '3px', fontFamily: '"Georgia", serif' }}>RKM JEWELLERS</div>
+              <div style={{ fontSize: '22px', fontWeight: 900, letterSpacing: '3px', fontFamily: '"Georgia", serif' }}>{BRAND_NAME_UPPER}</div>
               <div style={{ fontSize: '9px', letterSpacing: '2px', color: '#555' }}>FINE JEWELLERY • EST. 2005</div>
             </div>
           </div>
@@ -132,7 +134,7 @@ export default function AccountStatementModal({ customer, rows, totalCredit, tot
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: '8px', fontWeight: 700, color: '#555', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '4px' }}>Customer ID</div>
-            <div style={{ fontFamily: 'monospace', fontWeight: 700 }}>RKM{customer._id.slice(-8).toUpperCase()}</div>
+            <div style={{ fontFamily: 'monospace', fontWeight: 700 }}>{BRAND_SHORT}{customer._id.slice(-8).toUpperCase()}</div>
             {customer.createdAt && <div style={{ marginTop: '2px' }}>Member Since: {fmtDate(customer.createdAt)}</div>}
           </div>
         </div>
@@ -210,7 +212,7 @@ export default function AccountStatementModal({ customer, rows, totalCredit, tot
         </div>
 
         <div style={{ padding: '10px 20px', borderTop: '1.5px solid #000', fontSize: '8.5px', color: '#666', textAlign: 'center' }}>
-          This is a computer-generated account statement issued by RKM Jewellers. E&amp;OE.
+          This is a computer-generated account statement issued by {BRAND_NAME}. E&amp;OE.
         </div>
       </div>
     </div>

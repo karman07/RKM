@@ -6,6 +6,7 @@ import {
   Search, Plus, Edit3, Trash2, FileText, 
   ChevronLeft, ChevronRight, ImagePlus 
 } from 'lucide-react';
+import { BRAND_SHORT } from '@/lib/brand';
 
 function slugify(input: string): string {
   return input
@@ -35,7 +36,7 @@ const emptyForm: BlogForm = {
   content: '',
   excerpt: '',
   cover_image: '',
-  author: 'RKM Team',
+  author: `${BRAND_SHORT} Team`,
   tags: '',
   categories: '',
   is_published: false,

@@ -38,6 +38,7 @@ interface UserForm {
   branch?: string;
   is_active: boolean;
   last_working_day?: string;
+  reassign_to?: string;
   exit_reason?: string;
   custom_role?: string;
   job_title?: string;
@@ -209,6 +210,8 @@ export default function UsersPage() {
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [removeDay, setRemoveDay] = useState(todayISO());
   const [removeReason, setRemoveReason] = useState('');
+  const [removeHandover, setRemoveHandover] = useState('');
+  const [handoverList, setHandoverList] = useState<User[]>([]);
   const [restoreTarget, setRestoreTarget] = useState<User | null>(null);
   const [restoring, setRestoring]   = useState(false);
   const [historyUser, setHistoryUser]   = useState<User | null>(null);
@@ -276,6 +279,43 @@ export default function UsersPage() {
     }).catch(() => {});
   }
 
+  /** Active staff who can take over a leaving person's sales, customers, reportees and branch. */
+  function fetchHandoverCandidates() {
+    getUsers(undefined, 1, 200, 'active')
+      .then(r => setHandoverList((r.data as User[]).filter(u => u.is_active && u.role !== 'worker')))
+      .catch(() => {});
+  }
+
+  /** Managers and sales own records that must be handed over; workers/cashiers do not. */
+  const needsHandover = (u?: User | null) => !!u && ['manager', 'sales'].includes(u.role as string);
+
+  function HandoverSelect({ target, value, onChange }: { target: User; value: string; onChange: (v: string) => void }) {
+    const options = handoverList.filter(u => u._id !== target._id);
+    const sameRole = options.filter(u => u.role === target.role);
+    const others = options.filter(u => u.role !== target.role);
+    const required = needsHandover(target);
+    return (
+      <div className="sm:col-span-2">
+        <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+          Hand over to {required ? <span className="text-red-500">*</span> : '(optional)'}
+        </label>
+        <select value={value} onChange={e => onChange(e.target.value)}
+          className="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold bg-white">
+          <option value="">Select a person…</option>
+          {sameRole.length > 0 && <optgroup label={`Same role (${target.role})`}>
+            {sameRole.map(u => <option key={u._id} value={u._id}>{u.name}</option>)}
+          </optgroup>}
+          {others.length > 0 && <optgroup label="Other staff">
+            {others.map(u => <option key={u._id} value={u._id}>{u.name} ({u.role})</option>)}
+          </optgroup>}
+        </select>
+        <p className="text-[10px] text-slate-500 mt-1">
+          {target.name}'s sales, customers, reporting staff and branch-manager role move to this person. Attendance, login and payroll history stay under {target.name}.
+        </p>
+      </div>
+    );
+  }
+
   function openCreate() {
     setEditTarget(null);
     setForm(emptyForm);
@@ -304,6 +344,7 @@ export default function UsersPage() {
       branch: (u.branch as any)?._id || (u.branch as string),
       is_active: u.is_active,
       last_working_day: '',
+      reassign_to: '',
       exit_reason: '',
       avatar:                   (u as any).avatar                         || '',
       job_title:                (u as any).job_title                      || '',
@@ -367,11 +408,16 @@ export default function UsersPage() {
         setSaving(false);
         return;
       }
+      if (editTarget && editTarget.is_active && !form.is_active && needsHandover(editTarget) && !form.reassign_to) {
+        setError(`Choose who takes over ${editTarget.name}'s sales, customers and team before deactivating.`);
+        setSaving(false);
+        return;
+      }
       const payload: any = {
         name: form.name, role: roleValue,
         isActive: form.is_active, branch: form.branch || null,
         ...(editTarget && editTarget.is_active && !form.is_active
-              ? { last_working_day: form.last_working_day || todayISO(), ...(form.exit_reason ? { exit_reason: form.exit_reason } : {}) } : {}),
+              ? { last_working_day: form.last_working_day || todayISO(), ...(form.exit_reason ? { exit_reason: form.exit_reason } : {}), ...(form.reassign_to ? { reassign_to: form.reassign_to } : {}) } : {}),
         ...(form.avatar            ? { avatar:                  form.avatar                    } : {}),
         ...((isWorker || !form.email) ? {}                                                      : { email: form.email }),
         ...(form.personal_email     ? { personal_email:       form.personal_email             } : {}),
@@ -442,8 +488,12 @@ export default function UsersPage() {
 
   async function handleDelete() {
     if (!deleteTarget) return;
+    if (needsHandover(deleteTarget) && !removeHandover) {
+      showToast(`Choose who takes over ${deleteTarget.name}'s sales, customers and team first.`, 'danger');
+      return;
+    }
     try {
-      await deleteUser(deleteTarget._id, { last_working_day: removeDay || todayISO(), ...(removeReason.trim() ? { exit_reason: removeReason.trim() } : {}) });
+      await deleteUser(deleteTarget._id, { last_working_day: removeDay || todayISO(), ...(removeReason.trim() ? { exit_reason: removeReason.trim() } : {}), ...(removeHandover ? { reassign_to: removeHandover } : {}) });
       setDeleteTarget(null);
       setRemoveReason('');
       showToast('User removed', 'success');
@@ -645,7 +695,7 @@ export default function UsersPage() {
                             <div className="flex items-center gap-2">
                               <div className={`w-1.5 h-1.5 rounded-full ${u.is_deleted ? 'bg-slate-400' : u.is_active ? 'bg-emerald-500' : 'bg-red-400'}`} />
                               <span className={`text-[10px] font-black uppercase tracking-widest ${u.is_deleted ? 'text-slate-400' : u.is_active ? 'text-emerald-600' : 'text-red-400'}`}>
-                                {u.is_deleted ? 'Removed' : u.is_active ? 'Active' : 'Suspended'}
+                                {u.is_deleted ? 'Removed' : u.is_active ? 'Active' : 'Inactive'}
                               </span>
                             </div>
                             {!u.is_active && leftOn(u) && (
@@ -689,7 +739,7 @@ export default function UsersPage() {
                           ) : (
                             <>
                               <button onClick={e => { e.stopPropagation(); openEdit(u); }} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><Edit2 className="w-4 h-4" /></button>
-                              <button onClick={e => { e.stopPropagation(); setDeleteTarget(u); setRemoveDay(todayISO()); setRemoveReason(''); }} className="p-2 bg-red-50 text-red-600 rounded-xl hover:bg-red-600 hover:text-white transition-all"><Trash2 className="w-4 h-4" /></button>
+                              <button onClick={e => { e.stopPropagation(); setDeleteTarget(u); setRemoveDay(todayISO()); setRemoveReason(''); setRemoveHandover(''); fetchHandoverCandidates(); }} className="p-2 bg-red-50 text-red-600 rounded-xl hover:bg-red-600 hover:text-white transition-all"><Trash2 className="w-4 h-4" /></button>
                             </>
                           )}
                         </div>
@@ -996,7 +1046,7 @@ export default function UsersPage() {
                   <p className="text-xs font-bold text-slate-900">Active Status</p>
                   <p className="text-[10px] text-slate-500">Employee has system access</p>
                 </div>
-                <button type="button" onClick={() => setForm({ ...form, is_active: !form.is_active })}
+                <button type="button" onClick={() => { if (form.is_active) fetchHandoverCandidates(); setForm({ ...form, is_active: !form.is_active, reassign_to: '' }); }}
                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-all ${form.is_active ? 'bg-blue-600' : 'bg-slate-300'}`}>
                   <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-all shadow-sm ${form.is_active ? 'translate-x-[22px]' : 'translate-x-1'}`} />
                 </button>
@@ -1014,6 +1064,7 @@ export default function UsersPage() {
                     <input type="text" value={form.exit_reason || ''} onChange={e => setForm({ ...form, exit_reason: e.target.value })}
                       className="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold" />
                   </div>
+                  <HandoverSelect target={editTarget} value={form.reassign_to || ''} onChange={v => setForm({ ...form, reassign_to: v })} />
                 </div>
               )}
 
@@ -1532,6 +1583,7 @@ export default function UsersPage() {
               <input type="text" value={removeReason} onChange={e => setRemoveReason(e.target.value)} placeholder="e.g. Resigned, Terminated"
                 className="mt-1 w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500" />
             </div>
+            {deleteTarget && <div className="grid"><HandoverSelect target={deleteTarget} value={removeHandover} onChange={setRemoveHandover} /></div>}
           </div>
           <div className="flex gap-3">
             <button onClick={() => setDeleteTarget(null)} className="flex-1 py-3.5 border border-slate-200 rounded-xl text-xs font-bold uppercase tracking-widest text-slate-500 hover:bg-slate-50 transition-all">

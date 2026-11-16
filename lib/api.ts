@@ -615,7 +615,7 @@ export const createUser = (data: object) =>
 export const updateUser = (id: string, data: object) =>
   request<UserApiResponse>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }).then(normalizeUser);
 
-export const deleteUser = (id: string, opts: { last_working_day?: string; exit_reason?: string } = {}) =>
+export const deleteUser = (id: string, opts: { last_working_day?: string; exit_reason?: string; reassign_to?: string } = {}) =>
   request<void>(`/users/${id}`, {
     method: 'DELETE',
     headers: authHeaders(),
@@ -3367,3 +3367,41 @@ export const getAiKeyStatus = () => aiRequest<AiKeyStatus>('/ai/key');
 export const saveAiKey = (api_key: string) =>
   aiRequest<AiKeyStatus>('/ai/key', { method: 'PUT', body: JSON.stringify({ api_key }) });
 export const removeAiKey = () => aiRequest<AiKeyStatus>('/ai/key', { method: 'DELETE' });
+
+export const changeOwnPassword = (currentPassword: string, newPassword: string) =>
+  request<{ success: boolean }>('/users/me/password', {
+    method: 'PATCH',
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+
+export interface EditBillPayload {
+  reason: string;
+  customer?: { name?: string; phone?: string; email?: string };
+  sold_at?: string;
+  items?: { id: string; final_sale_price?: number; manager_discount?: number }[];
+  payment_splits?: { mode: string; amount: number; reference?: string }[];
+  /** Email the corrected invoice and send the WhatsApp update to the customer. */
+  notify_customer?: boolean;
+}
+
+/** Admin / manager: correct an existing bill. The invoice number never changes; every edit is audit-logged. */
+export const editBill = (saleReference: string, body: EditBillPayload) =>
+  request<{ sale_reference: string; items: any[]; notifications: { email: string; whatsapp: string } | null }>(`/inventory/bill/${encodeURIComponent(saleReference)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+
+export interface BillEditLog {
+  _id: string;
+  sale_reference: string;
+  edited_at: string;
+  edited_by_name: string;
+  edited_by_role: string;
+  reason: string;
+  before: any;
+  after: any;
+}
+
+/** Audit trail of every edit made to a bill, newest first. */
+export const getBillEditHistory = (saleReference: string) =>
+  request<BillEditLog[]>(`/inventory/bill/${encodeURIComponent(saleReference)}/edit-history`);

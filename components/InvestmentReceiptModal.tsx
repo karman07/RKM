@@ -1,6 +1,7 @@
 'use client';
 
 import type { GoldSubscription } from '@/lib/api';
+import { BRAND_NAME, BRAND_NAME_UPPER } from '@/lib/brand';
 
 interface InvestmentReceiptModalProps {
   sub: GoldSubscription;
@@ -86,7 +87,7 @@ ${el.outerHTML}
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '16px 20px', borderBottom: '2px solid #000' }}>
           <div>
-            <div style={{ fontSize: '22px', fontWeight: 900, letterSpacing: '3px', fontFamily: '"Georgia", serif' }}>RKM JEWELLERS</div>
+            <div style={{ fontSize: '22px', fontWeight: 900, letterSpacing: '3px', fontFamily: '"Georgia", serif' }}>{BRAND_NAME_UPPER}</div>
             <div style={{ fontSize: '9px', letterSpacing: '2px', color: '#555' }}>FINE JEWELLERY • EST. 2005</div>
           </div>
           <div style={{ textAlign: 'right' }}>
@@ -164,7 +165,7 @@ ${el.outerHTML}
                 {sub.interestAdjustments!.map((a, i) => (
                   <tr key={i} style={{ borderBottom: '1px dotted #eee' }}>
                     <td style={{ padding: '4px 0' }}>{fmtDate(a.date)}</td>
-                    <td style={{ padding: '4px 0', color: '#555' }}>{a.note || 'Credited by RKM Jewellers'}</td>
+                    <td style={{ padding: '4px 0', color: '#555' }}>{a.note || `Credited by ${BRAND_NAME}`}</td>
                     <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: 700 }}>+{fmt(a.amount)}</td>
                   </tr>
                 ))}

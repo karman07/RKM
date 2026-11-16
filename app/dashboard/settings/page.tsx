@@ -5,6 +5,7 @@ import { useSettings } from '@/components/SettingsContext';
 import { useAppTheme } from '@/components/AppThemeContext';
 import { APP_THEME } from '@/lib/theme-constants';
 import { MessageCircle, Mail, Bell, AlertCircle, MessageSquare, Globe } from 'lucide-react';
+import { BRAND_NAME, BRAND_SHORT } from '@/lib/brand';
 
 // ─── Static metadata for each pricing category ────────────────────────────────
 
@@ -95,7 +96,7 @@ export default function SettingsPage() {
   const [halfDayThreshold, setHalfDayThreshold] = useState('12:00');
 
   // Company / HR
-  const [companyName,     setCompanyName]     = useState('RKM Jewellers');
+  const [companyName,     setCompanyName]     = useState(`${BRAND_NAME}`);
   const [companyTagline,  setCompanyTagline]  = useState('Excellence in Gold & Jewellery');
   const [companyAddress,  setCompanyAddress]  = useState('');
   const [companyPhone,    setCompanyPhone]    = useState('');
@@ -206,7 +207,7 @@ export default function SettingsPage() {
     setHalfDayThreshold((settings as any).half_day_threshold_time ?? '12:00');
 
     // HR / Company
-    setCompanyName(settings.company_name ?? 'RKM Jewellers');
+    setCompanyName(settings.company_name ?? `${BRAND_NAME}`);
     setCompanyTagline(settings.company_tagline ?? 'Excellence in Gold & Jewellery');
     setCompanyAddress(settings.company_address ?? '');
     setCompanyPhone(settings.company_phone ?? '');
@@ -369,7 +370,7 @@ return (
     <div className="mb-7">
       <h1 className="text-2xl font-bold" style={{ color: colors.textMain }}>Pricing Control</h1>
       <p className="text-sm mt-0.5" style={{ color: colors.textMuted }}>
-        Centralized management for all metal and stone valuation across the RKM ecosystem.
+        Centralized management for all metal and stone valuation across the {BRAND_SHORT} ecosystem.
       </p>
     </div>
 
@@ -812,7 +813,7 @@ return (
             <p className="text-[11px] font-black uppercase tracking-widest mb-3" style={{ color: colors.textMuted }}>Company Details</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {([
-                { label: 'Company Name',    val: companyName,    set: setCompanyName,    ph: 'RKM Jewellers' },
+                { label: 'Company Name',    val: companyName,    set: setCompanyName,    ph: `${BRAND_NAME}` },
                 { label: 'Tagline',         val: companyTagline, set: setCompanyTagline, ph: 'Excellence in Gold & Jewellery' },
                 { label: 'Address',         val: companyAddress, set: setCompanyAddress, ph: 'Shop No. 1, Main Market, Chandigarh' },
                 { label: 'Phone',           val: companyPhone,   set: setCompanyPhone,   ph: '+91 98765 43210' },

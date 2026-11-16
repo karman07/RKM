@@ -9,6 +9,7 @@ import {
   getCustomers, fetchAllPages, waOptInAllCustomers, waSendToCustomer, waSetOptIn, waListTemplatesV2,
   type Customer, type WaTemplateV2, type WaMessageCategory,
 } from '@/lib/api';
+import { BRAND_NAME } from '@/lib/brand';
 
 const CATEGORY_META: Record<WaMessageCategory, { label: string; color: string; bg: string }> = {
   marketing:      { label: 'Marketing',      color: '#263a5e', bg: '#e3e8f4' },
@@ -115,7 +116,7 @@ export default function SendPage() {
 
   async function handleOptInAndSend() {
     if (!recipient) return;
-    if (!confirm(`Confirm that ${recipient.name} has agreed to receive WhatsApp messages from RKM Jewellers?`)) return;
+    if (!confirm(`Confirm that ${recipient.name} has agreed to receive WhatsApp messages from ${BRAND_NAME}?`)) return;
     try {
       await waSetOptIn(recipient._id, true);
       setCustomers(prev => prev.map(c => c._id === recipient._id ? ({ ...c, whatsappOptIn: true } as Customer) : c));

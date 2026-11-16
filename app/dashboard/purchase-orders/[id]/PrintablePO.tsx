@@ -1,4 +1,5 @@
 import type { PurchaseOrder, Supplier } from '@/lib/api';
+import { BRAND_NAME, BRAND_NAME_UPPER } from '@/lib/brand';
 
 function inWords(n: number): string {
   const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
@@ -64,7 +65,7 @@ export default function PrintablePO({ po, supplier }: Props) {
       {/* ── HEADER ─────────────────────────────────────────────── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '12px 16px 10px', borderBottom: '2px solid #000' }}>
         <div>
-          <div style={{ fontSize: '22px', fontWeight: 900, letterSpacing: '3px', fontFamily: '"Georgia", serif' }}>RKM JEWELLERS</div>
+          <div style={{ fontSize: '22px', fontWeight: 900, letterSpacing: '3px', fontFamily: '"Georgia", serif' }}>{BRAND_NAME_UPPER}</div>
           <div style={{ fontSize: '8px', letterSpacing: '2px', color: '#555' }}>FINE JEWELLERY • EST. 2005</div>
         </div>
         <div style={{ textAlign: 'right' }}>
@@ -169,10 +170,10 @@ export default function PrintablePO({ po, supplier }: Props) {
       {/* ── FOOTER ──────────────────────────────────────────────── */}
       <div style={{ padding: '7px 16px 12px', borderTop: '1.5px solid #000', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', fontSize: '8.5px', color: '#555' }}>
         <div style={{ fontSize: '8px', color: '#444', lineHeight: 1.7 }}>
-          This is a system-generated purchase order and does not require a physical signature from RKM Jewellers.
+          This is a system-generated purchase order and does not require a physical signature from {BRAND_NAME}.
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontWeight: 700, fontSize: '9.5px', color: '#000' }}>RKM JEWELLERS</div>
+          <div style={{ fontWeight: 700, fontSize: '9.5px', color: '#000' }}>{BRAND_NAME_UPPER}</div>
           <div style={{ marginTop: '24px', borderTop: '1px solid #999', paddingTop: '2px' }}>Supplier Signatory</div>
         </div>
       </div>

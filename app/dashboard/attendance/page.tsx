@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import {
-  getUsers, getDailyAttendance, getBranches, getAttendanceStats, getAllLeaves, getUserAttendance, getShiftReport, triggerAutoCheckout, getHolidays, staticUrl,
+  getUsers, getDailyAttendance, markAttendance, getBranches, getAttendanceStats, getAllLeaves, getUserAttendance, getShiftReport, triggerAutoCheckout, getHolidays, staticUrl,
   type User, type Attendance, type Branch, type AttendanceStats, type ShiftReport,
 } from '@/lib/api';
 import { ChevronLeft, ChevronRight, Calendar, CheckCircle2, XCircle, Clock, Building2, Loader2, Info, AlertTriangle, Timer } from 'lucide-react';
@@ -27,6 +27,7 @@ const STATUS = {
 type StatusKey = keyof typeof STATUS;
 
 export default function AttendancePage() {
+  const [statusSaving, setStatusSaving] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [users, setUsers]             = useState<User[]>([]);
   const [attendance, setAttendance]   = useState<Attendance[]>([]);
@@ -111,6 +112,22 @@ export default function AttendancePage() {
   }
 
   useEffect(() => { load(); }, [selectedDate]);
+
+  /** Admin override: set a person's attendance status for the selected day (present, absent, half-day, …). */
+  async function setStatusFor(u: User, status: string) {
+    if (!status) return;
+    setStatusSaving(u._id);
+    try {
+      const dateStr = selectedDate.toISOString().split('T')[0];
+      await markAttendance({ user_id: u._id, date: dateStr, status, notes: 'Status set by admin' });
+      showToast(`${u.name} marked ${STATUS[status as StatusKey]?.label ?? status}`, 'success');
+      await load();
+    } catch (e: any) {
+      showToast(e.message || 'Could not update status', 'danger');
+    } finally {
+      setStatusSaving(null);
+    }
+  }
 
   async function openProfile(u: User) {
     setProfileTarget(u);
@@ -471,7 +488,10 @@ export default function AttendancePage() {
                       let extraLabel: string | null = null;
                       if (rec) {
                         const s = rec.status as string;
-                        if (s === 'on-leave' || isOnLeave) { displayStatus = 'on-leave'; }
+                        // A status an admin set by hand (marked by someone other than the user) beats the automatic leave overlay.
+                        const mb = (rec as any).marked_by; const markerId = mb && typeof mb === 'object' ? mb._id : mb;
+                        const adminSet = !!markerId && String(markerId) !== String(u._id) && s !== 'on-leave';
+                        if (s === 'on-leave' || (isOnLeave && !adminSet)) { displayStatus = 'on-leave'; }
                         else if (s === 'holiday' || isHoliday) { displayStatus = 'holiday'; extraLabel = holidayName; }
                         else displayStatus = s as StatusKey;
                       } else if (isHoliday) {
@@ -509,7 +529,7 @@ export default function AttendancePage() {
                             </span>
                           </td>
 
-                          {/* Status — read-only badge */}
+                          {/* Status — badge + admin override */}
                           <td className="px-7 py-4">
                             {cfg ? (
                               <div className="flex flex-col gap-0.5">
@@ -524,6 +544,20 @@ export default function AttendancePage() {
                                 <Clock className="w-3 h-3" /> Not Recorded
                               </span>
                             )}
+                            <select
+                              aria-label={`Set attendance status for ${u.name}`}
+                              value=""
+                              disabled={statusSaving === u._id}
+                              onChange={e => setStatusFor(u, e.target.value)}
+                              className="mt-2 block w-full max-w-[150px] text-[10px] font-bold text-slate-500 bg-white border border-slate-200 rounded-lg px-2 py-1 cursor-pointer disabled:opacity-50"
+                            >
+                              <option value="">{statusSaving === u._id ? 'Saving…' : 'Change status…'}</option>
+                              <option value="present">Present</option>
+                              <option value="absent">Absent</option>
+                              <option value="half-day">Half Day</option>
+                              <option value="on-leave">Paid Time Off</option>
+                              <option value="holiday">Holiday</option>
+                            </select>
                           </td>
 
                           {/* Check-In */}

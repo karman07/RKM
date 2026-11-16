@@ -6,6 +6,7 @@ import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { getCategories, checkOut, type Category } from '@/lib/api';
 import { useAppTheme } from '@/components/AppThemeContext';
 import { APP_THEME } from '@/lib/theme-constants';
+import BrandMark from '@/lib/BrandMark';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -83,7 +84,7 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
           </button>
         )}
         <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shrink-0 transform group-hover:rotate-3 transition-transform overflow-hidden">
-          <img src="/rkm-logo.png" alt="RKM Logo" className="w-full h-full object-contain" />
+          <BrandMark className="w-full h-full object-contain" />
         </div>
         {!isCollapsed && (
           <div className="animate-[fadeRise_400ms_ease-out]">
@@ -361,7 +362,7 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
         </section>}
 
         {/* Administration Section */}
-        {(['users','customers','feedback','gold-investment','investment-approvals','whatsapp','sms','mail','blogs','settings'].some(k => can(k)) || permissions === null) && <section>
+        {(['users','customers','feedback','gold-investment','investment-approvals','whatsapp','mail','blogs','settings'].some(k => can(k)) || permissions === null) && <section>
           {!isCollapsed && <p className="px-8 mb-4 text-[10px] font-black uppercase tracking-[0.25em] text-slate-400 animate-[fadeRise_400ms_ease-out]">Security & Access</p>}
           <div className="space-y-2">
             {/* Roles is only shown to full admins (permissions === null) */}
@@ -412,7 +413,7 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
               <NavIcon active={pathname.startsWith('/dashboard/whatsapp')} color={pathname.startsWith('/dashboard/whatsapp') ? colors.activeText : colors.textMuted}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /><path d="M8 10h.01M12 10h.01M16 10h.01" /></NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">WhatsApp Control</span>}
             </Link>}
-            {can('sms') && <Link href="/dashboard/sms" onClick={onNavigate} title={isCollapsed ? "SMS Control" : ""} className={navClass(pathname.startsWith('/dashboard/sms'))} style={getNavStyle(pathname.startsWith('/dashboard/sms'))}>
+            {false && can('sms') && <Link href="/dashboard/sms" onClick={onNavigate} title={isCollapsed ? "SMS Control" : ""} className={navClass(pathname.startsWith('/dashboard/sms'))} style={getNavStyle(pathname.startsWith('/dashboard/sms'))}>
               {isCollapsed && pathname.startsWith('/dashboard/sms') && <div className="absolute left-0 w-1.5 h-6 bg-blue-600 rounded-r-full" />}
               <NavIcon active={pathname.startsWith('/dashboard/sms')} color={pathname.startsWith('/dashboard/sms') ? colors.activeText : colors.textMuted}><rect x="5" y="2" width="14" height="20" rx="2" ry="2" /><path strokeLinecap="round" d="M12 18h.01" /></NavIcon>
               {!isCollapsed && <span className="animate-[fadeRise_400ms_ease-out] font-bold">SMS Control</span>}
@@ -458,6 +459,16 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleDesktop,
           </svg>
           {!isCollapsed && <span className="font-bold">Navigation</span>}
         </button>
+
+        <Link
+          href="/dashboard/account"
+          onClick={onNavigate}
+          title={isCollapsed ? "Change Password" : ""}
+          className={`flex items-center gap-4 rounded-2xl text-[14px] font-bold transition-all hover:bg-slate-50 ${isCollapsed ? 'justify-center w-14 h-14 p-0' : 'w-full px-6 py-4'} ${pathname === '/dashboard/account' ? 'text-blue-600 bg-blue-50' : 'text-slate-500'}`}
+        >
+          <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+          {!isCollapsed && <span className="font-bold">Change Password</span>}
+        </Link>
 
         <button
           onClick={logout}

@@ -70,7 +70,6 @@ const PERMISSION_GROUPS = [
       { key: 'gold-investment', label: 'Gold Investment' },
       { key: 'investment-approvals', label: 'Investment Approvals' },
       { key: 'whatsapp',        label: 'WhatsApp Control' },
-      { key: 'sms',             label: 'SMS Control' },
       { key: 'mail',            label: 'Mail Centre' },
       { key: 'blogs',           label: 'Curated Content' },
       { key: 'settings',        label: 'System Config' },

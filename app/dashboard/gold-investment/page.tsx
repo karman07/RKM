@@ -10,6 +10,7 @@ import {
   getSettings, updateSettings, searchCustomers,
   InvestmentPlan, GoldSubscription, GoldStats, User, Customer,
 } from '@/lib/api';
+import { BRAND_NAME } from '@/lib/brand';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -492,7 +493,7 @@ export default function GoldInvestmentDashboard() {
           <h1 className="text-3xl font-serif font-bold tracking-tight text-slate-900 mb-1">Gold Investment Plans</h1>
           <div className="flex items-center gap-3">
             <div className="h-0.5 w-8 bg-blue-600" />
-            <p className="text-[10px] font-black tracking-[0.3em] uppercase text-blue-600">RKM Jewellers · Autopay Registry</p>
+            <p className="text-[10px] font-black tracking-[0.3em] uppercase text-blue-600">{BRAND_NAME} · Autopay Registry</p>
           </div>
         </div>
         <div className="flex gap-3">

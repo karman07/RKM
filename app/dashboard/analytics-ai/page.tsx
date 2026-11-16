@@ -5,6 +5,7 @@ import {
   staticUrl, type AnalyticsSession, type ChartConfig, type ChartDataPoint,
 } from '@/lib/api';
 import AiKeyModal from '@/components/AiKeyModal';
+import { BRAND_NAME, BRAND_SHORT } from '@/lib/brand';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -569,7 +570,7 @@ export default function AnalyticsAIPage() {
             </svg>
           </div>
           <div className="flex-1 min-w-0">
-            <h1 className="text-base font-black text-slate-900 leading-none">RKM AI Insights</h1>
+            <h1 className="text-base font-black text-slate-900 leading-none">{BRAND_SHORT} AI Insights</h1>
             <p className="text-[11px] text-slate-400 font-medium mt-0.5">Ask anything about your business — sales, staff, branches, inventory</p>
           </div>
           <button onClick={() => setKeyModal(true)} title="Add or change the Claude API key"
@@ -589,7 +590,7 @@ export default function AnalyticsAIPage() {
               </div>
               <h2 className="text-xl font-black text-slate-900 mb-2">Your Business Intelligence AI</h2>
               <p className="text-slate-500 text-sm mb-8 leading-relaxed">
-                Ask anything about RKM Jewellers — sales performance, top staff, branch analytics, customer trends, inventory status, and more.
+                Ask anything about {BRAND_NAME} — sales performance, top staff, branch analytics, customer trends, inventory status, and more.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full">
                 {SUGGESTIONS.map(s => (
