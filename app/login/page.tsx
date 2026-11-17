@@ -92,11 +92,22 @@ export default function CashierLogin() {
   const [isAdminBlock, setIsAdminBlock] = useState(false);
 
   const coordsRef = useRef({ latitude: 0, longitude: 0 });
+  // Admin can turn the location check off (Settings → Security). Then we never ask for GPS.
+  const [locationOff, setLocationOff] = useState(false);
 
   const askGPS = useCallback(async () => {
     setGps({ status: 'requesting' });
     setStep('gps');
     setError(''); setGeoError(null); setIsAdminBlock(false);
+    try {
+      const r = await fetch(`${API_BASE}/settings/public`, { cache: 'no-store' });
+      if (r.ok && (await r.json()).location_enforcement_enabled === false) {
+        setLocationOff(true);
+        setGps({ status: 'unavailable' });
+        setStep('form');
+        return;
+      }
+    } catch (_) { /* can't reach settings — fall through to the normal GPS flow */ }
     try {
       const coords = await requestGPS();
       setGps({ status: 'granted', ...coords });
@@ -117,7 +128,7 @@ export default function CashierLogin() {
 
     try {
       // Refresh GPS before submitting
-      try {
+      if (!locationOff) try {
         const fresh = await requestGPS();
         setGps({ status: 'granted', ...fresh });
         coordsRef.current = fresh;
@@ -199,7 +210,7 @@ export default function CashierLogin() {
   }
 
   // ── GPS denied ───────────────────────────────────────────────────────────────
-  if (gps.status === 'denied' || gps.status === 'unavailable') {
+  if (!locationOff && (gps.status === 'denied' || gps.status === 'unavailable')) {
     return (
       <PageShell>
         <div className="text-center space-y-6">
