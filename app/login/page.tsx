@@ -28,9 +28,12 @@ export default function SalesLogin() {
     setError('');
     setLoading(true);
     try {
-      // Managers are geofenced to their branch, so share location when available (sales agents ignore it).
+      // Branch staff are geofenced to their branch, so share location when available.
+      // Skip the location prompt entirely when the admin has switched the location check off (Settings → Security).
+      const locationOn = await fetch(`${API_BASE}/settings/public`, { cache: 'no-store' })
+        .then(r => r.json()).then(j => j?.location_enforcement_enabled !== false).catch(() => true);
       const coords = await new Promise<{ latitude?: number; longitude?: number }>(resolve => {
-        if (typeof navigator === 'undefined' || !navigator.geolocation) return resolve({});
+        if (!locationOn || typeof navigator === 'undefined' || !navigator.geolocation) return resolve({});
         navigator.geolocation.getCurrentPosition(
           p => resolve({ latitude: p.coords.latitude, longitude: p.coords.longitude }),
           () => resolve({}),
