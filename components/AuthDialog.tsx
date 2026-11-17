@@ -583,6 +583,10 @@ export default function AuthDialog() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
+                  {/* Mobile: dim backdrop behind the bottom-sheet lists; tap to close */}
+                  {activeDropdown && (
+                    <div className="fixed inset-0 z-[75] bg-slate-900/30 sm:hidden" onClick={() => setActiveDropdown(null)} />
+                  )}
                   {/* Country Searchable Dropdown */}
                   <div className="space-y-1.5 relative">
                     <label className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-400">Country</label>
@@ -597,7 +601,7 @@ export default function AuthDialog() {
                     </div>
 
                     {activeDropdown === 'country' && (
-                      <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-100 shadow-2xl rounded-2xl z-[70] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                      <div className="fixed inset-x-3 bottom-3 z-[80] sm:absolute sm:inset-x-auto sm:bottom-auto sm:top-full sm:left-0 sm:right-0 sm:mt-2 bg-white border border-slate-100 shadow-2xl rounded-2xl sm:z-[70] overflow-hidden">
                         <div className="p-2 border-b border-slate-50 sticky top-0 bg-white z-10">
                           <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
@@ -611,7 +615,7 @@ export default function AuthDialog() {
                             />
                           </div>
                         </div>
-                        <div className="max-h-[220px] overflow-y-auto custom-scrollbar">
+                        <div className="max-h-[45vh] sm:max-h-[220px] overflow-y-auto custom-scrollbar">
                           {filteredCountries.length > 0 ? (
                             filteredCountries.map((c, idx) => (
                               <div
@@ -650,7 +654,7 @@ export default function AuthDialog() {
                     </div>
 
                     {activeDropdown === 'state' && (
-                      <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-100 shadow-2xl rounded-2xl z-[70] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                      <div className="fixed inset-x-3 bottom-3 z-[80] sm:absolute sm:inset-x-auto sm:bottom-auto sm:top-full sm:left-0 sm:right-0 sm:mt-2 bg-white border border-slate-100 shadow-2xl rounded-2xl sm:z-[70] overflow-hidden">
                         <div className="p-2 border-b border-slate-50 sticky top-0 bg-white z-10">
                           <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
@@ -664,7 +668,7 @@ export default function AuthDialog() {
                             />
                           </div>
                         </div>
-                        <div className="max-h-[220px] overflow-y-auto custom-scrollbar">
+                        <div className="max-h-[45vh] sm:max-h-[220px] overflow-y-auto custom-scrollbar">
                           {filteredStates.length > 0 ? (
                             filteredStates.map((s: any, idx: number) => (
                               <div
@@ -702,7 +706,7 @@ export default function AuthDialog() {
                     </div>
 
                     {activeDropdown === 'city' && (
-                      <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-100 shadow-2xl rounded-2xl z-[70] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                      <div className="fixed inset-x-3 bottom-3 z-[80] sm:absolute sm:inset-x-auto sm:bottom-auto sm:top-full sm:left-0 sm:right-0 sm:mt-2 bg-white border border-slate-100 shadow-2xl rounded-2xl sm:z-[70] overflow-hidden">
                         <div className="p-2 border-b border-slate-50 sticky top-0 bg-white z-10">
                           <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
@@ -716,7 +720,7 @@ export default function AuthDialog() {
                             />
                           </div>
                         </div>
-                        <div className="max-h-[220px] overflow-y-auto custom-scrollbar">
+                        <div className="max-h-[45vh] sm:max-h-[220px] overflow-y-auto custom-scrollbar">
                           {filteredCities.length > 0 ? (
                             filteredCities.map((cityName, idx) => (
                               <div
