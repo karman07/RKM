@@ -88,6 +88,7 @@ export default function SettingsPage() {
 
   // Storefront
   const [devBannerEnabled, setDevBannerEnabled] = useState(false);
+  const [locationEnforced, setLocationEnforced] = useState(true);
 
   // Work schedule
   const [shiftStart, setShiftStart]         = useState('09:00');
@@ -201,6 +202,7 @@ export default function SettingsPage() {
     setEmailEnabled((settings as any).email_notifications_enabled !== false);
     setSmsEnabled((settings as any).sms_notifications_enabled !== false);
     setDevBannerEnabled(settings.dev_banner_enabled === true);
+    setLocationEnforced(settings.location_enforcement_enabled !== false);
     setShiftStart(settings.shift_start_time ?? '09:00');
     setShiftEnd(settings.shift_end_time ?? '18:00');
     setGraceMinutes(String(settings.late_grace_minutes ?? 5));
@@ -286,6 +288,7 @@ export default function SettingsPage() {
         email_notifications_enabled: emailEnabled,
         sms_notifications_enabled: smsEnabled,
         dev_banner_enabled: devBannerEnabled,
+        location_enforcement_enabled: locationEnforced,
         shift_start_time: shiftStart,
         shift_end_time: shiftEnd,
         late_grace_minutes: Number(graceMinutes) || 5,
@@ -1058,6 +1061,22 @@ return (
           <p className="text-xs mt-0.5 opacity-60" style={{ color: colors.textMain }}>
             Configure how long a login lasts and how long a user can sit idle before being signed out. Applies to all portal accounts.
           </p>
+        </div>
+
+        <div className="flex items-start justify-between gap-4 rounded-2xl border p-4 max-w-md" style={{ borderColor: colors.border }}>
+          <div>
+            <p className="text-sm font-bold" style={{ color: colors.textMain }}>Require location at sign-in</p>
+            <p className="text-[11px] mt-1 opacity-60" style={{ color: colors.textMain }}>
+              {locationEnforced
+                ? 'On: managers and cashiers must be within their branch radius to sign in.'
+                : 'Off: nobody is asked for location and the branch radius is not checked, on any portal.'}
+            </p>
+          </div>
+          <button type="button" role="switch" aria-checked={locationEnforced}
+            onClick={() => setLocationEnforced(v => !v)}
+            className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ${locationEnforced ? 'bg-emerald-600' : 'bg-slate-300'}`}>
+            <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform duration-200 ${locationEnforced ? 'translate-x-5' : 'translate-x-0'}`} />
+          </button>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-md">

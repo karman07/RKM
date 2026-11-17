@@ -569,11 +569,11 @@ export async function fetchAllPages<T>(
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
-export const login = async (email: string, password: string) => {
+export const login = async (email: string, password: string, coords?: { latitude?: number; longitude?: number }) => {
   const res = await fetch(`${API_BASE}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, ...(coords ?? {}) }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
@@ -1462,6 +1462,8 @@ export interface AppSettings {
   hold_my_gold_tiers?: { minAmount: number; maxAmount: number | null; discountPercent: number }[];
   /** Shows the "development build" banner on the public storefront (frontend) */
   dev_banner_enabled?: boolean;
+  /** Master switch for the branch geofence (GPS) check at staff sign-in; undefined/true = on */
+  location_enforcement_enabled?: boolean;
   /** Saved asset label layout (stock size + elements) from the barcode label designer —
       opaque to everything except LabelDesignerModal, shared across every device on this account */
   label_template?: Record<string, any> | null;

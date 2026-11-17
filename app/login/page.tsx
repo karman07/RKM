@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { login, checkIn } from '@/lib/api';
+import { login, checkIn, API_BASE } from '@/lib/api';
 import { motion } from 'framer-motion';
 import { Lock, Mail, Loader2, Star, ShieldCheck } from 'lucide-react';
 import {BRAND_NAME} from '@/lib/brand';
@@ -19,7 +19,20 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await login(email, password) as any;
+      // Branch-staff (custom-role) accounts are location-checked unless the admin switched the check off in Settings.
+      // Admin accounts are never checked, so we only ask for GPS when the switch is on.
+      let coords: { latitude?: number; longitude?: number } = {};
+      try {
+        const pub = await fetch(`${API_BASE}/settings/public`, { cache: 'no-store' }).then(r => r.json());
+        if (pub?.location_enforcement_enabled !== false && typeof navigator !== 'undefined' && navigator.geolocation) {
+          coords = await new Promise(resolve => navigator.geolocation.getCurrentPosition(
+            p => resolve({ latitude: p.coords.latitude, longitude: p.coords.longitude }),
+            () => resolve({}),
+            { timeout: 8000, enableHighAccuracy: true },
+          ));
+        }
+      } catch { /* fall through without coordinates */ }
+      const res = await login(email, password, coords) as any;
       const { access_token, user } = res;
 
       // Block manager/cashier from admin portal
