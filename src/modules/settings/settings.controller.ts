@@ -18,7 +18,10 @@ export class SettingsController {
   @Get('public')
   async getPublic() {
     const settings = await this.settingsService.get();
-    return { dev_banner_enabled: settings.dev_banner_enabled };
+    return {
+      dev_banner_enabled: settings.dev_banner_enabled,
+      location_enforcement_enabled: settings.location_enforcement_enabled !== false,
+    };
   }
 
   /** Any authenticated role can read settings (cashier needs gold rate too) */

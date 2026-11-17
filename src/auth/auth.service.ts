@@ -87,14 +87,22 @@ export class AuthService {
   }
 
   /** Shared geofence check — throws ForbiddenException if outside radius, logs violation */
-  private async checkGeofence(user: any, latitude: number | undefined, longitude: number | undefined) {
+  private async checkGeofence(user: any, latitude: number | undefined, longitude: number | undefined, lenient = false) {
     const branchId = user.branch?._id || user.branch;
-    if (!branchId) throw new ForbiddenException('You are not assigned to a branch. Please contact your admin.');
+    // lenient (sales / custom roles): don't lock anyone out over missing branch set-up — only enforce when a real geofence exists.
+    if (!branchId) {
+      if (lenient) return;
+      throw new ForbiddenException('You are not assigned to a branch. Please contact your admin.');
+    }
 
     const branch = await this.branchModel.findById(branchId).lean();
-    if (!branch) throw new ForbiddenException('Your assigned branch could not be found. Please contact admin.');
+    if (!branch) {
+      if (lenient) return;
+      throw new ForbiddenException('Your assigned branch could not be found. Please contact admin.');
+    }
 
     if (branch.latitude == null || branch.longitude == null) {
+      if (lenient) return;
       throw new ForbiddenException('Your branch location has not been set up yet. Please ask admin to configure the branch geofence before signing in.');
     }
     if (latitude == null || longitude == null) {
@@ -150,8 +158,13 @@ export class AuthService {
     }
 
     // DEMO_MODE (the isolated App-Review instance only) lets reviewers sign in from anywhere.
-    if (process.env.DEMO_MODE !== 'true' && user.role !== 'admin' && user.role !== 'custom' && user.role !== 'sales') {
-      await this.checkGeofence(user, loginDto.latitude, loginDto.longitude);
+    // Admin can switch the location check off for everyone from Settings → Security.
+    // Admin accounts are never location-checked (so the switch can always be reached); every other role is.
+    if (process.env.DEMO_MODE !== 'true' && user.role !== 'admin') {
+      const geo = await this.getSettings();
+      if ((geo as any)?.location_enforcement_enabled !== false) {
+        await this.checkGeofence(user, loginDto.latitude, loginDto.longitude, user.role === 'sales' || user.role === 'custom');
+      }
     }
 
     const isStaff = STAFF_ROLES.includes(user.role);

@@ -235,6 +235,11 @@ export class UpdateSettingsDto {
   @IsArray()
   hold_my_gold_tiers?: { minAmount: number; maxAmount: number | null; discountPercent: number }[];
 
+  /** Master switch for the branch geofence (GPS) check at staff sign-in */
+  @IsOptional()
+  @IsBoolean()
+  location_enforcement_enabled?: boolean;
+
   // ── Storefront ──────────────────────────────────────────────────────────────
 
   /** Shows the "development build" banner on the public storefront */

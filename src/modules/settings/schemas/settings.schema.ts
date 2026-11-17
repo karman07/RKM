@@ -106,6 +106,10 @@ export class Settings {
   @Prop({ type: Boolean, default: true })
   whatsapp_notifications_enabled: boolean;
 
+  /** When false, nobody has to be at their branch to sign in — the GPS/geofence check is skipped on every portal */
+  @Prop({ type: Boolean, default: true })
+  location_enforcement_enabled: boolean;
+
   /** Whether email notifications are enabled for automated sale events */
   @Prop({ type: Boolean, default: true })
   email_notifications_enabled: boolean;
