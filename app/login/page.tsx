@@ -92,6 +92,8 @@ export default function ManagerLogin() {
   const [isAdminBlock, setIsAdminBlock] = useState(false);
 
   const coordsRef = useRef({ latitude: 0, longitude: 0 });
+  // Admin can turn the location check off (Settings → Security). Then we never ask for GPS.
+  const [locationOff, setLocationOff] = useState(false);
   // Lets a user past the location prompt (e.g. App Review demo accounts). The server still enforces the branch geofence for real staff.
   const [skipGps, setSkipGps] = useState(false);
 
@@ -99,6 +101,15 @@ export default function ManagerLogin() {
     setGps({ status: 'requesting' });
     setStep('gps');
     setError(''); setGeoError(null); setIsAdminBlock(false);
+    try {
+      const r = await fetch(`${API_BASE}/settings/public`, { cache: 'no-store' });
+      if (r.ok && (await r.json()).location_enforcement_enabled === false) {
+        setLocationOff(true);
+        setGps({ status: 'unavailable' });
+        setStep('form');
+        return;
+      }
+    } catch (_) { /* can't reach settings — fall through to the normal GPS flow */ }
     try {
       const coords = await requestGPS();
       setGps({ status: 'granted', ...coords });
@@ -120,7 +131,7 @@ export default function ManagerLogin() {
 
     try {
       // Refresh GPS before submitting
-      try {
+      if (!locationOff) try {
         const fresh = await requestGPS();
         setGps({ status: 'granted', ...fresh });
         coordsRef.current = fresh;
@@ -202,7 +213,7 @@ export default function ManagerLogin() {
   }
 
   // ── GPS denied ───────────────────────────────────────────────────────────────
-  if (!skipGps && (gps.status === 'denied' || gps.status === 'unavailable')) {
+  if (!skipGps && !locationOff && (gps.status === 'denied' || gps.status === 'unavailable')) {
     return (
       <PageShell>
         <div className="text-center space-y-6">
