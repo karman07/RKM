@@ -51,6 +51,11 @@ const NAV_ITEMS = [
     ],
   },
   {
+    id: 'my-sales', label: 'My Sales', href: '/dashboard/my-sales',
+    icon: 'M9 14l2 2 4-4M7 21l2-1.5L11 21l2-1.5L15 21l2-1.5L19 21V4a1 1 0 00-1-1H6a1 1 0 00-1 1v17l2-1.5z',
+    sub: [],
+  },
+  {
     id: 'commissions', label: 'Commissions', href: '/dashboard/commissions',
     icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
     sub: [],

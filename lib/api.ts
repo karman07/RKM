@@ -654,3 +654,25 @@ export async function downloadStockIssuePdf(id: string, filename: string): Promi
   document.body.appendChild(a); a.click(); a.remove();
   window.URL.revokeObjectURL(url);
 }
+
+export interface MySale {
+  _id: string;
+  unique_item_code: string;
+  sale_reference?: string;
+  sold_at?: string;
+  sold_customer_name?: string;
+  sold_customer_phone?: string;
+  payment_mode?: string;
+  selling_price: number;
+  final_sale_price?: number;
+  credit_share: number;
+  shared_with: string[];
+  product_id?: { name?: string; sku?: string; images?: string[] } | string;
+  sold_at_branch_id?: { name?: string; code?: string } | string;
+}
+
+/** Every sale the agent is credited on, whichever portal raised the invoice. Shared bills are split equally. */
+export const getMySales = (page = 1, limit = 50) =>
+  request<{ data: MySale[]; meta: { total: number; page: number; limit: number; total_pages: number }; totals: { count: number; revenue: number } }>(
+    `/sales/my-sales?page=${page}&limit=${limit}`
+  );
