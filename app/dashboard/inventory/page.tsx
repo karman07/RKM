@@ -43,6 +43,7 @@ import DiscountField from '@/components/DiscountField';
 import { Bookmark, CheckCircle2, AlertTriangle } from 'lucide-react';
 import CompletePreBookingModal from '@/components/CompletePreBookingModal';
 import CancelPreBookingModal from '@/components/CancelPreBookingModal';
+import StaffMultiSelect from '@/components/StaffMultiSelect';
 import dynamic from 'next/dynamic';
 
 const Doughnut = dynamic(() => import('react-chartjs-2').then(mod => mod.Doughnut), { ssr: false });
@@ -209,7 +210,7 @@ export default function InventoryPage() {
   });
   const [saleChannel, setSaleChannel] = useState('store');
   const [soldAtBranchId, setSoldAtBranchId] = useState('');
-  const [soldByUserId, setSoldByUserId] = useState('');
+  const [soldByUserIds, setSoldByUserIds] = useState<string[]>([]);
   const [paymentSplits, setPaymentSplits] = useState<PaymentSplit[]>([{ mode: 'cash', amount: '', reference: '' }]);
 
   // ── Cashiers for sold form ─────────────────────────────────────────────────
@@ -224,7 +225,7 @@ export default function InventoryPage() {
     name: '', phone: '', email: '', address: '', city: '', state: '', pincode: '', country: 'India',
   });
   const [cartSoldAtBranchId, setCartSoldAtBranchId] = useState('');
-  const [cartSoldByUserId, setCartSoldByUserId] = useState('');
+  const [cartSoldByUserIds, setCartSoldByUserIds] = useState<string[]>([]);
   const [oldGoldRef, setOldGoldRef] = useState('');
   const [cartOldGoldRef, setCartOldGoldRef] = useState('');
   const [cartPaymentSplits, setCartPaymentSplits] = useState<PaymentSplit[]>([{ mode: 'cash', amount: '', reference: '' }]);
@@ -372,7 +373,7 @@ export default function InventoryPage() {
       getBranches().catch(() => []),
       getMe().catch(() => null),
       getSettings().catch(() => null),
-      getCashiersByBranch(undefined, 200).catch(() => ({ data: [], meta: {} })),
+      getCashiersByBranch(undefined, 200, true).catch(() => ({ data: [], meta: {} })),
       getSuppliers().catch(() => []),
     ]).then(([lookupData, branchData, meData, settingsData, cashierRes, supplierRes]) => {
       setLookups(lookupData);
@@ -559,7 +560,7 @@ export default function InventoryPage() {
     setCartCustomerDraft({ name: '', phone: '', email: '', address: '', city: '', state: '', pincode: '', country: 'India' });
     setCartOldGoldRef('');
     setCartSoldAtBranchId((user as any)?.branch_id || '');
-    setCartSoldByUserId('');
+    setCartSoldByUserIds([]);
     setCartPaymentSplits([{ mode: 'cash', amount: cartTotal > 0 ? String(Math.round(cartTotal)) : '', reference: '' }]);
     setCartModal(true);
   }
@@ -584,7 +585,8 @@ export default function InventoryPage() {
       const updated = await sellItemsBatch({
         items: cart.map(it => ({ id: it._id, selling_price: cartLinePrice(it) || undefined, manager_discount: cartDiscountPct(it) })),
         sold_at_branch_id: cartSoldAtBranchId,
-        sold_by_user_id: cartSoldByUserId || undefined,
+        sold_by_user_id: cartSoldByUserIds[0] || undefined,
+        sold_by_user_ids: cartSoldByUserIds.length ? cartSoldByUserIds : undefined,
         sold_customer_name: cartCustomerDraft.name,
         sold_customer_phone: cartCustomerDraft.phone,
         sold_customer_email: cartCustomerDraft.email || undefined,
@@ -1131,7 +1133,7 @@ export default function InventoryPage() {
                                 setCustomerDraft({ name: '', phone: '', email: '', address: '', city: '', state: '', pincode: '', country: 'India' });
                                 setSaleChannel('store');
                                 setSoldAtBranchId((item.branch_id && typeof item.branch_id === 'object' ? (item.branch_id as any)._id : item.branch_id) || (user as any)?.branch_id || '');
-                                setSoldByUserId('');
+                                setSoldByUserIds([]);
                                 setPaymentSplits([{ mode: 'cash', amount: String(Math.round(item.selling_price)), reference: '' }]);
                               }} 
                               title="Change Status" 
@@ -1657,23 +1659,14 @@ export default function InventoryPage() {
                   <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                   Cashier Attribution
                 </label>
-                <select
-                  className="w-full px-4 py-3 rounded-xl border border-blue-200 bg-white outline-none text-sm font-bold appearance-none focus:ring-2 focus:ring-blue-500 text-slate-900"
-                  value={soldByUserId}
-                  onChange={e => setSoldByUserId(e.target.value)}
-                >
-                  <option value="">— No Cashier / Manager Direct Sale —</option>
-                  {cashiers.map(c => (
-                    <option key={c._id} value={c._id}>{c.name}{(c.branch && typeof c.branch === 'object') ? ` · ${(c.branch as any).name}` : ''}</option>
-                  ))}
-                </select>
-                {soldByUserId ? (
+                <StaffMultiSelect value={soldByUserIds} onChange={setSoldByUserIds} options={cashiers} />
+                {soldByUserIds.length ? (
                   <p className="text-[10px] font-bold text-blue-600 flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                    Sale attributed to selected cashier
+                    Sale attributed to selected staff
                   </p>
                 ) : (
-                  <p className="text-[10px] text-slate-400 font-medium">Optionally select a cashier to track performance</p>
+                  <p className="text-[10px] text-slate-400 font-medium">Select one or more staff — the sale is split equally</p>
                 )}
               </div>
             </div>
@@ -1750,7 +1743,8 @@ export default function InventoryPage() {
                     payment_mode: splits[0]?.mode ?? 'cash',
                     payment_splits: splits.length > 0 ? splits : undefined,
                     sold_at_branch_id: soldAtBranchId || undefined,
-                    sold_by_user_id: soldByUserId || undefined,
+                    sold_by_user_id: soldByUserIds[0] || undefined,
+                    sold_by_user_ids: soldByUserIds.length ? soldByUserIds : undefined,
                     selling_price: Number(newSellingPrice) || statusModal!.selling_price,
                   } : {}),
                   selling_price: Number(newSellingPrice) || statusModal!.selling_price,
@@ -1818,12 +1812,7 @@ export default function InventoryPage() {
             <OldGoldRefInput value={cartOldGoldRef} onChange={setCartOldGoldRef} phone={cartCustomerDraft.phone} />
             <div className="space-y-1.5">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cashier Attribution</label>
-              <select className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm font-bold appearance-none focus:ring-2 focus:ring-blue-500" value={cartSoldByUserId} onChange={e => setCartSoldByUserId(e.target.value)}>
-                <option value="">— No Cashier / Manager Direct Sale —</option>
-                {cashiers.map(c => (
-                  <option key={c._id} value={c._id}>{c.name}{(c.branch && typeof c.branch === 'object') ? ` · ${(c.branch as any).name}` : ''}</option>
-                ))}
-              </select>
+              <StaffMultiSelect value={cartSoldByUserIds} onChange={setCartSoldByUserIds} options={cashiers} />
             </div>
           </div>
 

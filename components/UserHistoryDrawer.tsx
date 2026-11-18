@@ -220,7 +220,8 @@ export default function UserHistoryDrawer({ user, onClose }: { user: User; onClo
       const filtered = items.filter((item: any) => {
         const cashierId = typeof item.sold_by_user_id === 'object' ? item.sold_by_user_id?._id : item.sold_by_user_id;
         const managerId = typeof item.sold_by_manager_id === 'object' ? item.sold_by_manager_id?._id : item.sold_by_manager_id;
-        return cashierId === user._id || managerId === user._id;
+        const sharedIds = (item.sold_by_user_ids ?? []).map((u: any) => (typeof u === 'object' ? u?._id : u));
+        return cashierId === user._id || managerId === user._id || sharedIds.includes(user._id);
       });
       setSales(filtered.sort((a: any, b: any) => new Date(b.sold_at || 0).getTime() - new Date(a.sold_at || 0).getTime()));
     }).finally(() => setLoadingSales(false));

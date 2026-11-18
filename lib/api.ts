@@ -353,6 +353,7 @@ export interface InventoryItem {
   branch_id?: Branch | string | null;
   sold_at_branch_id?: Branch | string | null;
   sold_by_user_id?: User | string | null;
+  sold_by_user_ids?: Array<User | string>;
   sold_by_manager_id?: User | string | null;
   sale_reference?: string;
   // ─── Damage Tracking ───────────────────────────────────────────
@@ -659,10 +660,11 @@ export const uploadUserAvatar = async (file: File): Promise<{ url: string }> => 
 
 
 /** Fetch cashiers + sales-team members filtered by branch — used for the seller picker in sell modals */
-export const getCashiersByBranch = (branchId?: string, limit = 100) => {
+export const getCashiersByBranch = (branchId?: string, limit = 100, includeAll = false) => {
+  const extra = includeAll ? '&include_all=1' : '';
   const qs = branchId
-    ? `?branch_id=${branchId}&page=1&limit=${limit}&include_sales=1`
-    : `?page=1&limit=${limit}&include_sales=1`;
+    ? `?branch_id=${branchId}&page=1&limit=${limit}&include_sales=1${extra}`
+    : `?page=1&limit=${limit}&include_sales=1${extra}`;
   return request<PaginatedResponse<UserApiResponse>>(`/users/cashiers${qs}`).then((res) => ({
     data: res.data.map(normalizeUser),
     meta: res.meta,
@@ -929,6 +931,8 @@ export const completePreBooking = (id: string, payload: {
   payment_splits?: Array<{ mode: string; amount: number; reference?: string }>;
   selling_price?: number;
   sold_by_user_id?: string;
+  /** Everyone credited on the bill — sale is split equally. First = primary seller. */
+  sold_by_user_ids?: string[];
   sold_at_branch_id?: string;
 }) =>
   request<InventoryItem>(`/inventory/${id}/prebook/complete`, {
@@ -1112,6 +1116,8 @@ export const updateInventoryStatus = (
     payment_mode?: string;
     sold_at_branch_id?: string;
     sold_by_user_id?: string;
+    /** Everyone credited on the bill — sale is split equally. First = primary seller. */
+    sold_by_user_ids?: string[];
     is_emi?: boolean;
     emi_tenure_months?: number;
     emi_provider?: string;
@@ -1129,6 +1135,8 @@ export const sellItemsBatch = (payload: {
   items: { id: string; selling_price?: number; manager_discount?: number }[];
   sale_reference?: string;
   sold_by_user_id?: string;
+  /** Everyone credited on the bill — sale is split equally. First = primary seller. */
+  sold_by_user_ids?: string[];
   sold_at_branch_id?: string;
   sold_customer_name: string;
   sold_customer_phone: string;
