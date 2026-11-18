@@ -182,6 +182,7 @@ export interface InventoryItem {
   branch_id?: Branch | string;
   sold_at_branch_id?: Branch | string;
   sold_by_user_id?: { _id: string; name: string } | string;
+  sold_by_user_ids?: Array<{ _id: string; name: string } | string>;
   sold_by_manager_id?: { _id: string; name: string } | string;
   sold_at?: string;
   returned_at?: string;
@@ -337,9 +338,9 @@ export const uploadUserAvatar = async (file: File): Promise<{ url: string }> => 
   return res.json();
 };
 
-export const getCashiers = (branchId: string, page = 1, limit = 50, includeSales = false) =>
+export const getCashiers = (branchId: string, page = 1, limit = 50, includeSales = false, includeAll = false) =>
   request<PaginatedResponse<Cashier>>(
-    `/users/cashiers?branch_id=${branchId}&page=${page}&limit=${limit}${includeSales ? '&include_sales=1' : ''}`
+    `/users/cashiers?branch_id=${branchId}&page=${page}&limit=${limit}${includeSales ? '&include_sales=1' : ''}${includeAll ? '&include_all=1' : ''}`
   );
 
 export interface MyIncentive {
@@ -395,6 +396,8 @@ export const updateInventoryStatus = (id: string, payload: {
   sale_channel?: string;
   sale_reference?: string;
   sold_by_user_id?: string;
+  /** Everyone credited on the bill — sale is split equally. First = primary seller. */
+  sold_by_user_ids?: string[];
   sold_at_branch_id?: string;
   damage_reason?: string;
   selling_price?: number;
@@ -423,6 +426,8 @@ export const sellItemsBatch = (payload: {
   items: { id: string; selling_price?: number; manager_discount?: number }[];
   sale_reference?: string;
   sold_by_user_id?: string;
+  /** Everyone credited on the bill — sale is split equally. First = primary seller. */
+  sold_by_user_ids?: string[];
   sold_at_branch_id?: string;
   sold_customer_name: string;
   sold_customer_phone: string;
@@ -488,6 +493,8 @@ export const completePreBooking = (id: string, payload: {
   payment_splits?: Array<{ mode: string; amount: number; reference?: string }>;
   selling_price?: number;
   sold_by_user_id?: string;
+  /** Everyone credited on the bill — sale is split equally. First = primary seller. */
+  sold_by_user_ids?: string[];
   sold_at_branch_id?: string;
 }) =>
   request<InventoryItem>(`/inventory/${id}/prebook/complete`, {

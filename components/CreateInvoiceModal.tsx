@@ -8,6 +8,7 @@ import {
   type RedemptionPreview, type RedemptionType,
 } from '@/lib/api';
 import Modal from './Modal';
+import StaffMultiSelect from './StaffMultiSelect';
 import BarcodeScannerModal from './BarcodeScannerModal';
 import VerifiedCustomerPanel, { type CustomerDraft } from './VerifiedCustomerPanel';
 import PaymentSplitsInput, { validatePaymentSplits, type PaymentSplit } from './PaymentSplitsInput';
@@ -85,7 +86,7 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
     name: '', phone: '', email: '', address: '', city: '', state: '', pincode: '', country: 'India',
   });
   const [customerVerified, setCustomerVerified] = useState(false);
-  const [soldByUserId, setSoldByUserId] = useState('');
+  const [soldByUserIds, setSoldByUserIds] = useState<string[]>([]);
   const [paymentSplits, setPaymentSplits] = useState<PaymentSplit[]>([{ mode: 'cash', amount: '', reference: '' }]);
 
   // Investment balance — the customer picks ONE eligible subscription to redeem against, an
@@ -114,7 +115,7 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
     getProfile().then(p => {
       setBranchId(p.branch?._id || '');
       setBranchName(p.branch?.name || '—');
-      if (p.branch?._id) getCashiers(p.branch._id).then(r => setCashiers(r.data)).catch(() => setCashiers([]));
+      if (p.branch?._id) getCashiers(p.branch._id, 1, 200, true, true).then(r => setCashiers(r.data)).catch(() => setCashiers([]));
     }).catch(() => setBranchName('—'));
   }, []);
 
@@ -424,7 +425,8 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
           return { id: c.item._id, selling_price: priceForLine(c.item, discountPct), manager_discount: discountPct };
         }),
         sold_at_branch_id: branchId,
-        sold_by_user_id: soldByUserId || undefined,
+        sold_by_user_id: soldByUserIds[0] || undefined,
+        sold_by_user_ids: soldByUserIds.length ? soldByUserIds : undefined,
         sold_customer_name: customerDraft.name,
         sold_customer_phone: customerDraft.phone,
         sold_customer_email: customerDraft.email || undefined,
@@ -791,11 +793,7 @@ export default function CreateInvoiceModal({ onClose, onCreated }: Props) {
           </div>
           <div>
             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Cashier Attribution</label>
-            <select value={soldByUserId} onChange={e => setSoldByUserId(e.target.value)}
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none transition-all">
-              <option value="">— No Cashier / Direct Sale —</option>
-              {cashiers.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
-            </select>
+            <StaffMultiSelect value={soldByUserIds} onChange={setSoldByUserIds} options={cashiers} />
           </div>
         </div>
 

@@ -103,7 +103,8 @@ export default function ManagerLogin() {
     setError(''); setGeoError(null); setIsAdminBlock(false);
     try {
       const r = await fetch(`${API_BASE}/settings/public`, { cache: 'no-store' });
-      if (r.ok && (await r.json()).location_enforcement_enabled === false) {
+      const pub = r.ok ? await r.json() : null;
+      if (pub && (pub.location_enforcement_roles?.manager ?? pub.location_enforcement_enabled) === false) {
         setLocationOff(true);
         setGps({ status: 'unavailable' });
         setStep('form');

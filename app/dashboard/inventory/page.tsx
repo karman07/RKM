@@ -24,6 +24,7 @@ import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from 'fi
 import { auth } from '../../../lib/firebase';
 import { toast } from 'sonner';
 import DiscountField from '@/components/DiscountField';
+import StaffMultiSelect from '@/components/StaffMultiSelect';
 import { BRAND_JEWELS } from '@/lib/brand';
 
 const COUNTRY_CODES = [
@@ -59,6 +60,7 @@ interface SellFormData {
   payment_mode: string;
   discount: number;
   sold_by_user_id: string;
+  sold_by_user_ids: string[];
   old_gold_reference?: string;
 }
 
@@ -82,12 +84,13 @@ interface CheckoutFormData {
   shipping_state: string;
   shipping_pincode: string;
   sold_by_user_id: string;
+  sold_by_user_ids: string[];
   old_gold_reference?: string;
 }
 
 const EMPTY_CHECKOUT_FORM: CheckoutFormData = {
   customer_name: '', customer_phone: '', customer_country_code: '+91', customer_email: '',
-  shipping_address: '', shipping_city: '', shipping_state: '', shipping_pincode: '', sold_by_user_id: '',
+  shipping_address: '', shipping_city: '', shipping_state: '', shipping_pincode: '', sold_by_user_id: '', sold_by_user_ids: [],
 };
 
 // ── Customer Picker Dialog ────────────────────────────────────────────────────
@@ -245,7 +248,7 @@ export function InventoryPageContent() {
 
   // Sell modal state
   const [sellItem, setSellItem] = useState<InventoryItem | null>(null);
-  const [sellForm, setSellForm] = useState<SellFormData>({ customer_name: '', customer_phone: '', customer_country_code: '+91', customer_email: '', shipping_address: '', shipping_city: '', shipping_state: '', shipping_pincode: '', payment_mode: 'cash', discount: 0, sold_by_user_id: '' });
+  const [sellForm, setSellForm] = useState<SellFormData>({ customer_name: '', customer_phone: '', customer_country_code: '+91', customer_email: '', shipping_address: '', shipping_city: '', shipping_state: '', shipping_pincode: '', payment_mode: 'cash', discount: 0, sold_by_user_id: '', sold_by_user_ids: [] });
   const [showCustomerPicker, setShowCustomerPicker] = useState(false);
 
   // Investment balance — the customer picks ONE eligible subscription to redeem against, an
@@ -674,7 +677,8 @@ export function InventoryPageContent() {
       const updated = await sellItemsBatch({
         items: cart.map((i) => ({ id: i._id, selling_price: cartItemPrice(i), manager_discount: cartDiscountPct(i) })),
         sale_reference: saleInvoiceNumber,
-        sold_by_user_id: checkoutForm.sold_by_user_id || undefined,
+        sold_by_user_id: checkoutForm.sold_by_user_ids[0] || undefined,
+        sold_by_user_ids: checkoutForm.sold_by_user_ids.length ? checkoutForm.sold_by_user_ids : undefined,
         old_gold_reference: checkoutForm.old_gold_reference?.trim() || undefined,
         sold_at_branch_id: (user?.branch as any)?._id || undefined,
         sold_customer_name: checkoutForm.customer_name,
@@ -756,7 +760,7 @@ export function InventoryPageContent() {
       setUser(profile);
       if (profile.branch?._id) {
         fetchInventory(profile.branch._id, 1);
-        getCashiers(profile.branch._id, 1, 100, true).then(res => setCashiers(res.data));
+        getCashiers(profile.branch._id, 1, 200, true, true).then(res => setCashiers(res.data));
       }
     }).catch(() => { localStorage.removeItem('manager_session'); router.replace('/login'); });
   }, [router]);
@@ -980,7 +984,8 @@ export function InventoryPageContent() {
           payment_mode: sellMode,
           sale_channel: 'store',
           sale_reference: saleInvoiceNumber,
-          sold_by_user_id: sellForm.sold_by_user_id || undefined,
+          sold_by_user_id: sellForm.sold_by_user_ids[0] || undefined,
+          sold_by_user_ids: sellForm.sold_by_user_ids.length ? sellForm.sold_by_user_ids : undefined,
           old_gold_reference: sellForm.old_gold_reference?.trim() || undefined,
           sold_at_branch_id: (user?.branch as any)?._id || undefined,
           razorpay_order_id: razorpayOrderId,
@@ -1008,7 +1013,7 @@ export function InventoryPageContent() {
         setBill([populatedUpdated]);
         setSellItem(null);
         clearRecaptcha();
-        setSellForm({ customer_name: '', customer_phone: '', customer_country_code: '+91', customer_email: '', shipping_address: '', shipping_city: '', shipping_state: '', shipping_pincode: '', payment_mode: 'cash', discount: 0, sold_by_user_id: '' });
+        setSellForm({ customer_name: '', customer_phone: '', customer_country_code: '+91', customer_email: '', shipping_address: '', shipping_city: '', shipping_state: '', shipping_pincode: '', payment_mode: 'cash', discount: 0, sold_by_user_id: '', sold_by_user_ids: [] });
         setPhoneVerified(false);
         setOtpSent(false);
         setOtp('');
@@ -1320,7 +1325,7 @@ export function InventoryPageContent() {
                 {item.status === 'available' && (
                   <div className="flex gap-2 flex-wrap border-t border-slate-50 pt-3">
                     <button
-                      onClick={() => { setSellItem(item); setSellForm({ customer_name: '', customer_phone: '', customer_country_code: '+91', customer_email: '', shipping_address: '', shipping_city: '', shipping_state: '', shipping_pincode: '', payment_mode: 'cash', discount: 0, sold_by_user_id: '' }); }}
+                      onClick={() => { setSellItem(item); setSellForm({ customer_name: '', customer_phone: '', customer_country_code: '+91', customer_email: '', shipping_address: '', shipping_city: '', shipping_state: '', shipping_pincode: '', payment_mode: 'cash', discount: 0, sold_by_user_id: '', sold_by_user_ids: [] }); }}
                       className="flex-1 py-2.5 bg-gradient-to-br from-[#5A0F1A] to-[#7A1C2A] text-white rounded-xl text-[11px] font-black uppercase tracking-wider shadow-sm"
                     >Sell</button>
                     {cartMode && (
@@ -1566,7 +1571,7 @@ export function InventoryPageContent() {
                         {item.status === 'available' && (
                           <>
                             <button
-                              onClick={() => { setSellItem(item); setSellForm({ customer_name: '', customer_phone: '', customer_country_code: '+91', customer_email: '', shipping_address: '', shipping_city: '', shipping_state: '', shipping_pincode: '', payment_mode: 'cash', discount: 0, sold_by_user_id: '' }); }}
+                              onClick={() => { setSellItem(item); setSellForm({ customer_name: '', customer_phone: '', customer_country_code: '+91', customer_email: '', shipping_address: '', shipping_city: '', shipping_state: '', shipping_pincode: '', payment_mode: 'cash', discount: 0, sold_by_user_id: '', sold_by_user_ids: [] }); }}
                               className="group/btn relative px-4 py-2 bg-gradient-to-br from-[#5A0F1A] to-[#7A1C2A] text-white rounded-full text-[10px] font-black uppercase tracking-widest shadow-[0_4px_10px_rgba(90,15,26,0.2)] hover:shadow-[0_6px_15px_rgba(90,15,26,0.3)] transition-all hover:-translate-y-0.5 flex items-center gap-1.5 active:scale-95"
                             >
                               <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} className="group-hover/btn:rotate-12 transition-transform">
@@ -1787,7 +1792,7 @@ export function InventoryPageContent() {
                 onClick={() => {
                   setSellItem(null);
                   clearRecaptcha();
-                  setSellForm({ customer_name: '', customer_phone: '', customer_country_code: '+91', customer_email: '', shipping_address: '', shipping_city: '', shipping_state: '', shipping_pincode: '', payment_mode: 'cash', discount: 0, sold_by_user_id: '' });
+                  setSellForm({ customer_name: '', customer_phone: '', customer_country_code: '+91', customer_email: '', shipping_address: '', shipping_city: '', shipping_state: '', shipping_pincode: '', payment_mode: 'cash', discount: 0, sold_by_user_id: '', sold_by_user_ids: [] });
                   setOtpSent(false);
                   setPhoneVerified(false);
                   setOtp('');
@@ -1985,17 +1990,11 @@ export function InventoryPageContent() {
                   <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                   Cashier Attribution — Sales Performance Record
                 </label>
-                <select value={sellForm.sold_by_user_id} onChange={(e) => setSellForm({ ...sellForm, sold_by_user_id: e.target.value })}
-                  className="w-full bg-white border-2 border-indigo-200 rounded-xl px-4 py-3.5 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-400 appearance-none cursor-pointer shadow-sm">
-                  <option value="">— No Cashier / Manager Direct Sale —</option>
-                  {cashiers.map(c => (
-                    <option key={c._id} value={c._id}>{c.name}</option>
-                  ))}
-                </select>
-                {sellForm.sold_by_user_id ? (
+                <StaffMultiSelect value={sellForm.sold_by_user_ids} onChange={(ids) => setSellForm({ ...sellForm, sold_by_user_ids: ids })} options={cashiers} />
+                {sellForm.sold_by_user_ids.length ? (
                   <p className="text-[10px] font-bold text-indigo-600 flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
-                    Sale will be attributed to this cashier — visible in the Sales Analytics dashboard
+                    Sale will be attributed to the selected staff (split equally) — visible in the Sales Analytics dashboard
                   </p>
                 ) : (
                   <p className="text-[10px] text-slate-400 font-medium">Select a cashier to attribute this sale to their performance record</p>
@@ -2232,7 +2231,7 @@ export function InventoryPageContent() {
                   onClick={() => {
                     setSellItem(null);
                     clearRecaptcha();
-                    setSellForm({ customer_name: '', customer_phone: '', customer_country_code: '+91', customer_email: '', shipping_address: '', shipping_city: '', shipping_state: '', shipping_pincode: '', payment_mode: 'cash', discount: 0, sold_by_user_id: '' });
+                    setSellForm({ customer_name: '', customer_phone: '', customer_country_code: '+91', customer_email: '', shipping_address: '', shipping_city: '', shipping_state: '', shipping_pincode: '', payment_mode: 'cash', discount: 0, sold_by_user_id: '', sold_by_user_ids: [] });
                     setOtpSent(false);
                     setPhoneVerified(false);
                     setOtp('');
@@ -2904,13 +2903,7 @@ export function InventoryPageContent() {
                   <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                   Cashier Attribution — Sales Performance Record
                 </label>
-                <select value={checkoutForm.sold_by_user_id} onChange={(e) => setCheckoutForm({ ...checkoutForm, sold_by_user_id: e.target.value })}
-                  className="w-full bg-white border-2 border-indigo-200 rounded-xl px-4 py-3.5 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-400 appearance-none cursor-pointer shadow-sm">
-                  <option value="">— No Cashier / Manager Direct Sale —</option>
-                  {cashiers.map(c => (
-                    <option key={c._id} value={c._id}>{c.name}</option>
-                  ))}
-                </select>
+                <StaffMultiSelect value={checkoutForm.sold_by_user_ids} onChange={(ids) => setCheckoutForm({ ...checkoutForm, sold_by_user_ids: ids })} options={cashiers} />
               </div>
 
               {/* Payment split builder */}
