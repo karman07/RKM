@@ -24,7 +24,7 @@ export default function LoginPage() {
       let coords: { latitude?: number; longitude?: number } = {};
       try {
         const pub = await fetch(`${API_BASE}/settings/public`, { cache: 'no-store' }).then(r => r.json());
-        if (pub?.location_enforcement_enabled !== false && typeof navigator !== 'undefined' && navigator.geolocation) {
+        if ((pub?.location_enforcement_roles?.custom ?? pub?.location_enforcement_enabled) !== false && typeof navigator !== 'undefined' && navigator.geolocation) {
           coords = await new Promise(resolve => navigator.geolocation.getCurrentPosition(
             p => resolve({ latitude: p.coords.latitude, longitude: p.coords.longitude }),
             () => resolve({}),

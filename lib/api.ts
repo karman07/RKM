@@ -1464,6 +1464,8 @@ export interface AppSettings {
   dev_banner_enabled?: boolean;
   /** Master switch for the branch geofence (GPS) check at staff sign-in; undefined/true = on */
   location_enforcement_enabled?: boolean;
+  /** Per-role override: { manager, cashier, sales, custom } → true = location required */
+  location_enforcement_roles?: Record<string, boolean>;
   /** Saved asset label layout (stock size + elements) from the barcode label designer —
       opaque to everything except LabelDesignerModal, shared across every device on this account */
   label_template?: Record<string, any> | null;
