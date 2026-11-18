@@ -31,7 +31,7 @@ export default function SalesLogin() {
       // Branch staff are geofenced to their branch, so share location when available.
       // Skip the location prompt entirely when the admin has switched the location check off (Settings → Security).
       const locationOn = await fetch(`${API_BASE}/settings/public`, { cache: 'no-store' })
-        .then(r => r.json()).then(j => j?.location_enforcement_enabled !== false).catch(() => true);
+        .then(r => r.json()).then(j => (j?.location_enforcement_roles ? (j.location_enforcement_roles.sales !== false || j.location_enforcement_roles.manager !== false) : j?.location_enforcement_enabled !== false)).catch(() => true);
       const coords = await new Promise<{ latitude?: number; longitude?: number }>(resolve => {
         if (!locationOn || typeof navigator === 'undefined' || !navigator.geolocation) return resolve({});
         navigator.geolocation.getCurrentPosition(
@@ -99,10 +99,6 @@ export default function SalesLogin() {
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-2">Sales Portal</h1>
           <p className="text-sm font-medium text-slate-500">{BRAND_NAME} · Field Sales Access</p>
-          <div className="inline-flex items-center gap-2 mt-3 px-4 py-2 bg-slate-100 border border-slate-200 rounded-full">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
-            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Sign in from anywhere</span>
-          </div>
         </div>
       </div>
 
