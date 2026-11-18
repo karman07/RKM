@@ -162,7 +162,9 @@ export class AuthService {
     // Admin accounts are never location-checked (so the switch can always be reached); every other role is.
     if (process.env.DEMO_MODE !== 'true' && user.role !== 'admin') {
       const geo = await this.getSettings();
-      if ((geo as any)?.location_enforcement_enabled !== false) {
+      const perRole = (geo as any)?.location_enforcement_roles?.[user.role];
+      const geoOn = typeof perRole === 'boolean' ? perRole : (geo as any)?.location_enforcement_enabled !== false;
+      if (geoOn) {
         await this.checkGeofence(user, loginDto.latitude, loginDto.longitude, user.role === 'sales' || user.role === 'custom');
       }
     }

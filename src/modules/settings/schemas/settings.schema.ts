@@ -110,6 +110,10 @@ export class Settings {
   @Prop({ type: Boolean, default: true })
   location_enforcement_enabled: boolean;
 
+  /** Per-role override of the location check: { manager, cashier, sales, custom } → true/false. A role missing here follows location_enforcement_enabled. */
+  @Prop({ type: Object, default: {} })
+  location_enforcement_roles: Record<string, boolean>;
+
   /** Whether email notifications are enabled for automated sale events */
   @Prop({ type: Boolean, default: true })
   email_notifications_enabled: boolean;

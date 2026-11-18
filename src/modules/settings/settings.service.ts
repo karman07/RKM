@@ -29,6 +29,13 @@ export class SettingsService {
    * inventory items reflect the new rates immediately.
    */
   async update(dto: UpdateSettingsDto): Promise<SettingsDocument> {
+    if (dto.location_enforcement_roles) {
+      const clean: Record<string, boolean> = {};
+      for (const r of ['manager', 'cashier', 'sales', 'custom']) {
+        if (typeof dto.location_enforcement_roles[r] === 'boolean') clean[r] = dto.location_enforcement_roles[r];
+      }
+      dto.location_enforcement_roles = clean;
+    }
     const doc = await this.model.findOneAndUpdate(
       { singleton_key: SINGLETON_KEY },
       { $set: dto },

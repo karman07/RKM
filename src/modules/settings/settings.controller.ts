@@ -21,6 +21,15 @@ export class SettingsController {
     return {
       dev_banner_enabled: settings.dev_banner_enabled,
       location_enforcement_enabled: settings.location_enforcement_enabled !== false,
+      // effective on/off per login role (a role not set individually follows the master value)
+      location_enforcement_roles: Object.fromEntries(
+        ['manager', 'cashier', 'sales', 'custom'].map((r) => [
+          r,
+          typeof settings.location_enforcement_roles?.[r] === 'boolean'
+            ? settings.location_enforcement_roles[r]
+            : settings.location_enforcement_enabled !== false,
+        ]),
+      ),
     };
   }
 

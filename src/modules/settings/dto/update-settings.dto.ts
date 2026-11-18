@@ -240,6 +240,11 @@ export class UpdateSettingsDto {
   @IsBoolean()
   location_enforcement_enabled?: boolean;
 
+  /** Per-role location switches, e.g. { manager: true, cashier: false, sales: true, custom: false } */
+  @IsOptional()
+  @IsObject()
+  location_enforcement_roles?: Record<string, boolean>;
+
   // ── Storefront ──────────────────────────────────────────────────────────────
 
   /** Shows the "development build" banner on the public storefront */
