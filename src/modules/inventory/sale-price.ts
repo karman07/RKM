@@ -123,3 +123,51 @@ export function invoiceNet(item: {
   const waivers = Math.round(Number(item.making_charges_discount) || 0) + Math.round(Number(item.advance_making_charges_discount) || 0);
   return gross - adm - mgr - waivers;
 }
+
+/**
+ * Equal-split credit for sales with several staff on one bill.
+ *
+ * `sold_by_user_ids` lists everyone credited; legacy sales only have `sold_by_user_id`. These stages fan an item out into one
+ * row per credited person with `_share` = 1 / (number of people), so `count: {$sum:'$_share'}` and
+ * `revenue: {$sum:{$multiply:[SALE_VALUE,'$_share']}}` split the sale equally and per-person totals add up to the real total.
+ * Group on `$_credited_user`. Items with nobody credited are dropped.
+ */
+export const CREDIT_SPLIT_STAGES: any[] = [
+  {
+    $addFields: {
+      _credited_users: {
+        $cond: [
+          { $gt: [{ $size: { $ifNull: ['$sold_by_user_ids', []] } }, 0] },
+          '$sold_by_user_ids',
+          { $cond: [{ $ifNull: ['$sold_by_user_id', false] }, ['$sold_by_user_id'], []] },
+        ],
+      },
+    },
+  },
+  { $match: { _credited_users: { $ne: [] } } },
+  { $addFields: { _share: { $divide: [1, { $size: '$_credited_users' }] } } },
+  { $unwind: '$_credited_users' },
+  { $addFields: { _credited_user: '$_credited_users' } },
+];
+
+/** Mongo filter: items this user is credited on (new multi-staff sales or legacy single-seller sales). */
+export const creditedTo = (ids: any | any[]) => {
+  const list = Array.isArray(ids) ? ids : [ids];
+  return { $or: [{ sold_by_user_ids: { $in: list } }, { sold_by_user_id: { $in: list } }] };
+};
+
+/** JS: de-duplicated credited user ids of a loaded item. */
+export function creditedUserIds(item: { sold_by_user_id?: any; sold_by_user_ids?: any[] | null }): string[] {
+  const ids = (item.sold_by_user_ids?.length ? item.sold_by_user_ids : item.sold_by_user_id ? [item.sold_by_user_id] : []).map((i: any) => String(i?._id ?? i));
+  return [...new Set(ids)];
+}
+
+/** Normalise requested credit ids: valid, unique, primary (first) preserved. */
+export function normalizeSellerIds(ids?: string[] | null, single?: string | null): string[] {
+  const out: string[] = [];
+  for (const v of [...(ids ?? []), ...(single ? [single] : [])]) {
+    const s = String(v ?? '').trim();
+    if (/^[a-f\d]{24}$/i.test(s) && !out.includes(s)) out.push(s);
+  }
+  return out;
+}

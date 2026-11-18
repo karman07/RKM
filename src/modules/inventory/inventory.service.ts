@@ -47,7 +47,7 @@ import { EmailService } from '../email/email.service.js';
 import { WhatsAppService } from '../whatsapp/services/whatsapp.service.js';
 import { MiscPaymentsService } from '../misc-payments/misc-payments.service.js';
 import { buildBillPrintHtml, renderBillPdf } from './bill-pdf.builder.js';
-import { SALE_VALUE, saleValue, computeFinalSalePrices, buildSaleSnapshot, invoiceNet } from './sale-price';
+import { SALE_VALUE, saleValue, computeFinalSalePrices, buildSaleSnapshot, invoiceNet, CREDIT_SPLIT_STAGES, creditedTo, normalizeSellerIds } from './sale-price';
 
 // Allowed status transitions
 const STATUS_TRANSITIONS: Record<InventoryStatus, InventoryStatus[]> = {
@@ -218,6 +218,7 @@ export class InventoryService {
       })
       .populate({ path: 'sold_at_branch_id', select: 'name code city address phone email state pincode gstin' })
       .populate({ path: 'sold_by_user_id', select: 'name email role' })
+      .populate({ path: 'sold_by_user_ids', select: 'name email role' })
       .lean();
     return this.enrichItemsWithPricing(fullItems);
   }
@@ -228,6 +229,12 @@ export class InventoryService {
    * server-side via bill-pdf.builder.ts and Puppeteer so it can be sent automatically the
    * moment a sale completes, without a staff member opening it.
    */
+  /** "A & B" for every staff member credited on the bill (falls back to the single seller on older sales). */
+  private staffNames(item: any): string | undefined {
+    const list = (item?.sold_by_user_ids?.length ? item.sold_by_user_ids : [item?.sold_by_user_id]).map((u: any) => u?.name).filter(Boolean);
+    return list.length ? list.join(' & ') : undefined;
+  }
+
   private async sendBillEmail(savedItem: InventoryItemDocument): Promise<void> {
     const [enriched] = await this.fetchAndEnrichSoldItems([String(savedItem._id)]);
     if (!enriched) return;
@@ -244,7 +251,7 @@ export class InventoryService {
 
     const invoiceNumber = savedItem.sale_reference || savedItem.unique_item_code;
     const branchName = (enriched as any)?.sold_at_branch_id?.name;
-    const soldBy = (enriched as any)?.sold_by_user_id?.name;
+    const soldBy = this.staffNames(enriched);
     const attachments = [{ filename: `Invoice-${invoiceNumber}.pdf`, content: pdf }];
 
     if (savedItem.sold_customer_email) {
@@ -364,7 +371,7 @@ export class InventoryService {
     const totalAmount = enriched.reduce((sum: number, it: any) => sum + saleValue(it), 0);
     const invoiceNumber = saleReference;
     const branchName = first.sold_at_branch_id?.name;
-    const soldBy = first.sold_by_user_id?.name;
+    const soldBy = this.staffNames(first);
     const itemCount = enriched.length;
     const itemName = itemCount > 1 ? `${itemCount} Items` : (first.product_id?.name || first.unique_item_code);
     const itemCode = itemCount > 1 ? undefined : first.unique_item_code;
@@ -875,7 +882,7 @@ export class InventoryService {
       filter.sold_at_branch_id = new Types.ObjectId(sold_at_branch_id);
     }
     if (sold_by_user_id && Types.ObjectId.isValid(sold_by_user_id)) {
-      filter.sold_by_user_id = new Types.ObjectId(sold_by_user_id);
+      filter.$and = [...((filter.$and as any[]) ?? []), creditedTo(new Types.ObjectId(sold_by_user_id))];
     }
     if (sold_after) {
       filter.sold_at = { $gte: new Date(sold_after) };
@@ -929,6 +936,7 @@ export class InventoryService {
         .populate({ path: 'branch_id', select: 'name code city address phone email state pincode gstin' })
         .populate({ path: 'sold_at_branch_id', select: 'name code city address phone email state pincode gstin' })
         .populate({ path: 'sold_by_user_id', select: 'name email role' })
+      .populate({ path: 'sold_by_user_ids', select: 'name email role' })
         .populate({ path: 'sold_by_manager_id', select: 'name email role' })
         .populate({ path: 'damaged_by_user_id', select: 'name email role' })
         .skip(skip)
@@ -1171,8 +1179,9 @@ export class InventoryService {
       })(),
       // Top cashiers by sales count (all time)
       this.inventoryModel.aggregate([
-        { $match: { is_deleted: { $ne: true }, status: InventoryStatus.SOLD, sold_by_user_id: { $ne: null } } },
-        { $group: { _id: '$sold_by_user_id', sales_count: { $sum: 1 }, total_revenue: { $sum: SALE_VALUE } } },
+        { $match: { is_deleted: { $ne: true }, status: InventoryStatus.SOLD } },
+        ...CREDIT_SPLIT_STAGES,
+        { $group: { _id: '$_credited_user', sales_count: { $sum: '$_share' }, total_revenue: { $sum: { $multiply: [SALE_VALUE, '$_share'] } } } },
         { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
         { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
         { $lookup: { from: 'branches', localField: 'user.branch', foreignField: '_id', as: 'branch' } },
@@ -1283,8 +1292,9 @@ export class InventoryService {
       ]),
       // Cashier (sold_by_user_id) performance at this branch
       this.inventoryModel.aggregate([
-        { $match: { is_deleted: { $ne: true }, sold_at_branch_id: bid, status: InventoryStatus.SOLD, sold_by_user_id: { $ne: null } } },
-        { $group: { _id: '$sold_by_user_id', sales_count: { $sum: 1 }, total_revenue: { $sum: SALE_VALUE } } },
+        { $match: { is_deleted: { $ne: true }, sold_at_branch_id: bid, status: InventoryStatus.SOLD } },
+        ...CREDIT_SPLIT_STAGES,
+        { $group: { _id: '$_credited_user', sales_count: { $sum: '$_share' }, total_revenue: { $sum: { $multiply: [SALE_VALUE, '$_share'] } } } },
         { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
         { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
         { $project: { user_id: '$_id', user_name: { $ifNull: ['$user.name', 'Unknown'] }, user_role: '$user.role', sales_count: 1, total_revenue: 1, _id: 0 } },
@@ -1367,8 +1377,12 @@ export class InventoryService {
 
     const attribution =
       role === 'manager'
-        ? { $or: [{ sold_by_manager_id: uid }, { sold_by_user_id: uid }] }
-        : { sold_by_user_id: uid };
+        ? { $or: [{ sold_by_manager_id: uid }, { sold_by_user_id: uid }, { sold_by_user_ids: uid }] }
+        : { $or: [{ sold_by_user_id: uid }, { sold_by_user_ids: uid }] };
+
+    // When a bill is shared between several staff each gets an equal part; sole-credit/manager-credit sales count in full.
+    const weight = { $addFields: { _w: { $cond: [{ $in: [uid, { $ifNull: ['$sold_by_user_ids', []] }] }, { $divide: [1, { $size: '$sold_by_user_ids' }] }, 1] } } };
+    const REV = { $multiply: [SALE_VALUE, '$_w'] };
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -1382,25 +1396,30 @@ export class InventoryService {
     const [salesToday, salesLifetime, salesTrend7d, salesTrend30d, topProducts, recentSales] = await Promise.all([
       this.inventoryModel.aggregate([
         { $match: { ...baseMatch, sold_at: { $gte: today } } },
-        { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: SALE_VALUE } } },
+        weight,
+        { $group: { _id: null, count: { $sum: '$_w' }, revenue: { $sum: REV } } },
       ]),
       this.inventoryModel.aggregate([
         { $match: baseMatch },
-        { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: SALE_VALUE } } },
+        weight,
+        { $group: { _id: null, count: { $sum: '$_w' }, revenue: { $sum: REV } } },
       ]),
       this.inventoryModel.aggregate([
         { $match: { ...baseMatch, sold_at: { $gte: sevenDaysAgo } } },
-        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$sold_at' } }, count: { $sum: 1 }, revenue: { $sum: SALE_VALUE } } },
+        weight,
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$sold_at' } }, count: { $sum: '$_w' }, revenue: { $sum: REV } } },
         { $sort: { _id: 1 } },
       ]),
       this.inventoryModel.aggregate([
         { $match: { ...baseMatch, sold_at: { $gte: thirtyDaysAgo } } },
-        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$sold_at' } }, count: { $sum: 1 }, revenue: { $sum: SALE_VALUE } } },
+        weight,
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$sold_at' } }, count: { $sum: '$_w' }, revenue: { $sum: REV } } },
         { $sort: { _id: 1 } },
       ]),
       this.inventoryModel.aggregate([
         { $match: baseMatch },
-        { $group: { _id: '$product_id', count: { $sum: 1 }, revenue: { $sum: SALE_VALUE } } },
+        weight,
+        { $group: { _id: '$product_id', count: { $sum: '$_w' }, revenue: { $sum: REV } } },
         { $lookup: { from: 'products', localField: '_id', foreignField: '_id', as: 'product' } },
         { $unwind: { path: '$product', preserveNullAndEmptyArrays: true } },
         { $project: { product_name: { $ifNull: ['$product.name', 'Unknown'] }, product_sku: '$product.sku', count: 1, revenue: 1, _id: 0 } },
@@ -1786,9 +1805,11 @@ export class InventoryService {
       }
 
       // Record the cashier who processed this sale
-      const sellerUserId = dto.sold_by_user_id || requestingUserId;
-      if (sellerUserId && Types.ObjectId.isValid(sellerUserId)) {
-        item.sold_by_user_id = new Types.ObjectId(sellerUserId) as any;
+      // One or more people can be credited on a bill; the sale is split equally between them.
+      const sellerIds = normalizeSellerIds(dto.sold_by_user_ids, dto.sold_by_user_id || requestingUserId);
+      if (sellerIds.length) {
+        item.sold_by_user_id = new Types.ObjectId(sellerIds[0]) as any;
+        item.sold_by_user_ids = sellerIds.map(id => new Types.ObjectId(id)) as any;
       }
 
       // Auto-generate a unique sale reference, unless a shared one was supplied (multi-item bill)
@@ -2021,6 +2042,7 @@ export class InventoryService {
         manager_discount: it.manager_discount,
         sale_reference: sharedReference,
         sold_by_user_id: dto.sold_by_user_id,
+        sold_by_user_ids: dto.sold_by_user_ids,
         sold_by_manager_id: dto.sold_by_manager_id,
         sold_at_branch_id: dto.sold_at_branch_id,
         sold_customer_name: dto.sold_customer_name,
@@ -2212,6 +2234,7 @@ export class InventoryService {
       selling_price: saleData.selling_price,
       sold_at_branch_id: saleData.sold_at_branch_id,
       sold_by_user_id: saleData.sold_by_user_id,
+      sold_by_user_ids: saleData.sold_by_user_ids,
       payment_splits: saleData.payment_splits,
       // Shared across a batch request so every item in the same cashier bill approves onto one reference
       sale_reference: saleData.sale_reference,
@@ -2733,6 +2756,7 @@ export class InventoryService {
       advance_redeemed: advanceAmount,
       advance_id: item.prebooking_advance_id,
       sold_by_user_id: dto.sold_by_user_id,
+      sold_by_user_ids: dto.sold_by_user_ids,
       sold_at_branch_id: dto.sold_at_branch_id,
     } as UpdateInventoryStatusDto;
 

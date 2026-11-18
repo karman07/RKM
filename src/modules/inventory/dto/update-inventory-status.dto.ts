@@ -1,4 +1,4 @@
-import { IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength, IsNumber, Min, IsBoolean, IsMongoId } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength, IsNumber, Min, IsBoolean, IsMongoId, IsArray, ArrayMaxSize } from 'class-validator';
 import { InventoryStatus } from '../schemas/inventory-item.schema';
 
 export class UpdateInventoryStatusDto {
@@ -27,6 +27,13 @@ export class UpdateInventoryStatusDto {
   @IsOptional()
   @IsMongoId()
   sold_by_user_id?: string;
+
+  /** Multiple staff credited on one bill — the sale is split equally between them. First entry is the primary seller. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsMongoId({ each: true })
+  sold_by_user_ids?: string[];
 
   @IsOptional()
   @IsMongoId()

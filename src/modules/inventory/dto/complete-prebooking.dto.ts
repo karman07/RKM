@@ -67,6 +67,11 @@ export class CompletePreBookingDto {
   sold_by_user_id?: string;
 
   @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  sold_by_user_ids?: string[];
+
+  @IsOptional()
   @IsString()
   sold_at_branch_id?: string;
 }

@@ -319,7 +319,7 @@ export function buildBillPrintHtml(items: any[], date: string, customerRecordId:
         <div><b>Items:</b> ${items.length}N &nbsp;|&nbsp; <b>Channel:</b> ${esc(customer?.sale_channel ?? 'store')}</div>
         ${customer?.is_emi ? `<div><b>EMI:</b> ${customer.emi_tenure_months}m via ${esc(customer.emi_provider)} (Down: Rs.${fmt(customer.emi_down_payment ?? 0)})</div>` : ''}
         ${shopBranchName ? `<div><b>Branch:</b> ${esc(shopBranchName)}</div>` : ''}
-        ${customer?.sold_by_user_id && typeof customer.sold_by_user_id === 'object' ? `<div><b>Staff:</b> ${esc(customer.sold_by_user_id.name)}</div>` : ''}
+        ${(() => { const staff = (customer?.sold_by_user_ids?.length ? customer.sold_by_user_ids : [customer?.sold_by_user_id]).filter((u: any) => u && typeof u === 'object' && u.name).map((u: any) => u.name); return staff.length ? `<div><b>Staff:</b> ${esc(staff.join(' & '))}</div>` : ''; })()}
       </div>
     </div>
   </div>

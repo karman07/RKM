@@ -115,9 +115,9 @@ export class GstReportService {
     const [sold, returned, orders, branches] = await Promise.all([
       // A returned item was still a sale in the period it sold — its refund is credited separately below.
       this.inventoryModel.find({ is_deleted: { $ne: true }, status: { $in: [InventoryStatus.SOLD, InventoryStatus.RETURNED] }, sold_at: { $ne: null }, ...range('sold_at', from, to) })
-        .select('product_id selling_price final_sale_price purchase_price payment_mode sold_at sale_reference unique_item_code sold_at_branch_id sold_by_user_id sold_customer_name sold_customer_phone shipping_state').lean(),
+        .select('product_id selling_price final_sale_price purchase_price payment_mode sold_at sale_reference unique_item_code sold_at_branch_id sold_by_user_id sold_by_user_ids sold_customer_name sold_customer_phone shipping_state').lean(),
       this.inventoryModel.find({ is_deleted: { $ne: true }, status: InventoryStatus.RETURNED, ...range('returned_at', from, to) })
-        .select('product_id selling_price final_sale_price purchase_price payment_mode returned_at sale_reference unique_item_code sold_at_branch_id sold_by_user_id sold_customer_name sold_customer_phone shipping_state return_refund_status return_admin_approved_value').lean(),
+        .select('product_id selling_price final_sale_price purchase_price payment_mode returned_at sale_reference unique_item_code sold_at_branch_id sold_by_user_id sold_by_user_ids sold_customer_name sold_customer_phone shipping_state return_refund_status return_admin_approved_value').lean(),
       this.onlineOrderModel.find({ payment_status: 'paid', status: { $nin: ['cancelled', 'refunded'] }, ...range('createdAt', from, to) }).lean(),
       this.branchModel.find().select('name state gstin is_active').lean(),
     ]);
@@ -128,7 +128,7 @@ export class GstReportService {
     orders.forEach((o: any) => (o.items ?? []).forEach((it: any) => it.product_id && productIds.add(String(it.product_id))));
     const phones = [...new Set([...sold, ...returned].map((i: any) => i.sold_customer_phone).filter(Boolean))];
 
-    const userIds = [...new Set([...sold, ...returned].map((i: any) => i.sold_by_user_id).filter(Boolean).map(String))];
+    const userIds = [...new Set([...sold, ...returned].flatMap((i: any) => (i.sold_by_user_ids?.length ? i.sold_by_user_ids : [i.sold_by_user_id])).filter(Boolean).map(String))];
     const [products, customers, categories, users] = await Promise.all([
       this.productModel.find({ _id: { $in: [...productIds].filter(id => /^[a-f\d]{24}$/i.test(id)) } }).select('name sku taxes tax_percentage hsn_code category_id purchase_price').lean(),
       this.customerModel.find({ phone: { $in: phones } }).select('phone name gst_no place_of_supply').lean(),
@@ -171,7 +171,7 @@ export class GstReportService {
         qty: sign,
         phone: item.sold_customer_phone || '',
         paymentMode: item.payment_mode || '',
-        salesperson: item.sold_by_user_id ? userName.get(String(item.sold_by_user_id)) ?? 'Unassigned' : 'Unassigned',
+        salesperson: (item.sold_by_user_ids?.length ? item.sold_by_user_ids : item.sold_by_user_id ? [item.sold_by_user_id] : []).map((u: any) => userName.get(String(u))).filter(Boolean).join(' & ') || 'Unassigned',
         productName: product?.name ?? 'Unknown Item',
         sku: product?.sku ?? '',
         category: categoryName.get(String(product?.category_id)) ?? 'Uncategorized',

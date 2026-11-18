@@ -3,7 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Incentive, IncentiveDocument } from './schemas/incentive.schema';
 import { IncentivePlan, IncentivePlanDocument } from './schemas/incentive-plan.schema';
-import { saleValue } from '../inventory/sale-price';
+import { saleValue, creditedUserIds } from '../inventory/sale-price';
 import { InventoryItem, InventoryItemDocument, InventoryStatus } from '../inventory/schemas/inventory-item.schema';
 import { Subscription, SubscriptionDocument } from '../gold-investment/schemas/subscription.schema';
 import { User, UserDocument } from '../../users/schemas/user.schema';
@@ -90,18 +90,21 @@ export class IncentiveService {
     const match: any = { is_deleted: { $ne: true }, status: InventoryStatus.SOLD, sold_at: { $gte: from, $lt: to } };
     if (onlyUser) {
       const u = new Types.ObjectId(onlyUser);
-      match.$or = [{ sold_by_user_id: u }, { sold_by_manager_id: u }];
+      match.$or = [{ sold_by_user_id: u }, { sold_by_user_ids: u }, { sold_by_manager_id: u }];
     }
-    const items = await this.itemModel.find(match).select('selling_price final_sale_price sold_by_user_id sold_by_manager_id').lean().exec();
+    const items = await this.itemModel.find(match).select('selling_price final_sale_price sold_by_user_id sold_by_user_ids sold_by_manager_id').lean().exec();
     const map = new Map<string, { count: number; amount: number }>();
     for (const it of items as any[]) {
-      const ids = new Set<string>();
-      if (it.sold_by_user_id) ids.add(it.sold_by_user_id.toString());
-      if (it.sold_by_manager_id) ids.add(it.sold_by_manager_id.toString());
-      for (const id of ids) {
+      // Staff credited on the bill split it equally; the branch manager (if not already one of them) still gets the full item.
+      const sellers = creditedUserIds(it);
+      const share = sellers.length ? 1 / sellers.length : 0;
+      const credit = new Map<string, number>();
+      for (const id of sellers) credit.set(id, share);
+      if (it.sold_by_manager_id && !credit.has(it.sold_by_manager_id.toString())) credit.set(it.sold_by_manager_id.toString(), 1);
+      for (const [id, w] of credit) {
         const cur = map.get(id) ?? { count: 0, amount: 0 };
-        cur.count += 1;
-        cur.amount += saleValue(it);
+        cur.count += w;
+        cur.amount += saleValue(it) * w;
         map.set(id, cur);
       }
     }
@@ -164,7 +167,8 @@ export class IncentiveService {
     const goldIncentive = Math.round((goldCollected * goldApplied) / 100);
     return {
       user_id: userId, month, year,
-      sales_count: sales?.count ?? 0,
+      // Shared bills give fractional counts (½, ⅓ …) — keep two decimals
+      sales_count: Math.round((sales?.count ?? 0) * 100) / 100,
       sales_amount: amountSold,
       monthly_target: target,
       base_rate_pct: active ? plan!.base_rate_pct : 0,

@@ -65,9 +65,14 @@ export class UsersController {
     @Query('limit') limit?: number,
     @Query('branch_id') branchId?: string,
     @Query('include_sales') includeSales?: string,
+    @Query('include_all') includeAll?: string,
   ) {
     // include_sales=1 → the seller picker also lists sales-team members, not just cashiers
-    const roles = includeSales === '1' || includeSales === 'true' ? [UserRole.CASHIER, UserRole.SALES] : UserRole.CASHIER;
+    // include_all=1 → every login-capable staff role (cashier, sales, manager, admin, custom) for multi-staff sale credit
+    const on = (v?: string) => v === '1' || v === 'true';
+    const roles = on(includeAll)
+      ? [UserRole.CASHIER, UserRole.SALES, UserRole.MANAGER, UserRole.ADMIN, UserRole.CUSTOM]
+      : on(includeSales) ? [UserRole.CASHIER, UserRole.SALES] : UserRole.CASHIER;
     return this.usersService.findByRole(roles, Number(page) || 1, Number(limit) || 20, branchId);
   }
 

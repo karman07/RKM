@@ -11,7 +11,7 @@ import { InventoryStatus } from '../inventory/schemas/inventory-item.schema';
 import { UsersService } from '../../users/users.service';
 import { UserRole } from '../../users/schemas/user.schema';
 import { InventoryItem, InventoryItemDocument } from '../inventory/schemas/inventory-item.schema';
-import { SALE_VALUE } from '../inventory/sale-price';
+import { SALE_VALUE, CREDIT_SPLIT_STAGES, creditedTo } from '../inventory/sale-price';
 import { StockIssue, StockIssueDocument, StockIssueStatus } from '../stock-issues/schemas/stock-issue.schema';
 
 @Injectable()
@@ -48,14 +48,16 @@ export class SalesService {
 
     const [sales, openIssues, issueCounts, enquiries] = await Promise.all([
       this.inventoryModel.aggregate([
-        { $match: { is_deleted: { $ne: true }, status: InventoryStatus.SOLD, sold_by_user_id: { $in: ids } } },
+        { $match: { is_deleted: { $ne: true }, status: InventoryStatus.SOLD, ...creditedTo(ids) } },
+        ...CREDIT_SPLIT_STAGES,
+        { $match: { _credited_user: { $in: ids } } },
         {
           $group: {
-            _id: '$sold_by_user_id',
-            count: { $sum: 1 },
-            revenue: { $sum: SALE_VALUE },
-            month_count: { $sum: { $cond: [{ $gte: ['$sold_at', monthStart] }, 1, 0] } },
-            month_revenue: { $sum: { $cond: [{ $gte: ['$sold_at', monthStart] }, SALE_VALUE, 0] } },
+            _id: '$_credited_user',
+            count: { $sum: '$_share' },
+            revenue: { $sum: { $multiply: [SALE_VALUE, '$_share'] } },
+            month_count: { $sum: { $cond: [{ $gte: ['$sold_at', monthStart] }, '$_share', 0] } },
+            month_revenue: { $sum: { $cond: [{ $gte: ['$sold_at', monthStart] }, { $multiply: [SALE_VALUE, '$_share'] }, 0] } },
             last_sale_at: { $max: '$sold_at' },
           },
         },
@@ -449,6 +451,35 @@ export class SalesService {
       { $sort: { commission_total: -1 } },
     ]);
     return agg;
+  }
+
+  /**
+   * Every sold item the agent is credited on — whoever raised the invoice (admin, manager, cashier or the agent's own enquiry).
+   * `credit_share` is the agent's equal part when the bill is shared between several staff.
+   */
+  async getMySales(userId: string, page = 1, limit = 50) {
+    const uid = new Types.ObjectId(userId);
+    const filter: any = { is_deleted: { $ne: true }, status: InventoryStatus.SOLD, ...creditedTo(uid) };
+    const skip = (Math.max(1, page) - 1) * limit;
+    const [items, total, totals] = await Promise.all([
+      this.inventoryModel.find(filter)
+        .populate({ path: 'product_id', select: 'name sku images' })
+        .populate({ path: 'sold_at_branch_id', select: 'name code' })
+        .populate({ path: 'sold_by_user_ids', select: 'name' })
+        .sort({ sold_at: -1 }).skip(skip).limit(limit).lean().exec(),
+      this.inventoryModel.countDocuments(filter),
+      this.inventoryModel.aggregate([
+        { $match: filter },
+        ...CREDIT_SPLIT_STAGES,
+        { $match: { _credited_user: uid } },
+        { $group: { _id: null, count: { $sum: '$_share' }, revenue: { $sum: { $multiply: [SALE_VALUE, '$_share'] } } } },
+      ]),
+    ]);
+    const data = (items as any[]).map(it => {
+      const n = it.sold_by_user_ids?.length || 1;
+      return { ...it, credit_share: 1 / n, shared_with: (it.sold_by_user_ids ?? []).map((u: any) => u?.name).filter(Boolean) };
+    });
+    return { data, meta: { total, page, limit, total_pages: Math.ceil(total / limit) }, totals: { count: totals[0]?.count ?? 0, revenue: totals[0]?.revenue ?? 0 } };
   }
 
   async getDashboard(salesAgentId: string) {

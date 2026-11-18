@@ -119,7 +119,12 @@ export class UsersService implements OnModuleInit {
   async findByRole(role: UserRole | UserRole[], page: number = 1, limit: number = 20, branchId?: string, status?: string): Promise<{ data: UserDocument[]; meta: any }> {
     const skip = (page - 1) * limit;
     const query: any = { role: Array.isArray(role) ? { $in: role } : role, ...this.deletionFilter(status) };
-    if (branchId) query.branch = branchId;
+    // Admins have no branch, so a branch-scoped list that includes the admin role still shows them
+    if (branchId) {
+      const roles = Array.isArray(role) ? role : [role];
+      if (roles.includes(UserRole.ADMIN)) query.$or = [{ branch: branchId }, { role: UserRole.ADMIN }];
+      else query.branch = branchId;
+    }
     
     const [data, total] = await Promise.all([
       this.userModel.find(query)
@@ -168,6 +173,7 @@ export class UsersService implements OnModuleInit {
   private static readonly OWNERSHIP_LINKS: ReadonlyArray<[string, string]> = [
     ['inventory_items', 'sold_by_manager_id'], // sales credited to a manager
     ['inventory_items', 'sold_by_user_id'],    // sales credited to a salesperson
+    ['inventory_items', 'sold_by_user_ids'],   // sales shared between several staff
     ['branches', 'manager'],
     ['users', 'reporting_manager_id'],
     ['customers', 'relationship_manager'],
@@ -221,7 +227,12 @@ export class UsersService implements OnModuleInit {
 
     const to = new Types.ObjectId(targetId);
     for (const [coll, field] of UsersService.OWNERSHIP_LINKS) {
-      await this.connection.collection(coll).updateMany({ [field]: from }, { $set: { [field]: to } });
+      // Array fields (shared-sale credit) are rewritten element-wise so the other people on the bill are untouched
+      if (field === 'sold_by_user_ids') {
+        await this.connection.collection(coll).updateMany({ [field]: from }, { $set: { [`${field}.$[e]`]: to } }, { arrayFilters: [{ e: from }] });
+      } else {
+        await this.connection.collection(coll).updateMany({ [field]: from }, { $set: { [field]: to } });
+      }
     }
     return owned;
   }

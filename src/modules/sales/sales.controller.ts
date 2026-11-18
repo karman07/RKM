@@ -56,6 +56,13 @@ export class SalesController {
     return this.salesService.getCommissionSummary();
   }
 
+  /** Sold items the logged-in agent is credited on, from any portal. */
+  @Get('my-sales')
+  @Roles(UserRole.SALES, UserRole.MANAGER)
+  getMySales(@Req() req: any, @Query('page') page?: string, @Query('limit') limit?: string) {
+    return this.salesService.getMySales(req.user.userId, Number(page) || 1, Math.min(Number(limit) || 50, 100));
+  }
+
   @Get('dashboard')
   @Roles(UserRole.SALES, UserRole.MANAGER)
   getDashboard(@Req() req: any) {

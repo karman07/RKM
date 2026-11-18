@@ -138,6 +138,14 @@ export class InventoryItem {
   @Prop({ type: Types.ObjectId, ref: 'User', default: null })
   sold_by_user_id: Types.ObjectId | null;
 
+  /**
+   * Everyone credited on this sale (cashiers, sales executives, managers, admins, custom roles). When more than one,
+   * the sale value and count are split equally between them. `sold_by_user_id` always mirrors the first entry, so
+   * older code/data that only knows the single seller keeps working. Empty on legacy sales.
+   */
+  @Prop({ type: [{ type: Types.ObjectId, ref: 'User' }], default: [] })
+  sold_by_user_ids: Types.ObjectId[];
+
   /** Manager of the branch at the time of sale */
   @Prop({ type: Types.ObjectId, ref: 'User', default: null })
   sold_by_manager_id: Types.ObjectId | null;
@@ -391,4 +399,5 @@ InventoryItemSchema.index({ branch_id: 1, status: 1 });
 InventoryItemSchema.index({ branch_id: 1, sold_at: -1 });
 InventoryItemSchema.index({ sold_at_branch_id: 1, sold_at: -1 });
 InventoryItemSchema.index({ sold_by_user_id: 1, sold_at: -1 });
+InventoryItemSchema.index({ sold_by_user_ids: 1, sold_at: -1 });
 InventoryItemSchema.index({ sale_request_status: 1, sale_request_at: -1 });
