@@ -1,12 +1,13 @@
 'use client';
 
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import {
   Activity, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Clock, Copy, Eye, RefreshCw,
   Search, Send, XCircle, Radio,
 } from 'lucide-react';
 import {
-  waGetLogSummary, waGetLogMessages, waGetLogCallbacks,
+  waGetLogSummary, waGetLogMessages, waGetLogCallbacks, waResendMessages,
   type WaLogSummary, type WaLogMessage, type WaCallbackEvent,
 } from '@/lib/api';
 
@@ -73,6 +74,22 @@ export default function DeliveryLogPage() {
   const [meta, setMeta] = useState({ total: 0, page: 1, total_pages: 1 });
   const [open, setOpen] = useState<string | null>(null);
   const reqId = useRef(0);
+  const [resending, setResending] = useState<string | null>(null);
+
+  async function resend(label: string, body: Parameters<typeof waResendMessages>[0], key: string) {
+    if (!window.confirm(`${label}\n\nThis sends real WhatsApp messages to customers. Continue?`)) return;
+    setResending(key);
+    try {
+      const r = await waResendMessages(body);
+      if (r.queued > 0) toast.success(`${r.queued} message${r.queued === 1 ? '' : 's'} queued for re-send${r.skipped ? ` (${r.skipped} skipped)` : ''}`);
+      else toast.info(r.message || 'Nothing to re-send — already re-sent or no matching messages');
+      void load(true);
+    } catch (e: any) {
+      toast.error(e?.message || 'Re-send failed');
+    } finally {
+      setResending(null);
+    }
+  }
 
   useEffect(() => {
     const t = setTimeout(() => { setQuery(search); setPage(1); }, 350);
@@ -216,6 +233,18 @@ export default function DeliveryLogPage() {
                   className="pl-8 pr-3 py-2 w-64 rounded-xl border border-slate-200 text-[12px] font-bold focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
             )}
+            {tab === 'messages' && (
+              <>
+                <button disabled={resending !== null} onClick={() => void resend('Re-send every message Airtel never confirmed (sent over 2 hours ago, no callback).', { mode: 'no_callback' }, 'nocb')}
+                  className="px-3 py-2 rounded-xl border border-amber-300 bg-amber-50 text-amber-800 text-[10px] font-black uppercase tracking-wide hover:bg-amber-100 disabled:opacity-50">
+                  {resending === 'nocb' ? 'Queuing…' : 'Resend unconfirmed'}
+                </button>
+                <button disabled={resending !== null} onClick={() => void resend('Re-send every failed message from the last 14 days.', { mode: 'failed' }, 'failed')}
+                  className="px-3 py-2 rounded-xl border border-red-300 bg-red-50 text-red-700 text-[10px] font-black uppercase tracking-wide hover:bg-red-100 disabled:opacity-50">
+                  {resending === 'failed' ? 'Queuing…' : 'Resend failed'}
+                </button>
+              </>
+            )}
             <button onClick={() => void load()} title="Refresh" className="p-2.5 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50">
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             </button>
@@ -230,7 +259,7 @@ export default function DeliveryLogPage() {
               <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400">
                 <tr>
                   <th className="px-5 py-3">Time</th><th className="px-3 py-3">Recipient</th><th className="px-3 py-3">Template</th>
-                  <th className="px-3 py-3">Status</th><th className="px-3 py-3">Details</th><th className="px-5 py-3">Airtel ID</th>
+                  <th className="px-3 py-3">Status</th><th className="px-3 py-3">Details</th><th className="px-3 py-3">Airtel ID</th><th className="px-5 py-3">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -257,11 +286,21 @@ export default function DeliveryLogPage() {
                         <p className="text-slate-400">Accepted by Airtel — waiting for delivery update</p>
                       )}
                     </td>
-                    <td className="px-5 py-3 font-mono text-[10px] text-slate-400">{m.waMessageId ? `${m.waMessageId.slice(0, 8)}…` : '—'}</td>
+                    <td className="px-3 py-3 font-mono text-[10px] text-slate-400">{m.waMessageId ? `${m.waMessageId.slice(0, 8)}…` : '—'}</td>
+                    <td className="px-5 py-3">
+                      {m.resentAt ? (
+                        <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap">Re-sent {ago(m.resentAt)}</span>
+                      ) : (
+                        <button disabled={resending !== null} onClick={() => void resend('Re-send this message.', { ids: [m._id] }, m._id)}
+                          className="px-3 py-1.5 rounded-lg border border-blue-200 text-blue-700 text-[10px] font-black uppercase tracking-wide hover:bg-blue-50 disabled:opacity-50 whitespace-nowrap">
+                          {resending === m._id ? '…' : 'Resend'}
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
                 {!messages.length && !loading && (
-                  <tr><td colSpan={6} className="px-5 py-12 text-center text-slate-400 font-bold">No messages found in the last 30 days.</td></tr>
+                  <tr><td colSpan={7} className="px-5 py-12 text-center text-slate-400 font-bold">No messages found in the last 30 days.</td></tr>
                 )}
               </tbody>
             </table>

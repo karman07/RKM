@@ -1876,6 +1876,8 @@ export interface WaLogMessage extends Omit<WaMessage, 'customerId'> {
   readAt?: string;
   errorCode?: number;
   statusUpdatedAt?: string;
+  resentAt?: string;
+  resendCount?: number;
 }
 
 export interface WaCallbackEvent {
@@ -1922,6 +1924,14 @@ export const waGetLogMessages = (p: { status?: string; search?: string; page?: n
   if (p.days) qs.set('days', String(p.days));
   return request<{ data: WaLogMessage[]; meta: WaPage & { days: number }; byStatus: Record<string, number> }>(`/whatsapp/logs/messages?${qs}`);
 };
+
+/** Re-send specific messages (ids) or everything Airtel never reported on / that failed (mode). Each message can be re-sent once. */
+export const waResendMessages = (body: { ids?: string[]; mode?: 'no_callback' | 'failed'; olderThanMinutes?: number; limit?: number }) =>
+  request<{ queued: number; skipped: number; message?: string }>('/whatsapp/logs/messages/resend', { method: 'POST', body: JSON.stringify(body) });
+
+/** Re-send the sale WhatsApp + SMS for one invoice. */
+export const resendSaleNotifications = (saleReference: string) =>
+  request<{ sent: boolean; items: number }>(`/inventory/sale/${encodeURIComponent(saleReference)}/resend-notifications`, { method: 'POST' });
 
 export const waGetLogCallbacks = (p: { status?: string; page?: number; limit?: number }) => {
   const qs = new URLSearchParams();

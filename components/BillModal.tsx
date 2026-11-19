@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import EditBillModal from './EditBillModal';
 import BillEditHistoryModal from './BillEditHistoryModal';
-import { staticUrl, getSettings, updateInventoryStatus, searchCustomersByPhone, type InventoryItem, type AppSettings } from '@/lib/api';
+import { staticUrl, getSettings, updateInventoryStatus, searchCustomersByPhone, resendSaleNotifications, type InventoryItem, type AppSettings } from '@/lib/api';
 import { downloadElementAsPdf, shareElementAsPdf } from '@/lib/pdf-utils';
 import { BRAND_NAME, BRAND_NAME_UPPER, BRAND_SHORT } from '@/lib/brand';
 
@@ -258,6 +258,7 @@ export default function BillModal({ items, date, onClose, onRefunded }: BillModa
   };
   const [showRefundModal, setShowRefundModal] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState<'download' | 'share' | null>(null);
+  const [resendingNotif, setResendingNotif] = useState(false);
   const [customerRecordId, setCustomerRecordId] = useState<string | null>(null);
 
   // Sold items only keep a denormalized name/phone/email snapshot, not a Customer ref — look
@@ -300,6 +301,20 @@ export default function BillModal({ items, date, onClose, onRefunded }: BillModa
     }
   };
 
+  const handleResendNotifications = async () => {
+    if (!invoiceNumber) return;
+    if (!window.confirm(`Send the WhatsApp and SMS for invoice ${invoiceNumber} to the customer again?`)) return;
+    setResendingNotif(true);
+    try {
+      await resendSaleNotifications(invoiceNumber);
+      toast.success('WhatsApp and SMS queued for the customer');
+    } catch (e: any) {
+      toast.error(e?.message || 'Could not resend notifications');
+    } finally {
+      setResendingNotif(false);
+    }
+  };
+
   const handlePrint = () => {
     const billEl = document.getElementById('printable-bill');
     if (!billEl) return;
@@ -337,7 +352,8 @@ export default function BillModal({ items, date, onClose, onRefunded }: BillModa
   </style>
 </head>
 <body>
-${billEl.outerHTML}
+<div style="page-break-after:always;">${billEl.outerHTML}</div>
+<div>${billEl.outerHTML.replace('CUSTOMER COPY', 'OFFICE COPY')}</div>
 </body>
 </html>`;
 
@@ -369,8 +385,8 @@ ${billEl.outerHTML}
     const makingCharge = rs(pb?.making_charges);
     const extraTotal   = rs((pb as any)?.extra_charges_total);
     const subtotal     = pb?.subtotal != null ? rs(pb.subtotal) : (metalPrice + stonePrice + makingCharge + extraTotal);
-    const discountAmt  = rs(pb?.discount_amount);
-    const taxable      = pb?.taxable_amount != null ? rs(pb.taxable_amount) : (subtotal - discountAmt);
+    const productDiscount = rs(pb?.discount_amount);
+    const listTaxable  = pb?.taxable_amount != null ? rs(pb.taxable_amount) : (subtotal - productDiscount);
     const grossPrice   = rs(pb?.final_price ?? item.selling_price);
 
     // Dynamic taxes from product
@@ -383,6 +399,15 @@ ${billEl.outerHTML}
             return [{ name: 'SGST', percentage: half }, { name: 'CGST', percentage: half }];
           })();
 
+    // Admin + manager discounts are entered against the tax-inclusive price. Show them in the Scheme Disc column and take them
+    // off the taxable value (GST is charged only on what the customer actually pays for) — the amount payable stays the same.
+    const adminDisAmt = rs(grossPrice * (Number((item as any).admin_discount) || 0) / 100);
+    const mgrDisAmt = rs((grossPrice - grossPrice * (Number((item as any).admin_discount) || 0) / 100) * (Number((item as any).manager_discount) || 0) / 100);
+    const taxRate = rawTaxes.reduce((sum, t) => sum + (Number(t.percentage) || 0), 0);
+    const extraDiscount = rs((adminDisAmt + mgrDisAmt) / (1 + taxRate / 100));
+    const discountAmt = productDiscount + extraDiscount;
+    const taxable = Math.max(0, listTaxable - extraDiscount);
+
     const taxBreakdown = rawTaxes.map(t => ({
       name: t.name.toUpperCase(),
       percentage: t.percentage,
@@ -390,6 +415,7 @@ ${billEl.outerHTML}
     }));
 
     const totalTaxAmt = taxBreakdown.reduce((s, t) => s + t.amount, 0);
+    const rowTotal = taxable + totalTaxAmt;
     const finalSelling = rs(item.selling_price ?? grossPrice);
 
     // What was actually collected for this item. Different sale flows store
@@ -407,13 +433,12 @@ ${billEl.outerHTML}
     return {
       item, product, pb,
       metalPrice, stonePrice, makingCharge, extraTotal,
-      subtotal, discountAmt, taxable, grossPrice,
+      subtotal, discountAmt, productDiscount, taxable, grossPrice, rowTotal,
       totalTaxAmt, taxBreakdown,
       // Admin discount applies to the item's list price; the manager's % applies on what's left.
       adminPct: Number((item as any).admin_discount) || 0,
       mgrPct: Number((item as any).manager_discount) || 0,
-      adminDisAmt: rs(grossPrice * (Number((item as any).admin_discount) || 0) / 100),
-      mgrDisAmt: rs((grossPrice - grossPrice * (Number((item as any).admin_discount) || 0) / 100) * (Number((item as any).manager_discount) || 0) / 100),
+      adminDisAmt, mgrDisAmt,
       finalSelling,
       payable,
       netWeight:   product?.net_weight ?? 0,
@@ -443,7 +468,9 @@ ${billEl.outerHTML}
   const totalGross   = itemRows.reduce((a, r) => a + r.grossPrice, 0);
   const totalFinal   = itemRows.reduce((a, r) => a + r.finalSelling, 0);
   const totalMaking  = itemRows.reduce((a, r) => a + r.makingCharge, 0);
-  const totalDisAmt  = itemRows.reduce((a, r) => a + r.discountAmt, 0);
+  const totalDisAmt  = itemRows.reduce((a, r) => a + r.discountAmt, 0); // scheme + admin + manager, before tax
+  const totalProductDiscount = itemRows.reduce((a, r) => a + r.productDiscount, 0);
+  const totalRowTotal = itemRows.reduce((a, r) => a + r.rowTotal, 0);
   const totalAdminDis = itemRows.reduce((a, r) => a + r.adminDisAmt, 0);
   const totalMgrDis  = itemRows.reduce((a, r) => a + r.mgrDisAmt, 0);
   // Show the % in the label only when every item on the bill carries the same one.
@@ -473,7 +500,7 @@ ${billEl.outerHTML}
   const totalAdvanceRedeemed = items.reduce((s, it) => s + rs((it as any).advance_redeemed), 0);
   const totalAdvanceMakingDiscount = items.reduce((s, it) => s + rs((it as any).advance_making_charges_discount), 0);
   // Everything knocked off the price: scheme + admin + manager discounts and the making-charge waivers.
-  const totalSavings = totalDisAmt + totalAdminDis + totalMgrDis + totalMakingDiscount + totalAdvanceMakingDiscount;
+  const totalSavings = totalProductDiscount + totalAdminDis + totalMgrDis + totalMakingDiscount + totalAdvanceMakingDiscount;
   // What the customer actually paid/owes. payment_splits is a bill-level concept — every item
   // in a multi-item bill carries an identical copy of the same array — so read it once here
   // rather than summing itemRows.payable across items, which would multiply the total by the
@@ -582,6 +609,12 @@ ${billEl.outerHTML}
               : <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342a3 3 0 100-2.684m0 2.684a3 3 0 100 2.684m0-2.684l6.632 3.316m0-6.316a3 3 0 105.368-2.684 3 3 0 00-5.368 2.684zm0 6.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>}
             {generatingPdf === 'share' ? 'Preparing…' : 'Share'}
           </button>
+          {invoiceNumber && (
+            <button onClick={handleResendNotifications} disabled={resendingNotif}
+              className="flex items-center gap-2 px-5 py-2 rounded-full bg-white/10 text-white text-xs font-bold uppercase tracking-widest border border-white/30 hover:bg-white/20 transition-all shadow-lg disabled:opacity-60">
+              {resendingNotif ? 'Sending…' : 'Resend WhatsApp & SMS'}
+            </button>
+          )}
           <button onClick={handlePrint} className="flex items-center gap-2 px-5 py-2 rounded-full bg-white/10 text-white text-xs font-bold uppercase tracking-widest border border-white/30 hover:bg-white/20 transition-all shadow-lg">
             <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6v-8z" /></svg>
             Print
@@ -748,7 +781,7 @@ ${billEl.outerHTML}
                         </td>
                       );
                     })}
-                    <td style={{ ...cellR, fontWeight: 700, fontSize: '10px', paddingRight: '12px' }}>₹{fmt(row.grossPrice)}</td>
+                    <td style={{ ...cellR, fontWeight: 700, fontSize: '10px', paddingRight: '12px' }}>₹{fmt(row.rowTotal)}</td>
                   </tr>
                 );
               })}
@@ -767,7 +800,7 @@ ${billEl.outerHTML}
                 <td style={cellR}>₹{fmt(totalDisAmt)}</td>
                 <td style={{ ...cellR, fontWeight: 700 }}>₹{fmt(itemRows.reduce((a, r) => a + r.taxable, 0))}</td>
                 {allTaxNames.map(n => <td key={n} style={cellR}>₹{fmt(taxTotals[n] ?? 0)}</td>)}
-                <td style={{ ...cellR, paddingRight: '12px' }}>₹{fmt(totalGross)}</td>
+                <td style={{ ...cellR, paddingRight: '12px' }}>₹{fmt(totalRowTotal)}</td>
               </tr>
             </tfoot>
           </table>
@@ -838,8 +871,6 @@ ${billEl.outerHTML}
                 totalDisAmt > 0 && { label: 'Product / Scheme Discount', value: `- ₹${fmt(totalDisAmt)}`, bold: false },
                 { label: 'Taxable Value', value: `₹${fmt(totalTaxable)}`, bold: false },
                 { label: 'Total Tax (GST)', value: `₹${fmt(grandTotalTax)}`, bold: false },
-                totalAdminDis > 0 && { label: `Less: Admin Discount${adminPctLabel}`, value: `- ₹${fmt(totalAdminDis)}`, bold: false, color: '#7A1C2A' },
-                totalMgrDis > 0 && { label: `Less: Manager Discount${mgrPctLabel}`, value: `- ₹${fmt(totalMgrDis)}`, bold: false, color: '#7A1C2A' },
                 totalInvestmentRedeemed > 0 && { label: `Investment Balance Applied${investmentRedemptionLabel ? ` (${investmentRedemptionLabel})` : ''}`, value: `- ₹${fmt(totalInvestmentRedeemed)}`, bold: false, color: '#263a5e' },
                 totalMakingDiscount > 0 && { label: 'Making Charges Waived (Investment)', value: `- ₹${fmt(totalMakingDiscount)}`, bold: false, color: '#263a5e' },
                 totalAdvanceRedeemed > 0 && { label: 'Advance Payment Applied', value: `- ₹${fmt(totalAdvanceRedeemed)}`, bold: false, color: '#263a5e' },
