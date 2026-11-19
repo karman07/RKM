@@ -369,7 +369,8 @@ export default function BillModal(props: BillModalProps) {
   </style>
 </head>
 <body>
-${billEl.outerHTML}
+<div style="page-break-after:always;">${billEl.outerHTML}</div>
+<div>${billEl.outerHTML.replace('CUSTOMER COPY', 'OFFICE COPY')}</div>
 </body>
 </html>`;
 
@@ -401,8 +402,8 @@ ${billEl.outerHTML}
     const makingCharge = rs(pb?.making_charges);
     const extraTotal   = rs((pb as any)?.extra_charges_total);
     const subtotal     = pb?.subtotal != null ? rs(pb.subtotal) : (metalPrice + stonePrice + makingCharge + extraTotal);
-    const discountAmt  = rs(pb?.discount_amount);
-    const taxable      = pb?.taxable_amount != null ? rs(pb.taxable_amount) : (subtotal - discountAmt);
+    const productDiscount = rs(pb?.discount_amount);
+    const listTaxable  = pb?.taxable_amount != null ? rs(pb.taxable_amount) : (subtotal - productDiscount);
     const grossPrice   = rs(pb?.final_price ?? item.selling_price);
 
     // Dynamic taxes from product
@@ -415,6 +416,15 @@ ${billEl.outerHTML}
             return [{ name: 'SGST', percentage: half }, { name: 'CGST', percentage: half }];
           })();
 
+    // Admin + manager discounts are entered against the tax-inclusive price. Show them in the Scheme Disc column and take them
+    // off the taxable value (GST is charged only on what the customer actually pays for) — the amount payable stays the same.
+    const adminDisAmt = rs(grossPrice * (Number((item as any).admin_discount) || 0) / 100);
+    const mgrDisAmt = rs((grossPrice - grossPrice * (Number((item as any).admin_discount) || 0) / 100) * (Number((item as any).manager_discount) || 0) / 100);
+    const taxRate = rawTaxes.reduce((sum, t) => sum + (Number(t.percentage) || 0), 0);
+    const extraDiscount = rs((adminDisAmt + mgrDisAmt) / (1 + taxRate / 100));
+    const discountAmt = productDiscount + extraDiscount;
+    const taxable = Math.max(0, listTaxable - extraDiscount);
+
     const taxBreakdown = rawTaxes.map(t => ({
       name: t.name.toUpperCase(),
       percentage: t.percentage,
@@ -422,6 +432,7 @@ ${billEl.outerHTML}
     }));
 
     const totalTaxAmt = taxBreakdown.reduce((s, t) => s + t.amount, 0);
+    const rowTotal = taxable + totalTaxAmt;
     const finalSelling = rs(item.selling_price ?? grossPrice);
 
     // What was actually collected for this item. Different sale flows store
@@ -438,13 +449,12 @@ ${billEl.outerHTML}
     return {
       item, product, pb,
       metalPrice, stonePrice, makingCharge, extraTotal,
-      subtotal, discountAmt, taxable, grossPrice,
+      subtotal, discountAmt, productDiscount, taxable, grossPrice, rowTotal,
       totalTaxAmt, taxBreakdown,
       // Admin discount applies to the item's list price; the manager's % applies on what's left.
       adminPct: Number((item as any).admin_discount) || 0,
       mgrPct: Number((item as any).manager_discount) || 0,
-      adminDisAmt: rs(grossPrice * (Number((item as any).admin_discount) || 0) / 100),
-      mgrDisAmt: rs((grossPrice - grossPrice * (Number((item as any).admin_discount) || 0) / 100) * (Number((item as any).manager_discount) || 0) / 100),
+      adminDisAmt, mgrDisAmt,
       finalSelling,
       payable,
       netWeight:   product?.net_weight ?? 0,
@@ -474,7 +484,9 @@ ${billEl.outerHTML}
   const totalGross   = itemRows.reduce((a, r) => a + r.grossPrice, 0);
   const totalFinal   = itemRows.reduce((a, r) => a + r.finalSelling, 0);
   const totalMaking  = itemRows.reduce((a, r) => a + r.makingCharge, 0);
-  const totalDisAmt  = itemRows.reduce((a, r) => a + r.discountAmt, 0);
+  const totalDisAmt  = itemRows.reduce((a, r) => a + r.discountAmt, 0); // scheme + admin + manager, before tax
+  const totalProductDiscount = itemRows.reduce((a, r) => a + r.productDiscount, 0);
+  const totalRowTotal = itemRows.reduce((a, r) => a + r.rowTotal, 0);
   const totalAdminDis = itemRows.reduce((a, r) => a + r.adminDisAmt, 0);
   const totalMgrDis  = itemRows.reduce((a, r) => a + r.mgrDisAmt, 0);
   // Show the % in the label only when every item on the bill carries the same one.
@@ -508,7 +520,7 @@ ${billEl.outerHTML}
   const totalAdvanceRedeemed = items.reduce((s, it) => s + rs((it as any).advance_redeemed), 0);
   const totalAdvanceMakingDiscount = items.reduce((s, it) => s + rs((it as any).advance_making_charges_discount), 0);
   // Everything knocked off the price: scheme + admin + manager discounts and the making-charge waivers.
-  const totalSavings = totalDisAmt + totalAdminDis + totalMgrDis + totalMakingDiscount + totalAdvanceMakingDiscount;
+  const totalSavings = totalProductDiscount + totalAdminDis + totalMgrDis + totalMakingDiscount + totalAdvanceMakingDiscount;
   const paymentSplits: { mode: string; amount: number; reference?: string }[] = (customer as any)?.payment_splits ?? [];
   // What the customer actually paid/owes. payment_splits is a bill-level concept — every item
   // in a multi-item bill carries an identical copy of the same array — so read it once here
@@ -838,7 +850,7 @@ ${billEl.outerHTML}
                         </td>
                       );
                     })}
-                    <td style={{ ...cellR, fontWeight: 700, fontSize: '10px', paddingRight: '12px' }}>₹{fmt(row.grossPrice)}</td>
+                    <td style={{ ...cellR, fontWeight: 700, fontSize: '10px', paddingRight: '12px' }}>₹{fmt(row.rowTotal)}</td>
                   </tr>
                 );
               })}
@@ -857,7 +869,7 @@ ${billEl.outerHTML}
                 <td style={cellR}>₹{fmt(totalDisAmt)}</td>
                 <td style={{ ...cellR, fontWeight: 700 }}>₹{fmt(itemRows.reduce((a, r) => a + r.taxable, 0))}</td>
                 {allTaxNames.map(n => <td key={n} style={cellR}>₹{fmt(taxTotals[n] ?? 0)}</td>)}
-                <td style={{ ...cellR, paddingRight: '12px' }}>₹{fmt(totalGross)}</td>
+                <td style={{ ...cellR, paddingRight: '12px' }}>₹{fmt(totalRowTotal)}</td>
               </tr>
             </tfoot>
           </table>
@@ -924,8 +936,6 @@ ${billEl.outerHTML}
                 totalDisAmt > 0 && { label: 'Product / Scheme Discount', value: `- ₹${fmt(totalDisAmt)}`, bold: false },
                 { label: 'Taxable Value', value: `₹${fmt(totalTaxable)}`, bold: false },
                 { label: 'Total Tax (GST)', value: `₹${fmt(grandTotalTax)}`, bold: false },
-                totalAdminDis > 0 && { label: `Less: Admin Discount${adminPctLabel}`, value: `- ₹${fmt(totalAdminDis)}`, bold: false, color: '#7A1C2A' },
-                totalMgrDis > 0 && { label: `Less: Manager Discount${mgrPctLabel}`, value: `- ₹${fmt(totalMgrDis)}`, bold: false, color: '#7A1C2A' },
                 totalInvestmentRedeemed > 0 && { label: `Investment Balance Applied${investmentRedemptionLabel ? ` (${investmentRedemptionLabel})` : ''}`, value: `- ₹${fmt(totalInvestmentRedeemed)}`, bold: false, color: '#7A1C2A' },
                 totalMakingDiscount > 0 && { label: 'Making Charges Waived (Investment)', value: `- ₹${fmt(totalMakingDiscount)}`, bold: false, color: '#7A1C2A' },
                 totalAdvanceRedeemed > 0 && { label: 'Advance Payment Applied', value: `- ₹${fmt(totalAdvanceRedeemed)}`, bold: false, color: '#7A1C2A' },
