@@ -74,8 +74,8 @@ export function buildBillPrintHtml(items: any[], date: string, customerRecordId:
     const makingCharge = rs(pb?.making_charges);
     const extraTotal = rs(pb?.extra_charges_total);
     const subtotal = pb?.subtotal != null ? rs(pb.subtotal) : (metalPrice + stonePrice + makingCharge + extraTotal);
-    const discountAmt = rs(pb?.discount_amount);
-    const taxable = pb?.taxable_amount != null ? rs(pb.taxable_amount) : (subtotal - discountAmt);
+    const productDiscount = rs(pb?.discount_amount);
+    const listTaxable = pb?.taxable_amount != null ? rs(pb.taxable_amount) : (subtotal - productDiscount);
     const grossPrice = rs(pb?.final_price ?? item.selling_price);
 
     const rawTaxes: TaxEntry[] =
@@ -87,11 +87,21 @@ export function buildBillPrintHtml(items: any[], date: string, customerRecordId:
             return [{ name: 'SGST', percentage: half }, { name: 'CGST', percentage: half }];
           })();
 
+    // Admin + manager discounts are entered against the tax-inclusive price. Show them in the Scheme Disc column and take
+    // them off the taxable value (GST is charged only on what the customer actually pays for), so the amount payable is unchanged.
+    const adminDisAmt = rs(grossPrice * (Number(item.admin_discount) || 0) / 100);
+    const mgrDisAmt = rs((grossPrice - grossPrice * (Number(item.admin_discount) || 0) / 100) * (Number(item.manager_discount) || 0) / 100);
+    const taxRate = rawTaxes.reduce((sum, t) => sum + (Number(t.percentage) || 0), 0);
+    const extraDiscount = rs((adminDisAmt + mgrDisAmt) / (1 + taxRate / 100));
+    const discountAmt = productDiscount + extraDiscount;
+    const taxable = Math.max(0, listTaxable - extraDiscount);
+
     const taxBreakdown = rawTaxes.map(t => ({
       name: t.name.toUpperCase(),
       percentage: t.percentage,
       amount: rs((taxable * t.percentage) / 100),
     }));
+    const rowTotal = taxable + taxBreakdown.reduce((sum, t) => sum + t.amount, 0);
 
     const finalSelling = rs(item.selling_price ?? grossPrice);
     const itemSplits = item.payment_splits;
@@ -104,13 +114,12 @@ export function buildBillPrintHtml(items: any[], date: string, customerRecordId:
     return {
       item, product, pb,
       metalPrice, makingCharge,
-      subtotal, discountAmt, taxable, grossPrice,
+      subtotal, discountAmt, productDiscount, taxable, grossPrice, rowTotal,
       taxBreakdown,
       // Admin discount applies to the item's list price; the manager's % applies on what's left.
       adminPct: Number(item.admin_discount) || 0,
       mgrPct: Number(item.manager_discount) || 0,
-      adminDisAmt: rs(grossPrice * (Number(item.admin_discount) || 0) / 100),
-      mgrDisAmt: rs((grossPrice - grossPrice * (Number(item.admin_discount) || 0) / 100) * (Number(item.manager_discount) || 0) / 100),
+      adminDisAmt, mgrDisAmt,
       finalSelling, payable,
       netWeight: product?.net_weight ?? 0,
       grossWeight: product?.gross_weight ?? 0,
@@ -131,7 +140,9 @@ export function buildBillPrintHtml(items: any[], date: string, customerRecordId:
 
   const totalGross = itemRows.reduce((a, r) => a + r.grossPrice, 0);
   const totalMaking = itemRows.reduce((a, r) => a + r.makingCharge, 0);
-  const totalDisAmt = itemRows.reduce((a, r) => a + r.discountAmt, 0);
+  const totalDisAmt = itemRows.reduce((a, r) => a + r.discountAmt, 0); // scheme + admin + manager, before tax
+  const totalProductDiscount = itemRows.reduce((a, r) => a + r.productDiscount, 0);
+  const totalRowTotal = itemRows.reduce((a, r) => a + r.rowTotal, 0);
   const totalAdminDis = itemRows.reduce((a, r) => a + r.adminDisAmt, 0);
   const totalMgrDis = itemRows.reduce((a, r) => a + r.mgrDisAmt, 0);
   // Show the % in the label only when every item on the bill carries the same one.
@@ -216,19 +227,17 @@ export function buildBillPrintHtml(items: any[], date: string, customerRecordId:
         const te = row.taxBreakdown.find(t => t.name === name);
         return `<td style="${cellR}">${te ? `<div style="font-size:7.5px;color:#555;">${fmtDec(te.percentage, 2)}%</div><div style="font-weight:600;">Rs.${fmt(te.amount)}</div>` : '<span style="color:#bbb;">-</span>'}</td>`;
       }).join('')}
-      <td style="${cellR}font-weight:700;font-size:10px;padding-right:12px;">Rs.${fmt(row.grossPrice)}</td>
+      <td style="${cellR}font-weight:700;font-size:10px;padding-right:12px;">Rs.${fmt(row.rowTotal)}</td>
     </tr>`).join('');
 
   // Everything knocked off the price: scheme + admin + manager discounts and the making-charge waivers.
-  const totalSavings = totalDisAmt + totalAdminDis + totalMgrDis + totalMakingDiscount + totalAdvanceMakingDiscount;
+  const totalSavings = totalProductDiscount + totalAdminDis + totalMgrDis + totalMakingDiscount + totalAdvanceMakingDiscount;
 
   const summaryRows = ([
     { label: 'Gross Product Value', value: `Rs.${fmt(totalSubtotal)}` },
     totalDisAmt > 0 ? { label: 'Product / Scheme Discount', value: `- Rs.${fmt(totalDisAmt)}` } : null,
     { label: 'Taxable Value', value: `Rs.${fmt(totalTaxable)}` },
     { label: 'Total Tax (GST)', value: `Rs.${fmt(grandTotalTax)}` },
-    totalAdminDis > 0 ? { label: `Less: Admin Discount${adminPctLabel}`, value: `- Rs.${fmt(totalAdminDis)}`, color: '#7A1C2A' } : null,
-    totalMgrDis > 0 ? { label: `Less: Manager Discount${mgrPctLabel}`, value: `- Rs.${fmt(totalMgrDis)}`, color: '#7A1C2A' } : null,
     totalInvestmentRedeemed > 0 ? { label: 'Investment Balance Applied', value: `- Rs.${fmt(totalInvestmentRedeemed)}`, color: '#7A1C2A' } : null,
     totalMakingDiscount > 0 ? { label: 'Making Charges Discount (Scheme)', value: `- Rs.${fmt(totalMakingDiscount)}`, color: '#7A1C2A' } : null,
     totalAdvanceRedeemed > 0 ? { label: 'Advance Payment Applied', value: `- Rs.${fmt(totalAdvanceRedeemed)}`, color: '#7A1C2A' } : null,
@@ -358,7 +367,7 @@ export function buildBillPrintHtml(items: any[], date: string, customerRecordId:
           <td style="${cellR}">Rs.${fmt(totalDisAmt)}</td>
           <td style="${cellR}font-weight:700;">Rs.${fmt(itemRows.reduce((a, r) => a + r.taxable, 0))}</td>
           ${allTaxNames.map(n => `<td style="${cellR}">Rs.${fmt(taxTotals[n] ?? 0)}</td>`).join('')}
-          <td style="${cellR}padding-right:12px;">Rs.${fmt(totalGross)}</td>
+          <td style="${cellR}padding-right:12px;">Rs.${fmt(totalRowTotal)}</td>
         </tr>
       </tfoot>
     </table>

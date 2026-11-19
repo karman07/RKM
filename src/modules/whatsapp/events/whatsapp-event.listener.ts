@@ -72,6 +72,7 @@ export class WhatsAppEventListener {
       payload.customerId,
       this.waConfig.saleEventDelayMs,
       MessageCategory.UTILITY,
+      payload.force === true,
     );
   }
 

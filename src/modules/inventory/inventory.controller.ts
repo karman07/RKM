@@ -254,6 +254,13 @@ export class InventoryController {
     return this.inventoryService.findAll(query);
   }
 
+  /** POST /inventory/sale/:reference/resend-notifications — resend the sale WhatsApp + SMS for a bill. */
+  @Post('sale/:reference/resend-notifications')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  resendSaleNotifications(@Param('reference') reference: string) {
+    return this.inventoryService.resendSaleNotifications(reference);
+  }
+
   @Get('barcode/:code')
   @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER, UserRole.SALES)
   findByBarcode(@Param('code') code: string) {

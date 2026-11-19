@@ -133,6 +133,7 @@ export class WhatsAppService {
     customerId?: string,
     delayMs?: number,
     category?: MessageCategory,
+    force = false,
   ): Promise<void> {
     const templateDef = getTemplate(eventKey);
     if (!templateDef) {
@@ -146,7 +147,8 @@ export class WhatsAppService {
       return;
     }
 
-    const isDuplicate = await this.logService.hasSentRecently(
+    // `force` = an admin pressed "resend", so the duplicate-throttle must not swallow it.
+    const isDuplicate = force ? false : await this.logService.hasSentRecently(
       normalized,
       templateDef.templateName,
       this.waConfig.throttleWindowMs,
@@ -175,6 +177,37 @@ export class WhatsAppService {
         $set: { lastContactedAt: new Date() },
       });
     }
+  }
+
+  /**
+   * Re-sends logged messages with the same template, recipient and variables (the log keeps the variables in `message`).
+   * Spaced out by the bulk delay so Airtel's rate limit isn't hit. Each original is stamped so it can't be re-sent twice.
+   */
+  async resendMessages(opts: { ids?: string[]; mode?: 'no_callback' | 'failed'; olderThanMinutes?: number; limit?: number }): Promise<{ queued: number; skipped: number }> {
+    const msgs: any[] = await this.logService.findForResend(opts);
+    let queued = 0;
+    const seen = new Set<string>();
+    for (const m of msgs) {
+      const key = `${m.phoneNumber}|${m.templateName}|${m.message}`;
+      if (seen.has(key)) { await this.logService.markResent(m._id); continue; } // same message listed twice: send once
+      seen.add(key);
+      const def = getTemplate(m.triggerEvent ?? '') ?? Object.values(WHATSAPP_TEMPLATES).find((t) => t.templateName === m.templateName);
+      await this.queueProducer.enqueueSingle(
+        {
+          phoneNumber: m.phoneNumber,
+          templateName: m.templateName,
+          language: def?.language ?? this.waConfig.defaultLanguage,
+          params: String(m.message ?? '').split(' | '),
+          category: m.category,
+          customerId: m.customerId ? String(m.customerId) : undefined,
+          triggerEvent: m.triggerEvent,
+        },
+        queued * this.waConfig.bulkDelayMs,
+      );
+      await this.logService.markResent(m._id);
+      queued++;
+    }
+    return { queued, skipped: msgs.length - queued };
   }
 
   // ─── Bulk send to filtered customers ──────────────────────────────────────

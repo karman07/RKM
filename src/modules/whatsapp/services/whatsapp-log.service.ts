@@ -199,6 +199,39 @@ export class WhatsAppLogService {
     return { data, meta: { total, page, limit, total_pages: Math.max(1, Math.ceil(total / limit)), days }, byStatus };
   }
 
+  /**
+   * Messages eligible for a re-send.
+   *  - `ids`: exactly those messages.
+   *  - `no_callback`: sent/queued messages older than `olderThanMinutes` that Airtel never reported on.
+   *  - `failed`: messages that failed.
+   * Messages already re-sent once (resentAt) are skipped, so pressing the button twice never double-sends.
+   */
+  async findForResend(opts: { ids?: string[]; mode?: 'no_callback' | 'failed'; olderThanMinutes?: number; days?: number; limit?: number }) {
+    const limit = Math.min(300, Math.max(1, opts.limit ?? 100));
+    const base: Record<string, unknown> = { direction: MessageDirection.OUTBOUND, templateName: { $exists: true, $ne: '' }, resentAt: { $exists: false } };
+    if (opts.ids?.length) {
+      base._id = { $in: opts.ids.filter(id => /^[a-f\d]{24}$/i.test(id)) };
+      return this.msgModel.find(base).limit(limit).lean().exec();
+    }
+    const since = new Date(Date.now() - Math.min(60, Math.max(1, opts.days ?? 14)) * 86400000);
+    if (opts.mode === 'failed') {
+      return this.msgModel.find({ ...base, status: MessageStatus.FAILED, createdAt: { $gte: since } }).sort({ createdAt: -1 }).limit(limit).lean().exec();
+    }
+    const cutoff = new Date(Date.now() - Math.max(5, opts.olderThanMinutes ?? 120) * 60000);
+    const candidates: any[] = await this.msgModel.find({
+      ...base,
+      status: { $in: [MessageStatus.QUEUED, MessageStatus.SENT] },
+      waMessageId: { $exists: true, $nin: [null, ''] },
+      createdAt: { $gte: since, $lt: cutoff },
+    }).sort({ createdAt: -1 }).limit(limit * 3).lean().exec();
+    const reported = new Set<string>(await this.cbModel.distinct('waMessageId', { waMessageId: { $in: candidates.map(c => c.waMessageId) } }));
+    return candidates.filter(c => !reported.has(c.waMessageId)).slice(0, limit);
+  }
+
+  async markResent(id: any): Promise<void> {
+    await this.msgModel.updateOne({ _id: id }, { $set: { resentAt: new Date() }, $inc: { resendCount: 1 } }).exec();
+  }
+
   /** Raw callbacks Airtel has POSTed to us (newest first). */
   async listCallbacks(opts: { status?: string; page?: number; limit?: number }) {
     const page = Math.max(1, opts.page ?? 1);

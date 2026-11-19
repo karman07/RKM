@@ -188,6 +188,19 @@ export class WhatsAppController {
     return this.logService.listMessages({ status, search, page, limit, days });
   }
 
+  /**
+   * POST /whatsapp/logs/messages/resend
+   * Body: { ids?: string[] } to resend specific messages, or { mode: 'no_callback' | 'failed', olderThanMinutes?, limit? }
+   * to resend everything Airtel never reported on / that failed. Each message can be re-sent only once.
+   */
+  @Post('logs/messages/resend')
+  async resendMessages(@Body() body: { ids?: string[]; mode?: 'no_callback' | 'failed'; olderThanMinutes?: number; limit?: number }) {
+    if (!body?.ids?.length && body?.mode !== 'no_callback' && body?.mode !== 'failed') {
+      return { queued: 0, skipped: 0, message: 'Pass ids or a mode (no_callback | failed)' };
+    }
+    return this.whatsappService.resendMessages({ ids: body.ids, mode: body.mode, olderThanMinutes: body.olderThanMinutes, limit: body.limit });
+  }
+
   /** GET /whatsapp/logs/callbacks?status=&page=&limit= — raw callbacks received from Airtel. */
   @Get('logs/callbacks')
   async logCallbacks(

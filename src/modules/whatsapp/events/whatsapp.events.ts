@@ -28,6 +28,12 @@ export interface SaleCompletedEvent {
   skipEmail?: boolean;
   /** Set for each item of a batch sale — WhatsApp sends one consolidated message for the bill instead. */
   skipWhatsApp?: boolean;
+  /** Everyone credited on the sale (cashiers / sales agents / managers) — commission goes to the sales agents among them. */
+  soldByUserIds?: string[];
+  /** e.g. 'field_sales' for a sales agent's own enquiry — that path books its own commission. */
+  saleChannel?: string;
+  /** Admin pressed "resend": bypass the duplicate-send throttle. */
+  force?: boolean;
 }
 
 export interface SaleReturnedEvent {

@@ -315,7 +315,7 @@ export class InventoryService {
   }
 
   /** ONE WhatsApp sale confirmation for every item sharing `saleReference` (per-item sends are skipped for batches). */
-  private async emitBatchSaleWhatsApp(saleReference: string): Promise<void> {
+  private async emitBatchSaleWhatsApp(saleReference: string, force = false): Promise<void> {
     if (!saleReference) return;
     const items: any[] = await this.inventoryModel
       .find({ sale_reference: saleReference, status: InventoryStatus.SOLD })
@@ -335,7 +335,18 @@ export class InventoryService {
       amount: items.reduce((sum, it) => sum + saleValue(it), 0),
       branchName: first.sold_at_branch_id?.name || first.branch_id?.name,
       paymentMode: first.payment_mode,
+      force: force || undefined,
     });
+  }
+
+  /** Admin/manager "resend" button: sends the sale WhatsApp + SMS for a bill again, bypassing the duplicate throttle. */
+  async resendSaleNotifications(saleReference: string): Promise<{ sent: boolean; items: number }> {
+    const ref = String(saleReference ?? '').trim();
+    if (!ref) throw new BadRequestException('Sale reference is required');
+    const items = await this.inventoryModel.countDocuments({ sale_reference: ref, status: InventoryStatus.SOLD });
+    if (!items) throw new NotFoundException(`No sold items found for ${ref}`);
+    await this.emitBatchSaleWhatsApp(ref, true);
+    return { sent: true, items };
   }
 
   /**
@@ -482,12 +493,27 @@ export class InventoryService {
    * get the same number or skip around. A number is only consumed when a sale is actually being billed.
    */
   private async generateSaleReference(): Promise<string> {
+    // Reuse a number that was reserved by a sale that then failed, so invoice numbers never have gaps
+    const released: any = await this.inventoryModel.db.collection('invoice_released').findOneAndDelete({}, { sort: { _id: 1 } });
+    const reusable = released?.ref ?? released?.value?.ref;
+    if (reusable) return reusable;
     const res: any = await this.inventoryModel.db
       .collection('invoice_counters')
       .findOneAndUpdate({ _id: 'sale_invoice' as any }, { $inc: { seq: 1 } }, { upsert: true, returnDocument: 'after' });
     const seq = res?.seq ?? res?.value?.seq;
     if (!Number.isFinite(seq)) throw new BadRequestException('Could not allocate an invoice number. Please try again.');
     return `RKM-${String(seq).padStart(6, '0')}`;
+  }
+
+  /** Hands an invoice number back for reuse when the sale it was reserved for never completed. No-op if any item holds it. */
+  private async releaseSaleReference(ref?: string | null): Promise<void> {
+    const m = /^RKM-(\d+)$/.exec(String(ref ?? '').trim());
+    if (!m) return;
+    const seq = Number(m[1]);
+    const counter: any = await this.inventoryModel.db.collection('invoice_counters').findOne({ _id: 'sale_invoice' as any });
+    if (!counter || seq > counter.seq) return; // never issued by us
+    if (await this.inventoryModel.exists({ sale_reference: m[0] })) return; // actually used
+    await this.inventoryModel.db.collection('invoice_released').updateOne({ _id: seq as any }, { $set: { ref: m[0], at: new Date() } }, { upsert: true });
   }
 
   /** Accepts a client-supplied reference only if it is already one of our sequence numbers (shared multi-item bills). */
@@ -1648,6 +1674,24 @@ export class InventoryService {
     requestingUserRole?: string,
     opts?: { suppressEmail?: boolean },
   ): Promise<InventoryItemDocument> {
+    // If the sale fails after an invoice number was reserved, give the number back so the series stays gapless.
+    const allocated: string[] = [];
+    try {
+      return await this.updateStatusInner(id, dto, requestingUserId, requestingUserBranchId, requestingUserRole, { ...opts, allocated });
+    } catch (e) {
+      for (const ref of allocated) await this.releaseSaleReference(ref).catch(() => undefined);
+      throw e;
+    }
+  }
+
+  private async updateStatusInner(
+    id: string,
+    dto: UpdateInventoryStatusDto,
+    requestingUserId?: string,
+    requestingUserBranchId?: string,
+    requestingUserRole?: string,
+    opts?: { suppressEmail?: boolean; allocated?: string[] },
+  ): Promise<InventoryItemDocument> {
     this.validateObjectId(id);
 
     const item = await this.inventoryModel.findById(id);
@@ -1814,7 +1858,12 @@ export class InventoryService {
 
       // Auto-generate a unique sale reference, unless a shared one was supplied (multi-item bill)
       if (!item.sale_reference) {
-        item.sale_reference = this.isSequenceReference(dto.sale_reference) ? dto.sale_reference!.trim() : await this.generateSaleReference();
+        if (this.isSequenceReference(dto.sale_reference)) {
+          item.sale_reference = dto.sale_reference!.trim();
+        } else {
+          item.sale_reference = await this.generateSaleReference();
+          opts?.allocated?.push(item.sale_reference);
+        }
       }
 
       // ─── Redeem investment plan balance — atomically with the sale ────────────
@@ -1950,6 +1999,8 @@ export class InventoryService {
           paymentMode: savedItem.payment_mode,
           skipEmail: opts?.suppressEmail || undefined,
           skipWhatsApp: opts?.suppressEmail || undefined,
+          soldByUserIds: ((savedItem as any).sold_by_user_ids?.length ? (savedItem as any).sold_by_user_ids : savedItem.sold_by_user_id ? [savedItem.sold_by_user_id] : []).map((u: any) => String(u)),
+          saleChannel: (savedItem as any).sale_channel,
         });
         // Bill email — same Tax Invoice template as the admin/manager BillModal, sent as a PDF attachment.
         // Suppressed for batch sales (sellBatch/approveSaleRequestBatch), which send one
@@ -2078,6 +2129,9 @@ export class InventoryService {
       const updated = await this.updateStatus(it.id, itemDto, requestingUserId, requestingUserBranchId, requestingUserRole, { suppressEmail: true });
       results.push(updated);
     }
+    } catch (e) {
+      await this.releaseSaleReference(sharedReference).catch(() => undefined);
+      throw e;
     } finally {
       // Whole bill is sold (or the batch stopped part-way): settle each item's billed amount and freeze the invoice figures.
       await this.finalizeBillPrices(sharedReference);

@@ -4,6 +4,7 @@ import { SmsService } from '../sms.service';
 import { SettingsService } from '../../settings/settings.service';
 import {
   SALE_COMPLETED_EVENT,
+  SALE_BATCH_COMPLETED_EVENT,
   SALE_RETURNED_EVENT,
 } from '../../whatsapp/events/whatsapp.events';
 import type {
@@ -30,8 +31,19 @@ export class SmsEventListener {
     }
   }
 
+  /** Per-item events of a multi-item bill carry skipWhatsApp — the bill gets ONE SMS from onSaleBatchCompleted instead. */
   @OnEvent(SALE_COMPLETED_EVENT, { async: true })
   async onSaleCompleted(payload: SaleCompletedEvent): Promise<void> {
+    if (payload.skipWhatsApp) return;
+    await this.sendSaleSms(payload);
+  }
+
+  @OnEvent(SALE_BATCH_COMPLETED_EVENT, { async: true })
+  async onSaleBatchCompleted(payload: SaleCompletedEvent): Promise<void> {
+    await this.sendSaleSms(payload);
+  }
+
+  private async sendSaleSms(payload: SaleCompletedEvent): Promise<void> {
     if (!(await this.shouldSendSms())) return;
     if (!payload.customerPhone) return;
 

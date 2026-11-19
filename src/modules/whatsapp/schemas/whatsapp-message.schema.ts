@@ -89,6 +89,13 @@ export class WhatsAppMessage {
    */
   @Prop({ default: 0 })
   messageCost: number;
+
+  /** Set when an admin re-sent this message (button / bulk resend) — stops the same message being re-sent twice. */
+  @Prop()
+  resentAt: Date;
+
+  @Prop({ default: 0 })
+  resendCount: number;
 }
 
 export const WhatsAppMessageSchema = SchemaFactory.createForClass(WhatsAppMessage);
