@@ -1564,6 +1564,28 @@ export const getSmsStatus = () => request<{ enabled: boolean }>('/sms/status');
 /** MSG91 account balance/credits remaining */
 export const getSmsBalance = () => request<any>('/sms/balance');
 
+export interface SmsLogRow extends Omit<SmsLog, 'status'> {
+  status: 'sent' | 'delivered' | 'failed';
+  provider_message_id?: string;
+  template?: string;
+  error_code?: string;
+  delivered_at?: string;
+  resent_at?: string;
+}
+
+export const getSmsLogs = (p: { status?: string; search?: string; page?: number; limit?: number; days?: number }) => {
+  const qs = new URLSearchParams();
+  if (p.status && p.status !== 'all') qs.set('status', p.status);
+  if (p.search?.trim()) qs.set('search', p.search.trim());
+  qs.set('page', String(p.page ?? 1)); qs.set('limit', String(p.limit ?? 25));
+  if (p.days) qs.set('days', String(p.days));
+  return request<{ data: SmsLogRow[]; meta: { total: number; page: number; limit: number; total_pages: number }; byStatus: Record<string, number> }>(`/sms/logs?${qs}`);
+};
+
+/** Re-send SMS: specific logs (ids) or every failed / unconfirmed one (mode). Each log can be re-sent once; OTPs never. */
+export const resendSmsLogs = (body: { ids?: string[]; mode?: 'failed' | 'unconfirmed' }) =>
+  request<{ sent: number; failed: number; skipped: number }>('/sms/logs/resend', { method: 'POST', body: JSON.stringify(body) });
+
 /** Sent/failed counts + recent message log */
 export const getSmsStats = () => request<SmsStats>('/sms/stats');
 

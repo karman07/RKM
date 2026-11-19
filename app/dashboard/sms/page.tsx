@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { MessageSquare, CheckCircle2, XCircle, Wallet, RefreshCw } from 'lucide-react';
+import SmsLogTable from '@/components/SmsLogTable';
 import { getSmsStatus, getSmsBalance, getSmsStats, type SmsStats } from '@/lib/api';
 
 function Spinner() {
@@ -150,6 +151,7 @@ export default function SmsControlPage() {
               </div>
             )}
           </div>
+          <SmsLogTable />
         </>
       )}
     </div>
