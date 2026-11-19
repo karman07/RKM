@@ -36,6 +36,10 @@ export class SmsLog {
   @Prop({ type: Date })
   delivered_at?: Date;
 
+  /** Set when an admin re-sent this SMS — it can be re-sent only once. */
+  @Prop({ type: Date })
+  resent_at?: Date;
+
   @Prop({ type: String, enum: ['manual_thank_you', 'sale_completed', 'sale_returned', 'payment_received', 'otp', 'manual'], default: 'manual' })
   trigger: SmsTrigger;
 

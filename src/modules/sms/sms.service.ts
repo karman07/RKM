@@ -5,7 +5,7 @@ import { Model } from 'mongoose';
 import axios from 'axios';
 import { SmsLog, SmsLogDocument, SmsStatus, SmsTrigger } from './schemas/sms-log.schema';
 import { SmsCallbackEvent, SmsCallbackEventDocument } from './schemas/sms-callback-event.schema';
-import { renderSmsTemplate, resolveDltTemplateId, SMS_TEMPLATES, SmsTemplateKey } from './templates/sms-templates.registry';
+import { renderSmsTemplate, resolveDltTemplateId, SMS_TEMPLATES, SmsTemplateKey, SmsTemplateDef } from './templates/sms-templates.registry';
 
 const SEND_PATH = '/api/v1/send-sms';
 
@@ -215,6 +215,69 @@ export class SmsService {
       this.cbModel.countDocuments().exec(),
     ]);
     return { data, meta: { total, page, limit, total_pages: Math.max(1, Math.ceil(total / limit)) } };
+  }
+
+  /** Full SMS log with filters + paging — powers the admin SMS delivery log. */
+  async listLogs(opts: { status?: string; search?: string; page?: number; limit?: number; days?: number }) {
+    const page = Math.max(1, opts.page ?? 1);
+    const limit = Math.min(100, Math.max(1, opts.limit ?? 25));
+    const since = new Date(Date.now() - Math.min(365, Math.max(1, opts.days ?? 30)) * 86400000);
+    const base: Record<string, unknown> = { createdAt: { $gte: since } };
+    const q = opts.search?.trim();
+    if (q) {
+      const rx = new RegExp(q.replace(/^\+/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      base.$or = [{ phone: rx }, { sale_reference: rx }, { provider_message_id: rx }, { template: rx }];
+    }
+    const filter = { ...base, ...(opts.status && opts.status !== 'all' ? { status: opts.status } : {}) };
+    const [data, total, counts] = await Promise.all([
+      this.logModel.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean().exec(),
+      this.logModel.countDocuments(filter).exec(),
+      this.logModel.aggregate([{ $match: base }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
+    ]);
+    const byStatus: Record<string, number> = { sent: 0, delivered: 0, failed: 0 };
+    counts.forEach((c: any) => { byStatus[c._id] = c.count; });
+    return { data, meta: { total, page, limit, total_pages: Math.max(1, Math.ceil(total / limit)) }, byStatus };
+  }
+
+  /** Pulls the {#var#} values back out of a logged (rendered) message so it can be sent again. */
+  private extractVars(templateKey: string, message: string): string[] | null {
+    const def = (SMS_TEMPLATES as Record<string, SmsTemplateDef>)[templateKey];
+    if (!def || def.otp) return null;
+    const pattern = def.content.split(/\{#\w+#\}/).map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('(.+?)');
+    const m = new RegExp(`^${pattern}$`, 's').exec(message);
+    return m ? m.slice(1) : null;
+  }
+
+  /**
+   * Re-sends logged SMS (never OTPs). `ids` = specific logs; `mode` = 'failed' or 'unconfirmed' (sent over 2h ago, no delivery report).
+   * Each log can be re-sent once. Returns how many went out and how many failed again.
+   */
+  async resendLogs(opts: { ids?: string[]; mode?: 'failed' | 'unconfirmed'; limit?: number }): Promise<{ sent: number; failed: number; skipped: number }> {
+    const limit = Math.min(100, Math.max(1, opts.limit ?? 50));
+    const base: Record<string, unknown> = { template: { $nin: ['otp', null, ''] }, resent_at: { $exists: false } };
+    let logs: any[];
+    if (opts.ids?.length) {
+      logs = await this.logModel.find({ ...base, _id: { $in: opts.ids.filter(i => /^[a-f\d]{24}$/i.test(i)) } }).limit(limit).lean().exec();
+    } else if (opts.mode === 'failed') {
+      logs = await this.logModel.find({ ...base, status: 'failed', createdAt: { $gte: new Date(Date.now() - 14 * 86400000) } }).sort({ createdAt: -1 }).limit(limit).lean().exec();
+    } else if (opts.mode === 'unconfirmed') {
+      logs = await this.logModel.find({ ...base, status: 'sent', createdAt: { $gte: new Date(Date.now() - 14 * 86400000), $lt: new Date(Date.now() - 2 * 3600000) } }).sort({ createdAt: -1 }).limit(limit).lean().exec();
+    } else return { sent: 0, failed: 0, skipped: 0 };
+
+    let sent = 0, failed = 0, skipped = 0;
+    const seen = new Set<string>();
+    for (const l of logs) {
+      const vars = this.extractVars(l.template, l.message);
+      const key = `${l.phone}|${l.message}`;
+      if (!vars || seen.has(key)) { skipped++; continue; }
+      seen.add(key);
+      await this.logModel.updateOne({ _id: l._id }, { $set: { resent_at: new Date() } }).exec();
+      try {
+        await this.sendTemplate(l.phone, l.template, vars, { trigger: l.trigger, saleReference: l.sale_reference });
+        sent++;
+      } catch { failed++; }
+    }
+    return { sent, failed, skipped };
   }
 
   /** Sent/delivered/failed counts + most recent messages — powers the admin SMS Control page */

@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { SmsService } from './sms.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -28,6 +28,20 @@ export class SmsController {
   @Roles(UserRole.ADMIN)
   getStats() {
     return this.smsService.getStats();
+  }
+
+  /** Full SMS log: ?status=&search=&page=&limit=&days= */
+  @Get('logs')
+  @Roles(UserRole.ADMIN)
+  getLogs(@Query('status') status?: string, @Query('search') search?: string, @Query('page') page?: string, @Query('limit') limit?: string, @Query('days') days?: string) {
+    return this.smsService.listLogs({ status, search, page: Number(page) || 1, limit: Number(limit) || 25, days: Number(days) || 30 });
+  }
+
+  /** Re-send SMS: { ids?: string[] } or { mode: 'failed' | 'unconfirmed' }. Each log can be re-sent once; OTPs never. */
+  @Post('logs/resend')
+  @Roles(UserRole.ADMIN)
+  resendLogs(@Body() body: { ids?: string[]; mode?: 'failed' | 'unconfirmed'; limit?: number }) {
+    return this.smsService.resendLogs({ ids: body?.ids, mode: body?.mode, limit: body?.limit });
   }
 
   /** Which DLT templates are ready (have a template ID) and which still need registering. */
