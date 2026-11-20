@@ -811,8 +811,8 @@ export default function BillModal(props: BillModalProps) {
                             <div style={{ color: '#7A1C2A', fontSize: '7.5px', fontWeight: 600 }}>
                               Discount: {[
                                 row.discountAmt > 0 ? `Scheme ₹${fmt(row.discountAmt)}` : '',
-                                row.adminPct > 0 ? `${row.adminPct}% admin (₹${fmt(row.adminDisAmt)})` : '',
-                                row.mgrPct > 0 ? `${row.mgrPct}% manager (₹${fmt(row.mgrDisAmt)})` : '',
+                                row.adminPct > 0 ? `${row.adminPct.toFixed(2)}% admin (₹${fmt(row.adminDisAmt)})` : '',
+                                row.mgrPct > 0 ? `${row.mgrPct.toFixed(2)}% manager (₹${fmt(row.mgrDisAmt)})` : '',
                               ].filter(Boolean).join(' + ')}
                             </div>
                           )}
