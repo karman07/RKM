@@ -2,15 +2,118 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
-  getSalesReps, getSalesCommissionSummary, getSettings, getUsers, getIncentiveReport,
-  type User, type SalesCommissionSummary, type SalesIncentive,
+  getSalesReps, getSalesCommissionSummary, getSettings, getUsers, getIncentiveReport, getIncentivePlans, saveIncentivePlan,
+  type User, type IncentivePlan, type SalesCommissionSummary, type SalesIncentive,
 } from '@/lib/api';
-import { Briefcase, TrendingUp, Search, Settings, ChevronLeft, ChevronRight, UserCog } from 'lucide-react';
+import { Briefcase, TrendingUp, Search, Settings, ChevronLeft, ChevronRight, UserCog, BookOpen, X } from 'lucide-react';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 function rupee(n: number) {
   return `₹${n.toLocaleString('en-IN')}`;
+}
+
+type MgrDraft = { monthly_target: string; target_rate_pct: string; gold_monthly_target: string; gold_target_rate_pct: string };
+
+function CommissionRulesDialog({ open, onClose, managers, ratePct, windowMonths, onSaved }: {
+  open: boolean; onClose: () => void; managers: User[]; ratePct: number; windowMonths: number; onSaved: () => void;
+}) {
+  const [drafts, setDrafts] = useState<Record<string, MgrDraft>>({});
+  const [savingId, setSavingId] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    getIncentivePlans().then(pl => {
+      const d: Record<string, MgrDraft> = {};
+      for (const p of pl) {
+        const id = typeof p.user_id === 'object' ? p.user_id._id : p.user_id;
+        d[id] = { monthly_target: String(p.monthly_target), target_rate_pct: String(p.target_rate_pct), gold_monthly_target: String(p.gold_monthly_target ?? 0), gold_target_rate_pct: String(p.gold_target_rate_pct ?? 0) };
+      }
+      setDrafts(d);
+    }).catch(e => setError(e?.message || 'Failed to load plans'));
+  }, [open]);
+
+  if (!open) return null;
+  const draftOf = (id: string): MgrDraft => drafts[id] ?? { monthly_target: '', target_rate_pct: '', gold_monthly_target: '', gold_target_rate_pct: '' };
+  const setDraft = (id: string, k: keyof MgrDraft, v: string) => setDrafts(p => ({ ...p, [id]: { ...draftOf(id), [k]: v } }));
+
+  async function save(id: string) {
+    const d = draftOf(id);
+    setSavingId(id); setError('');
+    try {
+      await saveIncentivePlan(id, {
+        monthly_target: Number(d.monthly_target) || 0, base_rate_pct: 0, target_rate_pct: Math.min(100, Number(d.target_rate_pct) || 0),
+        gold_monthly_target: Number(d.gold_monthly_target) || 0, gold_target_rate_pct: Math.min(100, Number(d.gold_target_rate_pct) || 0),
+      });
+      onSaved();
+    } catch (e: any) { setError(e?.message || 'Save failed'); }
+    finally { setSavingId(''); }
+  }
+
+  const inp = 'w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 tabular-nums focus:outline-none focus:border-[#263A5E]';
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6 space-y-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="text-xl font-black text-slate-900">Commission rules & workflow</h2>
+            <p className="text-xs text-slate-400 font-medium mt-1">How sales agents and managers earn, and where to set it.</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-slate-100"><X className="w-4 h-4" /></button>
+        </div>
+
+        <section className="space-y-2">
+          <h3 className="text-[11px] font-black uppercase tracking-widest text-[#263A5E]">Sales agent commission</h3>
+          <ol className="list-decimal ml-5 text-sm text-slate-600 space-y-1">
+            <li>Whoever is credited as the seller on a bill (sales agent) earns commission; several agents on one bill split it equally.</li>
+            <li>Only if no sales agent is on the bill does it go to the agent who onboarded the customer.</li>
+            <li>It applies to purchases within <b>{windowMonths} months</b> of the customer joining, at <b>{ratePct}%</b> of the bill value (set in Settings).</li>
+            <li>It is booked automatically as unpaid commission and flows to payroll.</li>
+          </ol>
+        </section>
+
+        <section className="space-y-2">
+          <h3 className="text-[11px] font-black uppercase tracking-widest text-indigo-600">Manager commission</h3>
+          <ol className="list-decimal ml-5 text-sm text-slate-600 space-y-1">
+            <li>A manager is credited with the <b>full value</b> of every item sold in their branch where they are the manager on the bill.</li>
+            <li>Nothing is earned until the month's credited sales reach the manager's <b>monthly target</b>.</li>
+            <li>Once the target is reached, the <b>rate below</b> applies to <b>all</b> of that month's sales (not just the excess).</li>
+            <li>Gold investment works the same way with its own target and rate, on payments submitted by the manager or their team.</li>
+            <li>Calculated live each month and added to payroll; example: target ₹30,00,000 at 0.5%, sales ₹31,00,000 → ₹15,500.</li>
+          </ol>
+        </section>
+
+        {error && <p className="text-xs font-bold text-red-600">{error}</p>}
+        <div className="overflow-x-auto border border-slate-100 rounded-xl">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-slate-50 text-[9px] font-black uppercase tracking-widest text-slate-400">
+                <th className="px-3 py-2">Manager</th><th className="px-3 py-2">Sales target ₹</th><th className="px-3 py-2">Sales rate %</th>
+                <th className="px-3 py-2">Gold target ₹</th><th className="px-3 py-2">Gold rate %</th><th className="px-3 py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {managers.map(m => {
+                const d = draftOf(m._id);
+                return (
+                  <tr key={m._id} className="border-t border-slate-50">
+                    <td className="px-3 py-2 text-xs font-bold text-slate-800 whitespace-nowrap">{m.name}</td>
+                    <td className="px-3 py-2"><input className={inp} inputMode="numeric" value={d.monthly_target} onChange={e => setDraft(m._id, 'monthly_target', e.target.value)} /></td>
+                    <td className="px-3 py-2"><input className={inp} inputMode="decimal" value={d.target_rate_pct} onChange={e => setDraft(m._id, 'target_rate_pct', e.target.value)} /></td>
+                    <td className="px-3 py-2"><input className={inp} inputMode="numeric" value={d.gold_monthly_target} onChange={e => setDraft(m._id, 'gold_monthly_target', e.target.value)} /></td>
+                    <td className="px-3 py-2"><input className={inp} inputMode="decimal" value={d.gold_target_rate_pct} onChange={e => setDraft(m._id, 'gold_target_rate_pct', e.target.value)} /></td>
+                    <td className="px-3 py-2"><button disabled={savingId === m._id} onClick={() => save(m._id)} className="px-3 py-1.5 bg-[#263A5E] text-white rounded-lg text-[10px] font-black uppercase tracking-wider disabled:opacity-50">{savingId === m._id ? '…' : 'Save'}</button></td>
+                  </tr>
+                );
+              })}
+              {managers.length === 0 && <tr><td colSpan={6} className="px-3 py-6 text-center text-xs text-slate-400">No managers found.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function StatPill({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color: string }) {
@@ -36,6 +139,8 @@ export default function SalesTeamPage() {
   const [managers, setManagers] = useState<User[]>([]);
   const [managerReport, setManagerReport] = useState<Record<string, SalesIncentive>>({});
   const [managersLoading, setManagersLoading] = useState(true);
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   // Manager commission = their sales-target / slab incentive for the chosen month (same figures as Incentives & payroll).
   useEffect(() => {
@@ -52,7 +157,7 @@ export default function SalesTeamPage() {
       .catch(() => { if (!cancelled) { setManagers([]); setManagerReport({}); } })
       .finally(() => { if (!cancelled) setManagersLoading(false); });
     return () => { cancelled = true; };
-  }, [month, year]);
+  }, [month, year, reloadKey]);
 
   function shiftMonth(delta: number) {
     const d = new Date(year, month + delta, 1);
@@ -118,12 +223,18 @@ export default function SalesTeamPage() {
             className="flex items-center gap-2 px-5 py-3 bg-[#263A5E] text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-[#1D2C49] shadow-lg shadow-[#263A5E]/20 transition-all">
             <TrendingUp className="w-4 h-4" /> Review Enquiries
           </Link>
+          <button onClick={() => setRulesOpen(true)}
+            className="flex items-center gap-2 px-4 py-3 bg-white border border-slate-200 text-slate-500 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:border-[#263A5E]/30 hover:text-[#263A5E] transition-all">
+            <BookOpen className="w-4 h-4" /> Commission Rules
+          </button>
           <Link href="/dashboard/settings"
             className="flex items-center gap-2 px-4 py-3 bg-white border border-slate-200 text-slate-500 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:border-[#263A5E]/30 hover:text-[#263A5E] transition-all">
             <Settings className="w-4 h-4" /> {ratePct}% / {windowMonths}mo
           </Link>
         </div>
       </div>
+
+      <CommissionRulesDialog open={rulesOpen} onClose={() => setRulesOpen(false)} managers={managers} ratePct={ratePct} windowMonths={windowMonths} onSaved={() => setReloadKey(k => k + 1)} />
 
       {/* ── Stats Row ── */}
       <div className="border border-slate-100 rounded-2xl divide-x divide-slate-100 grid grid-cols-2 sm:grid-cols-4 overflow-hidden mb-8">
