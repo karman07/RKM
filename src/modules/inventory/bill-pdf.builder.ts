@@ -203,8 +203,8 @@ export function buildBillPrintHtml(items: any[], date: string, customerRecordId:
         ${row.item.hallmark ? `<div style="color:#888;font-size:7.5px;">Hallmark: ${esc(row.item.hallmark)}</div>` : ''}
         ${(row.adminPct > 0 || row.mgrPct > 0 || row.discountAmt > 0) ? `<div style="color:#7A1C2A;font-size:7.5px;font-weight:600;">Discount: ${[
           row.discountAmt > 0 ? `Scheme Rs.${fmt(row.discountAmt)}` : '',
-          row.adminPct > 0 ? `${row.adminPct}% admin (Rs.${fmt(row.adminDisAmt)})` : '',
-          row.mgrPct > 0 ? `${row.mgrPct}% manager (Rs.${fmt(row.mgrDisAmt)})` : '',
+          row.adminPct > 0 ? `${row.adminPct.toFixed(2)}% admin (Rs.${fmt(row.adminDisAmt)})` : '',
+          row.mgrPct > 0 ? `${row.mgrPct.toFixed(2)}% manager (Rs.${fmt(row.mgrDisAmt)})` : '',
         ].filter(Boolean).join(' + ')}</div>` : ''}
       </td>
       <td style="${cellR}text-align:left;font-size:8px;color:#444;">${row.hsn}</td>
