@@ -16,6 +16,9 @@ export enum InventoryStatus {
   /** Handed to a sales-team member for on-ground selling under a Stock Issue Challan —
    *  out of sellable counter stock until the challan is checked back in. */
   ISSUED_TO_SALES = 'issued_to_sales',
+  /** Melted down into a Melt Batch — the piece no longer exists physically; its gold lives on in the
+   *  batch's recovered-gold pool and can be used to build new ornaments. Terminal unless the melt is cancelled. */
+  MELTED = 'melted',
 }
 
 export enum ItemLocation {
@@ -258,6 +261,18 @@ export class InventoryItem {
 
   @Prop({ type: Date, default: null })
   returned_to_vendor_at: Date | null;
+
+  // ─── Gold Melting ────────────────────────────────────────────────────────────
+  /** The Melt Batch this piece was melted in (set while status = MELTED) */
+  @Prop({ type: Types.ObjectId, ref: 'MeltBatch', default: null })
+  melt_batch_id: Types.ObjectId | null;
+
+  @Prop({ type: Date, default: null })
+  melted_at: Date | null;
+
+  /** For a NEW ornament built out of melted gold: the Melt Batch whose gold pool it drew from */
+  @Prop({ type: Types.ObjectId, ref: 'MeltBatch', default: null })
+  built_from_melt_batch_id: Types.ObjectId | null;
 
   // ─── Sales-Team Stock Issue ──────────────────────────────────────────────────
   /** The Stock Issue Challan this item is currently out on (null when not issued) */

@@ -179,7 +179,7 @@ export class GoldInvestmentController {
   /** Queue of every sales-submitted payment still awaiting review. Registered before `:id` so it isn't swallowed as a param. */
   @Get('subscriptions/pending-payments')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @Roles(UserRole.ADMIN)
   listPendingPayments() {
     return this.svc.listPendingPayments();
   }
@@ -222,10 +222,10 @@ export class GoldInvestmentController {
     return this.svc.submitSalesPayment(id, dto, req.user.userId);
   }
 
-  /** Admin/manager approves or rejects a sales-submitted payment */
+  /** Admin approves or rejects a sales-submitted payment (managers no longer approve scheme payments — KAN-12) */
   @Post('subscriptions/:id/pending-payments/:entryId/review')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @Roles(UserRole.ADMIN)
   reviewSalesPayment(@Param('id') id: string, @Param('entryId') entryId: string, @Body() dto: ReviewSalesPaymentDto, @Req() req: any) {
     return this.svc.reviewSalesPayment(id, entryId, dto, req.user.userId);
   }

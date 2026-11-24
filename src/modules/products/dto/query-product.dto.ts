@@ -44,6 +44,19 @@ export class QueryProductDto {
   @Min(0)
   current_gold_rate?: number;
 
+  /** Final selling price range (₹, incl. taxes). Prices are computed live from the metal rate, so this filters after pricing. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  min_price?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  max_price?: number;
+
   @IsOptional()
   @Type(() => Number)
   @IsNumber()

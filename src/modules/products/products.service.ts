@@ -135,14 +135,16 @@ export class ProductsService {
       filter.metal_color = new RegExp(`^${metal_color}$`, 'i');
     }
 
-    const [rawItems, total] = await Promise.all([
-      this.productModel
-        .find(filter as any)
-        .populate('category_id', 'name slug image_url')
-        .skip(skip)
-        .limit(limit)
-        .sort({ createdAt: -1 })
-        .lean(),
+    const hasPriceRange = query.min_price != null || query.max_price != null;
+    const [rawItems, matched] = await Promise.all([
+      (() => {
+        const q = this.productModel
+          .find(filter as any)
+          .populate('category_id', 'name slug image_url')
+          .sort({ createdAt: -1 });
+        // Price is computed live (metal rate etc.), so a price range can't be paged in the database.
+        return (hasPriceRange ? q : q.skip(skip).limit(limit)).lean();
+      })(),
       this.productModel.countDocuments(filter as any),
     ]);
 
@@ -152,7 +154,7 @@ export class ProductsService {
     const purityRates = this.normalizePurityRates((settings as any).purity_rates);
     const stoneRates: Record<string, number> = (settings as any).stone_rates ?? {};
 
-    const data = rawItems.map((p: any) => {
+    let data = rawItems.map((p: any) => {
       const metalRate = this.resolveMetalRate({
         metalType: p.metal_type,
         purity: p.purity,
@@ -168,6 +170,18 @@ export class ProductsService {
         ),
       };
     });
+
+    let total = matched;
+    if (hasPriceRange) {
+      const lo = query.min_price ?? 0;
+      const hi = query.max_price ?? Number.POSITIVE_INFINITY;
+      data = data.filter((p: any) => {
+        const price = p.pricing_breakdown?.final_price ?? 0;
+        return price >= lo && price <= hi;
+      });
+      total = data.length;
+      data = data.slice(skip, skip + limit);
+    }
 
     return {
       data,

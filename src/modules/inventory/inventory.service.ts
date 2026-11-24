@@ -61,6 +61,8 @@ const STATUS_TRANSITIONS: Record<InventoryStatus, InventoryStatus[]> = {
   [InventoryStatus.RETURNED_TO_VENDOR]: [InventoryStatus.AVAILABLE],
   // Enters/leaves via a Stock Issue Challan (issue / check-in / cancel); the only manual exit is reporting it lost.
   [InventoryStatus.ISSUED_TO_SALES]: [InventoryStatus.STOLEN],
+  // Enters/leaves only via a Melt Batch (start melt / cancel); nothing can be done to a melted piece manually.
+  [InventoryStatus.MELTED]: [],
 };
 
 @Injectable()
@@ -796,6 +798,102 @@ export class InventoryService {
         },
       );
     }
+  }
+
+  // ─── Gold melting ──────────────────────────────────────────────────────────
+
+  /**
+   * Anything physically in the shop that isn't sold can be melted. Sold, already-melted, returned-to-vendor
+   * and stolen pieces are excluded — they are no longer in our hands.
+   */
+  private static readonly MELT_ELIGIBLE_STATUSES = [
+    InventoryStatus.AVAILABLE,
+    InventoryStatus.RESERVED,
+    InventoryStatus.DAMAGED,
+    InventoryStatus.RETURNED,
+    InventoryStatus.ISSUED_TO_SALES,
+  ];
+
+  /** Fetches items (product populated for metal/purity) and validates each one can be melted right now. */
+  async getItemsForMelt(ids: string[]) {
+    ids.forEach(id => this.validateObjectId(id));
+
+    const items = await this.inventoryModel
+      .find({ _id: { $in: ids } })
+      .populate({ path: 'product_id', select: 'name sku images metal_type purity' })
+      .exec();
+
+    const found = new Map(items.map(i => [(i._id as Types.ObjectId).toString(), i]));
+    const ineligible: string[] = [];
+    for (const id of ids) {
+      const item = found.get(id);
+      if (!item || item.is_deleted || !InventoryService.MELT_ELIGIBLE_STATUSES.includes(item.status)) {
+        ineligible.push(item?.unique_item_code || id);
+      }
+    }
+    if (ineligible.length) {
+      throw new BadRequestException(
+        `These items cannot be melted (sold, already melted, stolen, returned to vendor or deleted): ${ineligible.join(', ')}`,
+      );
+    }
+    return items;
+  }
+
+  /** Flips items to MELTED (re-validating first) and returns each one's prior status so a cancelled melt can restore it. */
+  async markMelted(ids: string[], meltBatchId: string): Promise<Record<string, InventoryStatus>> {
+    const items = await this.getItemsForMelt(ids);
+    const previousStatusById: Record<string, InventoryStatus> = {};
+    for (const item of items) {
+      const idStr = (item._id as Types.ObjectId).toString();
+      previousStatusById[idStr] = item.status;
+      item.status = InventoryStatus.MELTED;
+      item.melt_batch_id = new Types.ObjectId(meltBatchId);
+      item.melted_at = new Date();
+      await item.save();
+    }
+    return previousStatusById;
+  }
+
+  /** Restores items from MELTED to the status they held before (used when a melt that was started is cancelled). */
+  async revertMelt(entries: { id: string; previous_status: string }[]): Promise<void> {
+    for (const entry of entries) {
+      await this.inventoryModel.updateOne(
+        { _id: entry.id, status: InventoryStatus.MELTED },
+        {
+          $set: { status: entry.previous_status || InventoryStatus.AVAILABLE },
+          $unset: { melt_batch_id: '', melted_at: '' },
+        },
+      );
+    }
+  }
+
+  /** Metal + purity label of a product (e.g. "gold", "22K") — used to work out how much pure gold a new piece needs. */
+  async getProductMetal(productId: string): Promise<{ name: string; metal_type: string; purity: string }> {
+    this.validateObjectId(productId);
+    const product = await this.productsService.findOne(productId) as any;
+    return { name: product?.name ?? '', metal_type: product?.metal_type ?? '', purity: product?.purity ?? '' };
+  }
+
+  /** Looks up an inventory item to be linked as a NEW ornament built from melted gold. Melted/sold items can't be one. */
+  async getItemForMeltAllocation(id: string) {
+    this.validateObjectId(id);
+    const item = await this.inventoryModel
+      .findById(id)
+      .populate({ path: 'product_id', select: 'name sku' })
+      .exec();
+    if (!item || item.is_deleted) throw new NotFoundException('Inventory item not found');
+    if (item.status === InventoryStatus.MELTED) {
+      throw new BadRequestException('A melted piece cannot be the new ornament');
+    }
+    return item;
+  }
+
+  /** Tags (or untags, with null) a new ornament with the melt batch its gold came from. */
+  async setBuiltFromMeltBatch(itemId: string, meltBatchId: string | null): Promise<void> {
+    await this.inventoryModel.updateOne(
+      { _id: itemId },
+      { $set: { built_from_melt_batch_id: meltBatchId ? new Types.ObjectId(meltBatchId) : null } },
+    );
   }
 
   // ─── Sales-team stock issue ────────────────────────────────────────────────
