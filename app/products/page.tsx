@@ -44,18 +44,26 @@ interface Lookup {
   is_active?: boolean;
 }
 
+// Kept deliberately simple: Ornament type, Gender, Price range, Occasion.
 const FILTER_ORDER = [
   "category",
   "gender",
+  "price",
   "occasion",
-  "metal_type",
-  "metal_color",
-  "stone_type",
-  "purity",
 ] as const;
 
+// Affordable price band the store wants to feature (₹). Set to true to hide everything outside it on the site.
+const LIMIT_TO_PRICE_BAND = false;
+const BAND_MIN = 50000;
+const BAND_MAX = 100000;
+const PRICE_OPTIONS = [
+  { value: "50000-75000", label: "₹50,000 – ₹75,000" },
+  { value: "75000-100000", label: "₹75,000 – ₹1,00,000" },
+];
+
 const FILTER_LABELS: Record<string, string> = {
-  category: "Category",
+  category: "Ornament Type",
+  price: "Price Range",
   gender: "Gender",
   occasion: "Occasion",
   metal_type: "Metal",
@@ -215,6 +223,13 @@ function ProductsContent() {
           if (match) qs.set("category_id", match._id);
         }
 
+        const priceParam = params.get("price");
+        const [pMin, pMax] = priceParam && /^\d+-\d+$/.test(priceParam)
+          ? priceParam.split("-")
+          : LIMIT_TO_PRICE_BAND ? [String(BAND_MIN), String(BAND_MAX)] : ["", ""];
+        if (pMin) qs.set("min_price", pMin);
+        if (pMax) qs.set("max_price", pMax);
+
         (["metal_type", "gender", "occasion", "stone_type", "purity", "metal_color"] as const).forEach(
           (key) => {
             const value = params.get(key);
@@ -297,6 +312,10 @@ function ProductsContent() {
     });
 
     FILTER_ORDER.filter((key) => key !== "category").forEach((key) => {
+      if (key === "price") {
+        groups.push({ key, label: FILTER_LABELS.price, options: PRICE_OPTIONS });
+        return;
+      }
       const opts = (lookups[key] || []).map((item) => ({ value: item.value, label: item.label }));
       if (opts.length > 0) {
         groups.push({ key, label: FILTER_LABELS[key], options: opts });

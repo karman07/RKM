@@ -43,6 +43,7 @@ export default function CheckoutPage() {
   const [deliveryCharge, setDeliveryCharge] = useState(0);
   const [deliverySettings, setDeliverySettings] = useState<DeliverySettings | null>(null);
   const [loadingDelivery, setLoadingDelivery] = useState(true);
+  const [step, setStep] = useState<1 | 2>(1); // 1 = review & payment, 2 = your details (last step)
   const [placing, setPlacing] = useState(false);
   const [outOfRange, setOutOfRange] = useState(false);
   const [razorpayLoaded, setRazorpayLoaded] = useState(false);
@@ -258,6 +259,14 @@ export default function CheckoutPage() {
           <div className="flex-1 space-y-10">
             <h1 className="font-serif text-5xl text-[#5C0828]">Checkout</h1>
 
+            {/* Step indicator */}
+            <div className="flex items-center gap-3 text-[10px] font-black uppercase tracking-[0.25em]">
+              <span className={step === 1 ? "text-[#5C0828]" : "text-[#B8975A]"}>1 · Review &amp; Payment</span>
+              <span className="w-8 h-px bg-[#B8975A]/40" />
+              <span className={step === 2 ? "text-[#5C0828]" : "text-[#7A8C85]"}>2 · Your Details</span>
+            </div>
+
+            {step === 2 && (<>
             {/* Contact */}
             <section className="space-y-4">
               <h2 className="text-[11px] font-black uppercase tracking-[0.3em] text-[#B8975A]">Contact Information</h2>
@@ -332,7 +341,10 @@ export default function CheckoutPage() {
               {loadingDelivery && <p className="text-xs text-slate-400 animate-pulse">Loading delivery options…</p>}
             </section>
 
+            </>)}
+
             {/* Payment */}
+            {step === 1 && (
             <section className="space-y-4">
               <h2 className="text-[11px] font-black uppercase tracking-[0.3em] text-[#B8975A]">Payment</h2>
               <div className="bg-white border border-[#EDEAE4] rounded-2xl p-6 flex items-center gap-4">
@@ -350,16 +362,29 @@ export default function CheckoutPage() {
                 </div>
               </div>
             </section>
+            )}
 
+            {step === 1 ? (
             <div className="flex flex-col sm:flex-row gap-4 pt-4">
-              <button onClick={handlePlaceOrder} disabled={placing || outOfRange || loadingDelivery}
-                className="flex-1 flex items-center justify-center gap-3 bg-[#5C0828] text-white px-10 py-5 rounded-full text-[11px] font-black uppercase tracking-[0.3em] hover:bg-[#B8975A] transition-all duration-500 shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed">
-                {placing ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Processing…</> : <>Pay ₹{total.toLocaleString("en-IN")} →</>}
+              <button onClick={() => { setStep(2); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                className="flex-1 flex items-center justify-center gap-3 bg-[#5C0828] text-white px-10 py-5 rounded-full text-[11px] font-black uppercase tracking-[0.3em] hover:bg-[#B8975A] transition-all duration-500 shadow-2xl">
+                Continue to Your Details →
               </button>
               <Link href="/cart" className="px-8 py-5 text-[10px] font-black uppercase tracking-[0.3em] text-[#7A8C85] hover:text-[#5C0828] transition-colors flex items-center justify-center">
                 ← Return to Bag
               </Link>
             </div>
+            ) : (
+            <div className="flex flex-col sm:flex-row gap-4 pt-4">
+              <button onClick={handlePlaceOrder} disabled={placing || outOfRange || loadingDelivery}
+                className="flex-1 flex items-center justify-center gap-3 bg-[#5C0828] text-white px-10 py-5 rounded-full text-[11px] font-black uppercase tracking-[0.3em] hover:bg-[#B8975A] transition-all duration-500 shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed">
+                {placing ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Processing…</> : <>Pay ₹{total.toLocaleString("en-IN")} →</>}
+              </button>
+              <button type="button" onClick={() => { setStep(1); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="px-8 py-5 text-[10px] font-black uppercase tracking-[0.3em] text-[#7A8C85] hover:text-[#5C0828] transition-colors flex items-center justify-center">
+                ← Back
+              </button>
+            </div>
+            )}
           </div>
 
           {/* ── Right: Summary ── */}

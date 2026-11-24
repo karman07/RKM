@@ -78,14 +78,14 @@ export default function ProductCard({ product, index, badge }: ProductCardProps)
               alt={product.name}
               loading="lazy"
               decoding="async"
-              className="w-full h-full object-cover transition-transform duration-[2.5s] ease-out group-hover:scale-105"
+              className="w-full h-full object-contain transition-transform duration-[2.5s] ease-out group-hover:scale-[1.03]"
             />
           </div>
           
           {/* Elegant Gradient Overlay */}
           <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"/>
           
-          <div className="absolute bottom-4 lg:bottom-8 left-0 right-0 px-2 lg:px-4 translate-y-0 lg:translate-y-[120%] lg:group-hover:translate-y-0 transition-all duration-700 ease-[cubic-bezier(0.2,1,0.3,1)] flex gap-2">
+          <div className="absolute bottom-3 left-0 right-0 px-2 lg:px-4 flex gap-2">
             <Link 
               href={`/products/${product._id}`}
               onClick={(e) => e.stopPropagation()}
@@ -159,7 +159,7 @@ export default function ProductCard({ product, index, badge }: ProductCardProps)
             )}
           </div>
 
-          <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity duration-500 z-20">
+          <div className="absolute top-4 right-4 z-20">
             <button 
               onClick={(e) => { 
                 e.preventDefault(); 
