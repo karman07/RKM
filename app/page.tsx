@@ -72,7 +72,7 @@ export default function LandingPage() {
         {/* Dynamic Product Catalog */}
         <section id="collections" className="py-20 px-6 lg:px-12">
           <div className="max-w-[1440px] mx-auto">
-            {!loading && categories.map((category, catIndex) => (
+            {!loading && categories.filter((c) => (productsByCategory[c._id]?.length ?? 0) > 0).map((category, catIndex) => (
               <div key={category._id} className={catIndex > 0 ? "mt-32" : "mt-12"}>
                 <CategorySection 
                   category={category} 
