@@ -33,6 +33,29 @@ export class SettingsController {
     };
   }
 
+  /**
+   * GET /settings/rates — no auth. Today's gold and silver rate per gram for the website and apps ("daily price rate").
+   * Deliberately limited to the published rates: no making charges, stone rates or other pricing settings.
+   */
+  @Get('rates')
+  async getPublicRates() {
+    const settings: any = await this.settingsService.get();
+    const metal = settings.metal_rates ?? {};
+    const gold = settings.purity_rates?.gold ?? {};
+    const num = (v: unknown) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null);
+    return {
+      currency: 'INR',
+      unit: 'gram',
+      gold: {
+        '24K': num(gold['24K']) ?? num(metal.gold),
+        '22K': num(gold['22K']),
+        '18K': num(gold['18K']),
+      },
+      silver: { per_gram: num(metal.silver) },
+      updated_at: settings.updatedAt ?? null,
+    };
+  }
+
   /** Any authenticated role can read settings (cashier needs gold rate too) */
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
