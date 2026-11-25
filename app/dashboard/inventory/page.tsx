@@ -37,6 +37,7 @@ import AssetBarcodeModal from '@/components/AssetBarcodeModal';
 import BarcodeScannerModal from '@/components/BarcodeScannerModal';
 import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import CustomerSearchPanel, { type CustomerDraft } from '@/components/CustomerSearchPanel';
+import AdvanceRedeemPanel from '@/components/AdvanceRedeemPanel';
 import PaymentSplitsInput, { validatePaymentSplits, type PaymentSplit } from '@/components/PaymentSplitsInput';
 import PreBookModal from '@/components/PreBookModal';
 import DiscountField from '@/components/DiscountField';
@@ -74,6 +75,7 @@ const STATUS_BADGE: Record<string, { wrap: string; dot: string }> = {
   returned:  { wrap: 'inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-600 border border-slate-100', dot: 'bg-slate-500' },
   stolen:    { wrap: 'inline-flex items-center gap-1.5 rounded-full bg-stone-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-stone-600 border border-stone-200', dot: 'bg-stone-500' },
   returned_to_vendor: { wrap: 'inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-blue-600 border border-blue-100', dot: 'bg-blue-500' },
+  melted:    { wrap: 'inline-flex items-center gap-1.5 rounded-full bg-orange-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-orange-600 border border-orange-100', dot: 'bg-orange-500' },
 };
 
 const STATUS_TRANSITIONS: Record<string, string[]> = {
@@ -84,6 +86,7 @@ const STATUS_TRANSITIONS: Record<string, string[]> = {
   returned:  ['available'],
   stolen:    ['available'],
   returned_to_vendor: ['available'],
+  melted:    [],
 };
 
 // ─── Form Types ───────────────────────────────────────────────────────────────
@@ -212,6 +215,9 @@ export default function InventoryPage() {
   const [soldAtBranchId, setSoldAtBranchId] = useState('');
   const [soldByUserIds, setSoldByUserIds] = useState<string[]>([]);
   const [paymentSplits, setPaymentSplits] = useState<PaymentSplit[]>([{ mode: 'cash', amount: '', reference: '' }]);
+  // Advances being redeemed against this sale (advance id → amount). Their total reduces what is left to pay by other modes.
+  const [advanceApplied, setAdvanceApplied] = useState<Record<string, number>>({});
+  const advanceTotal = Object.values(advanceApplied).reduce((sum, n) => sum + (n || 0), 0);
 
   // ── Cashiers for sold form ─────────────────────────────────────────────────
   const [cashiers, setCashiers] = useState<User[]>([]);
@@ -229,6 +235,8 @@ export default function InventoryPage() {
   const [oldGoldRef, setOldGoldRef] = useState('');
   const [cartOldGoldRef, setCartOldGoldRef] = useState('');
   const [cartPaymentSplits, setCartPaymentSplits] = useState<PaymentSplit[]>([{ mode: 'cash', amount: '', reference: '' }]);
+  const [cartAdvanceApplied, setCartAdvanceApplied] = useState<Record<string, number>>({});
+  const cartAdvanceTotal = Object.values(cartAdvanceApplied).reduce((sum, n) => sum + (n || 0), 0);
   const [cartSubmitting, setCartSubmitting] = useState(false);
   const [cartError, setCartError] = useState('');
   // Per-item discount % on the bill (item id -> percent). Unset = whatever manager discount the item already carries.
@@ -287,8 +295,9 @@ export default function InventoryPage() {
   // With a single payment split, keep it equal to the (discounted) bill total while the checkout is open.
   useEffect(() => {
     if (!cartModal) return;
-    setCartPaymentSplits(prev => (prev.length === 1 ? [{ ...prev[0], amount: cartTotal > 0 ? String(cartTotal) : '' }] : prev));
-  }, [cartTotal, cartModal]);
+    const due = cartTotal - cartAdvanceTotal;
+    setCartPaymentSplits(prev => (prev.length === 1 ? [{ ...prev[0], amount: due > 0 ? String(due) : '' }] : prev));
+  }, [cartTotal, cartModal, cartAdvanceTotal]);
 
   const stats = useMemo(() => ({
     totalAsset: dbStats.totalValue,
@@ -562,6 +571,7 @@ export default function InventoryPage() {
     setCartSoldAtBranchId((user as any)?.branch_id || '');
     setCartSoldByUserIds([]);
     setCartPaymentSplits([{ mode: 'cash', amount: cartTotal > 0 ? String(Math.round(cartTotal)) : '', reference: '' }]);
+    setCartAdvanceApplied({});
     setCartModal(true);
   }
 
@@ -574,12 +584,24 @@ export default function InventoryPage() {
       if (!cartCustomerDraft.phone.trim()) throw new Error('Customer phone is required.');
       if (!cartSoldAtBranchId) throw new Error('Sale branch is required.');
 
-      const cartSplitError = validatePaymentSplits(cartPaymentSplits, cartTotal);
-      if (cartSplitError) throw new Error(cartSplitError);
+      const cartAdvanceEntries = Object.entries(cartAdvanceApplied).filter(([, amt]) => amt > 0);
+      const cartAdvanceSum = cartAdvanceEntries.reduce((sum, [, amt]) => sum + amt, 0);
+      if (cartAdvanceSum > cartTotal + 0.5) throw new Error('Advance applied is more than the bill total.');
+      const stillDue = cartTotal - cartAdvanceSum;
 
-      const splits = cartPaymentSplits
+      if (stillDue > 0.5) {
+        const cartSplitError = validatePaymentSplits(cartPaymentSplits, stillDue);
+        if (cartSplitError) throw new Error(cartSplitError);
+      }
+
+      const manualSplits = cartPaymentSplits
         .filter(s => parseFloat(s.amount) > 0)
         .map(s => ({ mode: s.mode, amount: parseFloat(s.amount), reference: s.reference || undefined }));
+      // Advance amounts go first; the server deducts them atomically with the sale.
+      const splits = [
+        ...cartAdvanceEntries.map(([id, amt]) => ({ mode: 'advance_balance', amount: amt, reference: id })),
+        ...(stillDue > 0.5 ? manualSplits : []),
+      ];
       if (splits.length === 0) throw new Error('At least one payment method with an amount is required.');
 
       const updated = await sellItemsBatch({
@@ -597,8 +619,9 @@ export default function InventoryPage() {
         shipping_pincode: cartCustomerDraft.pincode || undefined,
         shipping_country: cartCustomerDraft.country || 'India',
         sale_channel: 'store',
-        payment_mode: splits[0]?.mode ?? 'cash',
+        payment_mode: manualSplits[0]?.mode ?? 'cash',
         payment_splits: splits,
+        ...(cartAdvanceSum > 0 ? { advance_redeemed: cartAdvanceSum, advance_id: cartAdvanceEntries[0][0] } : {}),
       });
 
       setItems(prev => prev.map(it => updated.find(u => u._id === it._id) || it));
@@ -814,6 +837,7 @@ export default function InventoryPage() {
           <option value="returned">Returned</option>
           <option value="stolen">Stolen</option>
           <option value="returned_to_vendor">Returned to Vendor</option>
+          <option value="melted">Melted</option>
         </select>
         <select className="px-5 py-3 rounded-xl border border-slate-100 bg-slate-50/50 text-xs font-bold uppercase tracking-widest text-slate-600 outline-none focus:ring-2 focus:ring-blue-600 appearance-none" value={locationFilter} onChange={e => { setLocationFilter(e.target.value); setPage(1); }}>
           <option value="">All Locations</option>
@@ -1135,6 +1159,7 @@ export default function InventoryPage() {
                                 setSoldAtBranchId((item.branch_id && typeof item.branch_id === 'object' ? (item.branch_id as any)._id : item.branch_id) || (user as any)?.branch_id || '');
                                 setSoldByUserIds([]);
                                 setPaymentSplits([{ mode: 'cash', amount: String(Math.round(item.selling_price)), reference: '' }]);
+                                setAdvanceApplied({});
                               }} 
                               title="Change Status" 
                               className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition-all active:scale-90 shadow-sm"
@@ -1610,7 +1635,7 @@ export default function InventoryPage() {
                   onChange={e => {
                     setNewSellingPrice(e.target.value);
                     const amt = parseFloat(e.target.value) || 0;
-                    setPaymentSplits(prev => prev.length === 1 ? [{ ...prev[0], amount: amt > 0 ? String(Math.round(amt)) : '' }] : prev);
+                    setPaymentSplits(prev => prev.length === 1 ? [{ ...prev[0], amount: amt - advanceTotal > 0 ? String(Math.round(amt - advanceTotal)) : '' }] : prev);
                   }}
                 />
               </div>
@@ -1623,6 +1648,19 @@ export default function InventoryPage() {
                   onChange={setCustomerDraft}
                 />
               </div>
+
+              {/* Advance redemption */}
+              <AdvanceRedeemPanel
+                phone={customerDraft.phone}
+                cap={Math.round(parseFloat(newSellingPrice) || (statusModal?.selling_price ?? 0))}
+                value={advanceApplied}
+                onChange={(next) => {
+                  setAdvanceApplied(next);
+                  const applied = Object.values(next).reduce((sum, n) => sum + (n || 0), 0);
+                  const price = parseFloat(newSellingPrice) || (statusModal?.selling_price ?? 0);
+                  setPaymentSplits(prev => prev.length === 1 ? [{ ...prev[0], amount: price - applied > 0 ? String(Math.round(price - applied)) : '' }] : prev);
+                }}
+              />
 
               {/* Sale details row */}
               <div className="grid grid-cols-2 gap-3">
@@ -1648,7 +1686,7 @@ export default function InventoryPage() {
               <PaymentSplitsInput
                 splits={paymentSplits}
                 onChange={setPaymentSplits}
-                totalAmount={parseFloat(newSellingPrice) || (statusModal?.selling_price ?? 0)}
+                totalAmount={Math.max(0, (parseFloat(newSellingPrice) || (statusModal?.selling_price ?? 0)) - advanceTotal)}
               />
 
               <OldGoldRefInput value={oldGoldRef} onChange={setOldGoldRef} phone={customerDraft.phone} />
@@ -1720,13 +1758,22 @@ export default function InventoryPage() {
                 if (newStatus === 'sold' && !soldAtBranchId) {
                   throw new Error('Sale branch is required.');
                 }
-                if (newStatus === 'sold') {
-                  const splitError = validatePaymentSplits(paymentSplits, parseFloat(newSellingPrice) || (statusModal?.selling_price ?? 0));
+                const salePrice = parseFloat(newSellingPrice) || (statusModal?.selling_price ?? 0);
+                const advanceEntries = newStatus === 'sold' ? Object.entries(advanceApplied).filter(([, amt]) => amt > 0) : [];
+                const advanceSum = advanceEntries.reduce((sum, [, amt]) => sum + amt, 0);
+                if (advanceSum > salePrice + 0.5) throw new Error('Advance applied is more than the sale price.');
+                if (newStatus === 'sold' && salePrice - advanceSum > 0.5) {
+                  const splitError = validatePaymentSplits(paymentSplits, salePrice - advanceSum);
                   if (splitError) throw new Error(splitError);
                 }
-                const splits = paymentSplits.filter(s => parseFloat(s.amount) > 0).map(s => ({
+                const manualSplits = paymentSplits.filter(s => parseFloat(s.amount) > 0).map(s => ({
                   mode: s.mode, amount: parseFloat(s.amount), reference: s.reference || undefined,
                 }));
+                // Advance amounts go first (same convention as the invoice screen); the server deducts them atomically with the sale.
+                const splits = [
+                  ...advanceEntries.map(([id, amt]) => ({ mode: 'advance_balance', amount: amt, reference: id })),
+                  ...(salePrice - advanceSum > 0.5 ? manualSplits : []),
+                ];
                 await updateInventoryStatus(statusModal!._id, {
                   status: newStatus,
                   ...(newStatus === 'sold' ? {
@@ -1740,8 +1787,9 @@ export default function InventoryPage() {
                     shipping_pincode: customerDraft.pincode || undefined,
                     shipping_country: customerDraft.country || 'India',
                     sale_channel: saleChannel,
-                    payment_mode: splits[0]?.mode ?? 'cash',
+                    payment_mode: manualSplits[0]?.mode ?? 'cash',
                     payment_splits: splits.length > 0 ? splits : undefined,
+                    ...(advanceSum > 0 ? { advance_redeemed: advanceSum, advance_id: advanceEntries[0][0] } : {}),
                     sold_at_branch_id: soldAtBranchId || undefined,
                     sold_by_user_id: soldByUserIds[0] || undefined,
                     sold_by_user_ids: soldByUserIds.length ? soldByUserIds : undefined,
@@ -1816,11 +1864,18 @@ export default function InventoryPage() {
             </div>
           </div>
 
+          <AdvanceRedeemPanel
+            phone={cartCustomerDraft.phone}
+            cap={cartTotal}
+            value={cartAdvanceApplied}
+            onChange={setCartAdvanceApplied}
+          />
+
           {/* Payment splits */}
           <PaymentSplitsInput
             splits={cartPaymentSplits}
             onChange={setCartPaymentSplits}
-            totalAmount={cartTotal}
+            totalAmount={Math.max(0, cartTotal - cartAdvanceTotal)}
           />
 
           <div className="pt-2 flex gap-4">
