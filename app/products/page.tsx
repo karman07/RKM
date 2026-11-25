@@ -52,14 +52,17 @@ const FILTER_ORDER = [
   "occasion",
 ] as const;
 
-// Affordable price band the store wants to feature (₹). Set to true to hide everything outside it on the site.
-const LIMIT_TO_PRICE_BAND = false;
+// Affordable price band the store features (₹): everything outside it (e.g. above ₹1 lakh) is hidden on the site.
+const LIMIT_TO_PRICE_BAND = true;
 const BAND_MIN = 50000;
 const BAND_MAX = 100000;
 const PRICE_OPTIONS = [
   { value: "50000-75000", label: "₹50,000 – ₹75,000" },
   { value: "75000-100000", label: "₹75,000 – ₹1,00,000" },
 ];
+
+// Not ornaments — kept out of the Ornament Type filter.
+const HIDDEN_CATEGORY_SLUGS = new Set(["artwork", "bowl", "cup", "silver-glass", "gift-item", "italian-silver-watch"]);
 
 const FILTER_LABELS: Record<string, string> = {
   category: "Ornament Type",
@@ -308,7 +311,7 @@ function ProductsContent() {
     groups.push({
       key: "category",
       label: FILTER_LABELS.category,
-      options: categories.map((cat) => ({ value: cat.slug, label: cat.name })),
+      options: categories.filter((cat) => !HIDDEN_CATEGORY_SLUGS.has(cat.slug)).map((cat) => ({ value: cat.slug, label: cat.name })),
     });
 
     FILTER_ORDER.filter((key) => key !== "category").forEach((key) => {
@@ -316,7 +319,7 @@ function ProductsContent() {
         groups.push({ key, label: FILTER_LABELS.price, options: PRICE_OPTIONS });
         return;
       }
-      const opts = (lookups[key] || []).map((item) => ({ value: item.value, label: item.label }));
+      const opts = (lookups[key] || []).filter((item) => item.value !== "NOT APPLICABLE").map((item) => ({ value: item.value, label: item.label }));
       if (opts.length > 0) {
         groups.push({ key, label: FILTER_LABELS[key], options: opts });
       }

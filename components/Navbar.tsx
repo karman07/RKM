@@ -35,18 +35,24 @@ interface SearchProduct {
   pricing_breakdown?: { final_price: number };
 }
 
+// Kept to the agreed filters: Gender, Price Range, Occasion (Ornament Type lives on the products page).
 const CUSTOMER_LOOKUP_TYPES = new Set([
   "gender",
   "occasion",
-  "metal_type",
-  "metal_color",
-  "stone_type",
-  "purity",
 ]);
+
+const PRICE_MENU_ENTRY = {
+  _id: "price-menu",
+  items: [
+    { _id: "price-1", value: "50000-75000", label: "₹50,000 – ₹75,000" },
+    { _id: "price-2", value: "75000-100000", label: "₹75,000 – ₹1,00,000" },
+  ],
+};
 
 const LOOKUP_LABELS: Record<string, string> = {
   gender: "By Gender",
   occasion: "By Occasion",
+  price: "By Price Range",
   metal_type: "Metal",
   metal_color: "Metal Color",
   stone_type: "Stones",
@@ -105,7 +111,7 @@ export default function Navbar({ bannerActive }: { bannerActive: boolean }) {
           const filtered: Record<string, Lookup[]> = {};
           for (const [type, items] of Object.entries(data)) {
             if (CUSTOMER_LOOKUP_TYPES.has(type)) {
-              const active = items.filter((l) => l.is_active !== false);
+              const active = items.filter((l) => l.is_active !== false && l.value !== "NOT APPLICABLE");
               if (active.length > 0) filtered[type] = active;
             }
           }
@@ -217,7 +223,13 @@ export default function Navbar({ bannerActive }: { bannerActive: boolean }) {
   const bg = solid ? "rgba(255,255,255,0.98)" : "transparent";
   const textCol = solid ? "#1A1A1A" : "#FFFFFF";
   const borderCol = solid ? "rgba(184,151,90,0.18)" : "transparent";
-  const lookupEntries = Object.entries(lookups);
+  const lookupEntries: [string, Lookup[]][] = (() => {
+    const base = Object.entries(lookups);
+    if (base.length === 0) return base;
+    const entries = base.filter(([t]) => t !== "occasion");
+    const occ = base.filter(([t]) => t === "occasion");
+    return [...entries, ["price", PRICE_MENU_ENTRY.items as unknown as Lookup[]], ...occ] as [string, Lookup[]][];
+  })();
   const cols = Math.min(lookupEntries.length, 4);
 
   return (
