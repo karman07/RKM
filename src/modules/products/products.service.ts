@@ -25,6 +25,9 @@ const METAL_SKU_ABBREVIATIONS: Record<string, string> = {
 
 @Injectable()
 export class ProductsService {
+  // Short-lived cache of fully priced, price-filtered lists (see findAll).
+  private static readonly priceRangeCache = new Map<string, { expires: number; data: any[] }>();
+
   constructor(
     @InjectModel(Product.name) private readonly productModel: Model<ProductDocument>,
     @InjectModel(Category.name) private readonly categoryModel: Model<CategoryDocument>,
@@ -136,6 +139,22 @@ export class ProductsService {
     }
 
     const hasPriceRange = query.min_price != null || query.max_price != null;
+
+    // A price-range request has to price every matching product, so reuse the result for a minute (pages 1, 2, 3… of the same
+    // search share it). Prices on screen can lag a metal-rate change by at most this long; checkout re-prices on its own.
+    const cacheKey = hasPriceRange
+      ? JSON.stringify({ ...query, page: undefined, limit: undefined, skip: undefined })
+      : null;
+    if (cacheKey) {
+      const hit = ProductsService.priceRangeCache.get(cacheKey);
+      if (hit && hit.expires > Date.now()) {
+        return {
+          data: hit.data.slice(skip, skip + limit),
+          meta: { total: hit.data.length, page, limit, total_pages: Math.ceil(hit.data.length / limit) },
+        };
+      }
+    }
+
     const [rawItems, matched] = await Promise.all([
       (() => {
         const q = this.productModel
@@ -180,6 +199,11 @@ export class ProductsService {
         return price >= lo && price <= hi;
       });
       total = data.length;
+      if (cacheKey) {
+        const cache = ProductsService.priceRangeCache;
+        if (cache.size >= 40) cache.delete(cache.keys().next().value as string);
+        cache.set(cacheKey, { expires: Date.now() + 60_000, data });
+      }
       data = data.slice(skip, skip + limit);
     }
 
