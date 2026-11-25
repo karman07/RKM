@@ -1,5 +1,7 @@
 "use client";
 
+import { isPublicBranch } from "../lib/priceRanges";
+
 import { useEffect, useState } from "react";
 import { API_BASE_URL } from "../app/constants";
 import { FadeIn } from "./FadeIn";
@@ -31,7 +33,7 @@ export default function MapSection() {
         if (!Array.isArray(data)) return;
         // Corporate/back-office branches aren't shopping destinations — exclude them from
         // "visit our showroom" messaging so customers aren't directed to a non-retail address.
-        const active = data.filter((b: Branch) => b.is_active && !/office|corporate/i.test(b.name));
+        const active = data.filter((b: Branch) => isPublicBranch(b));
         setBranches(active);
         setSelected(active[0] ?? null);
       })

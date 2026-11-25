@@ -4,6 +4,20 @@ import Link from "next/link";
 import { Metadata } from "next";
 import BlogImage from "../../../components/BlogImage";
 
+/** Blog text written without HTML (just line breaks) would collapse into one block; give it real paragraphs and line breaks. */
+function formatBlogContent(raw: string): string {
+  const text = raw ?? "";
+  if (/<\/?(p|h[1-6]|ul|ol|li|div|br|blockquote|table|img)\b/i.test(text)) return text;
+  const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return text
+    .replace(/\r\n?/g, "\n")
+    .split(/\n{2,}/)
+    .map((para) => para.trim())
+    .filter(Boolean)
+    .map((para) => `<p>${esc(para).replace(/\n/g, "<br />")}</p>`)
+    .join("");
+}
+
 interface Blog {
   _id: string;
   title: string;
@@ -120,7 +134,7 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ slu
               prose-blockquote:font-serif prose-blockquote:italic prose-blockquote:text-2xl prose-blockquote:text-[#B8975A] prose-blockquote:border-l-[1px] prose-blockquote:border-[#B8975A]/40 prose-blockquote:pl-8 prose-blockquote:my-16
               prose-img:rounded-3xl prose-img:shadow-xl
             "
-            dangerouslySetInnerHTML={{ __html: blog.content }}
+            dangerouslySetInnerHTML={{ __html: formatBlogContent(blog.content) }}
           />
 
           <div className="mt-24 pt-12 border-t border-[#EDEAE4] flex justify-between items-center">

@@ -3,6 +3,11 @@
 import { useEffect, useState } from "react";
 import { THEME, API_BASE_URL } from "../constants";
 import { FadeIn } from "../../components/FadeIn";
+import { isPublicBranch } from "../../lib/priceRanges";
+
+interface ContactBranch { _id: string; name: string; phone?: string; email?: string; address?: string; city?: string; is_active?: boolean }
+
+const WHATSAPP_NUMBER = "918699891977";
 
 const SUBJECTS = [
   { value: "general", label: "General enquiry" },
@@ -15,6 +20,18 @@ export default function ContactPage() {
   const [form, setForm] = useState({ name: "", mobile: "", email: "", subject: "general", message: "" });
   const [status, setStatus] = useState<"idle" | "sending" | "done" | "error">("idle");
   const [error, setError] = useState("");
+  const [branches, setBranches] = useState<ContactBranch[]>([]);
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/branches`)
+      .then((r) => r.json())
+      .then((d) => { if (Array.isArray(d)) setBranches(d.filter(isPublicBranch)); })
+      .catch(() => {});
+  }, []);
+
+  // The corporate office is hidden from the public branch list, so the shared official email/phone come from the showrooms.
+  const officialPhone = branches.find((b) => b.phone)?.phone;
+  const officialEmail = branches.find((b) => b.email)?.email;
 
   // /contact?subject=account_deletion pre-selects the deletion request
   useEffect(() => {
@@ -59,6 +76,41 @@ export default function ContactPage() {
             <span className="uppercase tracking-[0.3em] text-xs font-semibold mb-4 block" style={{ color: THEME.colors.primaryLight }}>Get In Touch</span>
             <h1 className="font-serif text-4xl" style={{ color: THEME.colors.primaryDark }}>Contact Us</h1>
             <p className="mt-4 text-sm opacity-60">Questions, order help, or a request to delete your account — send it here and our team will get back to you.</p>
+          </div>
+        </FadeIn>
+
+        <FadeIn delay={100}>
+          <div className="grid gap-6 mb-10 pb-10 border-b text-sm" style={{ borderColor: THEME.colors.border }}>
+            <div className="grid sm:grid-cols-3 gap-4 text-center">
+              {officialPhone && (
+                <a href={`tel:${officialPhone.replace(/\s/g, "")}`} className="block">
+                  <span className="block uppercase tracking-[0.2em] text-[10px] font-bold opacity-50 mb-1">Call us</span>
+                  <span className="font-medium">{officialPhone}</span>
+                </a>
+              )}
+              <a href={`https://wa.me/${WHATSAPP_NUMBER}`} target="_blank" rel="noopener noreferrer" className="block">
+                <span className="block uppercase tracking-[0.2em] text-[10px] font-bold opacity-50 mb-1">WhatsApp</span>
+                <span className="font-medium">+91 86998 91977</span>
+              </a>
+              {officialEmail && (
+                <a href={`mailto:${officialEmail}`} className="block">
+                  <span className="block uppercase tracking-[0.2em] text-[10px] font-bold opacity-50 mb-1">Email</span>
+                  <span className="font-medium break-all">{officialEmail}</span>
+                </a>
+              )}
+            </div>
+            {branches.length > 0 && (
+              <div className="grid gap-4">
+                <span className="uppercase tracking-[0.2em] text-[10px] font-bold opacity-50 text-center">Our showrooms</span>
+                {branches.map((b) => (
+                  <div key={b._id} className="text-center">
+                    <p className="font-serif text-lg" style={{ color: THEME.colors.primaryDark }}>{b.name}</p>
+                    {b.address && <p className="opacity-70">{b.address}</p>}
+                    {b.phone && <a href={`tel:${b.phone.replace(/\s/g, "")}`} className="opacity-70 hover:underline">{b.phone}</a>}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </FadeIn>
 

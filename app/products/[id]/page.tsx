@@ -260,10 +260,6 @@ export default function ProductDetailPage() {
                   <h5 className="text-[10px] uppercase tracking-[0.3em] font-black text-[#5C0828]">Technical Essence</h5>
                   <div className="grid grid-cols-2 gap-y-6 text-[11px]">
                     <div className="space-y-1">
-                      <span className="text-[#7A8C85] uppercase tracking-wider text-[9px]">Composition</span>
-                      <p className="text-[#5C0828] font-medium capitalize">{product.purity}K {product.metal_color} {product.metal_type}</p>
-                    </div>
-                    <div className="space-y-1">
                       <span className="text-[#7A8C85] uppercase tracking-wider text-[9px]">Net Weight</span>
                       <p className="text-[#5C0828] font-medium">{product.net_weight}g</p>
                     </div>
@@ -287,12 +283,6 @@ export default function ProductDetailPage() {
                       <div className="space-y-1">
                         <span className="text-[#7A8C85] uppercase tracking-wider text-[9px]">Gemstone Type</span>
                         <p className="text-[#5C0828] font-medium capitalize">{product.stone_type}</p>
-                      </div>
-                    )}
-                    {product.dimensions && (
-                      <div className="space-y-1">
-                        <span className="text-[#7A8C85] uppercase tracking-wider text-[9px]">Dimensions</span>
-                        <p className="text-[#5C0828] font-medium">{product.dimensions}</p>
                       </div>
                     )}
                     {product.ring_size && (

@@ -42,7 +42,7 @@ export default function LandingPage() {
         setCategories(filteredCats);
 
         const productPromises = filteredCats.map(async (cat) => {
-          const prodRes = await fetch(`${API_BASE_URL}/products?category_id=${cat._id}&limit=3`);
+          const prodRes = await fetch(`${API_BASE_URL}/products?category_id=${cat._id}&limit=3&min_price=50000&max_price=100000`);
           const prodData = await prodRes.json();
           return { categoryId: cat._id, products: prodData.data || [] };
         });

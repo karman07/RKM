@@ -1,5 +1,7 @@
 "use client";
 
+import { PRICE_RANGES } from "../lib/priceRanges";
+
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { API_BASE_URL, STATIC_BASE_URL } from "../app/constants";
@@ -43,10 +45,7 @@ const CUSTOMER_LOOKUP_TYPES = new Set([
 
 const PRICE_MENU_ENTRY = {
   _id: "price-menu",
-  items: [
-    { _id: "price-1", value: "50000-75000", label: "₹50,000 – ₹75,000" },
-    { _id: "price-2", value: "75000-100000", label: "₹75,000 – ₹1,00,000" },
-  ],
+  items: PRICE_RANGES.map((r, i) => ({ _id: `price-${i}`, value: r.value, label: r.label })),
 };
 
 const LOOKUP_LABELS: Record<string, string> = {
@@ -565,8 +564,6 @@ export default function Navbar({ bannerActive }: { bannerActive: boolean }) {
             <NavLink href="/gold-investment" color={textCol}>Gold Investments</NavLink>
             <NavLink href="/about" color={textCol}>Our Story</NavLink>
             <NavLink href="/blogs" color={textCol}>Blogs</NavLink>
-            <NavLink href="/terms" color={textCol}>Terms</NavLink>
-            <NavLink href="/privacy" color={textCol}>Privacy</NavLink>
           </div>
 
           {/* ── Actions ── */}
@@ -777,23 +774,6 @@ export default function Navbar({ bannerActive }: { bannerActive: boolean }) {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6" /></svg>
               </Link>
 
-              {/* Legal – mobile */}
-              <div className="flex items-center gap-6 pt-5 pb-1">
-                <Link
-                  href="/terms"
-                  style={{ color: GOLD }}
-                  className="text-[9px] font-bold tracking-[0.25em] uppercase hover:opacity-70 transition-opacity"
-                >
-                  Terms &amp; Conditions
-                </Link>
-                <Link
-                  href="/privacy"
-                  style={{ color: GOLD }}
-                  className="text-[9px] font-bold tracking-[0.25em] uppercase hover:opacity-70 transition-opacity"
-                >
-                  Privacy Policy
-                </Link>
-              </div>
             </div>
           </div>
         )}

@@ -1,5 +1,7 @@
 "use client";
 
+import { HIDDEN_CATEGORY_SLUGS, isPublicBranch } from "../lib/priceRanges";
+
 import { useEffect, useState } from "react";
 import { THEME, API_BASE_URL } from "../app/constants";
 import Link from "next/link";
@@ -36,7 +38,7 @@ export default function Footer() {
     fetch(`${API_BASE_URL}/categories`)
       .then((res) => res.json())
       .then((data) => {
-        if (Array.isArray(data)) setCategories(data.slice(0, 8));
+        if (Array.isArray(data)) setCategories(data.filter((c: any) => !HIDDEN_CATEGORY_SLUGS.has(String(c.slug))).slice(0, 8));
       });
 
     fetch(`${API_BASE_URL}/lookups`)
@@ -58,7 +60,7 @@ export default function Footer() {
       .then((res) => res.json())
       .then((data) => {
         // Same "no back office" rule as the homepage location section.
-        if (Array.isArray(data)) setBranches(data.filter((b: Branch) => b.is_active && !/office|corporate/i.test(b.name)));
+        if (Array.isArray(data)) setBranches(data.filter((b: Branch) => isPublicBranch(b)));
       });
   }, []);
 
@@ -135,7 +137,6 @@ export default function Footer() {
             <Link href="/about" className="text-[10px] font-bold uppercase tracking-[0.2em] hover:text-[#B8975A] transition-colors">The {BRAND_SHORT} Story</Link>
             <Link href="/blogs" className="text-[10px] font-bold uppercase tracking-[0.2em] hover:text-[#B8975A] transition-colors">Artisan Journal</Link>
             <Link href="/gold-investment" className="text-[10px] font-bold uppercase tracking-[0.2em] hover:text-[#B8975A] transition-colors">Gold Investments</Link>
-            <Link href="/wishlist" className="text-[10px] font-bold uppercase tracking-[0.2em] hover:text-[#B8975A] transition-colors">Wishlist</Link>
             <a 
               href={process.env.NEXT_PUBLIC_FEEDBACK_URL || "http://localhost:3003"} 
               target="_blank"
