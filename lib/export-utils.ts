@@ -19,7 +19,7 @@ export function downloadCsv<T extends Record<string, any>>(
       .map(c => csvField(typeof c.accessor === 'function' ? c.accessor(row) : row[c.accessor]))
       .join(','))
     .join('\n');
-  const csv = `${header}\n${body}`;
+  const csv = '\uFEFF' + `${header}\n${body}`;
 
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = window.URL.createObjectURL(blob);

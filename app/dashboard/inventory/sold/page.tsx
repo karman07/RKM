@@ -115,6 +115,37 @@ function soldWeight(item: any, field: 'gross_weight' | 'net_weight' | 'stone_wei
   return fromProduct > 0 ? fromProduct : '';
 }
 
+const idOf = (v: any): string => (v && typeof v === 'object' ? String(v._id ?? '') : v ? String(v) : '');
+
+/** Everyone credited on a sale: the multi-staff list, else the single legacy seller. De-duplicated, populated user objects where available. */
+function creditedStaff(item: any): any[] {
+  const list = Array.isArray(item?.sold_by_user_ids) && item.sold_by_user_ids.length
+    ? item.sold_by_user_ids
+    : item?.sold_by_user_id ? [item.sold_by_user_id] : [];
+  const seen = new Set<string>();
+  return list.filter((u: any) => {
+    const id = idOf(u);
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}
+
+/** Calendar day (YYYY-MM-DD) of a timestamp in the viewer's local time, so a 1am sale isn't counted on the previous UTC day. */
+function localDay(iso?: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+const catName = (item: any): string => {
+  const c = typeof item?.product_id === 'object' ? item.product_id?.category_id : null;
+  return (c && typeof c === 'object' ? c.name : '') || '';
+};
+
 export default function SoldInventoryPage() {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [user, setUser] = useState<User | null>(null);
@@ -132,6 +163,11 @@ export default function SoldInventoryPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchFilter, setBranchFilter] = useState('all');
   const [modeFilter, setModeFilter] = useState('all');
+  const [staffFilter, setStaffFilter] = useState('all');
+  const [channelFilter, setChannelFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [minAmount, setMinAmount] = useState('');
+  const [maxAmount, setMaxAmount] = useState('');
 
   // Helper: find full User object from a populated sold_by field
   function resolveUser(populated: any): User | null {
@@ -206,44 +242,102 @@ export default function SoldInventoryPage() {
     [items],
   );
 
+  const channels = useMemo(
+    () => Array.from(new Set(items.map(i => i.sale_channel).filter((m): m is string => Boolean(m)))).sort(),
+    [items],
+  );
+  const categoryNames = useMemo(
+    () => Array.from(new Set(items.map(catName).filter(Boolean))).sort(),
+    [items],
+  );
+  // Everyone who appears on a sale (sales agents / cashiers credited, plus the authorising manager) for the Staff filter.
+  const staffOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const it of items) {
+      for (const u of [...creditedStaff(it), (it as any).sold_by_manager_id]) {
+        const id = idOf(u);
+        const name = u && typeof u === 'object' ? u.name : '';
+        if (id && name) map.set(id, name);
+      }
+    }
+    return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [items]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const min = minAmount === '' ? null : Number(minAmount);
+    const max = maxAmount === '' ? null : Number(maxAmount);
     return items.filter((item) => {
-      if (fromDate && (!item.sold_at || item.sold_at.slice(0, 10) < fromDate)) return false;
-      if (toDate && (!item.sold_at || item.sold_at.slice(0, 10) > toDate)) return false;
+      const day = localDay(item.sold_at);
+      if (fromDate && (!day || day < fromDate)) return false;
+      if (toDate && (!day || day > toDate)) return false;
       if (branchFilter !== 'all') {
         const branchId = typeof item.sold_at_branch_id === 'object' ? item.sold_at_branch_id?._id : item.sold_at_branch_id;
         if (branchId !== branchFilter) return false;
       }
       if (modeFilter !== 'all' && item.payment_mode !== modeFilter) return false;
+      if (channelFilter !== 'all' && (item.sale_channel || 'store') !== channelFilter) return false;
+      if (categoryFilter !== 'all' && catName(item) !== categoryFilter) return false;
+      if (staffFilter !== 'all') {
+        const ids = [...creditedStaff(item).map(idOf), idOf((item as any).sold_by_manager_id)];
+        if (!ids.includes(staffFilter)) return false;
+      }
+      if (min !== null || max !== null) {
+        const price = netSalePrice(item);
+        if (min !== null && price < min) return false;
+        if (max !== null && price > max) return false;
+      }
       if (!q) return true;
       const productName = typeof item.product_id === 'object' ? item.product_id?.name : '';
-      const haystack = [item.unique_item_code, item.barcode, item.sale_reference, (item as any).invoice_number, productName, item.sold_customer_name, item.sold_customer_phone, item.sale_channel, item.payment_mode].filter(Boolean).join(' ').toLowerCase();
+      const staffNames = creditedStaff(item).map((u: any) => u?.name).filter(Boolean).join(' ');
+      const haystack = [item.unique_item_code, item.barcode, item.sale_reference, (item as any).invoice_number, productName, item.sold_customer_name, item.sold_customer_phone, item.sale_channel, item.payment_mode, staffNames, (item as any).sold_by_manager_id?.name].filter(Boolean).join(' ').toLowerCase();
       return haystack.includes(q);
     });
-  }, [items, search, fromDate, toDate, branchFilter, modeFilter]);
+  }, [items, search, fromDate, toDate, branchFilter, modeFilter, channelFilter, categoryFilter, staffFilter, minAmount, maxAmount]);
+
+  const hasFilters = Boolean(search || branchFilter !== 'all' || modeFilter !== 'all' || channelFilter !== 'all' || categoryFilter !== 'all' || staffFilter !== 'all' || minAmount || maxAmount || fromDate || toDate);
+  const clearFilters = () => {
+    setSearch(''); setBranchFilter('all'); setModeFilter('all'); setChannelFilter('all'); setCategoryFilter('all');
+    setStaffFilter('all'); setMinAmount(''); setMaxAmount(''); setFromDate(''); setToDate('');
+  };
+  const filteredTotal = useMemo(() => filtered.reduce((sum, it) => sum + netSalePrice(it), 0), [filtered]);
+
+  function applyPreset(kind: 'today' | '7d' | 'month' | 'lastmonth') {
+    const now = new Date();
+    const fmt = (d: Date) => localDay(d.toISOString());
+    if (kind === 'today') { setFromDate(fmt(now)); setToDate(fmt(now)); }
+    else if (kind === '7d') { const d = new Date(now); d.setDate(d.getDate() - 6); setFromDate(fmt(d)); setToDate(fmt(now)); }
+    else if (kind === 'month') { setFromDate(fmt(new Date(now.getFullYear(), now.getMonth(), 1))); setToDate(fmt(now)); }
+    else { setFromDate(fmt(new Date(now.getFullYear(), now.getMonth() - 1, 1))); setToDate(fmt(new Date(now.getFullYear(), now.getMonth(), 0))); }
+  }
 
   function handleExportHistory() {
     setExporting(true);
     try {
-      downloadCsv('customer-purchase-history', filtered, [
-        { header: 'Date', accessor: (r) => (r.sold_at ? new Date(r.sold_at).toLocaleDateString('en-IN') : '') },
+      downloadCsv('sales-records', filtered, [
+        { header: 'Date', accessor: (r) => localDay(r.sold_at) },
+        { header: 'Time', accessor: (r) => (r.sold_at ? new Date(r.sold_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '') },
+        { header: 'Invoice', accessor: (r) => (r as any).sale_reference || '' },
         { header: 'Item', accessor: (r) => (typeof r.product_id === 'object' ? r.product_id?.name : '') || 'Artisan Work' },
+        { header: 'Category', accessor: (r) => catName(r) },
         { header: 'SKU', accessor: (r) => (typeof r.product_id === 'object' ? (r.product_id as any)?.sku : '') || '' },
         { header: 'Item Code', accessor: 'unique_item_code' },
         { header: 'Gross Weight (g)', accessor: (r) => soldWeight(r, 'gross_weight') },
         { header: 'Net Weight (g)', accessor: (r) => soldWeight(r, 'net_weight') },
         { header: 'Stone Weight (g)', accessor: (r) => soldWeight(r, 'stone_weight') },
-        { header: 'Invoice', accessor: (r) => (r as any).sale_reference || '' },
         { header: 'Customer', accessor: (r) => r.sold_customer_name || 'Walk-in Customer' },
         { header: 'Phone', accessor: (r) => r.sold_customer_phone || '' },
         { header: 'Branch', accessor: (r) => (typeof r.sold_at_branch_id === 'object' ? (r.sold_at_branch_id as any)?.name : '') || 'Direct Sale' },
-        { header: 'Cashier', accessor: (r) => (typeof r.sold_by_user_id === 'object' ? (r.sold_by_user_id as any)?.name : '') || '' },
+        { header: 'Cashier', accessor: (r) => creditedStaff(r).filter((u: any) => u?.role === 'cashier').map((u: any) => u.name).join(' / ') },
+        { header: 'Sales Agent(s)', accessor: (r) => creditedStaff(r).filter((u: any) => u?.role !== 'cashier').map((u: any) => u.name).join(' / ') },
+        { header: 'Credited Staff Count', accessor: (r) => creditedStaff(r).length },
+        { header: 'Manager', accessor: (r) => (typeof (r as any).sold_by_manager_id === 'object' ? (r as any).sold_by_manager_id?.name : '') || '' },
         { header: 'Channel', accessor: (r) => r.sale_channel || 'store' },
         { header: 'Payment Mode', accessor: (r) => r.payment_mode || '' },
-        { header: 'Cost', accessor: (r) => r.purchase_price ?? 0 },
-        { header: 'Price', accessor: (r) => netSalePrice(r) },
-        { header: 'Profit', accessor: (r) => netSalePrice(r) - (r.purchase_price ?? 0) },
+        { header: 'List Price (Rs)', accessor: (r) => Math.round(Number(r.selling_price) || 0) },
+        { header: 'Billed Amount (Rs)', accessor: (r) => netSalePrice(r) },
+        { header: 'Cost (Rs)', accessor: (r) => r.purchase_price ?? 0 },
+        { header: 'Profit (Rs)', accessor: (r) => netSalePrice(r) - (r.purchase_price ?? 0) },
       ]);
     } finally {
       setExporting(false);
@@ -262,10 +356,10 @@ export default function SoldInventoryPage() {
   }, [filtered]);
 
   const chartData = useMemo(() => {
-    if (!items.length) return null;
+    if (!filtered.length) return null;
     
     // Sort items by date
-    const sorted = [...items].sort((a, b) => new Date(a.sold_at || 0).getTime() - new Date(b.sold_at || 0).getTime());
+    const sorted = [...filtered].sort((a, b) => new Date(a.sold_at || 0).getTime() - new Date(b.sold_at || 0).getTime());
     
     // Group by date
     const groups: Record<string, { revenue: number, profit: number, count: number }> = {};
@@ -308,9 +402,7 @@ export default function SoldInventoryPage() {
         }]
       }
     };
-  }, [items]);
-
-  const showCharts = !search.trim();
+  }, [filtered]);
 
   return (
     <div className="animate-[fadeRise_400ms_ease-out] pb-20">
@@ -361,161 +453,129 @@ export default function SoldInventoryPage() {
           <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">To</span>
           <DatePicker value={toDate} min={fromDate} onChange={setToDate} allowClear placeholder="Any" align="right" />
         </div>
-        {(search || branchFilter !== 'all' || modeFilter !== 'all' || fromDate || toDate) && (
+        <select value={staffFilter} onChange={e => setStaffFilter(e.target.value)} className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-black uppercase tracking-wide text-slate-600 outline-none focus:ring-2 focus:ring-blue-500 max-w-[200px]">
+          <option value="all">All Staff</option>
+          {staffOptions.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+        </select>
+        <select value={channelFilter} onChange={e => setChannelFilter(e.target.value)} className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-black uppercase tracking-wide text-slate-600 outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="all">All Channels</option>
+          {channels.map(c => <option key={c} value={c}>{c.replace(/_/g, ' ').toUpperCase()}</option>)}
+        </select>
+        <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-black uppercase tracking-wide text-slate-600 outline-none focus:ring-2 focus:ring-blue-500 max-w-[200px]">
+          <option value="all">All Categories</option>
+          {categoryNames.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200">
+          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">₹ Min</span>
+          <input type="number" min={0} value={minAmount} onChange={e => setMinAmount(e.target.value)} placeholder="Any" className="w-20 text-xs font-bold text-slate-700 outline-none bg-transparent" />
+          <span className="text-slate-300">—</span>
+          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Max</span>
+          <input type="number" min={0} value={maxAmount} onChange={e => setMaxAmount(e.target.value)} placeholder="Any" className="w-20 text-xs font-bold text-slate-700 outline-none bg-transparent" />
+        </div>
+        <div className="flex items-center gap-1.5">
+          {([['today', 'Today'], ['7d', '7 Days'], ['month', 'This Month'], ['lastmonth', 'Last Month']] as const).map(([k, label]) => (
+            <button key={k} onClick={() => applyPreset(k)} className="px-3 py-2 rounded-xl border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50 hover:text-blue-600 transition-all">{label}</button>
+          ))}
+        </div>
+        {hasFilters && (
           <button
-            onClick={() => { setSearch(''); setBranchFilter('all'); setModeFilter('all'); setFromDate(''); setToDate(''); }}
+            onClick={clearFilters}
             className="px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-all"
           >
             Clear Filters
           </button>
         )}
         <p className="ml-auto text-[11px] font-bold text-slate-400 whitespace-nowrap">
-          {loading ? 'Loading…' : `${items.length} items loaded · showing ${bills.length} bill${bills.length === 1 ? '' : 's'} (${filtered.length} item${filtered.length === 1 ? '' : 's'})`}
+          {loading ? 'Loading…' : `${items.length} items loaded · showing ${bills.length} bill${bills.length === 1 ? '' : 's'} (${filtered.length} item${filtered.length === 1 ? '' : 's'}) · ₹${filteredTotal.toLocaleString('en-IN')} billed`}
         </p>
       </div>
 
-      {/* Staff Performance Leaderboards */}
-      {!loading && items.length > 0 && showCharts && (() => {
-        const cashierMap: Record<string, { id: string; name: string; branch: string; count: number; revenue: number }> = {};
-        const managerMap: Record<string, { id: string; name: string; branch: string; count: number; revenue: number }> = {};
+      {/* Staff Performance Leaderboards — built from the FILTERED records, so every filter above applies. A sale shared by several
+          staff is split equally between them (same rule the incentive engine uses), so board totals add up to the real total. */}
+      {!loading && filtered.length > 0 && (() => {
+        type Row = { id: string; name: string; role: string; branch: string; count: number; revenue: number };
+        const cashiers: Record<string, Row> = {};
+        const agents: Record<string, Row> = {};
+        const managers: Record<string, Row> = {};
+        const add = (map: Record<string, Row>, u: any, role: string, branch: string, share: number, value: number) => {
+          const id = idOf(u) || u?.name;
+          if (!id || !u?.name) return;
+          if (!map[id]) map[id] = { id: idOf(u), name: u.name, role, branch, count: 0, revenue: 0 };
+          map[id].count += share;
+          map[id].revenue += value * share;
+        };
 
-        items.forEach(item => {
+        filtered.forEach(item => {
           const branchName = (item as any).sold_at_branch_id?.name || 'Direct Sale';
-          
-          const cashier = (item as any).sold_by_user_id;
-          if (cashier && typeof cashier === 'object' && cashier.name) {
-            const id = cashier._id || cashier.name;
-            if (!cashierMap[id]) cashierMap[id] = { id: cashier._id || '', name: cashier.name, branch: branchName, count: 0, revenue: 0 };
-            cashierMap[id].count += 1;
-            cashierMap[id].revenue += netSalePrice(item);
-          }
-
-          const manager = (item as any).sold_by_manager_id;
-          if (manager && typeof manager === 'object' && manager.name) {
-            const id = manager._id || manager.name;
-            if (!managerMap[id]) managerMap[id] = { id: manager._id || '', name: manager.name, branch: branchName, count: 0, revenue: 0 };
-            managerMap[id].count += 1;
-            managerMap[id].revenue += netSalePrice(item);
-          }
+          const value = netSalePrice(item);
+          const staff = creditedStaff(item);
+          // Managers/admins credited as the seller count on the Manager board (full value, once per item); everyone else is split equally.
+          const isMgr = (u: any) => u?.role === 'manager' || u?.role === 'admin';
+          const sellers = staff.filter((u: any) => !isMgr(u));
+          const mgrs = new Map<string, any>();
+          staff.filter(isMgr).forEach((u: any) => mgrs.set(idOf(u), u));
+          const authorising = (item as any).sold_by_manager_id;
+          if (authorising && typeof authorising === 'object') mgrs.set(idOf(authorising), authorising);
+          sellers.forEach((u: any) => add(u?.role === 'cashier' ? cashiers : agents, u, u?.role === 'cashier' ? 'Cashier' : 'Sales', branchName, 1 / sellers.length, value));
+          mgrs.forEach((u: any) => add(managers, u, 'Manager', branchName, 1, value));
         });
 
-        const cashierList = Object.values(cashierMap).sort((a, b) => b.revenue - a.revenue);
-        const managerList = Object.values(managerMap).sort((a, b) => b.revenue - a.revenue);
-        
-        if (!cashierList.length && !managerList.length) return null;
-        
-        const maxCashierRev = Math.max(...cashierList.map(c => c.revenue), 1);
-        const maxManagerRev = Math.max(...managerList.map(c => c.revenue), 1);
-        const rankColors = ['#263a5e','#4c6291','#7186b5','#a0afd2','#c7d0e7'];
+        const boards = [
+          { key: 'cashier', title: 'Cashier Leaderboard', sub: 'Revenue attributed to cashiers', rows: Object.values(cashiers), accent: '#2563eb' },
+          { key: 'sales', title: 'Sales Team Leaderboard', sub: 'Revenue credited to sales agents (split equally on shared bills)', rows: Object.values(agents), accent: '#059669' },
+          { key: 'manager', title: 'Manager Leaderboard', sub: 'Revenue sold or authorized by managers', rows: Object.values(managers), accent: '#475569' },
+        ]
+          .map(b => ({ ...b, rows: b.rows.sort((x, y) => y.revenue - x.revenue) }))
+          .filter(b => b.rows.length > 0);
+        if (!boards.length) return null;
 
         return (
-          <div className="mb-10 grid grid-cols-1 xl:grid-cols-2 gap-8">
-            {/* Cashier Leaderboard */}
-            {cashierList.length > 0 && (
-              <div className="bg-white rounded-[2.5rem] border border-blue-100 shadow-sm overflow-hidden">
-                <div className="px-8 py-6 border-b border-blue-50 flex items-center gap-3 bg-gradient-to-r from-blue-50/60 to-slate-50">
-                  <div className="w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center flex-shrink-0">
-                    <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+          <div className="mb-10 grid grid-cols-1 xl:grid-cols-3 gap-6">
+            {boards.map(board => {
+              const max = Math.max(...board.rows.map(r => r.revenue), 1);
+              return (
+                <div key={board.key} className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="px-6 py-5 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
+                    <h3 className="text-base font-black text-slate-900">{board.title}</h3>
+                    <p className="text-[11px] text-slate-500 font-medium">{board.sub}</p>
                   </div>
-                  <div>
-                    <h3 className="text-base font-black text-slate-900">Cashier Leaderboard</h3>
-                    <p className="text-[11px] text-slate-500 font-medium">Revenue attributed to cashiers</p>
-                  </div>
-                </div>
-                <div className="p-8 grid grid-cols-1 sm:grid-cols-2 gap-5">
-                  {cashierList.slice(0, 5).map((c, i) => {
-                    const fullUser = allUsers.find(u => u._id === c.id) || ({ name: c.name, _id: c.id, role: 'cashier', email: '', is_active: true, created_at: '' } as User);
-                    return (
-                    <button
-                      key={c.name}
-                      onClick={() => setHistoryUser(fullUser)}
-                      className="relative flex flex-col gap-2 p-4 rounded-2xl border border-slate-100 bg-white hover:shadow-md hover:border-blue-200 transition-all hover:-translate-y-0.5 text-left w-full"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-[11px] font-black shadow-sm overflow-hidden" style={{ background: (fullUser as any).avatar ? 'transparent' : (rankColors[i] ?? '#e3e8f4') }}>
-                          {(fullUser as any).avatar ? (
-                            <img src={staticUrl((fullUser as any).avatar)} className="w-full h-full object-cover" />
-                          ) : (
-                            c.name.split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase()
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-[12px] font-black text-slate-900 truncate">{c.name}</p>
-                          <p className="text-[9px] font-bold text-blue-500 uppercase tracking-widest">Cashier • {c.branch}</p>
-                        </div>
-                      </div>
-                      <div className="mt-1">
-                        <p className="text-lg font-black text-blue-700">₹{c.revenue.toLocaleString('en-IN')}</p>
-                        <p className="text-[10px] text-slate-400 font-bold">{c.count} sale{c.count !== 1 ? 's' : ''}</p>
-                      </div>
-                      <div className="h-1 bg-slate-100 rounded-full overflow-hidden mt-1">
-                        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.round((c.revenue / maxCashierRev) * 100)}%`, background: rankColors[i] ?? '#e3e8f4' }} />
-                      </div>
-                      {i === 0 && (
-                        <div className="absolute top-3 right-3 w-5 h-5 bg-amber-400 rounded-full flex items-center justify-center shadow-sm">
-                          <svg width="10" height="10" fill="white" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-                        </div>
-                      )}
-                    </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Manager Leaderboard */}
-            {managerList.length > 0 && (
-              <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden">
-                <div className="px-8 py-6 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-slate-50 to-white">
-                  <div className="w-10 h-10 rounded-2xl bg-slate-800 flex items-center justify-center flex-shrink-0">
-                    <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
-                  </div>
-                  <div>
-                    <h3 className="text-base font-black text-slate-900">Manager Leaderboard</h3>
-                    <p className="text-[11px] text-slate-500 font-medium">Revenue authorized by managers</p>
+                  <div className="p-4 flex flex-col gap-2">
+                    {board.rows.slice(0, 5).map((c, i) => {
+                      const fullUser = allUsers.find(u => u._id === c.id) || ({ name: c.name, _id: c.id, role: board.key === 'cashier' ? 'cashier' : 'manager', email: '', is_active: true, created_at: '' } as User);
+                      const count = Math.round(c.count * 100) / 100;
+                      return (
+                        <button
+                          key={c.id || c.name}
+                          onClick={() => setStaffFilter(c.id || 'all')}
+                          title="Click to filter this page to this person"
+                          className="relative flex items-center gap-3 p-3 rounded-2xl border border-slate-100 hover:border-blue-200 hover:shadow-sm transition-all text-left w-full"
+                        >
+                          <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-[11px] font-black flex-shrink-0 overflow-hidden" style={{ background: (fullUser as any).avatar ? 'transparent' : board.accent, opacity: 1 - i * 0.12 }}>
+                            {(fullUser as any).avatar ? <img src={staticUrl((fullUser as any).avatar)} className="w-full h-full object-cover" /> : c.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[12px] font-black text-slate-900 truncate">{i + 1}. {c.name}</p>
+                            <div className="h-1 bg-slate-100 rounded-full overflow-hidden mt-1.5">
+                              <div className="h-full rounded-full" style={{ width: `${Math.round((c.revenue / max) * 100)}%`, background: board.accent }} />
+                            </div>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-sm font-black text-slate-800">₹{Math.round(c.revenue).toLocaleString('en-IN')}</p>
+                            <p className="text-[10px] text-slate-400 font-bold">{count} sale{count !== 1 ? 's' : ''}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
-                <div className="p-8 grid grid-cols-1 sm:grid-cols-2 gap-5">
-                  {managerList.slice(0, 5).map((c, i) => {
-                    const fullUser = allUsers.find(u => u._id === c.id) || ({ name: c.name, _id: c.id, role: 'manager', email: '', is_active: true, created_at: '' } as User);
-                    return (
-                    <button
-                      key={c.name}
-                      onClick={() => setHistoryUser(fullUser)}
-                      className="relative flex flex-col gap-2 p-4 rounded-2xl border border-slate-100 bg-white hover:shadow-md hover:border-blue-200 transition-all hover:-translate-y-0.5 text-left w-full"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-[11px] font-black shadow-sm overflow-hidden" style={{ background: (fullUser as any).avatar ? 'transparent' : '#334155' }}>
-                          {(fullUser as any).avatar ? (
-                            <img src={staticUrl((fullUser as any).avatar)} className="w-full h-full object-cover" />
-                          ) : (
-                            c.name.split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase()
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-[12px] font-black text-slate-900 truncate">{c.name}</p>
-                          <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Manager • {c.branch}</p>
-                        </div>
-                      </div>
-                      <div className="mt-1">
-                        <p className="text-lg font-black text-slate-800">₹{c.revenue.toLocaleString('en-IN')}</p>
-                        <p className="text-[10px] text-slate-400 font-bold">{c.count} sale{c.count !== 1 ? 's' : ''}</p>
-                      </div>
-                      <div className="h-1 bg-slate-100 rounded-full overflow-hidden mt-1">
-                        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.round((c.revenue / maxManagerRev) * 100)}%`, background: '#64748b' }} />
-                      </div>
-                    </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+              );
+            })}
           </div>
         );
       })()}
 
       {/* Intelligence Dashboard Section */}
-      {!loading && chartData && showCharts && (
+      {!loading && chartData && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
           <div className="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-md transition-all duration-500">
             <div className="flex items-center justify-between mb-10">
