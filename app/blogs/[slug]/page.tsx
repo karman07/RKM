@@ -127,12 +127,14 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ slu
       <section className="max-w-3xl mx-auto px-6 pb-32">
         <FadeIn delay={0.4}>
           <div 
-            className="prose prose-lg prose-emerald max-w-none 
-              font-light leading-[2] text-[#3D4D46]
-              prose-h2:font-serif prose-h2:text-3xl prose-h2:text-[#5C0828] prose-h2:mt-12 prose-h2:mb-6
-              prose-p:mb-8
-              prose-blockquote:font-serif prose-blockquote:italic prose-blockquote:text-2xl prose-blockquote:text-[#B8975A] prose-blockquote:border-l-[1px] prose-blockquote:border-[#B8975A]/40 prose-blockquote:pl-8 prose-blockquote:my-16
-              prose-img:rounded-3xl prose-img:shadow-xl
+            className="max-w-none text-lg font-light leading-[2] text-[#3D4D46]
+              [&_p]:mt-0 [&_p]:mb-8
+              [&_h2]:font-serif [&_h2]:text-3xl [&_h2]:text-[#5C0828] [&_h2]:mt-12 [&_h2]:mb-6
+              [&_h3]:font-serif [&_h3]:text-2xl [&_h3]:text-[#5C0828] [&_h3]:mt-10 [&_h3]:mb-4
+              [&_ul]:list-disc [&_ul]:pl-8 [&_ul]:mb-8 [&_ol]:list-decimal [&_ol]:pl-8 [&_ol]:mb-8 [&_li]:mb-2
+              [&_a]:text-[#B8975A] [&_a]:underline [&_strong]:font-semibold
+              [&_blockquote]:font-serif [&_blockquote]:italic [&_blockquote]:text-2xl [&_blockquote]:text-[#B8975A] [&_blockquote]:border-l [&_blockquote]:border-[#B8975A]/40 [&_blockquote]:pl-8 [&_blockquote]:my-16
+              [&_img]:rounded-3xl [&_img]:shadow-xl [&_img]:my-10 [&_img]:max-w-full [&_img]:h-auto
             "
             dangerouslySetInnerHTML={{ __html: formatBlogContent(blog.content) }}
           />
