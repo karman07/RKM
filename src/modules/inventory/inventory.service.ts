@@ -1036,6 +1036,7 @@ export class InventoryService {
         filter.$or = [
           { barcode: { $regex: search, $options: 'i' } },
           { unique_item_code: { $regex: search, $options: 'i' } },
+          { hallmark: { $regex: search, $options: 'i' } },
           { sale_reference: { $regex: search, $options: 'i' } },
           { invoice_number: { $regex: search, $options: 'i' } },
           { prebooking_customer_name: { $regex: search, $options: 'i' } },
